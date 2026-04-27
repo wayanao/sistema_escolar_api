@@ -1,0 +1,19 @@
+# Entorno virtual y Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+.env
+
+# Bases de datos SQLite
+*.db
+*.sqlite3
+
+# Archivos subidos por los usuarios (no se suben a Git)
+uploads/
+
+# Archivos de VSCode y OS
+.vscode/
+.idea/
+.DS_Store

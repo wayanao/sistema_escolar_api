@@ -138,8 +138,8 @@ def reporte_estado_cuenta_curso_controller(curso_id):
         # 2. Obtener los estudiantes del curso
         cursor.execute('''
             SELECT e.id, e.nombre, e.apellido, 
-                   c.matricula, c.mensualidad, c.meses,
-                   e.descuento_matricula, e.descuento_mensualidad
+            c.matricula, c.mensualidad, c.meses,
+            e.descuento_matricula, e.descuento_mensualidad
             FROM estudiantes e 
             JOIN cursos c ON e.curso_id = c.id 
             WHERE e.curso_id = %s 

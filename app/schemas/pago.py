@@ -7,6 +7,7 @@ from typing import List, Dict
 class MetodoPago(BaseModel):
     tipo: str
     monto: float
+    nota: Optional[str] = None
 
 class PagoCreate(BaseModel):
     estudiante_id: int

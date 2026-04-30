@@ -1,39 +1,62 @@
+import logging
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from jose import jwt, JWTError
 
 from app.config import settings
+from app.core.logging import configure_logging
+from app.database import close_pool
 from app.globals import tenant_schema_var
 
-from app.routes import inventario, estudiantes
-from app.routes import inventario, cuentas
-from app.routes import inventario, pagos
-from app.routes import inventario, cursos
-from app.routes import inventario, profesores
-from app.routes import inventario, asignaciones
-from app.routes import inventario, notas
-from app.routes import inventario, planilla
-from app.routes import inventario, asistencia
-from app.routes import inventario, auth
-from app.routes import inventario, materias
-from app.routes import inventario, observaciones
-from app.routes import inventario, plan_de_clases
-from app.routes import inventario, dashboard
-from app.routes import inventario, planeador_anual
-from app.routes import inventario, usuario
-from app.routes import inventario, reportes
-from app.routes import inventario, tipos_pagos
-from app.routes import egresos, prestamos, ventas, nomina
+from app.routes import (
+    asignaciones,
+    asistencia,
+    auth,
+    boletines,
+    cuentas,
+    cursos,
+    dashboard,
+    egresos,
+    estudiantes,
+    inventario,
+    materias,
+    nomina,
+    notas,
+    observaciones,
+    pagos,
+    plan_de_clases,
+    planeador_anual,
+    planilla,
+    prestamos,
+    profesores,
+    reportes,
+    tipos_pagos,
+    usuario,
+    ventas,
+)
+
+configure_logging()
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("Starting %s in %s mode", settings.APP_NAME, settings.ENVIRONMENT)
+    yield
+    close_pool()
+    logger.info("Database pool closed")
 
 # Configuración de Rate Limiting
 limiter = Limiter(key_func=get_remote_address, default_limits=["100/minute"])
 
-app = FastAPI()
-
-print("FRONTEND_URL:", settings.FRONTEND_URL)  # 👈 AQUÍ
+app = FastAPI(title=settings.APP_NAME, lifespan=lifespan)
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 # Inicializar limiter en la app
 app.state.limiter = limiter
@@ -41,7 +64,9 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # 🔥 CORS (SOLO UNA VEZ)
 origins = [
-    settings.FRONTEND_URL
+    settings.FRONTEND_URL,
+    "http://127.0.0.1:5173",
+    "http://localhost:5173",
 ]
 
 app.add_middleware(
@@ -57,6 +82,7 @@ app.add_middleware(
 # antes de que FastAPI haga su rotación de hilos (threadpooling)
 @app.middleware("http")
 async def tenant_middleware(request: Request, call_next):
+    tenant_token = tenant_schema_var.set(settings.DEFAULT_TENANT_SCHEMA)
     auth_header = request.headers.get("Authorization")
     if auth_header and auth_header.startswith("Bearer "):
         token = auth_header.split(" ")[1]
@@ -68,10 +94,11 @@ async def tenant_middleware(request: Request, call_next):
                 tenant_schema_var.set(tenant)
         except JWTError:
             pass  # Si el token es inválido, lo ignoramos (fastapi/Depends validará y lanzará 401 después)
-    
-    # Procesar la petición
-    response = await call_next(request)
-    return response
+
+    try:
+        return await call_next(request)
+    finally:
+        tenant_schema_var.reset(tenant_token)
 
 # 🔗 Rutas
 app.include_router(estudiantes.router)
@@ -97,7 +124,4 @@ app.include_router(egresos.router)
 app.include_router(prestamos.router)
 app.include_router(ventas.router)
 app.include_router(nomina.router, prefix="/api/nomina")
-
-
-from app.routes import boletines
 app.include_router(boletines.router)

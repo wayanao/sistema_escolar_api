@@ -11,6 +11,9 @@ def registrar_nota_planilla_controller(data):
 
     conn = get_connection()
     cursor = conn.cursor()
+    tipo_evaluacion = getattr(data, "tipo_evaluacion", "numerica") or "numerica"
+    nota = data.nota if tipo_evaluacion == "numerica" else None
+    valoracion = getattr(data, "valoracion", None) if tipo_evaluacion == "desarrollo" else None
 
     # 🔥 Evitar duplicados: Primero eliminamos si ya existe la nota para ese tipo, luego insertamos
     cursor.execute("""
@@ -24,16 +27,20 @@ def registrar_nota_planilla_controller(data):
             asignacion_id,
             periodo,
             nota,
-            descripcion
+            descripcion,
+            tipo_evaluacion,
+            valoracion
         )
-        VALUES (%s, %s, %s, %s, TRIM(%s))
+        VALUES (%s, %s, %s, %s, TRIM(%s), %s, %s)
         RETURNING id
     """, (
         data.estudiante_id,
         data.asignacion_id,
         data.periodo,
-        data.nota,
-        data.descripcion
+        nota,
+        data.descripcion,
+        tipo_evaluacion,
+        valoracion
     ))
 
     nota_id = cursor.fetchone()[0]

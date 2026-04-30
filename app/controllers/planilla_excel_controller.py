@@ -12,7 +12,9 @@ def planilla_excel_controller(asignacion_id, periodo=1):
             e.apellido,
             m.nombre AS materia,
             nd.descripcion,
-            nd.nota
+            nd.nota,
+            COALESCE(nd.tipo_evaluacion, 'numerica') AS tipo_evaluacion,
+            nd.valoracion
 
         FROM asignaciones a
         JOIN cursos c ON a.curso_id = c.id
@@ -42,6 +44,8 @@ def planilla_excel_controller(asignacion_id, periodo=1):
         materia = row[3]
         descripcion = row[4]
         nota = row[5]
+        tipo_evaluacion = row[6] or "numerica"
+        valoracion = row[7]
 
         if est_id not in estudiantes:
             estudiantes[est_id] = {
@@ -50,16 +54,23 @@ def planilla_excel_controller(asignacion_id, periodo=1):
                 "apellido": apellido,
                 "materia": materia,
                 "notas": {},
+                "tipos_evaluacion": {},
+                "valoraciones": {},
                 "promedio": 0
             }
 
         if descripcion and descripcion != "Desde React":
             columnas.add(descripcion)
             estudiantes[est_id]["notas"][descripcion] = float(nota) if nota is not None else None
+            estudiantes[est_id]["tipos_evaluacion"][descripcion] = tipo_evaluacion
+            estudiantes[est_id]["valoraciones"][descripcion] = valoracion
 
     # 🔥 calcular promedio
     for est in estudiantes.values():
-        notas_validas = [n for n in est["notas"].values() if n is not None]
+        notas_validas = [
+            n for descripcion, n in est["notas"].items()
+            if n is not None and est["tipos_evaluacion"].get(descripcion, "numerica") == "numerica"
+        ]
         if notas_validas:
             est["promedio"] = round(sum(notas_validas) / len(notas_validas), 2)
         else:

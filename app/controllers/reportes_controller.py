@@ -14,7 +14,11 @@ def reporte_general_controller():
                 (SELECT COUNT(*) FROM cursos) as total_cursos,
                 (SELECT COUNT(*) FROM materias) as total_materias,
                 (SELECT COALESCE(SUM(monto), 0) FROM pagos) as total_ingresos,
-                (SELECT COALESCE(SUM(monto), 0) FROM pagos WHERE DATE(fecha) = CURRENT_DATE) as ingresos_hoy
+                (
+                    SELECT COALESCE(SUM(monto), 0)
+                    FROM pagos
+                    WHERE DATE(COALESCE(fecha, fecha_pago::timestamp)) = CURRENT_DATE
+                ) as ingresos_hoy
         """)
 
         stats = cursor.fetchone()
@@ -35,11 +39,11 @@ def reporte_general_controller():
         # Ingresos por mes (últimos 6 meses) - Adaptado para PostgreSQL
         cursor.execute("""
             SELECT
-                TO_CHAR(fecha, 'YYYY-MM') as mes,
+                TO_CHAR(COALESCE(fecha, fecha_pago::timestamp), 'YYYY-MM') as mes,
                 SUM(monto) as total
             FROM pagos
-            WHERE fecha >= CURRENT_DATE - INTERVAL '6 months'
-            GROUP BY TO_CHAR(fecha, 'YYYY-MM')
+            WHERE COALESCE(fecha, fecha_pago::timestamp) >= CURRENT_DATE - INTERVAL '6 months'
+            GROUP BY TO_CHAR(COALESCE(fecha, fecha_pago::timestamp), 'YYYY-MM')
             ORDER BY mes DESC
         """)
 
@@ -94,13 +98,13 @@ def reporte_ingresos_mes_controller(mes: str):
                 e.nombre,
                 e.apellido,
                 p.monto,
-                p.fecha,
+                COALESCE(p.fecha, p.fecha_pago::timestamp) AS fecha,
                 p.descripcion,
                 p.tipo_pago
             FROM pagos p
             LEFT JOIN estudiantes e ON p.estudiante_id = e.id
-            WHERE TO_CHAR(p.fecha, 'YYYY-MM') = %s
-            ORDER BY p.fecha DESC
+            WHERE TO_CHAR(COALESCE(p.fecha, p.fecha_pago::timestamp), 'YYYY-MM') = %s
+            ORDER BY COALESCE(p.fecha, p.fecha_pago::timestamp) DESC
         """, (mes,))
 
         resultados = cursor.fetchall()
@@ -241,13 +245,14 @@ def reporte_ingresos_rango_controller(fecha_inicio: str, fecha_fin: str):
                 e.nombre,
                 e.apellido,
                 p.monto,
-                p.fecha,
+                COALESCE(p.fecha, p.fecha_pago::timestamp) AS fecha,
                 p.descripcion,
                 p.tipo_pago
             FROM pagos p
             LEFT JOIN estudiantes e ON p.estudiante_id = e.id
-            WHERE p.fecha >= %s::date AND p.fecha < %s::date + interval '1 day'
-            ORDER BY p.fecha DESC
+            WHERE COALESCE(p.fecha, p.fecha_pago::timestamp) >= %s::date
+              AND COALESCE(p.fecha, p.fecha_pago::timestamp) < %s::date + interval '1 day'
+            ORDER BY COALESCE(p.fecha, p.fecha_pago::timestamp) DESC
         """, (fecha_inicio, fecha_fin))
 
         resultados = cursor.fetchall()

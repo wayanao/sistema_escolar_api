@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from app.dependencies import get_current_user
 from app.schemas.pago import PagoCreate
 
@@ -14,8 +14,10 @@ router = APIRouter(tags=["Pagos"], dependencies=[Depends(get_current_user)])
 # 💰 Registrar pago
 @router.post("/pagos")
 def registrar_pago(pago: PagoCreate):
-
-    pago_id = registrar_pago_controller(pago)
+    try:
+        pago_id = registrar_pago_controller(pago)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
     return {
         "mensaje": "Pago registrado correctamente",

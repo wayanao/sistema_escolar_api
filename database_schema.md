@@ -116,7 +116,7 @@
 
 - id (PK) - integer
 - estudiante_id (FK → estudiantes.id)
-- tipo_pago - varchar
+- tipo_pago - varchar(100)
 - monto - numeric
 - fecha_pago - date
 - estado - varchar
@@ -138,16 +138,20 @@
 
 - id (PK) - integer
 - asignacion_id (FK → asignaciones.id)
+- periodo - integer
 - unidad - varchar
 - proposito - text
+- clase - text
 - estandar - varchar
 - dba - varchar
 - competencias - text
+- actividad_casa - text
 - tema - varchar
 - fecha - date
 - imagen1 - varchar
 - imagen2 - varchar
 - created_at - timestamp
+- updated_at - timestamp
 
 ---
 

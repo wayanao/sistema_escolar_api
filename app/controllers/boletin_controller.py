@@ -5,6 +5,7 @@ def guardar_boletin_controller(data):
     conn = get_connection()
     cursor = conn.cursor()
     try:
+        tipo_evaluacion = getattr(data, "tipo_evaluacion", "numerica") or "numerica"
         cursor.execute("""
             INSERT INTO boletin_cabecera (estudiante_id, asignacion_id, periodo, definitiva)
             VALUES (%s, %s, %s, %s)
@@ -19,9 +20,21 @@ def guardar_boletin_controller(data):
         
         for det in data.detalles:
             cursor.execute("""
-                INSERT INTO boletin_detalles (boletin_id, nota, observacion)
-                VALUES (%s, %s, %s)
-            """, (boletin_id, det.nota, det.observacion))
+                INSERT INTO boletin_detalles (
+                    boletin_id,
+                    nota,
+                    observacion,
+                    tipo_evaluacion,
+                    valoracion
+                )
+                VALUES (%s, %s, %s, %s, %s)
+            """, (
+                boletin_id,
+                det.nota,
+                det.observacion,
+                getattr(det, "tipo_evaluacion", tipo_evaluacion) or tipo_evaluacion,
+                getattr(det, "valoracion", None),
+            ))
             
         conn.commit()
         return {"mensaje": "Boletín guardado exitosamente"}
@@ -66,6 +79,91 @@ def obtener_notas_planilla_controller(asignacion_id: int, periodo: int):
     finally:
         cursor.close()
         conn.close()
+def obtener_boletin_para_profesor_controller(asignacion_id: int, periodo: int):
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        cursor.execute("""
+            SELECT e.id as estudiante_id, e.nombre, e.apellido,
+                   nd.descripcion as tipo_nota,
+                   nd.nota,
+                   COALESCE(nd.tipo_evaluacion, 'numerica') AS tipo_evaluacion,
+                   nd.valoracion
+            FROM estudiantes e
+            JOIN asignaciones a ON e.curso_id = a.curso_id
+            LEFT JOIN notas_detalle nd ON e.id = nd.estudiante_id
+                AND nd.asignacion_id = a.id AND nd.periodo = %s
+            WHERE a.id = %s
+            ORDER BY e.apellido, e.nombre, nd.id
+        """, (periodo, asignacion_id))
+
+        estudiantes_dict = {}
+        for row in cursor.fetchall():
+            est_id = row['estudiante_id']
+            if est_id not in estudiantes_dict:
+                estudiantes_dict[est_id] = {
+                    "estudiante_id": est_id,
+                    "nombre": f"{row['nombre']} {row['apellido']}",
+                    "notas": []
+                }
+            if row['tipo_nota'] is not None and row['nota'] is not None:
+                estudiantes_dict[est_id]["notas"].append({
+                    "tipo_nota": row['tipo_nota'],
+                    "valor": float(row['nota']),
+                    "tipo_evaluacion": row['tipo_evaluacion'] or "numerica",
+                    "valoracion": row['valoracion'],
+                    "observacion_guardada": ""
+                })
+            elif row['tipo_nota'] is not None and row['valoracion'] is not None:
+                estudiantes_dict[est_id]["notas"].append({
+                    "tipo_nota": row['tipo_nota'],
+                    "valor": None,
+                    "tipo_evaluacion": row['tipo_evaluacion'] or "desarrollo",
+                    "valoracion": row['valoracion'],
+                    "observacion_guardada": ""
+                })
+
+        est_ids = list(estudiantes_dict.keys())
+        if est_ids:
+            cursor.execute("""
+                SELECT
+                    bc.estudiante_id,
+                    bc.definitiva,
+                    bd.nota,
+                    bd.observacion,
+                    COALESCE(bd.tipo_evaluacion, 'numerica') AS tipo_evaluacion,
+                    bd.valoracion
+                FROM boletin_cabecera bc
+                JOIN boletin_detalles bd ON bd.boletin_id = bc.id
+                WHERE bc.asignacion_id = %s AND bc.periodo = %s
+                    AND bc.estudiante_id = ANY(%s)
+                ORDER BY bc.estudiante_id, bd.id
+            """, (asignacion_id, periodo, est_ids))
+
+            saved_by_student = {}
+            for row in cursor.fetchall():
+                est_id = row['estudiante_id']
+                if est_id not in saved_by_student:
+                    saved_by_student[est_id] = {
+                        'observaciones': []
+                    }
+                saved_by_student[est_id]['observaciones'].append({
+                    'observacion': row['observacion'] or '',
+                })
+
+            for est_id, est_data in estudiantes_dict.items():
+                if est_id in saved_by_student:
+                    saved = saved_by_student[est_id]
+                    for i, nota in enumerate(est_data['notas']):
+                        if i < len(saved['observaciones']):
+                            saved_det = saved['observaciones'][i]
+                            nota['observacion_guardada'] = saved_det['observacion']
+
+        return list(estudiantes_dict.values())
+    finally:
+        cursor.close()
+        conn.close()
+
 def obtener_boletin_admin_controller(estudiante_id: int, periodo: int):
     conn = get_connection()
     try:
@@ -73,6 +171,7 @@ def obtener_boletin_admin_controller(estudiante_id: int, periodo: int):
         
         cur.execute('''
             SELECT 
+                asig.id as asignacion_id,
                 m.id as materia_id,
                 m.nombre AS materia,
                 p.nombre AS profesor_nombre,
@@ -83,33 +182,59 @@ def obtener_boletin_admin_controller(estudiante_id: int, periodo: int):
             JOIN asignaciones asig ON e.curso_id = asig.curso_id
             JOIN materias m ON asig.materia_id = m.id
             JOIN profesor p ON asig.profesor_id = p.id
-            LEFT JOIN boletin_cabecera bc ON bc.asignacion_id = asig.id AND bc.estudiante_id = e.id
+            LEFT JOIN boletin_cabecera bc ON bc.asignacion_id = asig.id
+                AND bc.estudiante_id = e.id
+                AND bc.periodo = %s
             WHERE e.id = %s
-        ''', (estudiante_id,)) 
+            ORDER BY m.nombre
+        ''', (periodo, estudiante_id))
         materias_res = cur.fetchall()
         
-        boletin_ids = [row['boletin_id'] for row in materias_res if row['boletin_id'] is not None]
-        detalles_por_boletin = {}
-        if boletin_ids:
+        asignacion_ids = [row['asignacion_id'] for row in materias_res]
+        detalles_por_asignacion = {}
+        if asignacion_ids:
             cur.execute('''
-                SELECT 
-                bd.boletin_id, 
-                bd.nota, 
-                bd.observacion,
-                bc.periodo
-                FROM boletin_detalles bd
-                JOIN boletin_cabecera bc ON bd.boletin_id = bc.id
-                WHERE bd.boletin_id = ANY(%s)
-            ''', (boletin_ids,))
+                SELECT
+                    bc.asignacion_id,
+                    bc.periodo,
+                    bd.nota,
+                    COALESCE(bd.tipo_evaluacion, 'numerica') AS tipo_evaluacion,
+                    bd.valoracion,
+                    CASE WHEN bc.periodo = %s THEN bd.observacion ELSE NULL END AS observacion,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY bc.asignacion_id, bc.periodo
+                        ORDER BY bd.id
+                    ) AS detalle_idx
+                FROM boletin_cabecera bc
+                JOIN boletin_detalles bd ON bd.boletin_id = bc.id
+                WHERE bc.estudiante_id = %s
+                    AND bc.asignacion_id = ANY(%s)
+                    AND bc.periodo BETWEEN 1 AND 4
+                ORDER BY bc.asignacion_id, detalle_idx, bc.periodo
+            ''', (periodo, estudiante_id, asignacion_ids))
+
             for det in cur.fetchall():
-                bid = det['boletin_id']
-                if bid not in detalles_por_boletin:
-                    detalles_por_boletin[bid] = []
-                detalles_por_boletin[bid].append({
-                    'nota': float(det['nota']) if det['nota'] is not None else None,
-                    'observacion': det['observacion'],
-                    'periodo': det['periodo']  # 🔥 clave
-                })
+                asignacion_id = det['asignacion_id']
+                detalle_idx = det['detalle_idx']
+                if asignacion_id not in detalles_por_asignacion:
+                    detalles_por_asignacion[asignacion_id] = {}
+                if detalle_idx not in detalles_por_asignacion[asignacion_id]:
+                    detalles_por_asignacion[asignacion_id][detalle_idx] = {
+                        'observacion': '',
+                        'tipos_por_periodo': {},
+                        'notas_por_periodo': {},
+                        'valoraciones_por_periodo': {},
+                    }
+
+                detalle = detalles_por_asignacion[asignacion_id][detalle_idx]
+                if det['observacion']:
+                    detalle['observacion'] = det['observacion']
+                if det['tipo_evaluacion']:
+                    detalle['tipos_por_periodo'][str(det['periodo'])] = det['tipo_evaluacion']
+                if det['nota'] is not None:
+                    detalle['notas_por_periodo'][str(det['periodo'])] = float(det['nota'])
+                if det['valoracion']:
+                    detalle['valoraciones_por_periodo'][str(det['periodo'])] = det['valoracion']
                 
         cur.execute('''
             SELECT e.nombre as estudiante_nombre, e.apellido as estudiante_apellido, c.nombre as curso_nombre
@@ -132,13 +257,33 @@ def obtener_boletin_admin_controller(estudiante_id: int, periodo: int):
         }
         
         for row in materias_res:
+            detalles_dict = detalles_por_asignacion.get(row['asignacion_id'], {})
+            detalles = []
+            for detalle_idx in sorted(detalles_dict):
+                detalle = detalles_dict[detalle_idx]
+                periodo_key = str(periodo)
+                nota_actual = detalle['notas_por_periodo'].get(periodo_key)
+                tipo_actual = detalle['tipos_por_periodo'].get(periodo_key)
+                if not tipo_actual:
+                    tipo_actual = "desarrollo" if detalle['valoraciones_por_periodo'].get(periodo_key) else "numerica"
+                detalles.append({
+                    'nota': nota_actual,
+                    'periodo': periodo,
+                    'observacion': detalle['observacion'],
+                    'tipo_evaluacion': tipo_actual,
+                    'notas_por_periodo': detalle['notas_por_periodo'],
+                    'valoraciones_por_periodo': detalle['valoraciones_por_periodo'],
+                })
+
             mat_info = {
+                'asignacion_id': row['asignacion_id'],
                 'materia_id': row['materia_id'],
                 'materia': row['materia'],
                 'profesor_nombre': row['profesor_nombre'],
                 'profesor_apellido': row['profesor_apellido'],
                 'definitiva': float(row['definitiva']) if row['definitiva'] is not None else None,
-                'detalles': detalles_por_boletin.get(row['boletin_id'], []) if row['boletin_id'] else []
+                'boletin_id': row['boletin_id'],
+                'detalles': detalles
             }
             resultado['materias'].append(mat_info)
             

@@ -6,11 +6,20 @@ _API_DIR  = Path(__file__).parent.parent          # sistema_escolar_api/
 _ROOT_DIR = _API_DIR.parent                        # proyecto_escolar/
 
 class Settings(BaseSettings):
+    APP_NAME: str = "Sistema Escolar API"
+    ENVIRONMENT: str = "development"
+    LOG_LEVEL: str = "INFO"
+
     # SECRET_KEY debe estar en el .env o como variable de entorno de la plataforma.
     # Genera una con: python -c "import secrets; print(secrets.token_hex(32))"
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+
+    DATABASE_URL: str
+    DB_POOL_MIN_CONNECTIONS: int = 1
+    DB_POOL_MAX_CONNECTIONS: int = 10
+    DEFAULT_TENANT_SCHEMA: str = "tenant_colegio_1"
 
     FRONTEND_URL: str = "http://localhost:5173"
 

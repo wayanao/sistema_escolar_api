@@ -1,12 +1,19 @@
 import os
 import getpass
+import re
+from pathlib import Path
+
 import psycopg2
+from psycopg2 import sql
 from dotenv import load_dotenv
+
 from app.security import get_password_hash
 
-# Cargar variables de entorno (Debemos subir un nivel ya que el .env está en la raíz C:\proyecto_escolar)
-load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'))
+# Cargar variables de entorno del proyecto.
+load_dotenv(Path(__file__).resolve().parent / ".env")
 DATABASE_URL = os.getenv("DATABASE_URL")
+TEMPLATE_SCHEMA = os.getenv("DEFAULT_TENANT_SCHEMA", "tenant_colegio_1")
+TENANT_CODE_PATTERN = re.compile(r"^[a-z0-9_]{3,50}$")
 
 # Este es el molde exacto de todas tus tablas actuales.
 # Se ejecutará dentro de la bóveda del nuevo colegio.
@@ -68,17 +75,24 @@ CREATE TABLE asignaciones (
 CREATE TABLE plan_de_clases (
     id SERIAL PRIMARY KEY,
     asignacion_id INTEGER REFERENCES asignaciones(id),
+    periodo INTEGER DEFAULT 1,
     unidad VARCHAR(255),
     proposito TEXT,
+    clase TEXT DEFAULT '',
     estandar TEXT,
     dba TEXT,
     competencias TEXT,
+    actividad_casa TEXT DEFAULT '',
     tema VARCHAR(255),
     fecha DATE,
     imagen1 VARCHAR(255),
     imagen2 VARCHAR(255),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX idx_plan_de_clases_asignacion_fecha ON plan_de_clases(asignacion_id, fecha);
+CREATE INDEX idx_plan_de_clases_fecha ON plan_de_clases(fecha);
 
 CREATE TABLE boletin_cabecera (
     id SERIAL PRIMARY KEY,
@@ -105,7 +119,7 @@ CREATE TABLE tipos_de_pagos (
 CREATE TABLE pagos (
     id SERIAL PRIMARY KEY,
     estudiante_id INTEGER REFERENCES estudiantes(id),
-    tipo_pago VARCHAR(255),
+    tipo_pago VARCHAR(100),
     monto NUMERIC,
     fecha_pago DATE,
     estado VARCHAR(50),
@@ -123,10 +137,14 @@ def registrar_nuevo_colegio():
     print("="*50 + "\n")
 
     nombre_colegio = input("1. Nombre completo del Colegio: ")
-    codigo_colegio = input("2. Código de Ingreso (ej. sanpedro): ").lower().replace(" ", "")
+    codigo_colegio = input("2. Código de Ingreso (ej. sanpedro): ").lower().replace(" ", "_")
     admin_nombre = input("3. Nombre del Administrador Director: ")
     admin_email = input("4. Correo de este administrador: ")
     admin_pass = getpass.getpass("5. Contraseña para este administrador: ")
+
+    if not TENANT_CODE_PATTERN.fullmatch(codigo_colegio):
+        print("\n❌ Código inválido. Usa solo letras minúsculas, números o guion bajo. Mínimo 3 caracteres.")
+        return
 
     esquema_nuevo = f"tenant_{codigo_colegio}"
 
@@ -144,12 +162,14 @@ def registrar_nuevo_colegio():
         """, (nombre_colegio, codigo_colegio, esquema_nuevo))
 
         # 2. Crear Bóveda Privada
-        cursor.execute(f"CREATE SCHEMA {esquema_nuevo};")
-        cursor.execute(f"SET search_path TO {esquema_nuevo};")
+        cursor.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(esquema_nuevo)))
+        cursor.execute(
+            sql.SQL("SET search_path TO {}, public").format(sql.Identifier(esquema_nuevo))
+        )
 
         # 3. Crear Tablas Estructurales
         print("📁 Creando bases de datos y relaciones...")
-        cursor.execute(f"""
+        cursor.execute("""
 DO $$
 DECLARE
     r RECORD;
@@ -157,16 +177,19 @@ BEGIN
     FOR r IN (
         SELECT tablename 
         FROM pg_tables 
-        WHERE schemaname = 'tenant_colegio_1'
+        WHERE schemaname = %(template_schema)s
     ) LOOP
         EXECUTE format(
             'CREATE TABLE %I.%I (LIKE %I.%I INCLUDING ALL)',
-            '{esquema_nuevo}', r.tablename,
-            'tenant_colegio_1', r.tablename
+            %(target_schema)s, r.tablename,
+            %(template_schema)s, r.tablename
         );
     END LOOP;
 END $$;
-""")
+""", {
+            "target_schema": esquema_nuevo,
+            "template_schema": TEMPLATE_SCHEMA,
+        })
 
         # 4. Insertar Primer Administrador
         print("👤 Registrando cuenta de administrador...")

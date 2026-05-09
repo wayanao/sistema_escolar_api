@@ -19,6 +19,7 @@ from app.routes import (
     asistencia,
     auth,
     boletines,
+    branding,
     cuentas,
     cursos,
     dashboard,
@@ -33,6 +34,7 @@ from app.routes import (
     plan_de_clases,
     planeador_anual,
     planilla,
+    plantillas,
     prestamos,
     profesores,
     reportes,
@@ -125,3 +127,5 @@ app.include_router(prestamos.router)
 app.include_router(ventas.router)
 app.include_router(nomina.router, prefix="/api/nomina")
 app.include_router(boletines.router)
+app.include_router(branding.router)
+app.include_router(plantillas.router)

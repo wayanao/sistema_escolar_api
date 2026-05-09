@@ -191,6 +191,23 @@ END $$;
             "template_schema": TEMPLATE_SCHEMA,
         })
 
+        # 3.5. Sembrar identidad institucional (vacia) y plantillas predefinidas.
+        #      Las tablas ya existen porque CREATE TABLE LIKE INCLUDING ALL las
+        #      cloned del template, pero estan vacias: hay que cargar los datos.
+        print("🎨 Inicializando identidad y plantillas de impresion...")
+        cursor.execute("""
+            INSERT INTO institucion_branding (nombre_institucion) VALUES ('')
+        """)
+        cursor.execute(
+            sql.SQL("""
+                INSERT INTO plantilla_impresion
+                    (tipo, nombre, codigo, es_predefinida, activa, config_json)
+                SELECT tipo, nombre, codigo, es_predefinida, activa, config_json
+                FROM {template_schema}.plantilla_impresion
+                WHERE es_predefinida = TRUE
+            """).format(template_schema=sql.Identifier(TEMPLATE_SCHEMA))
+        )
+
         # 4. Insertar Primer Administrador
         print("👤 Registrando cuenta de administrador...")
         

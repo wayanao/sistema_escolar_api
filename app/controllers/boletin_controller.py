@@ -243,16 +243,45 @@ def obtener_boletin_admin_controller(estudiante_id: int, periodo: int):
             WHERE e.id = %s
         ''', (estudiante_id,))
         est_info = cur.fetchone()
-        
+
         if not est_info:
             return None
-                
+
+        # Puesto del estudiante en el curso para el periodo (solo numericas).
+        # Promedia las definitivas no nulas por estudiante y rankea descendente.
+        cur.execute('''
+            WITH promedios AS (
+                SELECT
+                    bc.estudiante_id,
+                    AVG(bc.definitiva) AS promedio
+                FROM boletin_cabecera bc
+                JOIN estudiantes e ON e.id = bc.estudiante_id
+                WHERE e.curso_id = (SELECT curso_id FROM estudiantes WHERE id = %s)
+                  AND bc.periodo = %s
+                  AND bc.definitiva IS NOT NULL
+                GROUP BY bc.estudiante_id
+            ),
+            ranked AS (
+                SELECT
+                    estudiante_id,
+                    promedio,
+                    RANK() OVER (ORDER BY promedio DESC) AS puesto
+                FROM promedios
+            )
+            SELECT
+                (SELECT puesto FROM ranked WHERE estudiante_id = %s) AS puesto,
+                (SELECT COUNT(*) FROM promedios) AS total
+        ''', (estudiante_id, periodo, estudiante_id))
+        ranking_row = cur.fetchone() or {}
+
         resultado = {
             'estudiante_id': estudiante_id,
             'estudiante_nombre': est_info['estudiante_nombre'],
             'estudiante_apellido': est_info['estudiante_apellido'],
             'curso': est_info['curso_nombre'],
             'periodo': periodo,
+            'puesto': ranking_row.get('puesto'),
+            'total_estudiantes': ranking_row.get('total') or 0,
             'materias': []
         }
         

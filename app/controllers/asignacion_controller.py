@@ -2,6 +2,35 @@ from fastapi import HTTPException
 from pydantic import BaseModel
 from app.database import get_connection
 
+# Umbral entre jornadas Mañana / Tarde (formato HH:MM 24h)
+JORNADA_LIMITE = "12:00"
+
+
+def validar_jornada_curso(cursor, curso_id, hora_inicio, hora_fin):
+    """Devuelve un mensaje de error si la hora no respeta la jornada del curso,
+    o None si todo está OK."""
+    if not hora_inicio or not hora_fin:
+        return None
+
+    cursor.execute("SELECT jornada FROM cursos WHERE id = %s", (curso_id,))
+    row = cursor.fetchone()
+    if not row:
+        return None  # el curso ya se valida por la FK en el INSERT
+
+    jornada = (row[0] or "").strip().lower()
+    if not jornada:
+        return None  # curso sin jornada definida → no se valida
+
+    if "mañan" in jornada or "manan" in jornada:
+        if hora_fin > JORNADA_LIMITE:
+            return f"El curso es jornada Mañana: la clase debe terminar antes o a las {JORNADA_LIMITE}."
+    elif "tarde" in jornada:
+        if hora_inicio < JORNADA_LIMITE:
+            return f"El curso es jornada Tarde: la clase debe comenzar a partir de las {JORNADA_LIMITE}."
+
+    return None
+
+
 def verificar_cruce_horario(cursor, campo_id, valor_id, dia, hora_inicio_nueva, hora_fin_nueva):
     if not hora_inicio_nueva or not hora_fin_nueva:
         return False
@@ -33,6 +62,10 @@ def asignar_profesor_controller(asignacion):
         if asignacion.hora_inicio and asignacion.hora_fin:
             if asignacion.hora_inicio >= asignacion.hora_fin:
                 return {"error": "La hora de inicio debe ser anterior a la hora de fin."}
+
+            error_jornada = validar_jornada_curso(cursor, asignacion.curso_id, asignacion.hora_inicio, asignacion.hora_fin)
+            if error_jornada:
+                return {"error": error_jornada}
 
             if verificar_cruce_horario(cursor, "profesor_id", asignacion.profesor_id, asignacion.dia, asignacion.hora_inicio, asignacion.hora_fin):
                 return {"error": "Error: El profesor ya tiene una clase asignada en ese horario y ese día."}
@@ -245,6 +278,25 @@ def obtener_clases_profesor_controller(profesor_id):
         }
         for r in rows
     ]
+# ❌ Eliminar asignación por ID (más seguro para grilla)
+def eliminar_asignacion_por_id_controller(asignacion_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("SELECT id FROM asignaciones WHERE id = %s", (asignacion_id,))
+        if not cursor.fetchone():
+            return {"error": "Asignación no encontrada"}
+
+        cursor.execute("DELETE FROM notas WHERE asignacion_id = %s", (asignacion_id,))
+        cursor.execute("DELETE FROM asignaciones WHERE id = %s", (asignacion_id,))
+        conn.commit()
+        return {"mensaje": "Asignación eliminada junto con sus notas"}
+    finally:
+        cursor.close()
+        conn.close()
+
+
 def verificar_cruce_horario_editar(cursor, campo_id, valor_id, dia, hora_inicio_nueva, hora_fin_nueva, asignacion_id_ignorar):
     if not hora_inicio_nueva or not hora_fin_nueva:
         return False
@@ -272,6 +324,10 @@ def editar_asignacion_controller(asignacion_id, asignacion):
         if asignacion.hora_inicio and asignacion.hora_fin:
             if asignacion.hora_inicio >= asignacion.hora_fin:
                 return {"error": "La hora de inicio debe ser anterior a la hora de fin."}
+
+            error_jornada = validar_jornada_curso(cursor, asignacion.curso_id, asignacion.hora_inicio, asignacion.hora_fin)
+            if error_jornada:
+                return {"error": error_jornada}
 
             if verificar_cruce_horario_editar(cursor, "profesor_id", asignacion.profesor_id, asignacion.dia, asignacion.hora_inicio, asignacion.hora_fin, asignacion_id):
                 return {"error": "Error: El profesor ya tiene una clase asignada en ese horario y ese día."}

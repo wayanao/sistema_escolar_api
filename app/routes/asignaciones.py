@@ -9,6 +9,7 @@ from app.controllers.asignacion_controller import (
     cursos_por_profesor_controller,
     profesor_por_curso_controller,
     eliminar_asignacion_controller,
+    eliminar_asignacion_por_id_controller,
     obtener_horarios_admin_controller,
     obtener_todas_asignaciones_controller,
     editar_asignacion_controller
@@ -25,6 +26,15 @@ def editar_asignacion(asignacion_id: int, asignacion: AsignacionEdit):
     resultado = editar_asignacion_controller(asignacion_id, asignacion)
     if "error" in resultado:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=resultado["error"])
+    return resultado
+
+
+# ❌ Eliminar asignación por ID
+@router.delete("/asignaciones/{asignacion_id}")
+def eliminar_asignacion_por_id(asignacion_id: int):
+    resultado = eliminar_asignacion_por_id_controller(asignacion_id)
+    if "error" in resultado:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=resultado["error"])
     return resultado
 
 

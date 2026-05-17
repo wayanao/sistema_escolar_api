@@ -20,6 +20,7 @@ from app.routes import (
     auth,
     boletines,
     branding,
+    cartera,
     cuentas,
     cursos,
     dashboard,
@@ -129,3 +130,4 @@ app.include_router(nomina.router, prefix="/api/nomina")
 app.include_router(boletines.router)
 app.include_router(branding.router)
 app.include_router(plantillas.router)
+app.include_router(cartera.router)

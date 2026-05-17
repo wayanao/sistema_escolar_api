@@ -1,4 +1,5 @@
 from app.database import get_connection
+from app.services.cartera import calcular_deuda_concepto
 
 # 📊 Reporte general del sistema
 def reporte_general_controller():
@@ -134,10 +135,76 @@ def reporte_estado_cuenta_curso_controller(curso_id):
     cursor = conn.cursor()
 
     try:
-        # 1. Obtener todos los tipos de pago
-        cursor.execute("SELECT id, nombre, valor FROM tipos_de_pagos ORDER BY id")
+        # 1. Detectar columnas avanzadas y tabla puente
+        cursor.execute(
+            """
+            SELECT column_name FROM information_schema.columns
+            WHERE table_schema = ANY (current_schemas(false))
+              AND table_name = 'tipos_de_pagos'
+            """
+        )
+        cols_tp = {row[0] for row in cursor.fetchall()}
+
+        def _col(name, default_sql):
+            return name if name in cols_tp else default_sql
+
+        cursor.execute(
+            f"""
+            SELECT id, nombre, valor,
+                {_col('tipo_cobro', "'unico'")} AS tipo_cobro,
+                {_col('activo', 'TRUE')} AS activo,
+                {_col('mes_inicial', 'NULL')} AS mes_inicial,
+                {_col('frecuencia_meses', '1')} AS frecuencia_meses,
+                {_col('dia_limite_mes', 'NULL')} AS dia_limite_mes,
+                {_col('dias_gracia', '0')} AS dias_gracia,
+                {_col('mora_tipo', 'NULL')} AS mora_tipo,
+                {_col('mora_valor', '0')} AS mora_valor
+            FROM tipos_de_pagos ORDER BY id
+            """
+        )
         tipos_pago = cursor.fetchall()
-        tipos_list = [{"id": tp[0], "nombre": tp[1], "valor": float(tp[2] or 0)} for tp in tipos_pago]
+        tipos_list = [
+            {
+                "id": tp[0],
+                "nombre": tp[1],
+                "valor": float(tp[2] or 0),
+                "tipo_cobro": tp[3] or "unico",
+                "activo": bool(tp[4]) if tp[4] is not None else True,
+                "mes_inicial": tp[5],
+                "frecuencia_meses": int(tp[6]) if tp[6] is not None else 1,
+                "dia_limite_mes": tp[7],
+                "dias_gracia": int(tp[8]) if tp[8] is not None else 0,
+                "mora_tipo": tp[9],
+                "mora_valor": float(tp[10] or 0),
+            }
+            for tp in tipos_pago
+        ]
+
+        cursor.execute(
+            """
+            SELECT 1 FROM information_schema.tables
+            WHERE table_schema = ANY (current_schemas(false))
+              AND table_name = 'tipos_pagos_cursos'
+            """
+        )
+        tabla_puente_existe = cursor.fetchone() is not None
+
+        # Asignaciones por tipo de pago para ESTE curso y conjunto global
+        valor_por_tipo_en_curso = {}
+        tipos_con_alguna_asignacion = set()
+        if tabla_puente_existe:
+            cursor.execute(
+                """
+                SELECT tipo_pago_id, valor
+                FROM tipos_pagos_cursos
+                WHERE curso_id = %s AND activo = TRUE
+                """,
+                (curso_id,),
+            )
+            valor_por_tipo_en_curso = {row[0]: float(row[1] or 0) for row in cursor.fetchall()}
+
+            cursor.execute("SELECT DISTINCT tipo_pago_id FROM tipos_pagos_cursos")
+            tipos_con_alguna_asignacion = {row[0] for row in cursor.fetchall()}
 
         # 2. Obtener los estudiantes del curso
         cursor.execute('''
@@ -156,43 +223,81 @@ def reporte_estado_cuenta_curso_controller(curso_id):
         # 3. Calcular la deuda detallada para cada estudiante
         for est in estudiantes:
             est_id, nombre, apellido, matricula, mensualidad, meses, desc_mat, desc_men = est
-            
-            # Obtener pagos para poder desglosar
+
+            # Pagos por concepto_id y también por nombre/desc (fallback)
             cursor.execute('''
-                SELECT concepto_id, COALESCE(SUM(monto), 0) 
-                FROM pagos 
-                WHERE estudiante_id = %s 
+                SELECT concepto_id, COALESCE(SUM(monto), 0)
+                FROM pagos
+                WHERE estudiante_id = %s
                 GROUP BY concepto_id
             ''', (est_id,))
             pagos_dict = {row[0]: float(row[1]) for row in cursor.fetchall()}
-            
+
+            cursor.execute('''
+                SELECT tipo_pago, COALESCE(SUM(monto), 0)
+                FROM pagos WHERE estudiante_id = %s GROUP BY tipo_pago
+            ''', (est_id,))
+            pagos_por_nombre = {str(r[0]).lower(): float(r[1]) for r in cursor.fetchall() if r[0]}
+
             deudas_detalle = []
             total_adeudado = 0
             total_pagado_general = 0
-            
+
             for tp in tipos_list:
                 tp_id = tp['id']
                 tp_nombre = tp['nombre']
-                
-                # Caso especial: Pension/Matricula podrian no estar en tipos_de_pagos
-                # o si lo estan, su valor se toma de la configuracion del curso
-                valor_cobrado = tp['valor']
-                if tp_nombre.lower() == 'matricula':
-                    valor_cobrado = float(matricula - desc_mat)
-                elif tp_nombre.lower() == 'pension' or tp_nombre.lower() == 'mensualidad':
-                    valor_cobrado = float((mensualidad - desc_men) * meses)
-                    
+                tp_nombre_lower = tp_nombre.lower()
+                tipo_cobro = (tp['tipo_cobro'] or 'unico').lower()
+
+                # Mismas reglas de cartera que en estudiante_controller.
+                if not tp['activo'] or tipo_cobro == 'opcional':
+                    continue
+
+                es_legacy_matricula = tp_nombre_lower in ('matricula', 'matrícula')
+                es_legacy_mensualidad = tp_nombre_lower in ('pension', 'pensión', 'mensualidad', 'colegiatura')
+                es_legacy = es_legacy_matricula or es_legacy_mensualidad
+                tiene_asignacion_en_este_curso = tp_id in valor_por_tipo_en_curso
+
+                if not tiene_asignacion_en_este_curso and not es_legacy:
+                    # No asignado al curso y no es legacy → no genera deuda.
+                    continue
+
+                # Valor unitario
+                if tiene_asignacion_en_este_curso:
+                    valor_unitario = valor_por_tipo_en_curso[tp_id]
+                elif es_legacy_matricula:
+                    valor_unitario = float((matricula or 0) - (desc_mat or 0))
+                else:  # es_legacy_mensualidad
+                    valor_unitario = float((mensualidad or 0) - (desc_men or 0))
+
                 pagado = pagos_dict.get(tp_id, 0.0)
-                deuda = max(0, valor_cobrado - pagado)
-                
-                total_adeudado += deuda
-                total_pagado_general += pagado
-                
+                if pagado == 0.0:
+                    pagado = pagos_por_nombre.get(tp_nombre_lower, 0.0)
+
+                resultado = calcular_deuda_concepto(
+                    valor_unitario=valor_unitario,
+                    tipo_cobro=tipo_cobro,
+                    pagado=pagado,
+                    mes_inicial=tp.get('mes_inicial'),
+                    frecuencia_meses=tp.get('frecuencia_meses', 1),
+                    dia_limite_mes=tp.get('dia_limite_mes'),
+                    dias_gracia=tp.get('dias_gracia', 0),
+                    max_cuotas=int(meses or 10),
+                    mora_tipo=tp.get('mora_tipo'),
+                    mora_valor=tp.get('mora_valor', 0),
+                    es_legacy_mensualidad=es_legacy_mensualidad,
+                )
+
+                total_adeudado += resultado['deuda']
+                total_pagado_general += resultado['pagado']
+
                 deudas_detalle.append({
                     "concepto": tp_nombre,
-                    "valor_total": valor_cobrado,
-                    "pagado": pagado,
-                    "deuda": deuda
+                    "valor_total": resultado['valor_total'],
+                    "pagado": resultado['pagado'],
+                    "deuda": resultado['deuda'],
+                    "mora": resultado['mora'],
+                    "cuotas_vencidas": resultado['cuotas_vencidas'],
                 })
 
             # Considerar pagos sin concepto especifico o conceptos eliminados

@@ -113,8 +113,35 @@ CREATE TABLE boletin_detalles (
 CREATE TABLE tipos_de_pagos (
     id SERIAL PRIMARY KEY,
     nombre VARCHAR(255) NOT NULL,
-    valor NUMERIC NOT NULL
+    valor NUMERIC NOT NULL,
+    descripcion TEXT,
+    tipo_cobro VARCHAR(20) NOT NULL DEFAULT 'unico'
+        CHECK (tipo_cobro IN ('unico', 'mensual', 'anual', 'opcional')),
+    fecha_limite DATE,
+    dia_limite_mes SMALLINT CHECK (dia_limite_mes IS NULL OR (dia_limite_mes BETWEEN 1 AND 31)),
+    dias_gracia SMALLINT NOT NULL DEFAULT 0,
+    mora_tipo VARCHAR(20) CHECK (mora_tipo IS NULL OR mora_tipo IN ('porcentaje', 'fijo')),
+    mora_valor NUMERIC(12, 2) NOT NULL DEFAULT 0,
+    mes_inicial SMALLINT CHECK (mes_inicial IS NULL OR (mes_inicial BETWEEN 1 AND 12)),
+    frecuencia_meses SMALLINT NOT NULL DEFAULT 1,
+    generacion_automatica BOOLEAN NOT NULL DEFAULT FALSE,
+    activo BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE tipos_pagos_cursos (
+    id SERIAL PRIMARY KEY,
+    tipo_pago_id INTEGER NOT NULL REFERENCES tipos_de_pagos(id) ON DELETE CASCADE,
+    curso_id INTEGER NOT NULL REFERENCES cursos(id) ON DELETE CASCADE,
+    valor NUMERIC(12, 2) NOT NULL DEFAULT 0,
+    activo BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (tipo_pago_id, curso_id)
+);
+CREATE INDEX idx_tipos_pagos_cursos_tipo ON tipos_pagos_cursos(tipo_pago_id);
+CREATE INDEX idx_tipos_pagos_cursos_curso ON tipos_pagos_cursos(curso_id);
 
 CREATE TABLE pagos (
     id SERIAL PRIMARY KEY,

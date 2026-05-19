@@ -1,15 +1,17 @@
 from app.database import get_connection
 from app.schemas.usuario import UsuarioCreate, UsuarioUpdate
+from app.security import get_password_hash
 
 def crear_usuario_controller(usuario: UsuarioCreate):
     conn = get_connection()
     cursor = conn.cursor()
+    hashed_password = get_password_hash(usuario.password)
 
     cursor.execute("""
         INSERT INTO usuarios (nombre, email, password, rol)
         VALUES (%s, %s, %s, %s)
         RETURNING id
-    """, (usuario.nombre, usuario.email, usuario.password, usuario.rol))
+    """, (usuario.nombre, usuario.email, hashed_password, usuario.rol))
 
     user_id = cursor.fetchone()[0]
     conn.commit()
@@ -48,7 +50,7 @@ def actualizar_usuario_controller(user_id: int, usuario: UsuarioUpdate):
         values.append(usuario.rol)
     if usuario.password is not None:
         updates.append("password = %s")
-        values.append(usuario.password)
+        values.append(get_password_hash(usuario.password))
 
     if not updates:
         return {"error": "No hay campos para actualizar"}

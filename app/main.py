@@ -12,6 +12,7 @@ from jose import jwt, JWTError
 from app.config import settings
 from app.core.logging import configure_logging
 from app.database import close_pool
+from app.db.tenant import TENANT_SCHEMA_PATTERN
 from app.globals import tenant_schema_var
 
 from app.routes import (
@@ -85,16 +86,16 @@ app.add_middleware(
 # antes de que FastAPI haga su rotación de hilos (threadpooling)
 @app.middleware("http")
 async def tenant_middleware(request: Request, call_next):
-    tenant_token = tenant_schema_var.set(settings.DEFAULT_TENANT_SCHEMA)
+    tenant_token = tenant_schema_var.set(None)
     auth_header = request.headers.get("Authorization")
     if auth_header and auth_header.startswith("Bearer "):
         token = auth_header.split(" ")[1]
         try:
             payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
             tenant = payload.get("tenant")
-            if tenant:
+            if tenant and TENANT_SCHEMA_PATTERN.fullmatch(str(tenant)):
                 # Fijamos el contexto a nivel raíz de HTTP
-                tenant_schema_var.set(tenant)
+                tenant_schema_var.set(str(tenant))
         except JWTError:
             pass  # Si el token es inválido, lo ignoramos (fastapi/Depends validará y lanzará 401 después)
 

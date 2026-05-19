@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends
-from app.dependencies import get_current_user, HTTPException
+from app.dependencies import get_current_active_admin, HTTPException
 from app.controllers.usuario_controller import (
     crear_usuario_controller,
     obtener_usuarios_controller,
@@ -8,7 +8,7 @@ from app.controllers.usuario_controller import (
 )
 from app.schemas.usuario import UsuarioCreate, UsuarioUpdate
 
-router = APIRouter(tags=["Usuario"], dependencies=[Depends(get_current_user)])
+router = APIRouter(tags=["Usuario"], dependencies=[Depends(get_current_active_admin)])
 
 @router.post("/usuarios")
 def crear_usuario(usuario: UsuarioCreate):

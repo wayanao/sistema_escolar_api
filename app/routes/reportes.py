@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from app.dependencies import get_current_user
+from app.dependencies import get_current_active_admin
 from app.controllers.reportes_controller import (
     reporte_general_controller,
     reporte_estado_cuenta_curso_controller,
@@ -7,7 +7,7 @@ from app.controllers.reportes_controller import (
     reporte_ingresos_rango_controller
 )
 
-router = APIRouter(tags=["Reportes"], dependencies=[Depends(get_current_user)]) 
+router = APIRouter(tags=["Reportes"], dependencies=[Depends(get_current_active_admin)])
 
 # 📊 Reporte general del sistema
 @router.get("/reportes/general")

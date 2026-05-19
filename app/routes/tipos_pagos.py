@@ -4,7 +4,7 @@ from datetime import date
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field, conint, confloat
 
-from app.dependencies import get_current_user, HTTPException
+from app.dependencies import get_current_active_admin, HTTPException
 from app.controllers.tipos_pagos_controller import (
     crear_tipo_pago,
     listar_tipos_pagos,
@@ -19,7 +19,7 @@ from app.controllers.tipos_pagos_controller import (
     MigracionPendienteError,
 )
 
-router = APIRouter(tags=["Tipos Pagos"], dependencies=[Depends(get_current_user)])
+router = APIRouter(tags=["Tipos Pagos"], dependencies=[Depends(get_current_active_admin)])
 
 
 # -----------------------------------------------------------------------------

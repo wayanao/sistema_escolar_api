@@ -3,6 +3,7 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from app.config import settings
 from app.database import get_connection
+from app.db.tenant import TENANT_SCHEMA_PATTERN
 from app.globals import tenant_schema_var
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login", auto_error=False)
@@ -22,9 +23,9 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
         # Asegurarnos de soportar variables str o int desde JWT
         user_id = str(payload.get("sub")) if payload.get("sub") else None
         rol = str(payload.get("rol")) if payload.get("rol") else None
-        tenant = str(payload.get("tenant", "tenant_colegio_1"))
+        tenant = str(payload.get("tenant")) if payload.get("tenant") else None
         
-        if not user_id or not rol:
+        if not user_id or not rol or not tenant or not TENANT_SCHEMA_PATTERN.fullmatch(tenant):
             raise credentials_exception
             
         # Configuramos el contexto de esta petición para que la BD apunte al colegio correcto

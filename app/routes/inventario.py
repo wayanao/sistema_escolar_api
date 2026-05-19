@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends
-from app.dependencies import get_current_user
+from app.dependencies import get_current_active_admin
 from app.schemas.inventario import InventarioCreate, InventarioUpdate
 from app.controllers.inventario_controller import (
     obtener_inventario_controller,
@@ -8,7 +8,7 @@ from app.controllers.inventario_controller import (
     eliminar_inventario_controller
 )
 
-router = APIRouter(tags=["Inventario"], dependencies=[Depends(get_current_user)])
+router = APIRouter(tags=["Inventario"], dependencies=[Depends(get_current_active_admin)])
 
 @router.get("/inventario")
 def obtener_inventario():

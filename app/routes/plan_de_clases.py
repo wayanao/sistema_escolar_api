@@ -1,8 +1,9 @@
 from typing import Optional
 
-from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, Query
+from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, Query, status
 
 from app.dependencies import get_current_active_admin, get_current_user
+from app.database import get_connection
 from app.controllers.plan_de_clases_controller import (
     crear_plan_de_clases_controller,
     listar_planes_admin_controller,
@@ -14,7 +15,37 @@ from datetime import date
 
 router = APIRouter(tags=["Plan De Clases"])
 
-@router.post("/plan-de-clases", dependencies=[Depends(get_current_user)])
+
+def validar_acceso_asignacion(asignacion_id: int, current_user: dict):
+    if current_user.get("rol") == "admin":
+        return
+
+    if current_user.get("rol") != "profesor":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permisos para esta asignación"
+        )
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "SELECT 1 FROM asignaciones WHERE id = %s AND profesor_id = %s",
+            (asignacion_id, current_user.get("id"))
+        )
+        if cursor.fetchone():
+            return
+    finally:
+        cursor.close()
+        conn.close()
+
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="No tienes permisos para esta asignación"
+    )
+
+
+@router.post("/plan-de-clases")
 async def crear_plan_de_clases(
     asignacion_id: int = Form(...),
     periodo: int = Form(1),
@@ -28,8 +59,10 @@ async def crear_plan_de_clases(
     tema: str = Form(...),
     fecha: str = Form(...),
     imagen1: UploadFile = File(None),
-    imagen2: UploadFile = File(None)
+    imagen2: UploadFile = File(None),
+    current_user: dict = Depends(get_current_user)
 ):
+    validar_acceso_asignacion(asignacion_id, current_user)
     try:
         plan = PlanDeClasesCreate(
             asignacion_id=asignacion_id,
@@ -49,8 +82,13 @@ async def crear_plan_de_clases(
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-@router.get("/plan-de-clases/{asignacion_id}", dependencies=[Depends(get_current_user)])
-async def obtener_planes_por_asignacion(asignacion_id: int, fecha: Optional[date] = None):
+@router.get("/plan-de-clases/{asignacion_id}")
+async def obtener_planes_por_asignacion(
+    asignacion_id: int,
+    fecha: Optional[date] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    validar_acceso_asignacion(asignacion_id, current_user)
     try:
         if fecha:
             return obtener_plan_del_dia_controller(asignacion_id, fecha)

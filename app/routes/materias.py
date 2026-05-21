@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends
-from app.dependencies import get_current_user
+from app.dependencies import get_current_active_admin
 from app.controllers.materia_controller import crear_materia_controller, actualizar_materia_controller
 from app.controllers.materia_controller import obtener_materias_controller
 
-router = APIRouter(tags=["Materias"], dependencies=[Depends(get_current_user)])
+router = APIRouter(tags=["Materias"], dependencies=[Depends(get_current_active_admin)])
 
 @router.post("/materia")
 def crear_materia(data: dict):

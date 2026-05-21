@@ -2,13 +2,13 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 
-from app.dependencies import get_current_user
+from app.dependencies import get_current_active_admin
 from app.controllers.cartera_mora_controller import (
     reporte_cartera_vencida,
     resumen_cartera_vencida,
 )
 
-router = APIRouter(tags=["Cartera"], dependencies=[Depends(get_current_user)])
+router = APIRouter(tags=["Cartera"], dependencies=[Depends(get_current_active_admin)])
 
 
 @router.get("/cartera/mora")

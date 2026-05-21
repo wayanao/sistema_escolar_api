@@ -1,4 +1,5 @@
 from app.repositories.plan_de_clases_repository import (
+    eliminar_imagen_plan,
     guardar_plan_de_clases,
     listar_planes_admin,
     obtener_plan_por_dia,
@@ -21,3 +22,7 @@ def obtener_historial_asignacion(asignacion_id):
 
 def listar_reportes_admin(**filtros):
     return listar_planes_admin(**filtros)
+
+
+def eliminar_imagen_plan_admin(plan_id, slot):
+    return eliminar_imagen_plan(plan_id, slot)

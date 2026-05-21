@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends
-from app.dependencies import get_current_user
+from app.dependencies import get_current_active_admin
 from app.schemas.profesor import ProfesorCreate
 
 from app.controllers.profesor_controller import (
@@ -8,7 +8,7 @@ from app.controllers.profesor_controller import (
     obtener_profesores_controller
 )
 
-router = APIRouter(tags=["Profesores"], dependencies=[Depends(get_current_user)])
+router = APIRouter(tags=["Profesores"], dependencies=[Depends(get_current_active_admin)])
 
 
 # 🚀 Crear profesor

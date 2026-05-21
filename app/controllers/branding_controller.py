@@ -9,12 +9,13 @@ from fastapi import HTTPException, UploadFile, status
 from app.database import get_connection
 from app.globals import tenant_schema_var
 
-ALLOWED_IMAGE_TYPES = {"image/png", "image/jpeg", "image/jpg", "image/webp", "image/svg+xml"}
-ALLOWED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".svg"}
+ALLOWED_IMAGE_TYPES = {"image/png", "image/jpeg", "image/jpg", "image/webp"}
+ALLOWED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 MAX_LOGO_BYTES = 2 * 1024 * 1024  # 2MB
 
-# Carpeta base de uploads (montada como /uploads en main.py).
+# Carpeta base de uploads, servida por endpoint autenticado en main.py.
 UPLOADS_ROOT = Path("uploads") / "branding"
+UPLOADS_BASE = Path("uploads").resolve()
 
 
 def _branding_dir_for_tenant() -> Path:
@@ -25,7 +26,7 @@ def _branding_dir_for_tenant() -> Path:
 
 
 def _public_url(file_path: Path) -> str:
-    # Convierte ruta local a URL servida por StaticFiles ("/uploads/...").
+    # Convierte ruta local a URL servida por el endpoint autenticado "/uploads/...".
     rel = file_path.as_posix().split("uploads/", 1)[-1]
     return f"/uploads/{rel}"
 
@@ -35,10 +36,11 @@ def _delete_local_file_from_url(url: Optional[str]) -> None:
         return
     try:
         rel = url.split("/uploads/", 1)[-1]
-        local = Path("uploads") / rel
+        local = (Path("uploads") / rel).resolve()
+        local.relative_to(UPLOADS_BASE)
         if local.exists() and local.is_file():
             local.unlink()
-    except Exception:
+    except (Exception, ValueError):
         pass  # No bloquear flujo si el archivo ya no existe
 
 

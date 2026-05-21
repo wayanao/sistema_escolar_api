@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends
-from app.dependencies import get_current_user
+from app.dependencies import get_current_active_admin
 from app.schemas.estudiante import EstudianteCreate
 
 # 👇 IMPORTAMOS CONTROLLER
@@ -11,7 +11,7 @@ from app.controllers.estudiante_controller import (
     obtener_estudiante_por_id_controller
 )
 
-router = APIRouter(tags=["Estudiantes"], dependencies=[Depends(get_current_user)])
+router = APIRouter(tags=["Estudiantes"], dependencies=[Depends(get_current_active_admin)])
 
 
 # 🚀 Crear estudiante

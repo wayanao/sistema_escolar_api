@@ -1,8 +1,6 @@
 from app.database import get_connection
 
 def guardar_asistencia_controller(data):
-    print("DATA RECIBIDA EN CONTROLLER:", data)
-
     conn = get_connection()
     cursor = conn.cursor()
 

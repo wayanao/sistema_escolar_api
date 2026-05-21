@@ -1,9 +1,10 @@
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -13,6 +14,7 @@ from app.config import settings
 from app.core.logging import configure_logging
 from app.database import close_pool
 from app.db.tenant import TENANT_SCHEMA_PATTERN
+from app.dependencies import get_current_user
 from app.globals import tenant_schema_var
 
 from app.routes import (
@@ -60,7 +62,65 @@ async def lifespan(app: FastAPI):
 limiter = Limiter(key_func=get_remote_address, default_limits=["100/minute"])
 
 app = FastAPI(title=settings.APP_NAME, lifespan=lifespan)
-app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+
+
+UPLOADS_ROOT = Path("uploads").resolve()
+
+
+def _is_relative_to(path: Path, parent: Path) -> bool:
+    try:
+        path.relative_to(parent)
+        return True
+    except ValueError:
+        return False
+
+
+def _validar_acceso_archivo_upload(file_path: str, current_user: dict) -> Path:
+    tenant = current_user["tenant"]
+    normalized = file_path.replace("\\", "/").lstrip("/")
+    candidate = (UPLOADS_ROOT / normalized).resolve()
+
+    if not _is_relative_to(candidate, UPLOADS_ROOT) or not candidate.is_file():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Archivo no encontrado")
+
+    parts = Path(normalized).parts
+
+    if len(parts) >= 3 and parts[0] == "branding" and parts[1] == tenant:
+        return candidate
+
+    if len(parts) >= 3 and parts[0] == tenant and parts[1] == "plan_de_clases":
+        if current_user.get("rol") == "admin":
+            return candidate
+
+        from app.database import get_connection
+
+        stored_path = f"uploads/{normalized}"
+        conn = get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                SELECT 1
+                FROM plan_de_clases pdc
+                JOIN asignaciones a ON a.id = pdc.asignacion_id
+                WHERE (pdc.imagen1 = %s OR pdc.imagen2 = %s)
+                  AND a.profesor_id = %s
+                """,
+                (stored_path, stored_path, current_user.get("id")),
+            )
+            if cursor.fetchone():
+                return candidate
+        finally:
+            cursor.close()
+            conn.close()
+
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No autorizado")
+
+
+@app.get("/uploads/{file_path:path}")
+def servir_upload(file_path: str, current_user: dict = Depends(get_current_user)):
+    archivo = _validar_acceso_archivo_upload(file_path, current_user)
+    return FileResponse(archivo)
 
 # Inicializar limiter en la app
 app.state.limiter = limiter

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends
-from app.dependencies import get_current_user
+from app.dependencies import get_current_active_admin
 
 # 👇 importamos controllers
 from app.controllers.estado_cuenta_controller import (
@@ -7,7 +7,7 @@ from app.controllers.estado_cuenta_controller import (
     estado_cuenta_estudiante_controller
 )
 
-router = APIRouter(tags=["Cuentas"], dependencies=[Depends(get_current_user)])
+router = APIRouter(tags=["Cuentas"], dependencies=[Depends(get_current_active_admin)])
 
 
 # 📊 Estado por curso

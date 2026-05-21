@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends
-from app.dependencies import get_current_user
+from app.dependencies import get_current_active_admin
 from app.schemas.curso import CursoCreate
 from app.controllers.curso_controller import (
     actualizar_curso_controller,
@@ -7,7 +7,7 @@ from app.controllers.curso_controller import (
     obtener_cursos_controller
 )
 
-router = APIRouter(tags=["Cursos"], dependencies=[Depends(get_current_user)])
+router = APIRouter(tags=["Cursos"], dependencies=[Depends(get_current_active_admin)])
 
 
 # 🚀 Crear curso

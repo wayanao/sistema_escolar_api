@@ -6,6 +6,7 @@ from app.dependencies import get_current_active_admin, get_current_user
 from app.database import get_connection
 from app.controllers.plan_de_clases_controller import (
     crear_plan_de_clases_controller,
+    eliminar_imagen_plan_admin_controller,
     listar_planes_admin_controller,
     obtener_plan_del_dia_controller,
     obtener_planes_por_asignacion_controller,
@@ -42,6 +43,40 @@ def validar_acceso_asignacion(asignacion_id: int, current_user: dict):
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
         detail="No tienes permisos para esta asignación"
+    )
+
+
+def validar_acceso_plan(plan_id: int, current_user: dict):
+    if current_user.get("rol") == "admin":
+        return
+
+    if current_user.get("rol") != "profesor":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permisos para este plan"
+        )
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            """
+            SELECT 1
+            FROM plan_de_clases pdc
+            JOIN asignaciones a ON pdc.asignacion_id = a.id
+            WHERE pdc.id = %s AND a.profesor_id = %s
+            """,
+            (plan_id, current_user.get("id"))
+        )
+        if cursor.fetchone():
+            return
+    finally:
+        cursor.close()
+        conn.close()
+
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="No tienes permisos para este plan"
     )
 
 
@@ -98,6 +133,21 @@ async def obtener_planes_por_asignacion(
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@router.delete("/plan-de-clases/{plan_id}/imagen")
+async def eliminar_imagen_plan_profesor(
+    plan_id: int,
+    slot: str = Query(..., pattern="^(imagen1|imagen2)$"),
+    current_user: dict = Depends(get_current_user),
+):
+    validar_acceso_plan(plan_id, current_user)
+    try:
+        return eliminar_imagen_plan_admin_controller(plan_id, slot)
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=500, detail="No se pudo eliminar la imagen")
+
+
 @router.get("/admin/plan-de-clases", dependencies=[Depends(get_current_active_admin)])
 async def listar_planes_admin(
     profesor_id: Optional[int] = None,
@@ -118,3 +168,16 @@ async def listar_planes_admin(
         )
     except Exception:
         raise HTTPException(status_code=500, detail="No se pudieron cargar los planes de clases")
+
+
+@router.delete("/admin/plan-de-clases/{plan_id}/imagen", dependencies=[Depends(get_current_active_admin)])
+async def eliminar_imagen_plan_admin(
+    plan_id: int,
+    slot: str = Query(..., pattern="^(imagen1|imagen2)$"),
+):
+    try:
+        return eliminar_imagen_plan_admin_controller(plan_id, slot)
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=500, detail="No se pudo eliminar la imagen")

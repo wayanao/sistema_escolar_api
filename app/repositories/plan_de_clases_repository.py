@@ -213,3 +213,24 @@ def listar_planes_admin(
             tuple(parametros + [limit, offset]),
         )
         return {"total": total, "items": [_row_to_plan(row) for row in cursor.fetchall()]}
+
+
+def eliminar_imagen_plan(plan_id, slot):
+    if slot not in {"imagen1", "imagen2"}:
+        raise ValueError("Imagen inválida")
+
+    with get_cursor(commit=True) as cursor:
+        cursor.execute(f"SELECT {slot} FROM plan_de_clases WHERE id = %s", (plan_id,))
+        row = cursor.fetchone()
+        if not row:
+            return None
+
+        cursor.execute(
+            f"""
+            UPDATE plan_de_clases
+            SET {slot} = NULL, updated_at = CURRENT_TIMESTAMP
+            WHERE id = %s
+            """,
+            (plan_id,),
+        )
+        return row[0]

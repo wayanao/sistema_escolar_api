@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from app.dependencies import get_current_user
+from app.dependencies import get_current_active_admin
 from app.schemas.pago import PagoCreate
 
 # 👇 Importamos controllers
@@ -8,7 +8,7 @@ from app.controllers.pagos_controller import (
     historial_pagos_controller
 )
 
-router = APIRouter(tags=["Pagos"], dependencies=[Depends(get_current_user)])
+router = APIRouter(tags=["Pagos"], dependencies=[Depends(get_current_active_admin)])
 
 
 # 💰 Registrar pago

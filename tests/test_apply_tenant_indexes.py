@@ -32,6 +32,8 @@ def test_index_list_contains_recommended_indexes():
     assert ("asistencia", "idx_asistencia_asignacion_periodo", ("asignacion_id", "periodo")) in indexes
     assert ("asistencia", "idx_asistencia_estudiante_fecha", ("estudiante_id", "fecha")) in indexes
     assert ("pagos", "idx_pagos_estudiante_id", ("estudiante_id",)) in indexes
+    assert ("pagos", "idx_pagos_fecha", ("fecha",)) in indexes
+    assert ("pagos", "idx_pagos_fecha_pago", ("fecha_pago",)) in indexes
     assert ("ventas", "idx_ventas_estudiante_estado", ("estudiante_id", "estado")) in indexes
     assert ("plan_de_clases", "idx_plan_de_clases_asignacion_fecha", ("asignacion_id", "fecha")) in indexes
 

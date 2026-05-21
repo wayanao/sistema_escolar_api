@@ -11,6 +11,8 @@ load_dotenv()
 INDEXES = [
     ("estudiantes", "idx_estudiantes_curso_id", ["curso_id"]),
     ("pagos", "idx_pagos_estudiante_id", ["estudiante_id"]),
+    ("pagos", "idx_pagos_fecha", ["fecha"]),
+    ("pagos", "idx_pagos_fecha_pago", ["fecha_pago"]),
     ("asistencia", "idx_asistencia_estudiante_fecha", ["estudiante_id", "fecha"]),
     ("asistencia", "idx_asistencia_asignacion_periodo", ["asignacion_id", "periodo"]),
     ("notas_detalle", "idx_notas_detalle_estudiante_asignacion_periodo", ["estudiante_id", "asignacion_id", "periodo"]),

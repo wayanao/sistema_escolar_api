@@ -536,6 +536,47 @@ Pruebas manuales recomendadas:
 - `GET /inventario?limit=20&offset=0&busqueda=<texto>`
 - `GET /inventario?limit=20&offset=0&solo_con_stock=true`
 
+### 27. Paginacion compatible en reportes de ingresos
+
+Archivos:
+- `app/routes/reportes.py`
+- `app/controllers/reportes_controller.py`
+- `scripts/apply_tenant_indexes.py`
+- `tests/test_reportes_pagination.py`
+- `tests/test_apply_tenant_indexes.py`
+
+Cambio:
+- `GET /reportes/ingresos-mes/{mes}` conserva el comportamiento anterior si no se envian parametros: devuelve una lista simple.
+- `GET /reportes/ingresos-rango?inicio=<fecha>&fin=<fecha>` conserva el comportamiento anterior si no se envian parametros: devuelve una lista simple.
+- Ambos endpoints aceptan ahora `limit` y `offset`.
+- Con paginacion devuelven:
+  - `total`;
+  - `limit`;
+  - `offset`;
+  - `items`.
+- El limite maximo permitido por request es `200`.
+- Se agregaron al script de indices:
+  - `pagos(fecha)`;
+  - `pagos(fecha_pago)`.
+
+Motivo:
+- Los reportes financieros por mes/rango pueden crecer mucho y devolver demasiados pagos.
+- La pantalla actual de reportes sigue funcionando sin cambios.
+- Los indices por fecha preparan mejor la base para consultas historicas grandes.
+
+Verificacion:
+- `.\venv\Scripts\python.exe -m pytest tests\test_reportes_pagination.py tests\test_apply_tenant_indexes.py tests\test_inventario_pagination.py tests\test_pagos_pagination.py tests\test_ventas_pagination.py tests\test_estudiantes_pagination.py`
+
+Pruebas manuales recomendadas:
+- `GET /reportes/ingresos-mes/2026-05`
+- `GET /reportes/ingresos-mes/2026-05?limit=20&offset=0`
+- `GET /reportes/ingresos-rango?inicio=2026-05-01&fin=2026-05-31`
+- `GET /reportes/ingresos-rango?inicio=2026-05-01&fin=2026-05-31&limit=20&offset=0`
+
+Pendiente operativo:
+- Se ejecuto `.\venv\Scripts\python.exe scripts\apply_tenant_indexes.py --dry-run` y encontro los indices nuevos pendientes de verificacion en `tenant_3333` y `tenant_colegio_1`.
+- Si la simulacion se ve bien, ejecutar `.\venv\Scripts\python.exe scripts\apply_tenant_indexes.py` para verificar/crear los indices nuevos.
+
 ## Verificaciones realizadas
 
 - Validacion de sintaxis con `ast.parse` en los archivos Python modificados.
@@ -721,7 +762,8 @@ Estado:
 - `GET /api/ventas/` ya soporta paginacion opcional sin romper el contrato anterior.
 - `GET /pagos/{estudiante_id}` ya soporta paginacion opcional sin romper el contrato anterior.
 - `GET /inventario` ya soporta paginacion opcional sin romper el contrato anterior.
-- Faltan reportes y listados administrativos.
+- `GET /reportes/ingresos-mes/{mes}` y `GET /reportes/ingresos-rango` ya soportan paginacion opcional sin romper el contrato anterior.
+- Faltan listados administrativos.
 
 ### 7. Refactor de permisos
 

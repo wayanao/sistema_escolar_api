@@ -1,9 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException
+from typing import Annotated, Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from app.dependencies import get_current_active_admin
 from app.schemas.pago import PagoCreate
 
 # 👇 Importamos controllers
 from app.controllers.pagos_controller import (
+    historial_pagos_paginado_controller,
     registrar_pago_controller,
     historial_pagos_controller
 )
@@ -27,6 +30,11 @@ def registrar_pago(pago: PagoCreate):
 
 # 📄 Ver historial
 @router.get("/pagos/{estudiante_id}")
-def historial_pagos(estudiante_id: int):
-
+def historial_pagos(
+    estudiante_id: int,
+    limit: Annotated[Optional[int], Query(ge=1, le=200)] = None,
+    offset: Annotated[int, Query(ge=0)] = 0,
+):
+    if limit is not None:
+        return historial_pagos_paginado_controller(estudiante_id, limit=limit, offset=offset)
     return historial_pagos_controller(estudiante_id)

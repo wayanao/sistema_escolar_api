@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends
+from typing import Annotated, Optional
+
+from fastapi import APIRouter, Depends, Query
 from app.dependencies import get_current_active_admin
 from app.schemas.estudiante import EstudianteCreate
 
@@ -6,6 +8,7 @@ from app.schemas.estudiante import EstudianteCreate
 from app.controllers.estudiante_controller import (
     crear_estudiante_controller,
     obtener_estudiantes_controller,
+    obtener_estudiantes_paginado_controller,
     obtener_detalles_estudiante_controller,
     actualizar_estudiante_controller,
     obtener_estudiante_por_id_controller
@@ -28,7 +31,13 @@ def crear_estudiante(est: EstudianteCreate):
 
 # 🔍 Listar estudiantes
 @router.get("/estudiantes")
-def obtener_estudiantes():
+def obtener_estudiantes(
+    limit: Annotated[Optional[int], Query(ge=1, le=200)] = None,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    busqueda: Optional[str] = None,
+):
+    if limit is not None:
+        return obtener_estudiantes_paginado_controller(limit=limit, offset=offset, busqueda=busqueda)
 
     return obtener_estudiantes_controller()
 

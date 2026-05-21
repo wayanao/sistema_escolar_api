@@ -1,5 +1,18 @@
 from app.database import get_connection
 
+def _formatear_venta(row, detalles_por_venta):
+    return {
+        "id": row[0],
+        "cliente": f"{row[2]} {row[1]}" if row[1] else "Público General",
+        "fecha": str(row[3]),
+        "tipo_venta": row[4],
+        "total": float(row[5]),
+        "estado": row[6],
+        "notas": row[7],
+        "estudiante_id": row[8],
+        "detalles": detalles_por_venta.get(row[0], [])
+    }
+
 def obtener_ventas():
     conn = get_connection()
     cursor = conn.cursor()
@@ -36,18 +49,82 @@ def obtener_ventas():
 
         resultado = []
         for v in ventas_rows:
-            resultado.append({
-                "id": v[0], 
-                "cliente": f"{v[2]} {v[1]}" if v[1] else "Público General",
-                "fecha": str(v[3]), 
-                "tipo_venta": v[4],
-                "total": float(v[5]),
-                "estado": v[6],
-                "notas": v[7],
-                "estudiante_id": v[8],
-                "detalles": detalles_por_venta.get(v[0], [])
-            })
+            resultado.append(_formatear_venta(v, detalles_por_venta))
         return resultado
+    finally:
+        cursor.close()
+        conn.close()
+
+def obtener_ventas_paginado(limit=50, offset=0, busqueda=None, estudiante_id=None, estado=None):
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        filtros = []
+        params = []
+
+        if estudiante_id is not None:
+            filtros.append("v.estudiante_id = %s")
+            params.append(estudiante_id)
+
+        if estado:
+            filtros.append("v.estado = %s")
+            params.append(estado)
+
+        if busqueda:
+            filtros.append("(LOWER(e.nombre) LIKE LOWER(%s) OR LOWER(e.apellido) LIKE LOWER(%s) OR LOWER(v.notas) LIKE LOWER(%s))")
+            patron = f"%{busqueda}%"
+            params.extend([patron, patron, patron])
+
+        where_sql = f"WHERE {' AND '.join(filtros)}" if filtros else ""
+
+        cursor.execute(f'''
+            SELECT COUNT(*)
+            FROM ventas v
+            LEFT JOIN estudiantes e ON v.estudiante_id = e.id
+            {where_sql}
+        ''', params)
+        total = cursor.fetchone()[0]
+
+        cursor.execute(f'''
+            SELECT v.id, e.nombre, e.apellido, v.fecha, v.tipo_venta, v.total, v.estado, v.notas, v.estudiante_id
+            FROM ventas v
+            LEFT JOIN estudiantes e ON v.estudiante_id = e.id
+            {where_sql}
+            ORDER BY v.fecha DESC, v.id DESC
+            LIMIT %s OFFSET %s
+        ''', params + [limit, offset])
+        ventas_rows = cursor.fetchall()
+
+        if not ventas_rows:
+            return {"total": total, "limit": limit, "offset": offset, "items": []}
+
+        venta_ids = [v[0] for v in ventas_rows]
+        cursor.execute('''
+            SELECT vd.venta_id, i.nombre, vd.cantidad, vd.precio_unitario, vd.subtotal
+            FROM ventas_detalle vd
+            JOIN inventario i ON vd.inventario_id = i.id
+            WHERE vd.venta_id = ANY(%s)
+        ''', (venta_ids,))
+        detalles_rows = cursor.fetchall()
+
+        detalles_por_venta = {}
+        for dr in detalles_rows:
+            vid = dr[0]
+            if vid not in detalles_por_venta:
+                detalles_por_venta[vid] = []
+            detalles_por_venta[vid].append({
+                "producto": dr[1],
+                "cantidad": dr[2],
+                "precio_unitario": float(dr[3]),
+                "subtotal": float(dr[4])
+            })
+
+        return {
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "items": [_formatear_venta(v, detalles_por_venta) for v in ventas_rows]
+        }
     finally:
         cursor.close()
         conn.close()

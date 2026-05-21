@@ -270,6 +270,272 @@ Impacto:
 Nota:
 - En produccion, si frontend y backend viven en dominios/subdominios distintos, revisar configuracion de cookie `token` para que las imagenes autenticadas se carguen correctamente desde `<img>`.
 
+### 18. Script legacy de admin eliminado
+
+Archivos:
+- `insert_admin.sql`
+
+Cambio:
+- Se elimino `insert_admin.sql` de la raiz del backend.
+- Tambien se elimino la copia legacy que habia quedado como referencia.
+
+Impacto:
+- Elimina el riesgo de ejecutar por accidente un script que crea un admin con password en texto plano.
+- El flujo recomendado para crear tenants y admin inicial sigue siendo `crear_cliente.py`, porque hashea la password.
+
+### 19. Prueba base de permiso por estudiante
+
+Archivos:
+- `app/core/permissions.py`
+- `tests/test_permissions.py`
+- `tests/test_notas_permissions.py`
+
+Cambio:
+- Se agregaron pruebas unitarias para `require_estudiante_access`.
+- Las pruebas validan:
+  - admin pasa sin consultar DB;
+  - profesor duenio del estudiante pasa;
+  - profesor no duenio recibe `403`;
+  - rol no autorizado recibe `403`.
+- Se agregaron pruebas de cableado para confirmar que las rutas antiguas de
+  `notas.py` llaman el permiso antes de devolver datos:
+  - `GET /notas/{estudiante_id}`;
+  - `GET /boletin/{estudiante_id}`;
+  - `GET /boletin/detallado/{estudiante_id}`.
+
+Verificacion:
+- `.\venv\Scripts\python.exe -m pytest tests\test_permissions.py tests\test_notas_permissions.py`
+- Resultado: 8 pruebas pasaron.
+
+Pendiente manual:
+- Probar funcionalmente en la app con usuarios reales:
+  - profesor duenio del estudiante;
+  - profesor no duenio;
+  - admin;
+  - request sin token.
+
+Prueba manual realizada:
+- Se intento consultar un estudiante no autorizado desde URL directa y el backend respondio `{"detail":"No autorizado"}`.
+
+### 20. Pruebas base de auth, tenant y uploads
+
+Archivos:
+- `tests/test_auth_tenant.py`
+- `tests/test_uploads_permissions.py`
+
+Cambio:
+- Se agregaron pruebas unitarias para `get_current_user`:
+  - sin token responde `401`;
+  - token invalido responde `401`;
+  - token con `tenant=public` responde `401`;
+  - token valido fija el tenant y revalida usuario contra DB;
+  - usuario eliminado o rol cambiado invalida el token.
+- Se agregaron pruebas unitarias para la validacion de `/uploads`:
+  - branding del mismo tenant se permite;
+  - branding de otro tenant se bloquea;
+  - path traversal se bloquea;
+  - admin del tenant puede abrir imagen de plan de clases;
+  - profesor duenio puede abrir imagen de su plan de clases;
+  - profesor no duenio recibe `403`.
+
+Verificacion:
+- `.\venv\Scripts\python.exe -m pytest tests\test_permissions.py tests\test_notas_permissions.py tests\test_auth_tenant.py tests\test_uploads_permissions.py`
+- Resultado: 19 pruebas pasaron.
+
+Nota:
+- Aparecieron advertencias de dependencias/Pydantic, pero no errores de pruebas.
+
+### 21. Runner de migraciones con historial
+
+Archivos:
+- `apply_migration.py`
+- `migrations/README.md`
+- `tests/test_apply_migration.py`
+
+Cambio:
+- Se mejoro `apply_migration.py` para registrar historial en `public.schema_migrations`.
+- Se agrega checksum SHA-256 por migracion.
+- Si una migracion ya fue aplicada en un tenant con el mismo checksum, se omite.
+- Si existe el mismo nombre de migracion con checksum diferente, se bloquea.
+- Se agrego modo `--dry-run` para simular antes de aplicar cambios.
+- Se reemplazo el `SET search_path` construido manualmente por `psycopg2.sql.Identifier`.
+
+Uso recomendado:
+- `python apply_migration.py migrations/<archivo>.sql --dry-run`
+- `python apply_migration.py migrations/<archivo>.sql`
+
+Verificacion:
+- `.\venv\Scripts\python.exe -m pytest tests\test_apply_migration.py tests\test_permissions.py tests\test_notas_permissions.py tests\test_auth_tenant.py tests\test_uploads_permissions.py`
+- Resultado: 24 pruebas pasaron.
+
+Pendiente:
+- Probar el runner contra una copia de la base real antes de usarlo en produccion.
+- Decidir mas adelante si se migra completamente a Alembic.
+
+### 22. Script de indices por tenant actualizado
+
+Archivos:
+- `scripts/apply_tenant_indexes.py`
+- `tests/test_apply_tenant_indexes.py`
+
+Cambio:
+- Se completo la lista de indices recomendados para consultas frecuentes.
+- Se agrego modo `--dry-run` para simular sin crear indices.
+- El script ahora valida que la tabla exista antes de crear el indice.
+- El script ahora valida que las columnas existan antes de crear el indice.
+- Si una tabla o columna falta en un tenant, se omite sin romper todo el proceso.
+
+Indices incluidos:
+- `estudiantes(curso_id)`
+- `asignaciones(profesor_id)`
+- `asignaciones(curso_id)`
+- `notas_detalle(estudiante_id, asignacion_id, periodo)`
+- `boletin_cabecera(estudiante_id, asignacion_id, periodo)`
+- `asistencia(asignacion_id, periodo)`
+- `asistencia(estudiante_id, fecha)`
+- `pagos(estudiante_id)`
+- `ventas(estudiante_id, estado)`
+- `plan_de_clases(asignacion_id, fecha)`
+
+Uso recomendado:
+- Simular: `.\venv\Scripts\python.exe scripts\apply_tenant_indexes.py --dry-run`
+- Aplicar: `.\venv\Scripts\python.exe scripts\apply_tenant_indexes.py`
+
+Verificacion:
+- `.\venv\Scripts\python.exe -m pytest tests\test_apply_tenant_indexes.py tests\test_apply_migration.py tests\test_permissions.py tests\test_notas_permissions.py tests\test_auth_tenant.py tests\test_uploads_permissions.py`
+- Resultado: 28 pruebas pasaron.
+- Se ejecuto `--dry-run` y encontro 2 tenants activos: `tenant_3333` y `tenant_colegio_1`.
+- No se crearon indices durante la simulacion.
+- Se ejecuto el script real y los indices quedaron verificados en `tenant_3333` y `tenant_colegio_1`.
+
+Pendiente:
+- Despues de aplicar, revisar consultas pesadas con `EXPLAIN ANALYZE`.
+
+### 23. Paginacion compatible en estudiantes
+
+Archivos:
+- `app/routes/estudiantes.py`
+- `app/controllers/estudiante_controller.py`
+- `tests/test_estudiantes_pagination.py`
+
+Cambio:
+- `GET /estudiantes` conserva el comportamiento anterior si no se envian parametros: devuelve una lista simple.
+- `GET /estudiantes?limit=50&offset=0` devuelve respuesta paginada:
+  - `total`;
+  - `limit`;
+  - `offset`;
+  - `items`.
+- Se agrego `busqueda` opcional:
+  - `GET /estudiantes?limit=50&offset=0&busqueda=ana`
+- El limite maximo permitido por request es `200`.
+
+Motivo:
+- Evita romper las pantallas actuales que consumen `/estudiantes` como lista.
+- Permite migrar el frontend a paginacion pantalla por pantalla.
+
+Verificacion:
+- `.\venv\Scripts\python.exe -m pytest tests\test_estudiantes_pagination.py tests\test_apply_tenant_indexes.py tests\test_apply_migration.py tests\test_permissions.py tests\test_notas_permissions.py tests\test_auth_tenant.py tests\test_uploads_permissions.py`
+- Resultado: 30 pruebas pasaron.
+
+Pruebas manuales recomendadas:
+- `GET /estudiantes`
+- `GET /estudiantes?limit=20&offset=0`
+- `GET /estudiantes?limit=20&offset=0&busqueda=<texto>`
+
+### 24. Paginacion compatible en ventas
+
+Archivos:
+- `app/routes/ventas.py`
+- `app/controllers/venta_controller.py`
+- `tests/test_ventas_pagination.py`
+
+Cambio:
+- `GET /api/ventas/` conserva el comportamiento anterior si no se envian parametros: devuelve una lista simple.
+- `GET /api/ventas/?limit=50&offset=0` devuelve respuesta paginada:
+  - `total`;
+  - `limit`;
+  - `offset`;
+  - `items`.
+- Se agregaron filtros opcionales:
+  - `busqueda`;
+  - `estudiante_id`;
+  - `estado`.
+- El limite maximo permitido por request es `200`.
+- En modo paginado, el backend solo carga los detalles de las ventas de esa pagina, no todos los detalles historicos.
+
+Motivo:
+- Evita cargar todas las ventas y todos sus detalles cuando el historial crezca.
+- Mantiene intacta la pantalla actual mientras se migra el frontend con calma.
+
+Verificacion:
+- `.\venv\Scripts\python.exe -m pytest tests\test_ventas_pagination.py tests\test_estudiantes_pagination.py tests\test_apply_tenant_indexes.py tests\test_apply_migration.py tests\test_permissions.py tests\test_notas_permissions.py tests\test_auth_tenant.py tests\test_uploads_permissions.py`
+
+Pruebas manuales recomendadas:
+- `GET /api/ventas/`
+- `GET /api/ventas/?limit=20&offset=0`
+- `GET /api/ventas/?limit=20&offset=0&estado=Pendiente`
+- `GET /api/ventas/?limit=20&offset=0&busqueda=<texto>`
+
+### 25. Paginacion compatible en pagos por estudiante
+
+Archivos:
+- `app/routes/pagos.py`
+- `app/controllers/pagos_controller.py`
+- `tests/test_pagos_pagination.py`
+
+Cambio:
+- `GET /pagos/{estudiante_id}` conserva el comportamiento anterior si no se envian parametros: devuelve una lista simple.
+- `GET /pagos/{estudiante_id}?limit=50&offset=0` devuelve respuesta paginada:
+  - `total`;
+  - `limit`;
+  - `offset`;
+  - `items`.
+- El limite maximo permitido por request es `200`.
+
+Motivo:
+- El historial de pagos puede crecer mucho por estudiante.
+- Permite migrar la pantalla de pagos a paginacion sin romper el flujo actual de facturacion/recibos.
+
+Verificacion:
+- `.\venv\Scripts\python.exe -m pytest tests\test_pagos_pagination.py tests\test_ventas_pagination.py tests\test_estudiantes_pagination.py`
+
+Pruebas manuales recomendadas:
+- `GET /pagos/<estudiante_id>`
+- `GET /pagos/<estudiante_id>?limit=20&offset=0`
+- `GET /pagos/<estudiante_id>?limit=20&offset=20`
+
+### 26. Paginacion compatible en inventario
+
+Archivos:
+- `app/routes/inventario.py`
+- `app/controllers/inventario_controller.py`
+- `tests/test_inventario_pagination.py`
+
+Cambio:
+- `GET /inventario` conserva el comportamiento anterior si no se envian parametros: devuelve una lista simple.
+- `GET /inventario?limit=50&offset=0` devuelve respuesta paginada:
+  - `total`;
+  - `limit`;
+  - `offset`;
+  - `items`.
+- Se agregaron filtros opcionales:
+  - `busqueda`;
+  - `solo_con_stock`.
+- El limite maximo permitido por request es `200`.
+
+Motivo:
+- Inventario se usa en administracion y en punto de venta.
+- Al crecer el catalogo, permite cargar productos por paginas sin romper las pantallas actuales.
+
+Verificacion:
+- `.\venv\Scripts\python.exe -m pytest tests\test_inventario_pagination.py tests\test_pagos_pagination.py tests\test_ventas_pagination.py tests\test_estudiantes_pagination.py`
+
+Pruebas manuales recomendadas:
+- `GET /inventario`
+- `GET /inventario?limit=20&offset=0`
+- `GET /inventario?limit=20&offset=0&busqueda=<texto>`
+- `GET /inventario?limit=20&offset=0&solo_con_stock=true`
+
 ## Verificaciones realizadas
 
 - Validacion de sintaxis con `ast.parse` en los archivos Python modificados.
@@ -289,12 +555,11 @@ Nota:
 Archivo:
 - `insert_admin.sql`
 
-Pendiente:
-- Mover a `scripts/legacy/` o eliminar.
-- Agregar advertencia de no usar en produccion.
+Estado:
+- Hecho. El script fue eliminado por completo.
 
-Riesgo:
-- Guarda password en texto plano (`admin123`) si alguien lo ejecuta.
+Riesgo residual:
+- Ninguno desde el repositorio, mientras no se recree un script similar con password en texto plano.
 
 ### 2. Provisionamiento de tenants
 
@@ -360,8 +625,7 @@ Riesgo:
 - Crea un usuario admin con password plano (`admin123`).
 
 Accion recomendada:
-- Eliminarlo si ya no se usa, o moverlo a `scripts/legacy/`.
-- Agregar advertencia clara: "No usar en produccion".
+- Hecho: fue eliminado por completo porque no era necesario para el funcionamiento del sistema.
 - Mantener como flujo oficial `crear_cliente.py`, porque hashea la password.
 
 ### 3. Pruebas base de seguridad
@@ -380,15 +644,25 @@ Casos obligatorios:
 - `/uploads` bloquea archivos de otro tenant.
 - Passwords nuevas siempre quedan hasheadas.
 
+Estado:
+- Iniciado. Ya existen pruebas para:
+  - regla de acceso por estudiante;
+  - rutas antiguas de notas;
+  - auth/JWT/tenant;
+  - validacion de uploads protegidos.
+- Falta ampliar pruebas a flujos completos con DB de prueba e integracion de endpoints reales.
+
 ### 4. Migraciones
 
 Estado actual:
-- Existen scripts sueltos y una carpeta `migrations`, pero Alembic no esta
-  inicializado como fuente formal de verdad.
+- Existen scripts sueltos y una carpeta `migrations`.
+- Alembic aun no esta inicializado como fuente formal de verdad.
+- `apply_migration.py` ya tiene historial por tenant con checksum y `--dry-run`.
 
 Accion recomendada:
-- Inicializar Alembic, o consolidar un runner propio de migraciones por tenant.
-- Registrar historial de migraciones aplicadas.
+- Usar `apply_migration.py` como runner temporal seguro.
+- Ejecutar siempre primero con `--dry-run`.
+- Inicializar Alembic mas adelante, o consolidar este runner propio como flujo oficial.
 - Distinguir entre:
   - cambios globales en `public`;
   - cambios repetidos en schemas `tenant_*`;
@@ -401,7 +675,8 @@ Riesgo si no se hace:
 ### 5. Indices y revision con `EXPLAIN ANALYZE`
 
 Accion recomendada:
-- Aplicar indices por tenant para consultas frecuentes.
+- Usar `scripts/apply_tenant_indexes.py` para aplicar indices por tenant.
+- Ejecutar primero `--dry-run`.
 - Revisar reportes con `EXPLAIN ANALYZE`.
 
 Prioridad de indices:
@@ -416,6 +691,13 @@ Prioridad de indices:
 - `ventas(estudiante_id, estado)`
 - `plan_de_clases(asignacion_id, fecha)`
 
+Estado:
+- Script actualizado con modo seguro `--dry-run`.
+- Pruebas unitarias agregadas.
+- Simulacion ejecutada correctamente.
+- Indices reales aplicados/verificados en los tenants activos.
+- Falta medir consultas pesadas con `EXPLAIN ANALYZE`.
+
 ### 6. Paginacion
 
 Problema:
@@ -423,7 +705,7 @@ Problema:
   pero puede afectar memoria, tiempos de respuesta y experiencia de usuario.
 
 Empezar por:
-- `GET /estudiantes`
+- `GET /estudiantes` (iniciado con paginacion compatible)
 - ventas
 - pagos por estudiante
 - reportes de ingresos por rango
@@ -433,6 +715,13 @@ Empezar por:
 Accion recomendada:
 - Agregar `limit` y `offset` con limites maximos razonables.
 - Mantener compatibilidad con el frontend actual mientras se migra pantalla por pantalla.
+
+Estado:
+- `GET /estudiantes` ya soporta paginacion opcional sin romper el contrato anterior.
+- `GET /api/ventas/` ya soporta paginacion opcional sin romper el contrato anterior.
+- `GET /pagos/{estudiante_id}` ya soporta paginacion opcional sin romper el contrato anterior.
+- `GET /inventario` ya soporta paginacion opcional sin romper el contrato anterior.
+- Faltan reportes y listados administrativos.
 
 ### 7. Refactor de permisos
 

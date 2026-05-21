@@ -34,6 +34,18 @@ def _fecha_pago_local(fecha_seleccionada=None):
     return ahora_bogota.replace(tzinfo=None)
 
 
+def _formatear_pago(row):
+    fecha = row[3]
+    return {
+        "pago_id": row[0],
+        "estudiante_id": row[1],
+        "monto": float(row[2]),
+        "fecha": fecha.strftime("%d/%m/%Y %I:%M %p") if fecha else "",
+        "descripcion": row[4] if len(row) > 4 else '',
+        "tipo_pago": row[5] if len(row) > 5 else None
+    }
+
+
 def _obtener_saldo_venta(cursor, venta_id):
     cursor.execute("""
         SELECT total, COALESCE(pagado, 0), estado
@@ -212,16 +224,42 @@ def historial_pagos_controller(estudiante_id):
     cursor.close()
     conn.close()
 
-    data = []
+    return [_formatear_pago(row) for row in resultado]
 
-    for row in resultado:
-        data.append({
-            "pago_id": row[0],
-            "estudiante_id": row[1],
-            "monto": float(row[2]),
-            "fecha": row[3].strftime("%d/%m/%Y %I:%M %p"),
-            "descripcion": row[4] if len(row) > 4 else '',
-            "tipo_pago": row[5] if len(row) > 5 else None
-        })
 
-    return data
+def historial_pagos_paginado_controller(estudiante_id, limit=50, offset=0):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("""
+            SELECT COUNT(*)
+            FROM pagos
+            WHERE estudiante_id = %s
+        """, (estudiante_id,))
+        total = cursor.fetchone()[0]
+
+        cursor.execute("""
+            SELECT
+                id,
+                estudiante_id,
+                monto,
+                fecha,
+                descripcion,
+                tipo_pago
+            FROM pagos
+            WHERE estudiante_id = %s
+            ORDER BY id DESC
+            LIMIT %s OFFSET %s
+        """, (estudiante_id, limit, offset))
+        resultado = cursor.fetchall()
+
+        return {
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "items": [_formatear_pago(row) for row in resultado]
+        }
+    finally:
+        cursor.close()
+        conn.close()

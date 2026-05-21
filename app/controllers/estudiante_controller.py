@@ -96,6 +96,17 @@ def crear_estudiante_controller(est):
 }
 
 
+def _formatear_estudiante_lista(row):
+    return {
+        "id": row[0],
+        "nombre": row[1],
+        "apellido": row[2],
+        "documento": row[3],
+        "fecha_nacimiento": str(row[4]) if row[4] else None,
+        "curso_id": row[5]
+    }
+
+
 # 🎯 Obtener todos los estudiantes
 def obtener_estudiantes_controller():
 
@@ -113,19 +124,57 @@ def obtener_estudiantes_controller():
     cursor.close()
     conn.close()
 
-    data = []
+    return [_formatear_estudiante_lista(row) for row in resultado]
 
-    for row in resultado:
-        data.append({
-            "id": row[0],
-            "nombre": row[1],
-            "apellido": row[2],
-            "documento": row[3],
-            "fecha_nacimiento": str(row[4]),
-            "curso_id": row[5]
-        })
 
-    return data
+def obtener_estudiantes_paginado_controller(limit=50, offset=0, busqueda=None):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    condiciones = []
+    parametros = []
+
+    if busqueda:
+        condiciones.append(
+            """
+            (
+                nombre ILIKE %s OR
+                apellido ILIKE %s OR
+                documento_identidad ILIKE %s
+            )
+            """
+        )
+        like = f"%{busqueda}%"
+        parametros.extend([like, like, like])
+
+    where_sql = " WHERE " + " AND ".join(condiciones) if condiciones else ""
+
+    try:
+        cursor.execute("SELECT COUNT(*) FROM estudiantes" + where_sql, tuple(parametros))
+        total = cursor.fetchone()[0]
+
+        cursor.execute(
+            """
+            SELECT id, nombre, apellido, documento_identidad, fecha_nacimiento, curso_id
+            FROM estudiantes
+            """
+            + where_sql
+            + """
+            ORDER BY apellido ASC, nombre ASC
+            LIMIT %s OFFSET %s
+            """,
+            tuple(parametros + [limit, offset]),
+        )
+
+        return {
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "items": [_formatear_estudiante_lista(row) for row in cursor.fetchall()],
+        }
+    finally:
+        cursor.close()
+        conn.close()
 
 
 def actualizar_estudiante_controller(est_id, est):

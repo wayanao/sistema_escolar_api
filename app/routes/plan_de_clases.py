@@ -1,9 +1,9 @@
 from typing import Optional
 
-from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, Query, status
+from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, Query
 
+from app.core.permissions import require_asignacion_access, require_plan_de_clases_access
 from app.dependencies import get_current_active_admin, get_current_user
-from app.database import get_connection
 from app.controllers.plan_de_clases_controller import (
     crear_plan_de_clases_controller,
     eliminar_imagen_plan_admin_controller,
@@ -15,69 +15,6 @@ from app.schemas.plan_de_clases import PlanDeClasesCreate
 from datetime import date
 
 router = APIRouter(tags=["Plan De Clases"])
-
-
-def validar_acceso_asignacion(asignacion_id: int, current_user: dict):
-    if current_user.get("rol") == "admin":
-        return
-
-    if current_user.get("rol") != "profesor":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permisos para esta asignación"
-        )
-
-    conn = get_connection()
-    cursor = conn.cursor()
-    try:
-        cursor.execute(
-            "SELECT 1 FROM asignaciones WHERE id = %s AND profesor_id = %s",
-            (asignacion_id, current_user.get("id"))
-        )
-        if cursor.fetchone():
-            return
-    finally:
-        cursor.close()
-        conn.close()
-
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail="No tienes permisos para esta asignación"
-    )
-
-
-def validar_acceso_plan(plan_id: int, current_user: dict):
-    if current_user.get("rol") == "admin":
-        return
-
-    if current_user.get("rol") != "profesor":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permisos para este plan"
-        )
-
-    conn = get_connection()
-    cursor = conn.cursor()
-    try:
-        cursor.execute(
-            """
-            SELECT 1
-            FROM plan_de_clases pdc
-            JOIN asignaciones a ON pdc.asignacion_id = a.id
-            WHERE pdc.id = %s AND a.profesor_id = %s
-            """,
-            (plan_id, current_user.get("id"))
-        )
-        if cursor.fetchone():
-            return
-    finally:
-        cursor.close()
-        conn.close()
-
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail="No tienes permisos para este plan"
-    )
 
 
 @router.post("/plan-de-clases")
@@ -97,7 +34,7 @@ async def crear_plan_de_clases(
     imagen2: UploadFile = File(None),
     current_user: dict = Depends(get_current_user)
 ):
-    validar_acceso_asignacion(asignacion_id, current_user)
+    require_asignacion_access(asignacion_id, current_user, detail="No tienes permisos para esta asignación")
     try:
         plan = PlanDeClasesCreate(
             asignacion_id=asignacion_id,
@@ -123,7 +60,7 @@ async def obtener_planes_por_asignacion(
     fecha: Optional[date] = None,
     current_user: dict = Depends(get_current_user)
 ):
-    validar_acceso_asignacion(asignacion_id, current_user)
+    require_asignacion_access(asignacion_id, current_user, detail="No tienes permisos para esta asignación")
     try:
         if fecha:
             return obtener_plan_del_dia_controller(asignacion_id, fecha)
@@ -139,7 +76,7 @@ async def eliminar_imagen_plan_profesor(
     slot: str = Query(..., pattern="^(imagen1|imagen2)$"),
     current_user: dict = Depends(get_current_user),
 ):
-    validar_acceso_plan(plan_id, current_user)
+    require_plan_de_clases_access(plan_id, current_user, detail="No tienes permisos para este plan")
     try:
         return eliminar_imagen_plan_admin_controller(plan_id, slot)
     except HTTPException:

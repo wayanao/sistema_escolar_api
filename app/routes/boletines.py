@@ -1,8 +1,8 @@
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 
-from app.database import get_connection
+from app.core.permissions import require_asignacion_access, require_estudiante_in_asignacion
 from app.dependencies import get_current_active_admin, get_current_user
 from app.schemas.boletin import BoletinCreate
 from app.controllers.boletin_controller import (
@@ -20,60 +20,13 @@ router = APIRouter(
 )
 
 
-def validar_acceso_asignacion(asignacion_id: int, current_user: dict):
-    if current_user.get("rol") == "admin":
-        return
-    if current_user.get("rol") != "profesor":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No autorizado")
-
-    conn = get_connection()
-    cursor = conn.cursor()
-    try:
-        cursor.execute(
-            "SELECT 1 FROM asignaciones WHERE id = %s AND profesor_id = %s",
-            (asignacion_id, current_user.get("id")),
-        )
-        if cursor.fetchone():
-            return
-    finally:
-        cursor.close()
-        conn.close()
-
-    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No autorizado")
-
-
-def validar_estudiante_en_asignacion(estudiante_id: int, asignacion_id: int):
-    conn = get_connection()
-    cursor = conn.cursor()
-    try:
-        cursor.execute(
-            """
-            SELECT 1
-            FROM estudiantes e
-            JOIN asignaciones a ON a.curso_id = e.curso_id
-            WHERE e.id = %s AND a.id = %s
-            """,
-            (estudiante_id, asignacion_id),
-        )
-        if cursor.fetchone():
-            return
-    finally:
-        cursor.close()
-        conn.close()
-
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail="El estudiante no pertenece a esta asignación",
-    )
-
-
 @router.post("/guardar")
 def guardar_boletin(
     boletin: BoletinCreate,
     current_user: dict = Depends(get_current_user),
 ):
-    validar_acceso_asignacion(boletin.asignacion_id, current_user)
-    validar_estudiante_en_asignacion(boletin.estudiante_id, boletin.asignacion_id)
+    require_asignacion_access(boletin.asignacion_id, current_user)
+    require_estudiante_in_asignacion(boletin.estudiante_id, boletin.asignacion_id)
     try:
         resultado = guardar_boletin_controller(boletin)
         return resultado
@@ -87,7 +40,7 @@ def obtener_notas_referencia(
     periodo: int,
     current_user: dict = Depends(get_current_user),
 ):
-    validar_acceso_asignacion(asignacion_id, current_user)
+    require_asignacion_access(asignacion_id, current_user)
     try:
         notas = obtener_boletin_para_profesor_controller(asignacion_id, periodo)
         return notas

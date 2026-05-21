@@ -1,8 +1,11 @@
-from fastapi import APIRouter, Depends
+from typing import Annotated, Optional
+
+from fastapi import APIRouter, Depends, Query
 from app.dependencies import get_current_active_admin, HTTPException
 from app.controllers.usuario_controller import (
     crear_usuario_controller,
     obtener_usuarios_controller,
+    obtener_usuarios_paginado_controller,
     actualizar_usuario_controller,
     eliminar_usuario_controller
 )
@@ -18,8 +21,15 @@ def crear_usuario(usuario: UsuarioCreate):
         raise HTTPException(status_code=400, detail=str(e))
 
 @router.get("/usuarios")
-def obtener_usuarios():
+def obtener_usuarios(
+    limit: Annotated[Optional[int], Query(ge=1, le=200)] = None,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    busqueda: Optional[str] = None,
+    rol: Optional[str] = None,
+):
     try:
+        if limit is not None:
+            return obtener_usuarios_paginado_controller(limit=limit, offset=offset, busqueda=busqueda, rol=rol)
         return obtener_usuarios_controller()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

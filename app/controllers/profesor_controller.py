@@ -83,6 +83,58 @@ def obtener_profesores_controller():
 
     return data
 
+def obtener_profesores_paginado_controller(limit=50, offset=0, busqueda=None):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    try:
+        filtros = []
+        params = []
+
+        if busqueda:
+            filtros.append("""(
+                LOWER(nombre || ' ' || apellido) LIKE LOWER(%s)
+                OR LOWER(COALESCE(email, '')) LIKE LOWER(%s)
+                OR LOWER(COALESCE(documento_identidad, '')) LIKE LOWER(%s)
+            )""")
+            patron = f"%{busqueda}%"
+            params.extend([patron, patron, patron])
+
+        where_sql = f"WHERE {' AND '.join(filtros)}" if filtros else ""
+
+        cursor.execute(f"SELECT COUNT(*) FROM profesor {where_sql}", params)
+        total = cursor.fetchone()[0]
+
+        cursor.execute(f"""
+            SELECT id, nombre, apellido, documento_identidad, email, telefono, sueldo
+            FROM profesor
+            {where_sql}
+            ORDER BY id
+            LIMIT %s OFFSET %s
+        """, params + [limit, offset])
+        resultado = cursor.fetchall()
+
+        return {
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "items": [
+                {
+                    "id": row[0],
+                    "nombre": row[1],
+                    "apellido": row[2],
+                    "documento": row[3],
+                    "email": row[4],
+                    "telefono": row[5],
+                    "sueldo": row[6]
+                }
+                for row in resultado
+            ]
+        }
+    finally:
+        cursor.close()
+        conn.close()
+
 def obtener_clases_profesor_controller(profesor_id):
 
     conn = get_connection()

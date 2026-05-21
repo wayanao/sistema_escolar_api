@@ -577,6 +577,134 @@ Pendiente operativo:
 - Se ejecuto `.\venv\Scripts\python.exe scripts\apply_tenant_indexes.py --dry-run` y encontro los indices nuevos pendientes de verificacion en `tenant_3333` y `tenant_colegio_1`.
 - Si la simulacion se ve bien, ejecutar `.\venv\Scripts\python.exe scripts\apply_tenant_indexes.py` para verificar/crear los indices nuevos.
 
+### 28. Paginacion compatible en asignaciones administrativas
+
+Archivos:
+- `app/routes/asignaciones.py`
+- `app/controllers/asignacion_controller.py`
+- `tests/test_asignaciones_pagination.py`
+
+Cambio:
+- `GET /asignaciones/lista` conserva el comportamiento anterior si no se envian parametros: devuelve una lista simple.
+- `GET /asignaciones/lista?limit=50&offset=0` devuelve respuesta paginada:
+  - `total`;
+  - `limit`;
+  - `offset`;
+  - `items`.
+- Se agregaron filtros opcionales:
+  - `profesor_id`;
+  - `curso_id`;
+  - `materia_id`;
+  - `busqueda`.
+- El limite maximo permitido por request es `200`.
+
+Motivo:
+- La grilla de asignacion de clases necesita seguir cargando todas las asignaciones como hoy para validar cruces visuales y materias duplicadas.
+- La paginacion queda disponible para futuras vistas administrativas o busquedas mas livianas.
+- Es un listado sensible porque cruza profesor, curso, materia y horario.
+
+Verificacion:
+- `.\venv\Scripts\python.exe -m pytest tests\test_asignaciones_pagination.py tests\test_reportes_pagination.py tests\test_inventario_pagination.py tests\test_pagos_pagination.py tests\test_ventas_pagination.py tests\test_estudiantes_pagination.py`
+
+Pruebas manuales recomendadas:
+- `GET /asignaciones/lista`
+- `GET /asignaciones/lista?limit=20&offset=0`
+- `GET /asignaciones/lista?limit=20&offset=0&profesor_id=<id>`
+- `GET /asignaciones/lista?limit=20&offset=0&curso_id=<id>`
+- `GET /asignaciones/lista?limit=20&offset=0&busqueda=<texto>`
+
+### 29. Paginacion compatible en catalogos administrativos
+
+Archivos:
+- `app/routes/profesores.py`
+- `app/controllers/profesor_controller.py`
+- `app/routes/cursos.py`
+- `app/controllers/curso_controller.py`
+- `app/routes/materias.py`
+- `app/controllers/materia_controller.py`
+- `app/routes/usuario.py`
+- `app/controllers/usuario_controller.py`
+- `tests/test_catalogos_pagination.py`
+
+Cambio:
+- `GET /profesores`, `GET /cursos`, `GET /materias` y `GET /usuarios` conservan el comportamiento anterior si no se envian parametros: devuelven listas simples.
+- Todos aceptan ahora `limit` y `offset`.
+- `profesores`, `cursos`, `materias` y `usuarios` aceptan `busqueda`.
+- `usuarios` acepta ademas filtro `rol`.
+- Con paginacion devuelven:
+  - `total`;
+  - `limit`;
+  - `offset`;
+  - `items`.
+- El limite maximo permitido por request es `200`.
+
+Motivo:
+- Son catalogos normalmente pequenos, pero dejarlos con paginacion opcional completa el patron del backend.
+- Permite crear futuras pantallas administrativas con busqueda/paginacion sin cambiar contratos existentes.
+
+Verificacion:
+- `.\venv\Scripts\python.exe -m pytest tests\test_catalogos_pagination.py tests\test_asignaciones_pagination.py tests\test_reportes_pagination.py tests\test_inventario_pagination.py tests\test_pagos_pagination.py tests\test_ventas_pagination.py tests\test_estudiantes_pagination.py`
+
+Pruebas manuales recomendadas:
+- `GET /profesores`
+- `GET /profesores?limit=20&offset=0&busqueda=<texto>`
+- `GET /cursos`
+- `GET /cursos?limit=20&offset=0&busqueda=<texto>`
+- `GET /materias`
+- `GET /materias?limit=20&offset=0&busqueda=<texto>`
+- `GET /usuarios`
+- `GET /usuarios?limit=20&offset=0&busqueda=<texto>&rol=admin`
+
+### 30. Permisos repetidos centralizados
+
+Archivos:
+- `app/core/permissions.py`
+- `app/routes/notas.py`
+- `app/routes/planilla.py`
+- `app/routes/asistencia.py`
+- `app/routes/boletines.py`
+- `app/routes/dashboard.py`
+- `app/routes/asignaciones.py`
+- `app/routes/plan_de_clases.py`
+- `tests/test_permissions.py`
+
+Cambio:
+- Se consolido `app/core/permissions.py` como modulo unico para permisos reutilizables.
+- Se agregaron funciones centrales:
+  - `require_profesor_scope`;
+  - `require_asignacion_access`;
+  - `require_estudiante_access`;
+  - `require_estudiante_in_asignacion`;
+  - `require_plan_de_clases_access`.
+- Se reemplazaron validaciones locales repetidas en rutas criticas:
+  - notas;
+  - planilla;
+  - asistencia;
+  - boletines;
+  - dashboard;
+  - asignaciones;
+  - plan de clases.
+
+Motivo:
+- Evita que cada ruta tenga su propia version de permisos.
+- Reduce riesgo de que una ruta quede mas permisiva que otra por error.
+- Hace mas facil auditar y endurecer reglas multi-tenant/profesor/admin en un solo lugar.
+
+Decision tecnica:
+- Se mantuvo el modulo en `app/core/permissions.py`.
+- No se creo `app/security/permissions.py` porque ya existe `app/security.py`; crear una carpeta con el mismo nombre podria causar conflictos de importacion en Python.
+
+Verificacion:
+- `.\venv\Scripts\python.exe -m pytest tests\test_permissions.py tests\test_notas_permissions.py tests\test_auth_tenant.py tests\test_asignaciones_pagination.py`
+- Resultado: 25 pruebas pasaron.
+
+Pruebas manuales recomendadas:
+- Profesor debe poder ver sus propias clases en `/mis-clases/<profesor_id>`.
+- Profesor no debe poder ver clases de otro profesor cambiando el ID.
+- Profesor debe poder abrir planilla/notas/asistencia de sus asignaciones.
+- Profesor debe recibir `403` al intentar una asignacion ajena.
+- Admin debe conservar acceso administrativo normal.
+
 ## Verificaciones realizadas
 
 - Validacion de sintaxis con `ast.parse` en los archivos Python modificados.
@@ -763,7 +891,9 @@ Estado:
 - `GET /pagos/{estudiante_id}` ya soporta paginacion opcional sin romper el contrato anterior.
 - `GET /inventario` ya soporta paginacion opcional sin romper el contrato anterior.
 - `GET /reportes/ingresos-mes/{mes}` y `GET /reportes/ingresos-rango` ya soportan paginacion opcional sin romper el contrato anterior.
-- Faltan listados administrativos.
+- `GET /asignaciones/lista` ya soporta paginacion opcional sin romper el contrato anterior.
+- `GET /profesores`, `GET /cursos`, `GET /materias` y `GET /usuarios` ya soportan paginacion opcional sin romper el contrato anterior.
+- La fase de paginacion compatible queda cubierta en los listados administrativos principales.
 
 ### 7. Refactor de permisos
 
@@ -786,6 +916,10 @@ Estrategia segura:
 - Migrar una ruta critica.
 - Probar.
 - Continuar modulo por modulo.
+
+Estado:
+- Iniciado y aplicado en rutas criticas de profesor/asignacion/estudiante/plan de clases.
+- Falta una segunda pasada mas adelante para revisar otros permisos especiales y simplificar imports/casos no cubiertos por estas funciones.
 
 ### 8. Refactor de modulos grandes
 

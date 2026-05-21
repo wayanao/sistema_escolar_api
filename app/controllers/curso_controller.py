@@ -58,6 +58,53 @@ def obtener_cursos_controller():
         })
 
     return data
+
+def obtener_cursos_paginado_controller(limit=50, offset=0, busqueda=None):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    try:
+        filtros = []
+        params = []
+
+        if busqueda:
+            filtros.append("LOWER(nombre) LIKE LOWER(%s)")
+            params.append(f"%{busqueda}%")
+
+        where_sql = f"WHERE {' AND '.join(filtros)}" if filtros else ""
+
+        cursor.execute(f"SELECT COUNT(*) FROM cursos {where_sql}", params)
+        total = cursor.fetchone()[0]
+
+        cursor.execute(f"""
+            SELECT id, nombre, matricula, mensualidad, meses, jornada
+            FROM cursos
+            {where_sql}
+            ORDER BY id
+            LIMIT %s OFFSET %s
+        """, params + [limit, offset])
+        resultado = cursor.fetchall()
+
+        return {
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "items": [
+                {
+                    "id": row[0],
+                    "nombre": row[1],
+                    "matricula": float(row[2]),
+                    "mensualidad": float(row[3]),
+                    "meses": row[4],
+                    "jornada": row[5] or "Mañana"
+                }
+                for row in resultado
+            ]
+        }
+    finally:
+        cursor.close()
+        conn.close()
+
 def actualizar_curso_controller(curso_id, curso):
     from app.database import get_connection
     conn = get_connection()

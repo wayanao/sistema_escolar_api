@@ -1,5 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from typing import Annotated, Optional
 
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+
+from app.core.permissions import require_profesor_scope
 from app.dependencies import get_current_active_admin, get_current_user
 from app.schemas.asignacion import AsignacionCreate, AsignacionEdit
 from app.database import get_connection
@@ -11,6 +14,7 @@ from app.controllers.asignacion_controller import (
     eliminar_asignacion_controller,
     eliminar_asignacion_por_id_controller,
     obtener_horarios_admin_controller,
+    obtener_todas_asignaciones_paginado_controller,
     obtener_todas_asignaciones_controller,
     editar_asignacion_controller
 )
@@ -18,18 +22,25 @@ from app.controllers.asignacion_controller import (
 router = APIRouter(tags=["Asignaciones"])
 
 
-def validar_acceso_profesor(profesor_id: int, current_user: dict):
-    if current_user.get("rol") == "admin":
-        return
-    if current_user.get("rol") == "profesor" and current_user.get("id") == profesor_id:
-        return
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail="No tienes permisos para consultar clases de otro profesor"
-    )
-
 @router.get("/asignaciones/lista")
-def obtener_todas_asignaciones(_admin: dict = Depends(get_current_active_admin)):
+def obtener_todas_asignaciones(
+    limit: Annotated[Optional[int], Query(ge=1, le=200)] = None,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    profesor_id: Optional[int] = None,
+    curso_id: Optional[int] = None,
+    materia_id: Optional[int] = None,
+    busqueda: Optional[str] = None,
+    _admin: dict = Depends(get_current_active_admin),
+):
+    if limit is not None:
+        return obtener_todas_asignaciones_paginado_controller(
+            limit=limit,
+            offset=offset,
+            profesor_id=profesor_id,
+            curso_id=curso_id,
+            materia_id=materia_id,
+            busqueda=busqueda,
+        )
     return obtener_todas_asignaciones_controller()
 
 @router.put("/asignaciones/{asignacion_id}")
@@ -82,7 +93,7 @@ def cursos_profesor(
     profesor_id: int,
     current_user: dict = Depends(get_current_user)
 ):
-    validar_acceso_profesor(profesor_id, current_user)
+    require_profesor_scope(profesor_id, current_user, detail="No tienes permisos para consultar clases de otro profesor")
 
     return cursos_por_profesor_controller(profesor_id)
 
@@ -111,7 +122,7 @@ def obtener_clases_profesor(
     profesor_id: int,
     current_user: dict = Depends(get_current_user)
 ):
-    validar_acceso_profesor(profesor_id, current_user)
+    require_profesor_scope(profesor_id, current_user, detail="No tienes permisos para consultar clases de otro profesor")
 
     conn = get_connection()
     cursor = conn.cursor()

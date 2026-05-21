@@ -32,6 +32,47 @@ def obtener_usuarios_controller():
 
     return [{"id": u[0], "nombre": u[1], "email": u[2], "rol": u[3]} for u in usuarios]
 
+def obtener_usuarios_paginado_controller(limit=50, offset=0, busqueda=None, rol=None):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    try:
+        filtros = []
+        params = []
+
+        if rol:
+            filtros.append("rol = %s")
+            params.append(rol)
+
+        if busqueda:
+            filtros.append("(LOWER(nombre) LIKE LOWER(%s) OR LOWER(email) LIKE LOWER(%s))")
+            patron = f"%{busqueda}%"
+            params.extend([patron, patron])
+
+        where_sql = f"WHERE {' AND '.join(filtros)}" if filtros else ""
+
+        cursor.execute(f"SELECT COUNT(*) FROM usuarios {where_sql}", params)
+        total = cursor.fetchone()[0]
+
+        cursor.execute(f"""
+            SELECT id, nombre, email, rol
+            FROM usuarios
+            {where_sql}
+            ORDER BY id
+            LIMIT %s OFFSET %s
+        """, params + [limit, offset])
+        usuarios = cursor.fetchall()
+
+        return {
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "items": [{"id": u[0], "nombre": u[1], "email": u[2], "rol": u[3]} for u in usuarios]
+        }
+    finally:
+        cursor.close()
+        conn.close()
+
 def actualizar_usuario_controller(user_id: int, usuario: UsuarioUpdate):
     conn = get_connection()
     cursor = conn.cursor()

@@ -400,3 +400,91 @@ def obtener_todas_asignaciones_controller():
         })
         
     return resultado
+
+def _formatear_asignacion(row):
+    return {
+        "id": row[0],
+        "profesor_id": row[1],
+        "curso_id": row[2],
+        "materia_id": row[3],
+        "dia": row[4] or "",
+        "hora_inicio": row[5] or "",
+        "hora_fin": row[6] or "",
+        "profesor_nombre": row[7],
+        "curso_nombre": row[8],
+        "materia_nombre": row[9]
+    }
+
+def obtener_todas_asignaciones_paginado_controller(
+    limit=50,
+    offset=0,
+    profesor_id=None,
+    curso_id=None,
+    materia_id=None,
+    busqueda=None,
+):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    try:
+        filtros = []
+        params = []
+
+        if profesor_id is not None:
+            filtros.append("a.profesor_id = %s")
+            params.append(profesor_id)
+
+        if curso_id is not None:
+            filtros.append("a.curso_id = %s")
+            params.append(curso_id)
+
+        if materia_id is not None:
+            filtros.append("a.materia_id = %s")
+            params.append(materia_id)
+
+        if busqueda:
+            filtros.append("""(
+                LOWER(p.nombre || ' ' || p.apellido) LIKE LOWER(%s)
+                OR LOWER(c.nombre) LIKE LOWER(%s)
+                OR LOWER(m.nombre) LIKE LOWER(%s)
+            )""")
+            patron = f"%{busqueda}%"
+            params.extend([patron, patron, patron])
+
+        where_sql = f"WHERE {' AND '.join(filtros)}" if filtros else ""
+
+        cursor.execute(f"""
+            SELECT COUNT(*)
+            FROM asignaciones a
+            JOIN profesor p ON a.profesor_id = p.id
+            JOIN cursos c ON a.curso_id = c.id
+            JOIN materias m ON a.materia_id = m.id
+            {where_sql}
+        """, params)
+        total = cursor.fetchone()[0]
+
+        cursor.execute(f"""
+            SELECT
+                a.id, a.profesor_id, a.curso_id, a.materia_id, a.dia, a.hora_inicio, a.hora_fin,
+                p.nombre || ' ' || p.apellido AS profesor_nombre,
+                c.nombre AS curso_nombre,
+                m.nombre AS materia_nombre
+            FROM asignaciones a
+            JOIN profesor p ON a.profesor_id = p.id
+            JOIN cursos c ON a.curso_id = c.id
+            JOIN materias m ON a.materia_id = m.id
+            {where_sql}
+            ORDER BY a.id DESC
+            LIMIT %s OFFSET %s
+        """, params + [limit, offset])
+        rows = cursor.fetchall()
+
+        return {
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "items": [_formatear_asignacion(row) for row in rows]
+        }
+    finally:
+        cursor.close()
+        conn.close()

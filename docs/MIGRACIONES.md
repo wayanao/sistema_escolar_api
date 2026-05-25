@@ -115,3 +115,20 @@ Estado actual:
 - Hay varios scripts historicos ademas del runner principal.
 - El flujo actual depende de ejecutar correctamente scripts por tenant.
 - Alembic aun no aparece como fuente formal de verdad.
+
+## Historial operativo relacionado
+
+El historial detallado de migraciones, indices y scripts seguros usados durante la auditoria esta consolidado en:
+
+- `docs/CAMBIOS_BACKEND.md`
+
+Puntos relevantes documentados alli:
+
+- `apply_migration.py` con historial en `public.schema_migrations`;
+- checksum SHA-256 por migracion;
+- modo `--dry-run`;
+- script `scripts/apply_tenant_indexes.py` con validacion de tablas/columnas;
+- indices aplicados/verificados en tenants activos;
+- paginacion compatible agregada en endpoints principales.
+
+

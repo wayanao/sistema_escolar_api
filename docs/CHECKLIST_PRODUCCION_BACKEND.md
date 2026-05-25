@@ -424,3 +424,13 @@ Como probarlo:
 - Confirmar cuales son oficiales y cuales son legacy.
 - Revisar si escriben historial o usan `--dry-run`.
 
+
+## Bitacora detallada de avance
+
+Para revisar el detalle historico de lo ya ejecutado durante la auditoria multi-tenant, usar:
+
+- `docs/CAMBIOS_BACKEND.md`
+
+Ese archivo sirve como evidencia de avance antes de produccion y complementa este checklist con verificaciones, comandos de prueba y resultados registrados.
+
+

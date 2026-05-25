@@ -161,3 +161,22 @@ Funciones:
 - No todos los endpoints con IDs directos estan descritos con su prueba especifica en este documento.
 - CORS permite localhost y 127.0.0.1 ademas de `FRONTEND_URL`.
 - Hay advertencias de Pydantic v2 en pruebas para schemas con `Config` tipo clase.
+
+## Referencia historica de endurecimiento
+
+El detalle cronologico de endurecimiento multi-tenant esta consolidado en:
+
+- `docs/CAMBIOS_BACKEND.md`
+
+La bitacora oficial registra cambios ya realizados sobre:
+
+- rutas admin-only;
+- eliminacion del fallback a tenant por defecto;
+- rechazo de `public` como tenant de usuario;
+- revalidacion de usuario/rol contra DB;
+- permisos por profesor, asignacion, estudiante y plan de clases;
+- proteccion de `/uploads`;
+- pruebas base de auth, tenant, permisos y uploads.
+
+
+

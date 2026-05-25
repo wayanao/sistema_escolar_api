@@ -1,7 +1,8 @@
-from fastapi import APIRouter, HTTPException, status, Request
+from fastapi import APIRouter, HTTPException, status, Request, Response
 from pydantic import BaseModel
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+from app.config import settings
 from app.controllers.auth_controller import login_controller
 from app.security import create_access_token
 
@@ -15,7 +16,7 @@ class Login(BaseModel):
 
 @router.post("/login")
 @limiter.limit("5/minute")
-def login(request: Request, data: Login):
+def login(request: Request, response: Response, data: Login):
     # Pasamos el código de colegio al controlador de login
     user = login_controller(data.email, data.password, data.codigo_colegio)
 
@@ -35,6 +36,16 @@ def login(request: Request, data: Login):
         }
     )
 
+    response.set_cookie(
+        key="token",
+        value=access_token,
+        httponly=True,
+        secure=settings.SESSION_COOKIE_SECURE,
+        samesite=settings.SESSION_COOKIE_SAMESITE,
+        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        path="/",
+    )
+
     return {
         "id": user["id"],
         "nombre": user["nombre"],
@@ -43,3 +54,9 @@ def login(request: Request, data: Login):
         "access_token": access_token,
         "token_type": "bearer"
     }
+
+
+@router.post("/logout")
+def logout(response: Response):
+    response.delete_cookie("token", path="/")
+    return {"mensaje": "Sesion cerrada"}

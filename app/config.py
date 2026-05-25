@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     DEFAULT_TENANT_SCHEMA: str = "tenant_colegio_1"
 
     FRONTEND_URL: str = "http://localhost:5173"
+    SESSION_COOKIE_SECURE: bool = False
+    SESSION_COOKIE_SAMESITE: str = "lax"
 
     model_config = SettingsConfigDict(
         # Prueba primero sistema_escolar_api/.env, luego la raíz del proyecto.

@@ -199,3 +199,54 @@ En backend esta fase significa preparacion real de despliegue: variables, CORS, 
   - Probar rate limit de login.
 - Cuando hacer commit:
   - Despues de validar entorno completo tipo staging: login, rutas protegidas, uploads, tenant nuevo y migraciones.
+
+## Estado 2026-05-26 - Fase 1
+
+La fase 1 de seguridad backend quedo parcialmente cerrada y documentada.
+
+Cambios aplicados:
+
+- `app/routes/observaciones.py`: se agrego ownership por asignacion y validacion estudiante-asignacion.
+- `app/routes/planeador_anual.py`: se agrego ownership por asignacion.
+
+Modulos revisados sin requerir cambios:
+
+- `app/routes/plan_de_clases.py`
+- `app/routes/asistencia.py`
+- `app/routes/boletines.py`
+- `app/routes/dashboard.py`
+- rutas administrativas principales con `get_current_active_admin`.
+
+Verificaciones ejecutadas:
+
+- `py_compile` sobre archivos revisados.
+- `tests/test_permissions.py`: paso en las verificaciones ejecutadas.
+- `tests/test_notas_permissions.py`: paso junto a permisos en revision de boletines/notas.
+
+Nota:
+
+- `tests/test_uploads_permissions.py` no pudo completarse por permisos locales de Windows/pytest al crear temporales. No se observo fallo de logica de permisos en esa ejecucion.
+
+Siguiente bloque recomendado:
+
+- Pasar a configuracion de produccion: `.env.example`, `app/config.py`, CORS, cookies seguras y `SECRET_KEY`.
+
+## Estado 2026-05-26 - Configuracion de produccion
+
+Cambios aplicados:
+
+- `.env.example` documenta variables de CORS dev y cookies.
+- `app/config.py` agrega `ALLOW_DEV_CORS_ORIGINS`.
+- `app/main.py` usa `ALLOW_DEV_CORS_ORIGINS` para incluir o excluir localhost/127.0.0.1.
+- `app/routes/auth.py` elimina cookie `token` en logout usando `secure`, `httponly` y `samesite` configurados.
+
+Verificacion ejecutada:
+
+- `py_compile` sobre `app/config.py`, `app/main.py` y `app/routes/auth.py`.
+- `tests/test_auth_tenant.py`: 5 pruebas pasaron.
+
+Siguiente bloque recomendado:
+
+- Definir valores reales de produccion y probar login/logout con dominio real.
+- Revisar `SECRET_KEY` del entorno real.
+- Continuar con migraciones, indices y verificacion de tenants activos.

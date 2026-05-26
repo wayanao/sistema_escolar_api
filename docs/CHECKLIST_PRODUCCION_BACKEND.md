@@ -434,3 +434,81 @@ Para revisar el detalle historico de lo ya ejecutado durante la auditoria multi-
 Ese archivo sirve como evidencia de avance antes de produccion y complementa este checklist con verificaciones, comandos de prueba y resultados registrados.
 
 
+
+## Estado de avance 2026-05-26
+
+Puntos de seguridad revisados durante la sesion:
+
+- Ownership por observaciones: cerrado con cambio de codigo.
+- Ownership por planeador anual: cerrado con cambio de codigo.
+- Plan de clases: revisado, ya protegido.
+- Asistencia: revisado, ya protegido.
+- Boletines: revisado, ya protegido.
+- Dashboard: revisado, ya protegido.
+- Rutas admin-only principales: revisadas, usan `get_current_active_admin`.
+
+Archivos con cambios reales de codigo:
+
+- `app/routes/observaciones.py`
+- `app/routes/planeador_anual.py`
+
+Archivos/documentos actualizados:
+
+- `docs/CAMBIOS_BACKEND.md`
+- `docs/PLAN_EJECUCION_BACKEND.md`
+- `docs/CHECKLIST_PRODUCCION_BACKEND.md`
+
+Pendiente recomendado:
+
+- Continuar con configuracion de produccion: variables `.env`, cookies, CORS, `SECRET_KEY`, migraciones e indices.
+
+## Estado de avance 2026-05-26 - Configuracion de produccion
+
+Puntos actualizados:
+
+- `.env.example` ahora incluye `ALLOW_DEV_CORS_ORIGINS`.
+- `.env.example` ahora incluye `SESSION_COOKIE_SECURE`.
+- `.env.example` ahora incluye `SESSION_COOKIE_SAMESITE`.
+- `app/config.py` ahora expone `ALLOW_DEV_CORS_ORIGINS`.
+- `app/main.py` permite desactivar origins locales de desarrollo en CORS.
+- `POST /logout` elimina la cookie `token` con los atributos configurados de seguridad.
+
+Valores recomendados para produccion:
+
+- `ENVIRONMENT=production`
+- `FRONTEND_URL=https://<dominio-frontend-real>`
+- `ALLOW_DEV_CORS_ORIGINS=false`
+- `SESSION_COOKIE_SECURE=true`
+- `SESSION_COOKIE_SAMESITE=lax` si frontend y backend comparten sitio compatible; revisar `none` solo si se requiere cross-site con HTTPS.
+- `SECRET_KEY` largo, aleatorio y privado.
+
+Pendiente:
+
+- Definir valores reales de produccion.
+- Probar login/logout desde el dominio real.
+- Confirmar en navegador que la cookie `token` queda HttpOnly y Secure.
+
+## Estado de avance 2026-05-26 - Base de datos
+
+Checklist operativo revisado contra la base:
+
+```text
+Base de datos
+[x] migraciones aplicadas en todos los tenants activos
+[x] indices aplicados
+[x] revisar public.schema_migrations
+[ ] backup antes de salir
+```
+
+Detalle:
+
+- Tenants activos revisados:
+  - `tenant_colegio_1`
+  - `tenant_3333`
+- Las migraciones de `migrations/` quedaron registradas en `public.schema_migrations` para ambos tenants.
+- Los indices principales por tenant fueron verificados como existentes.
+
+Pendiente antes de produccion:
+
+- Realizar backup de la base de datos.
+- Conservar evidencia/archivo del backup y probar restauracion en entorno de prueba cuando sea posible.

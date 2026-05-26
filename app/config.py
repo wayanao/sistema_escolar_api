@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     DEFAULT_TENANT_SCHEMA: str = "tenant_colegio_1"
 
     FRONTEND_URL: str = "http://localhost:5173"
+    ALLOW_DEV_CORS_ORIGINS: bool = True
     SESSION_COOKIE_SECURE: bool = False
     SESSION_COOKIE_SAMESITE: str = "lax"
 

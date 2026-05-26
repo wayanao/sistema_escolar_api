@@ -129,9 +129,13 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # 🔥 CORS (SOLO UNA VEZ)
 origins = [
     settings.FRONTEND_URL,
-    "http://127.0.0.1:5173",
-    "http://localhost:5173",
 ]
+
+if settings.ALLOW_DEV_CORS_ORIGINS:
+    origins.extend([
+        "http://127.0.0.1:5173",
+        "http://localhost:5173",
+    ])
 
 app.add_middleware(
     CORSMiddleware,

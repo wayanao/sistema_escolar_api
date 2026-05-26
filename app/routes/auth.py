@@ -58,5 +58,11 @@ def login(request: Request, response: Response, data: Login):
 
 @router.post("/logout")
 def logout(response: Response):
-    response.delete_cookie("token", path="/")
+    response.delete_cookie(
+        "token",
+        path="/",
+        httponly=True,
+        secure=settings.SESSION_COOKIE_SECURE,
+        samesite=settings.SESSION_COOKIE_SAMESITE,
+    )
     return {"mensaje": "Sesion cerrada"}

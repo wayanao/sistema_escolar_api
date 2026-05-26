@@ -1144,3 +1144,219 @@ Pruebas manuales recomendadas:
 Nota de entorno:
 
 - Durante las ejecuciones de PowerShell aparecieron mensajes locales de `fnm`/perfil de PowerShell por permisos en `AppData`; no afectaron las pruebas de backend.
+
+## 2026-05-26 - Verificacion de rutas criticas ya protegidas
+
+Se continuo la fase critica de seguridad backend y se verificaron modulos sensibles sin requerir cambios de codigo adicionales.
+
+### Plan de clases
+
+Archivos revisados:
+
+- `app/routes/plan_de_clases.py`
+- `app/controllers/plan_de_clases_controller.py`
+- `app/core/permissions.py`
+
+Estado:
+
+- `POST /plan-de-clases` ya valida `require_asignacion_access`.
+- `GET /plan-de-clases/{asignacion_id}` ya valida `require_asignacion_access`.
+- `DELETE /plan-de-clases/{plan_id}/imagen` ya valida `require_plan_de_clases_access`.
+- Rutas admin de plan de clases ya usan `get_current_active_admin`.
+
+Resultado:
+
+- No se modifico codigo.
+- Se valido sintaxis con `py_compile`.
+- `tests/test_permissions.py` paso, pero `tests/test_uploads_permissions.py` no pudo completarse por permisos locales de pytest creando temporales en Windows.
+
+### Asistencia
+
+Archivos revisados:
+
+- `app/routes/asistencia.py`
+- `app/controllers/asistencia_controller.py`
+- `app/schemas/asistencia.py`
+
+Estado:
+
+- `POST /asistencia` ya valida cada item con `require_asignacion_access` y `require_estudiante_in_asignacion`.
+- `GET /asistencia/historial/{asignacion_id}/{periodo}` ya valida `require_asignacion_access`.
+
+Resultado:
+
+- No se modifico codigo.
+- `py_compile` correcto.
+- `tests/test_permissions.py`: 14 pruebas pasaron.
+
+### Boletines
+
+Archivos revisados:
+
+- `app/routes/boletines.py`
+- `app/controllers/boletin_controller.py`
+- `app/schemas/boletin.py`
+
+Estado:
+
+- `POST /boletines/guardar` ya valida `require_asignacion_access` y `require_estudiante_in_asignacion`.
+- `GET /boletines/referencia/{asignacion_id}/{periodo}` ya valida `require_asignacion_access`.
+- `GET /boletines/admin/generar/{estudiante_id}/{periodo}` ya exige `get_current_active_admin`.
+
+Resultado:
+
+- No se modifico codigo.
+- `py_compile` correcto.
+- `tests/test_permissions.py tests/test_notas_permissions.py`: 18 pruebas pasaron.
+
+### Dashboard
+
+Archivos revisados:
+
+- `app/routes/dashboard.py`
+- `app/controllers/dashboard_controller.py`
+
+Estado:
+
+- Endpoints por `profesor_id` ya usan `require_profesor_scope`.
+- Endpoints por `asignacion_id` ya usan `require_asignacion_access`.
+
+Resultado:
+
+- No se modifico codigo.
+- `py_compile` correcto.
+- `tests/test_permissions.py`: 14 pruebas pasaron.
+
+### Rutas admin-only
+
+Archivos revisados:
+
+- `app/routes/estudiantes.py`
+- `app/routes/pagos.py`
+- `app/routes/cursos.py`
+- `app/routes/profesores.py`
+- `app/routes/materias.py`
+- `app/routes/usuario.py`
+- `app/routes/reportes.py`
+- `app/routes/inventario.py`
+- `app/routes/tipos_pagos.py`
+- `app/routes/cartera.py`
+- `app/routes/nomina.py`
+
+Estado:
+
+- Todos los routers revisados usan `get_current_active_admin` a nivel de router.
+
+Resultado:
+
+- No se modifico codigo.
+- `py_compile` correcto para todos los archivos revisados.
+
+Conclusion:
+
+- La fase de revision de ownership/admin-only queda avanzada.
+- Los cambios reales de codigo hechos hoy fueron en `observaciones.py` y `planeador_anual.py`.
+- Los demas modulos listados quedaron verificados como ya protegidos.
+
+## 2026-05-26 - Configuracion base para produccion
+
+Se avanzo en la preparacion de variables y comportamiento de sesion/CORS para despliegue.
+
+Archivos modificados:
+
+- `app/config.py`
+- `app/main.py`
+- `app/routes/auth.py`
+- `.env.example`
+- `docs/PRODUCCION_BACKEND.md`
+- `docs/CHECKLIST_PRODUCCION_BACKEND.md`
+- `docs/PLAN_EJECUCION_BACKEND.md`
+- `docs/CAMBIOS_BACKEND.md`
+
+Cambios:
+
+- Se agrego `ALLOW_DEV_CORS_ORIGINS` a configuracion.
+- CORS ahora incluye `localhost` y `127.0.0.1` solo si `ALLOW_DEV_CORS_ORIGINS=true`.
+- `.env.example` ahora documenta `ALLOW_DEV_CORS_ORIGINS`.
+- `.env.example` ahora documenta `SESSION_COOKIE_SECURE`.
+- `.env.example` ahora documenta `SESSION_COOKIE_SAMESITE`.
+- `POST /logout` borra la cookie `token` usando `httponly`, `secure` y `samesite` segun configuracion.
+
+Valores recomendados para produccion:
+
+- `ENVIRONMENT=production`
+- `FRONTEND_URL=https://<dominio-frontend-real>`
+- `ALLOW_DEV_CORS_ORIGINS=false`
+- `SESSION_COOKIE_SECURE=true`
+- `SESSION_COOKIE_SAMESITE=lax` o el valor requerido segun dominio/subdominio real.
+- `SECRET_KEY` largo, aleatorio y privado.
+
+Verificacion:
+
+```powershell
+.\venv\Scripts\python.exe -m py_compile app\config.py app\main.py app\routes\auth.py
+.\venv\Scripts\python.exe -m pytest tests\test_auth_tenant.py
+```
+
+Resultado:
+
+- `tests/test_auth_tenant.py`: 5 pruebas pasaron.
+
+Pruebas manuales recomendadas:
+
+- Iniciar sesion como admin y profesor.
+- Revisar en DevTools que la cookie `token` sea HttpOnly.
+- En entorno HTTPS/productivo, confirmar que `SESSION_COOKIE_SECURE=true` marca cookie Secure.
+- Ejecutar logout y confirmar que la cookie `token` desaparece.
+- Con `ALLOW_DEV_CORS_ORIGINS=false`, confirmar que solo el dominio `FRONTEND_URL` puede consumir la API.
+
+## 2026-05-26 - Migraciones e indices verificados en tenants activos
+
+Se aplicaron las migraciones SQL pendientes usando el runner oficial `apply_migration.py`.
+
+Tenants activos verificados:
+
+- `tenant_colegio_1` - Colegio Demo
+- `tenant_3333` - milagro
+
+Migraciones aplicadas en ambos tenants:
+
+- `20260429_pagos_tipo_pago_largo.sql`
+- `20260429_plan_de_clases_reportes.sql`
+- `20260509_branding_plantillas_impresion.sql`
+- `20260517_tipos_pagos_avanzado.sql`
+
+Comandos ejecutados:
+
+```powershell
+.\venv\Scripts\python.exe apply_migration.py migrations\20260429_pagos_tipo_pago_largo.sql
+.\venv\Scripts\python.exe apply_migration.py migrations\20260429_plan_de_clases_reportes.sql
+.\venv\Scripts\python.exe apply_migration.py migrations\20260509_branding_plantillas_impresion.sql
+.\venv\Scripts\python.exe apply_migration.py migrations\20260517_tipos_pagos_avanzado.sql
+```
+
+Resultado:
+
+- Las 4 migraciones respondieron `OK` en los 2 tenants activos.
+- `public.schema_migrations` quedo con historial para las 4 migraciones por cada tenant activo.
+- La verificacion posterior mostro `MIGRACIONES_TODAS_OK: True`.
+
+Indices:
+
+- Se verificaron los indices principales por tenant.
+- La verificacion posterior mostro `INDICES_TODOS_OK: True`.
+
+Estado del bloque de base de datos:
+
+```text
+Base de datos
+[x] migraciones aplicadas en todos los tenants activos
+[x] indices aplicados
+[x] revisar public.schema_migrations
+[ ] backup antes de salir
+```
+
+Pendiente:
+
+- Hacer backup antes de cualquier salida real a produccion.
+- Probar flujo principal de admin/profesor despues de migraciones.

@@ -1068,3 +1068,79 @@ pruebas, permisos centralizados, migraciones, paginacion e indices.
 importante: cuando se modifique cada paso pedir probar lo que se acctualizo
 
 
+
+## 2026-05-26 - Cierre incremental de ownership en rutas de profesor
+
+Se continuo la fase critica de seguridad backend enfocada en rutas con IDs directos manipulables desde el navegador.
+
+### Observaciones protegidas por asignacion y estudiante
+
+Archivo modificado:
+
+- `app/routes/observaciones.py`
+
+Cambio:
+
+- `POST /observaciones` ahora valida `asignacion_id` con `require_asignacion_access`.
+- `POST /observaciones` ahora valida que `estudiante_id` pertenezca a la asignacion con `require_estudiante_in_asignacion`.
+- `GET /observaciones/{estudiante_id}/{asignacion_id}/{periodo}` aplica las mismas validaciones antes de consultar.
+
+Riesgo cerrado:
+
+- Un profesor autenticado podia intentar cambiar manualmente `estudiante_id` o `asignacion_id` para leer o guardar observaciones de una asignacion ajena.
+
+Verificacion ejecutada:
+
+```powershell
+.\venv\Scripts\python.exe -m py_compile app\routes\observaciones.py
+.\venv\Scripts\python.exe -m pytest tests\test_permissions.py
+```
+
+Resultado:
+
+- `tests/test_permissions.py`: 14 pruebas pasaron.
+
+Pruebas manuales recomendadas:
+
+- Profesor duenio debe poder guardar y consultar observaciones de su asignacion.
+- Profesor no duenio debe recibir `403` al cambiar `asignacion_id` por una asignacion ajena.
+- Profesor debe recibir `403` si intenta cruzar un estudiante que no pertenece a la asignacion.
+- Admin debe conservar acceso normal dentro del tenant.
+- Request sin token debe responder `401`.
+
+### Planeador anual protegido por asignacion
+
+Archivo modificado:
+
+- `app/routes/planeador_anual.py`
+
+Cambio:
+
+- `GET /planeador-anual/{asignacion_id}/{periodo}` ahora valida `asignacion_id` con `require_asignacion_access`.
+- `PUT /planeador-anual/{asignacion_id}/{periodo}` aplica la misma validacion antes de actualizar.
+
+Riesgo cerrado:
+
+- Un profesor autenticado podia intentar cambiar manualmente `asignacion_id` para consultar o actualizar el planeador anual de otro profesor.
+
+Verificacion ejecutada:
+
+```powershell
+.\venv\Scripts\python.exe -m py_compile app\routes\planeador_anual.py
+.\venv\Scripts\python.exe -m pytest tests\test_permissions.py
+```
+
+Resultado:
+
+- `tests/test_permissions.py`: 14 pruebas pasaron.
+
+Pruebas manuales recomendadas:
+
+- Profesor duenio debe poder consultar y actualizar su planeador anual.
+- Profesor no duenio debe recibir `403` al usar una `asignacion_id` ajena.
+- Admin debe conservar acceso normal dentro del tenant.
+- Request sin token debe responder `401`.
+
+Nota de entorno:
+
+- Durante las ejecuciones de PowerShell aparecieron mensajes locales de `fnm`/perfil de PowerShell por permisos en `AppData`; no afectaron las pruebas de backend.

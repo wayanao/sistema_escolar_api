@@ -1,6 +1,13 @@
 from app.database import get_connection
 
 
+def _title_case_es(value):
+    return " ".join(
+        word[:1].upper() + word[1:].lower()
+        for word in str(value or "").strip().split()
+    )
+
+
 # 🎯 Crear curso
 def crear_curso_controller(curso):
 
@@ -12,7 +19,7 @@ def crear_curso_controller(curso):
         VALUES (%s, %s)
         RETURNING id
     """, (
-        curso.nombre,
+        _title_case_es(curso.nombre),
         curso.jornada
     ))
 
@@ -104,7 +111,7 @@ def actualizar_curso_controller(curso_id, curso):
         UPDATE cursos
         SET nombre = %s, jornada = %s
         WHERE id = %s
-    ''', (curso.nombre, curso.jornada, curso_id))
+    ''', (_title_case_es(curso.nombre), curso.jornada, curso_id))
     conn.commit()
     cursor.close()
     conn.close()

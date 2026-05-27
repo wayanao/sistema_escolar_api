@@ -1,5 +1,13 @@
 from app.database import get_connection
 
+
+def _title_case_es(value):
+    return " ".join(
+        word[:1].upper() + word[1:].lower()
+        for word in str(value or "").strip().split()
+    )
+
+
 def crear_materia_controller(data):
 
     conn = get_connection()
@@ -8,7 +16,7 @@ def crear_materia_controller(data):
     cursor.execute("""
         INSERT INTO materias (nombre)
         VALUES (%s)
-    """, (data["nombre"],))
+    """, (_title_case_es(data["nombre"]),))
 
     conn.commit()
 
@@ -91,7 +99,7 @@ def actualizar_materia_controller(materia_id, data):
         UPDATE materias
         SET nombre = %s
         WHERE id = %s
-    ''', (data["nombre"], materia_id))
+    ''', (_title_case_es(data["nombre"]), materia_id))
     conn.commit()
     cursor.close()
     conn.close()

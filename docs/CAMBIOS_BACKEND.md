@@ -1712,3 +1712,42 @@ Pruebas manuales recomendadas:
 - Confirmar que responde una alerta de concepto duplicado.
 - Editar un tipo de pago y ponerle el nombre de otro existente.
 - Confirmar que tambien se bloquea con mensaje claro.
+
+## 2026-05-26 - Normalizacion de nombres academicos en backend
+
+Se agrego normalizacion en backend para guardar nombres con iniciales en
+mayuscula en entidades academicas y profesores.
+
+Archivos modificados:
+
+- `app/controllers/profesor_controller.py`
+- `app/controllers/curso_controller.py`
+- `app/controllers/materia_controller.py`
+
+Cambio:
+
+- Al crear o editar profesor:
+  - `nombre` se guarda en formato titulo;
+  - `apellido` se guarda en formato titulo;
+  - `email` se guarda en minusculas.
+- Al crear o editar curso:
+  - `nombre` se guarda en formato titulo.
+- Al crear o editar materia:
+  - `nombre` se guarda en formato titulo.
+
+Motivo:
+
+- Mantener datos consistentes aunque se envie informacion directa por API.
+- Evitar listados, boletines, reportes e impresos con nombres en minusculas o
+  mayusculas mezcladas.
+
+Verificacion:
+
+- Sintaxis de controladores de profesor, curso y materia: OK.
+
+Pruebas manuales recomendadas:
+
+- Crear profesor con nombre/apellido en minusculas.
+- Crear curso con nombre en minusculas.
+- Crear materia con nombre en minusculas.
+- Confirmar que se listan con iniciales en mayuscula.

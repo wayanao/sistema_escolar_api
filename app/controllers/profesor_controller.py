@@ -2,6 +2,13 @@ from app.database import get_connection
 from app.security import get_password_hash
 
 
+def _title_case_es(value):
+    return " ".join(
+        word[:1].upper() + word[1:].lower()
+        for word in str(value or "").strip().split()
+    )
+
+
 # 🎯 Crear profesor
 def crear_profesor_controller(profesor):
 
@@ -23,10 +30,10 @@ def crear_profesor_controller(profesor):
         VALUES (%s, %s, %s, %s, %s, %s, %s)
         RETURNING id
     """, (
-        profesor.nombre,
-        profesor.apellido,
+        _title_case_es(profesor.nombre),
+        _title_case_es(profesor.apellido),
         profesor.documento_identidad,
-        profesor.email,
+        str(profesor.email).strip().lower(),
         profesor.telefono,
         get_password_hash(profesor.password),
         profesor.sueldo
@@ -173,13 +180,13 @@ def actualizar_profesor_controller(profesor_id, profesor):
             UPDATE profesor
             SET nombre = %s, apellido = %s, documento_identidad = %s, email = %s, telefono = %s, password = %s, sueldo = %s
             WHERE id = %s
-        ''', (profesor.nombre, profesor.apellido, profesor.documento_identidad, profesor.email, profesor.telefono, get_password_hash(profesor.password), profesor.sueldo, profesor_id))
+        ''', (_title_case_es(profesor.nombre), _title_case_es(profesor.apellido), profesor.documento_identidad, str(profesor.email).strip().lower(), profesor.telefono, get_password_hash(profesor.password), profesor.sueldo, profesor_id))
     else:
         cursor.execute('''
             UPDATE profesor 
             SET nombre = %s, apellido = %s, documento_identidad = %s, email = %s, telefono = %s, sueldo = %s
             WHERE id = %s
-        ''', (profesor.nombre, profesor.apellido, profesor.documento_identidad, profesor.email, profesor.telefono, profesor.sueldo, profesor_id))
+        ''', (_title_case_es(profesor.nombre), _title_case_es(profesor.apellido), profesor.documento_identidad, str(profesor.email).strip().lower(), profesor.telefono, profesor.sueldo, profesor_id))
     
     conn.commit()
     cursor.close()

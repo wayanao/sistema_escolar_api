@@ -14,6 +14,7 @@ Archivos actuales:
 - `20260429_plan_de_clases_reportes.sql`
 - `20260509_branding_plantillas_impresion.sql`
 - `20260517_tipos_pagos_avanzado.sql`
+- `20260526_cursos_solo_academicos.sql`
 - `README.md`
 
 ## Runner actual
@@ -130,5 +131,21 @@ Puntos relevantes documentados alli:
 - script `scripts/apply_tenant_indexes.py` con validacion de tablas/columnas;
 - indices aplicados/verificados en tenants activos;
 - paginacion compatible agregada en endpoints principales.
+
+## Migracion 20260526_cursos_solo_academicos.sql
+
+Objetivo:
+
+- Dejar `cursos` como entidad academica.
+- Quitar las columnas financieras legacy:
+  - `matricula`;
+  - `mensualidad`;
+  - `meses`.
+- Mantener `tipos_de_pagos` y `tipos_pagos_cursos` como fuente de cobros por curso.
+
+Estado:
+
+- Aplicada en tenants activos.
+- Registrada en `public.schema_migrations`.
 
 

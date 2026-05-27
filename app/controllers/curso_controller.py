@@ -8,14 +8,11 @@ def crear_curso_controller(curso):
     cursor = conn.cursor()
 
     cursor.execute("""
-        INSERT INTO cursos (nombre, matricula, mensualidad, meses, jornada)
-        VALUES (%s, %s, %s, %s, %s)
+        INSERT INTO cursos (nombre, jornada)
+        VALUES (%s, %s)
         RETURNING id
     """, (
         curso.nombre,
-        curso.matricula,
-        curso.mensualidad,
-        curso.meses,
         curso.jornada
     ))
 
@@ -35,7 +32,7 @@ def obtener_cursos_controller():
     cursor = conn.cursor()
 
     cursor.execute("""
-        SELECT id, nombre, matricula, mensualidad, meses, jornada
+        SELECT id, nombre, jornada
         FROM cursos
         ORDER BY id
     """)
@@ -51,10 +48,7 @@ def obtener_cursos_controller():
         data.append({
             "id": row[0],
             "nombre": row[1],
-            "matricula": float(row[2]),
-            "mensualidad": float(row[3]),
-            "meses": row[4],
-            "jornada": row[5] or "Mañana"
+            "jornada": row[2] or "Mañana"
         })
 
     return data
@@ -77,7 +71,7 @@ def obtener_cursos_paginado_controller(limit=50, offset=0, busqueda=None):
         total = cursor.fetchone()[0]
 
         cursor.execute(f"""
-            SELECT id, nombre, matricula, mensualidad, meses, jornada
+            SELECT id, nombre, jornada
             FROM cursos
             {where_sql}
             ORDER BY id
@@ -93,10 +87,7 @@ def obtener_cursos_paginado_controller(limit=50, offset=0, busqueda=None):
                 {
                     "id": row[0],
                     "nombre": row[1],
-                    "matricula": float(row[2]),
-                    "mensualidad": float(row[3]),
-                    "meses": row[4],
-                    "jornada": row[5] or "Mañana"
+                    "jornada": row[2] or "Mañana"
                 }
                 for row in resultado
             ]
@@ -111,9 +102,9 @@ def actualizar_curso_controller(curso_id, curso):
     cursor = conn.cursor()
     cursor.execute('''
         UPDATE cursos
-        SET nombre = %s, matricula = %s, mensualidad = %s, meses = %s, jornada = %s
+        SET nombre = %s, jornada = %s
         WHERE id = %s
-    ''', (curso.nombre, curso.matricula, curso.mensualidad, curso.meses, curso.jornada, curso_id))
+    ''', (curso.nombre, curso.jornada, curso_id))
     conn.commit()
     cursor.close()
     conn.close()

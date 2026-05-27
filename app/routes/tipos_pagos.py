@@ -17,6 +17,7 @@ from app.controllers.tipos_pagos_controller import (
     upsert_cursos_asignados,
     eliminar_curso_asignado,
     MigracionPendienteError,
+    TipoPagoDuplicadoError,
 )
 
 router = APIRouter(tags=["Tipos Pagos"], dependencies=[Depends(get_current_active_admin)])
@@ -63,9 +64,13 @@ class CursoAsignacionPayload(BaseModel):
 # -----------------------------------------------------------------------------
 @router.post('/tipos-pagos')
 def create_tipo_pago(tipo: TipoPago):
-    res = crear_tipo_pago(tipo.nombre, tipo.valor)
+    try:
+        res = crear_tipo_pago(tipo.nombre, tipo.valor)
+    except TipoPagoDuplicadoError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
     if not res:
-        raise HTTPException(status_code=400, detail='Error o tipo de pago ya existe')
+        raise HTTPException(status_code=400, detail='No se pudo crear el tipo de pago')
     return res
 
 
@@ -76,7 +81,11 @@ def get_tipos_pagos():
 
 @router.put('/tipos-pagos/{id}')
 def update_tipo_pago(id: int, tipo: TipoPago):
-    res = actualizar_tipo_pago(id, tipo.nombre, tipo.valor)
+    try:
+        res = actualizar_tipo_pago(id, tipo.nombre, tipo.valor)
+    except TipoPagoDuplicadoError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
     if not res:
         raise HTTPException(status_code=400, detail='Error al actualizar')
     return {"message": "Actualizado correctamente"}

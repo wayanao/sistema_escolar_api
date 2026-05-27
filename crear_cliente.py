@@ -29,10 +29,7 @@ CREATE TABLE usuarios (
 CREATE TABLE cursos (
     id SERIAL PRIMARY KEY,
     nombre VARCHAR(255) NOT NULL,
-    descripcion TEXT,
-    matricula NUMERIC,
-    mensualidad NUMERIC,
-    meses INTEGER
+    descripcion TEXT
 );
 
 CREATE TABLE materias (

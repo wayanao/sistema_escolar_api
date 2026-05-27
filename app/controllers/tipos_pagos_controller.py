@@ -1,5 +1,9 @@
 from app.database import get_connection
 
+
+class TipoPagoDuplicadoError(Exception):
+    """Se lanza cuando ya existe un tipo de pago con el mismo nombre."""
+
 # =============================================================================
 # CRUD básico (NO modificar firmas: usado por flujos existentes)
 # =============================================================================
@@ -8,10 +12,21 @@ def crear_tipo_pago(nombre, valor=0):
     conn = get_connection()
     cursor = conn.cursor()
     try:
+        nombre_limpio = (nombre or "").strip()
+        cursor.execute(
+            "SELECT id FROM tipos_de_pagos WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(%s))",
+            (nombre_limpio,),
+        )
+        if cursor.fetchone():
+            raise TipoPagoDuplicadoError(f"Ya existe un tipo de pago llamado '{nombre_limpio}'.")
+
         cursor.execute('INSERT INTO tipos_de_pagos (nombre, valor) VALUES (%s, %s) RETURNING id', (nombre, valor))
         data = cursor.fetchone()[0]
         conn.commit()
         return {'id': data, 'nombre': nombre, 'valor': valor}
+    except TipoPagoDuplicadoError:
+        conn.rollback()
+        raise
     except Exception as e:
         conn.rollback()
         return None
@@ -32,11 +47,27 @@ def actualizar_tipo_pago(id, nombre, valor=0):
     conn = get_connection()
     cursor = conn.cursor()
     try:
+        nombre_limpio = (nombre or "").strip()
+        cursor.execute(
+            """
+            SELECT id
+            FROM tipos_de_pagos
+            WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(%s))
+              AND id <> %s
+            """,
+            (nombre_limpio, id),
+        )
+        if cursor.fetchone():
+            raise TipoPagoDuplicadoError(f"Ya existe un tipo de pago llamado '{nombre_limpio}'.")
+
         cursor.execute('UPDATE tipos_de_pagos SET nombre = %s, valor = %s WHERE id = %s RETURNING id', (nombre, valor, id))
         if cursor.fetchone():
             conn.commit()
             return True
         return False
+    except TipoPagoDuplicadoError:
+        conn.rollback()
+        raise
     except Exception as e:
         conn.rollback()
         return False

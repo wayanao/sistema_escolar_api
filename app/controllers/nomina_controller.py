@@ -14,6 +14,7 @@ def obtener_estado_cuenta_profesores():
                 p.nombre, 
                 p.apellido, 
                 p.documento_identidad,
+                COALESCE(p.sueldo, 0) AS sueldo,
                 COALESCE(SUM(pr.monto - COALESCE(pr.pagado, 0)), 0) AS saldo_prestamos
             FROM profesor p
             LEFT JOIN prestamos pr ON p.id = pr.profesor_id AND pr.estado = 'Pendiente'
@@ -29,7 +30,8 @@ def obtener_estado_cuenta_profesores():
                 "nombre": r[1],
                 "apellido": r[2],
                 "documento": r[3],
-                "saldo_prestamos": float(r[4])
+                "sueldo": float(r[4]),
+                "saldo_prestamos": float(r[5])
             })
             
         return profesores

@@ -1360,3 +1360,355 @@ Pendiente:
 
 - Hacer backup antes de cualquier salida real a produccion.
 - Probar flujo principal de admin/profesor despues de migraciones.
+
+## 2026-05-26 - Inicio centralizacion de cobros en tipos de pago
+
+Se inicio la transicion para que la logica financiera dependa de `tipos_de_pagos`
+y `tipos_pagos_cursos`, dejando los valores financieros de `cursos` como fallback
+legacy temporal para matricula/mensualidad.
+
+Archivos modificados:
+
+- `app/services/cobros.py`
+- `app/controllers/pagos_controller.py`
+- `app/controllers/estudiante_controller.py`
+
+Cambio:
+
+- Se creo `app/services/cobros.py` como servicio central para:
+  - cargar tipos de pago;
+  - leer asignaciones por curso desde `tipos_pagos_cursos`;
+  - aplicar fallback legacy de `cursos.matricula`, `cursos.mensualidad` y `cursos.meses`;
+  - calcular deudas por estudiante usando `app/services/cartera.py`;
+  - obtener saldo pendiente por concepto.
+- `pagos_controller.py` ya no calcula saldos con una copia local de la logica de matricula/mensualidad.
+- `pagos_controller.py` valida el monto del pago contra `obtener_saldo_concepto` del servicio central.
+- `estudiante_controller.py` usa `calcular_deudas_estudiante` para poblar `deudas` y `total_deuda`.
+
+Objetivo:
+
+- Evitar logica financiera duplicada en pagos, estudiante, cartera y reportes.
+- Preparar el sistema para que antes de produccion los cobros se administren desde Tipos de Pago.
+- Mantener compatibilidad mientras se retiran gradualmente los campos financieros del formulario de curso.
+
+Verificacion:
+
+```powershell
+.\venv\Scripts\python.exe -c "import ast, pathlib; [ast.parse(pathlib.Path(p).read_text(encoding='utf-8')) for p in [r'app\services\cobros.py', r'app\controllers\pagos_controller.py', r'app\controllers\estudiante_controller.py']]; print('Sintaxis OK')"
+```
+
+Resultado:
+
+- Sintaxis OK.
+
+Nota:
+
+- `py_compile` no pudo usarse porque Windows nego permisos al escribir `__pycache__`.
+- La validacion con `ast.parse` no escribe bytecode y paso correctamente.
+
+Pruebas manuales recomendadas antes de continuar:
+
+- Abrir detalle de un estudiante con deuda y confirmar que `deudas` y `total_deuda` se ven igual o correctamente.
+- Registrar un pago parcial de un concepto configurado en Tipos de Pago.
+- Intentar registrar un pago mayor al saldo pendiente: debe bloquear.
+- Registrar pago de matricula/mensualidad legacy y confirmar que respeta descuento del estudiante.
+- Confirmar que conceptos opcionales no generen deuda automatica.
+
+Pendiente:
+
+- Migrar `cartera_mora_controller.py` al servicio central sin perder eficiencia en listados grandes.
+- Migrar reportes financieros al mismo servicio.
+- Ajustar frontend de Crear Curso para dejar matricula/mensualidad/meses como legacy o retirarlos del flujo principal.
+
+### Cartera vencida conectada al servicio central
+
+Archivos modificados:
+
+- `app/services/cobros.py`
+- `app/controllers/cartera_mora_controller.py`
+
+Cambio:
+
+- Se agrego `calcular_deudas_desde_contexto` en `app/services/cobros.py`.
+- Esta funcion permite calcular deudas usando datos ya precargados para evitar consultas repetidas por estudiante.
+- `cartera_mora_controller.py` ahora usa esa funcion para calcular deuda academica, mora y cuotas vencidas.
+- Se conserva la carga agrupada de estudiantes, pagos, ventas y asignaciones para mantener eficiencia en listados grandes.
+
+Verificacion:
+
+```powershell
+.\venv\Scripts\python.exe -c "import ast, pathlib; [ast.parse(pathlib.Path(p).read_text(encoding='utf-8')) for p in [r'app\services\cobros.py', r'app\controllers\cartera_mora_controller.py']]; print('Sintaxis OK')"
+```
+
+Resultado:
+
+- Sintaxis OK.
+
+Pruebas manuales recomendadas:
+
+- Abrir cartera vencida general.
+- Confirmar que los estudiantes con deuda aparecen con total correcto.
+- Filtrar cartera vencida por curso si la pantalla lo permite.
+- Confirmar que deuda academica, deuda inventario, mora y total se ven coherentes.
+- Confirmar que conceptos opcionales no aparecen como deuda automatica.
+- Confirmar que un concepto asignado desde Tipos de Pago a un curso aparece en los estudiantes de ese curso.
+
+Pendiente actualizado:
+
+- Migrar reportes financieros al servicio central.
+- Revisar `estado_cuenta_controller.py`, que todavia calcula deuda usando directamente `cursos.matricula`, `cursos.mensualidad` y `cursos.meses`.
+- Ajustar frontend de Crear Curso para dejar los campos financieros como legacy/fallback.
+
+### Reporte de estado de cuenta por curso conectado al servicio central
+
+Archivo modificado:
+
+- `app/controllers/reportes_controller.py`
+
+Cambio:
+
+- `reporte_estado_cuenta_curso_controller` ahora usa:
+  - `obtener_tipos_pago`;
+  - `obtener_asignaciones_cobro_por_curso`;
+  - `calcular_deudas_desde_contexto`.
+- Se elimino de ese reporte la logica repetida que detectaba manualmente conceptos legacy y calculaba deuda por matricula/mensualidad.
+- Se conserva compatibilidad con pagos por `concepto_id`, `tipo_pago` y el formato actual de respuesta.
+
+Verificacion:
+
+```powershell
+.\venv\Scripts\python.exe -c "import ast, pathlib; [ast.parse(pathlib.Path(p).read_text(encoding='utf-8')) for p in [r'app\services\cobros.py', r'app\controllers\reportes_controller.py']]; print('Sintaxis OK')"
+```
+
+Resultado:
+
+- Sintaxis OK.
+
+Pruebas manuales recomendadas:
+
+- Abrir el reporte de estado de cuenta por curso.
+- Confirmar que cada estudiante conserva `pagado`, `total`, `deuda` y `deudas_detalle`.
+- Confirmar que conceptos asignados desde Tipos de Pago aparecen en el curso correcto.
+- Confirmar que matricula/mensualidad legacy siguen funcionando como fallback.
+- Registrar un pago y volver a abrir el reporte para verificar que baja la deuda.
+
+Pendiente actualizado:
+
+- Revisar `estado_cuenta_controller.py`, que todavia contiene consultas directas antiguas.
+- Ajustar frontend de Crear Curso para que cobros queden en Tipos de Pago y los campos financieros del curso dejen de ser el flujo principal.
+
+### Estado de cuenta conectado al servicio central
+
+Archivo modificado:
+
+- `app/controllers/estado_cuenta_controller.py`
+
+Cambio:
+
+- `estado_cuenta_curso_controller` ya no calcula deuda con la formula fija:
+  `cursos.matricula + cursos.mensualidad * cursos.meses`.
+- `estado_cuenta_estudiante_controller` tambien usa el servicio central.
+- Ambos controladores llaman `calcular_deudas_estudiante`.
+- Se conserva el formato de respuesta:
+  - `id`;
+  - `nombre`;
+  - `apellido`;
+  - `pagado`;
+  - `total`;
+  - `deuda`;
+  - `tipos_pagos`.
+
+Motivo:
+
+- Hacer que estado de cuenta respete conceptos configurados desde Tipos de Pago.
+- Mantener los campos financieros de curso solo como fallback legacy.
+
+Verificacion:
+
+```powershell
+.\venv\Scripts\python.exe -c "import ast, pathlib; [ast.parse(pathlib.Path(p).read_text(encoding='utf-8')) for p in [r'app\controllers\estado_cuenta_controller.py', r'app\services\cobros.py']]; print('Sintaxis OK')"
+```
+
+Resultado:
+
+- Sintaxis OK.
+- No queda la formula directa de `cursos.matricula`, `cursos.mensualidad` y `cursos.meses` en `estado_cuenta_controller.py`.
+
+Pruebas manuales recomendadas:
+
+- Abrir estado de cuenta por curso.
+- Abrir estado de cuenta de un estudiante.
+- Confirmar que los conceptos de Tipos de Pago afectan deuda/total.
+- Confirmar que un pago registrado reduce la deuda.
+- Confirmar que matricula/mensualidad legacy siguen funcionando como fallback mientras se ajusta Crear Curso.
+
+### Ajuste de fallback para conceptos asignados con valor 0
+
+Archivo modificado:
+
+- `app/services/cobros.py`
+
+Cambio:
+
+- Si un tipo de pago esta asignado a un curso en `tipos_pagos_cursos` con valor `0`, ya no se toma ese `0` como deuda final automaticamente.
+- Nueva regla:
+  - si el valor asignado al curso es mayor que `0`, se usa ese valor;
+  - si el valor asignado es `0`, se usa el valor global de `tipos_de_pagos`;
+  - si tambien es `0` y el concepto es matricula/mensualidad legacy, se usa el valor del curso como fallback.
+
+Motivo:
+
+- Evitar que una asignacion en cero bloquee pagos de matricula o mensualidad.
+- Mantener Tipos de Pago como fuente principal sin romper colegios que todavia usan valores financieros en Crear Curso.
+
+Verificacion:
+
+```powershell
+.\venv\Scripts\python.exe -c "import ast, pathlib; ast.parse(pathlib.Path(r'app\services\cobros.py').read_text(encoding='utf-8')); print('Sintaxis OK')"
+```
+
+Resultado:
+
+- Sintaxis OK.
+
+Pruebas manuales recomendadas:
+
+- Revisar un curso con `matricula` configurada en Crear Curso.
+- En Tipos de Pago, confirmar que el concepto Matricula exista y este activo.
+- Si Matricula esta asignada al curso con valor `0`, intentar registrar el pago.
+- Debe tomar el valor global del tipo de pago o, si es `0`, el valor de matricula del curso.
+
+## 2026-05-26 - Curso queda solo academico y Tipos de Pago queda como fuente unica de deuda
+
+Se cerro la transicion financiera para que los cobros academicos dependan de
+`tipos_de_pagos` y `tipos_pagos_cursos`, no de columnas financieras en `cursos`.
+
+Archivos modificados:
+
+- `app/schemas/curso.py`
+- `app/controllers/curso_controller.py`
+- `app/services/cobros.py`
+- `app/controllers/cartera_mora_controller.py`
+- `app/controllers/reportes_controller.py`
+- `crear_cliente.py`
+- `migrations/20260526_cursos_solo_academicos.sql`
+
+Cambios:
+
+- `CursoCreate` ya no exige:
+  - `matricula`;
+  - `mensualidad`;
+  - `meses`.
+- `crear_curso_controller` solo inserta:
+  - `nombre`;
+  - `jornada`.
+- `actualizar_curso_controller` solo actualiza:
+  - `nombre`;
+  - `jornada`.
+- Los listados de cursos ya no retornan campos financieros.
+- `app/services/cobros.py` ya no usa fallback legacy contra `cursos.matricula`, `cursos.mensualidad` ni `cursos.meses`.
+- `cartera_mora_controller.py` y `reportes_controller.py` ya no seleccionan ni pasan esos campos al servicio de cobros.
+- `crear_cliente.py` se actualizo para que el SQL base de `cursos` no incluya columnas financieras.
+
+Migracion aplicada:
+
+- `migrations/20260526_cursos_solo_academicos.sql`
+
+Comando ejecutado:
+
+```powershell
+.\venv\Scripts\python.exe apply_migration.py migrations\20260526_cursos_solo_academicos.sql
+```
+
+Resultado:
+
+- `tenant_colegio_1`: OK.
+- `tenant_3333`: OK.
+- La migracion quedo registrada en `public.schema_migrations`.
+- Verificacion posterior:
+  - `tenant_colegio_1`: cursos sin columnas financieras.
+  - `tenant_3333`: cursos sin columnas financieras.
+
+Estado nuevo:
+
+```text
+Tipos de Pago = fuente unica de deuda academica
+Curso = entidad academica
+```
+
+Pruebas manuales recomendadas:
+
+- Crear curso nuevo.
+- Editar curso existente.
+- Crear/asignar un tipo de pago al curso.
+- Ver cartera vencida.
+- Ver detalle del estudiante.
+- Registrar pago de un concepto asignado.
+- Confirmar que si un tipo de pago no esta asignado al curso, no genera deuda.
+
+## 2026-05-26 - Nomina expone sueldo del profesor
+
+Se ajusto la consulta de empleados de nomina para devolver el sueldo asignado al
+profesor.
+
+Archivo modificado:
+
+- `app/controllers/nomina_controller.py`
+
+Cambio:
+
+- `obtener_estado_cuenta_profesores()` ahora selecciona `COALESCE(p.sueldo, 0) AS sueldo`.
+- La respuesta de `/api/nomina/empleados` incluye:
+  - `sueldo`;
+  - `saldo_prestamos`.
+
+Motivo:
+
+- Permitir que el frontend precargue el campo `Salario Base` en el modal de pago
+  de nomina con el sueldo real configurado en el profesor.
+
+Verificacion:
+
+- Sintaxis de `app/controllers/nomina_controller.py`: OK.
+
+Pruebas manuales recomendadas:
+
+- Crear o editar un profesor con sueldo.
+- Consultar nomina desde Admin.
+- Abrir `Realizar Pago`.
+- Confirmar que el salario base coincide con el sueldo del profesor.
+
+## 2026-05-26 - Mensaje claro para tipos de pago duplicados
+
+Se ajusto la creacion/edicion de tipos de pago para devolver una causa clara
+cuando el nombre ya existe.
+
+Archivos modificados:
+
+- `app/controllers/tipos_pagos_controller.py`
+- `app/routes/tipos_pagos.py`
+
+Cambio:
+
+- Se agrego `TipoPagoDuplicadoError`.
+- Antes de crear un tipo de pago se valida si ya existe otro con el mismo nombre,
+  ignorando mayusculas/minusculas y espacios al inicio/final.
+- Antes de editar un tipo de pago se valida que el nuevo nombre no exista en otro
+  registro.
+- La API responde `409 Conflict` con un mensaje legible cuando hay duplicado.
+
+Motivo:
+
+- Evitar que el frontend muestre un error generico de servidor cuando el problema
+  real es que el concepto ya existe.
+
+Verificacion:
+
+- Sintaxis de `app/controllers/tipos_pagos_controller.py` y `app/routes/tipos_pagos.py`: OK.
+
+Pruebas manuales recomendadas:
+
+- Crear un tipo de pago con un nombre existente.
+- Confirmar que responde una alerta de concepto duplicado.
+- Editar un tipo de pago y ponerle el nombre de otro existente.
+- Confirmar que tambien se bloquea con mensaje claro.

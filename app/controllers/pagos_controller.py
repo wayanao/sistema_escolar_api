@@ -2,14 +2,9 @@ from app.database import get_connection
 import datetime
 from zoneinfo import ZoneInfo
 
+from app.services.cobros import obtener_saldo_concepto
 
-CONCEPTOS_MATRICULA = {"matricula", "matrícula"}
-CONCEPTOS_MENSUALIDAD = {"pension", "mensualidad", "pensión", "colegiatura"}
 ZONA_HORARIA_LOCAL = ZoneInfo("America/Bogota")
-
-
-def _normalizar(texto):
-    return str(texto or "").strip().lower()
 
 
 def _calcular_total_pago(pago):
@@ -64,55 +59,7 @@ def _obtener_saldo_venta(cursor, venta_id):
 
 
 def _obtener_saldo_concepto(cursor, estudiante_id, concepto):
-    concepto_normalizado = _normalizar(concepto)
-    if not concepto_normalizado:
-        raise ValueError("Debe seleccionar un concepto de pago.")
-
-    cursor.execute("""
-        SELECT c.matricula, c.mensualidad, c.meses,
-               e.descuento_matricula, e.descuento_mensualidad
-        FROM estudiantes e
-        JOIN cursos c ON e.curso_id = c.id
-        WHERE e.id = %s
-    """, (estudiante_id,))
-    est_data = cursor.fetchone()
-    if not est_data:
-        raise ValueError("El estudiante seleccionado no existe.")
-
-    matricula, mensualidad, meses, desc_mat, desc_men = est_data
-
-    cursor.execute("""
-        SELECT nombre, valor
-        FROM tipos_de_pagos
-        WHERE LOWER(nombre) = %s
-        LIMIT 1
-    """, (concepto_normalizado,))
-    tipo_pago = cursor.fetchone()
-    if not tipo_pago:
-        raise ValueError("El concepto seleccionado no existe.")
-
-    nombre, valor = tipo_pago
-    valor_cobrado = float(valor or 0)
-    nombre_normalizado = _normalizar(nombre)
-
-    if nombre_normalizado in CONCEPTOS_MATRICULA:
-        base_mat = valor_cobrado if valor_cobrado > 0 else float(matricula or 0)
-        valor_cobrado = base_mat - float(desc_mat or 0)
-    elif nombre_normalizado in CONCEPTOS_MENSUALIDAD:
-        base_men = valor_cobrado if valor_cobrado > 0 else float(mensualidad or 0)
-        meses_totales = int(meses or 10)
-        meses_transcurridos = min(datetime.datetime.now().month, meses_totales)
-        valor_cobrado = (base_men - float(desc_men or 0)) * meses_transcurridos
-
-    cursor.execute("""
-        SELECT COALESCE(SUM(monto), 0)
-        FROM pagos
-        WHERE estudiante_id = %s
-          AND (LOWER(COALESCE(descripcion, '')) = %s OR LOWER(COALESCE(tipo_pago, '')) = %s)
-    """, (estudiante_id, concepto_normalizado, concepto_normalizado))
-    pagado = float(cursor.fetchone()[0] or 0)
-
-    return max(0.0, valor_cobrado - pagado)
+    return obtener_saldo_concepto(cursor, estudiante_id, concepto)
 
 
 def _validar_pago_no_excede_deuda(cursor, pago):

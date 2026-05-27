@@ -82,6 +82,22 @@ El codigo consulta o modifica tablas como:
 - `institucion_branding`
 - `plantilla_impresion`
 
+## Cursos y cobros
+
+Estado actual:
+
+- `cursos` queda como entidad academica.
+- Los cobros academicos se definen desde `tipos_de_pagos`.
+- La asignacion de cobros por curso se hace en `tipos_pagos_cursos`.
+- `cursos` ya no debe contener ni alimentar:
+  - `matricula`;
+  - `mensualidad`;
+  - `meses`.
+
+Migracion relacionada:
+
+- `migrations/20260526_cursos_solo_academicos.sql`
+
 ## Indices por tenant
 
 Script:
@@ -119,6 +135,7 @@ Archivos en `migrations/`:
 - `20260429_plan_de_clases_reportes.sql`
 - `20260509_branding_plantillas_impresion.sql`
 - `20260517_tipos_pagos_avanzado.sql`
+- `20260526_cursos_solo_academicos.sql`
 - `README.md`
 
 ## Riesgos pendientes documentados

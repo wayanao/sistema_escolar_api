@@ -2033,3 +2033,96 @@ Pendiente para activar R2 real:
 - Configurar variables R2 en produccion.
 - Reiniciar backend.
 - Probar subida/visualizacion/eliminacion de logo y plan diario.
+
+## 2026-05-28 - Carga demo para pruebas SQL de rendimiento
+
+Se agrego script para cargar datos demo de rendimiento en un tenant.
+
+Archivo agregado:
+
+- `scripts/seed_tenant_performance.py`
+
+Comando ejecutado:
+
+```powershell
+.\venv\Scripts\python.exe scripts\seed_tenant_performance.py --tenant tenant_colegio_1 --reset
+```
+
+Datos cargados en `tenant_colegio_1`:
+
+- 20 cursos `PERF_DEMO`.
+- 30 profesores `PERF_DEMO`.
+- 12 materias `PERF_DEMO`.
+- 80 asignaciones.
+- 500 estudiantes.
+- 10.000 pagos.
+- 20.000 notas detalle.
+- 3.000 asistencias.
+- 50 productos de inventario.
+- 1.000 ventas.
+- 1.000 ventas detalle.
+
+Comando para limpiar estos datos:
+
+```powershell
+.\venv\Scripts\python.exe scripts\seed_tenant_performance.py --tenant tenant_colegio_1 --clean
+```
+
+Primeros resultados de `EXPLAIN ANALYZE`:
+
+- `reporte_general_ingresos_hoy`: usa `Seq Scan` sobre `pagos`, ~5 ms con 10.000 pagos.
+- `reporte_ingresos_mes`: usa `Seq Scan` por `TO_CHAR(COALESCE(...))`, ~3.7 ms con 10.000 pagos.
+- `reporte_ingresos_rango`: usa `Seq Scan`, ~0.94 ms con 10.000 pagos.
+- `ventas_paginado`: usa `Seq Scan` + sort sobre `ventas`, ~0.32 ms con 1.000 ventas.
+- `cartera_estudiantes`: usa `Seq Scan` en estudiantes activos y nested loop con cursos, ~1 ms con 500 estudiantes.
+
+Lectura tecnica:
+
+- Con datos demo actuales el sistema responde rapido.
+- El primer riesgo de crecimiento esta en reportes de pagos por fecha porque usan funciones sobre fecha (`DATE`, `TO_CHAR`, `COALESCE`) que no aprovechan bien indices simples.
+- Siguiente paso recomendado: optimizar reportes de pagos con rangos de fecha e indices de expresion o columna normalizada para fecha efectiva.
+
+## 2026-05-28 - Dashboard profesor: filtros seguros por curso
+
+Se ajustaron endpoints del dashboard profesor para soportar ranking de inasistencias por curso y filtro de notas por curso.
+
+Archivos modificados:
+
+- `app/controllers/dashboard_controller.py`
+- `app/routes/dashboard.py`
+- `app/routes/asignaciones.py`
+
+Cambio:
+
+- `/dashboard/inasistencias/{profesor_id}` ahora devuelve ranking por curso.
+- `/dashboard/notas-bajas/{profesor_id}` acepta `curso_id` opcional.
+- `/dashboard/notas-altas/{profesor_id}` acepta `curso_id` opcional.
+- `/mis-clases/{profesor_id}` incluye `curso_id` para que el frontend pueda filtrar por cursos asignados.
+
+Seguridad:
+
+- Se mantiene `require_profesor_scope` para evitar consultar datos de otro profesor.
+- Si llega `curso_id`, el backend valida que ese curso pertenezca a una asignacion del profesor.
+- Si el profesor intenta cambiar el `curso_id` manualmente por uno no asignado, debe responder `403`.
+
+Verificacion ejecutada:
+
+```powershell
+.\venv\Scripts\python.exe -B -m py_compile app\controllers\dashboard_controller.py app\routes\dashboard.py app\routes\asignaciones.py
+```
+
+Pruebas manuales recomendadas:
+
+- Entrar como profesor y abrir el dashboard.
+- Probar notas bajas/altas seleccionando un curso y luego `Todas las materias` o una materia especifica.
+- Probar manualmente un `curso_id` no asignado en `/dashboard/notas-bajas/{profesor_id}?curso_id=ID` y confirmar `403`.
+- Confirmar que `/dashboard/inasistencias/{profesor_id}` lista ranking por curso.
+
+Correccion del dashboard profesor:
+
+- El filtro final de notas bajas/altas exige `curso_id`.
+- Opcionalmente acepta `asignacion_id` para filtrar una materia especifica dentro de ese curso.
+- Si no se envia `asignacion_id`, calcula `Todas las materias` que ese profesor dicta en el curso seleccionado.
+- El backend valida que el curso pertenezca al profesor.
+- Si se envia asignacion, valida que la asignacion pertenezca al profesor y al curso seleccionado.
+

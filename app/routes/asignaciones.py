@@ -132,6 +132,7 @@ def obtener_clases_profesor(
             a.id,
             m.nombre AS materia,
             c.nombre AS curso,
+            c.id AS curso_id,
             a.dia,
             a.hora_inicio,
             a.hora_fin
@@ -151,12 +152,16 @@ def obtener_clases_profesor(
             "id": c[0],
             "materia": c[1],
             "curso": c[2],
-            "dia": c[3],
-            "hora_inicio": c[4],
-            "hora_fin": c[5]
+            "curso_id": c[3],
+            "dia": c[4],
+            "hora_inicio": c[5],
+            "hora_fin": c[6]
         })
 
     cursor.close()
     conn.close()
 
     return resultado
+
+
+

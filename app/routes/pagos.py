@@ -2,13 +2,14 @@ from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from app.dependencies import get_current_active_admin
-from app.schemas.pago import PagoCreate
+from app.schemas.pago import PagoAnular, PagoCreate
 
 # 👇 Importamos controllers
 from app.controllers.pagos_controller import (
     historial_pagos_paginado_controller,
     registrar_pago_controller,
-    historial_pagos_controller
+    historial_pagos_controller,
+    anular_pago_controller
 )
 
 router = APIRouter(tags=["Pagos"], dependencies=[Depends(get_current_active_admin)])
@@ -38,3 +39,15 @@ def historial_pagos(
     if limit is not None:
         return historial_pagos_paginado_controller(estudiante_id, limit=limit, offset=offset)
     return historial_pagos_controller(estudiante_id)
+
+
+@router.post("/pagos/{pago_id}/anular")
+def anular_pago(
+    pago_id: int,
+    data: PagoAnular,
+    current_user: dict = Depends(get_current_active_admin),
+):
+    try:
+        return anular_pago_controller(pago_id, data.motivo, current_user["id"])
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))

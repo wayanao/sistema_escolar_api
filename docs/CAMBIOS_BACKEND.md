@@ -1751,3 +1751,242 @@ Pruebas manuales recomendadas:
 - Crear curso con nombre en minusculas.
 - Crear materia con nombre en minusculas.
 - Confirmar que se listan con iniciales en mayuscula.
+
+## 2026-05-27 - Anulacion auditada de pagos
+
+Se implemento anulacion de pagos sin eliminacion fisica, empezando desde el
+historial de pagos del estudiante.
+
+Archivos modificados:
+
+- `migrations/20260527_pagos_anulacion.sql`
+- `app/schemas/pago.py`
+- `app/controllers/pagos_controller.py`
+- `app/routes/pagos.py`
+- `app/services/cobros.py`
+- `app/controllers/cartera_mora_controller.py`
+- `app/controllers/estado_cuenta_controller.py`
+- `app/controllers/reportes_controller.py`
+- `crear_cliente.py`
+- `docs/MIGRACIONES.md`
+- `docs/BASE_DATOS.md`
+
+Cambio:
+
+- Se agregaron columnas a `pagos`:
+  - `estado`;
+  - `motivo_anulacion`;
+  - `fecha_anulacion`;
+  - `anulado_por`.
+- Se agrego endpoint admin:
+  - `POST /pagos/{pago_id}/anular`
+- La anulacion exige motivo.
+- Los pagos anulados quedan visibles en historial y reportes.
+- Cartera, estado de cuenta y calculo de deudas ignoran pagos con `estado = 'Anulado'`.
+- Reportes de ingresos mensuales/rango incluyen la huella del pago anulado, pero
+  lo devuelven con `monto_valido = 0`.
+- Totales generales e ingresos mensuales suman solo pagos validos.
+
+Migracion aplicada:
+
+```powershell
+.\venv\Scripts\python.exe apply_migration.py migrations\20260527_pagos_anulacion.sql
+```
+
+Resultado:
+
+- `tenant_colegio_1`: OK.
+- `tenant_3333`: OK.
+- La migracion quedo registrada en `public.schema_migrations`.
+
+Pruebas manuales recomendadas:
+
+- Registrar un pago academico.
+- Anularlo desde historial de pagos del estudiante con motivo.
+- Confirmar que aparece marcado como `Anulado`.
+- Confirmar que la deuda vuelve a subir.
+- Abrir Reportes > Ingresos Mensuales.
+- Confirmar que el pago anulado aparece como huella, pero no suma al total valido.
+
+### Anulacion segura de pagos de inventario
+
+Se amplio la anulacion para cubrir pagos asociados a ventas de inventario.
+
+Archivos modificados:
+
+- `migrations/20260527_pagos_venta_id.sql`
+- `app/controllers/pagos_controller.py`
+- `crear_cliente.py`
+- `docs/MIGRACIONES.md`
+- `docs/BASE_DATOS.md`
+
+Cambio:
+
+- Se agrego `pagos.venta_id`.
+- Al registrar un pago de inventario, se guarda el `venta_id`.
+- Al anular un pago con `venta_id`, se resta el monto anulado de `ventas.pagado`.
+- Si despues de la anulacion la venta vuelve a tener saldo pendiente, `ventas.estado`
+  queda en `Pendiente`.
+- Para pagos antiguos sin `venta_id`, el backend intenta inferirlo desde la
+  descripcion con formato `Cargo #ID`.
+
+Migracion aplicada:
+
+```powershell
+.\venv\Scripts\python.exe apply_migration.py migrations\20260527_pagos_venta_id.sql
+```
+
+Resultado:
+
+- `tenant_colegio_1`: OK.
+- `tenant_3333`: OK.
+- La migracion quedo registrada en `public.schema_migrations`.
+
+Pruebas manuales recomendadas:
+
+- Crear una venta de inventario a credito.
+- Registrar un abono desde pagos del estudiante.
+- Confirmar que la venta aumenta `pagado`.
+- Anular ese pago desde historial.
+- Confirmar que el pago queda anulado.
+- Confirmar que la venta vuelve a `Pendiente` y el saldo vuelve a aparecer.
+
+## 2026-05-27 - Anulacion de ventas de inventario
+
+Se agrego anulacion transaccional de ventas de inventario.
+
+Archivos modificados:
+
+- `migrations/20260527_ventas_anulacion.sql`
+- `app/controllers/venta_controller.py`
+- `app/routes/ventas.py`
+- `docs/API_ENDPOINTS.md`
+- `docs/MIGRACIONES.md`
+- `docs/BASE_DATOS.md`
+
+Cambio:
+
+- Se agregaron columnas a `ventas`:
+  - `motivo_anulacion`;
+  - `fecha_anulacion`;
+  - `anulado_por`.
+- Se agrego endpoint admin:
+  - `POST /api/ventas/{venta_id}/anular`
+- Al anular una venta:
+  - la venta queda con `estado = 'Anulada'`;
+  - se devuelve el stock de cada item al inventario;
+  - se anulan pagos asociados por `venta_id`;
+  - se intenta cubrir pagos antiguos asociados por descripcion `Cargo #ID`;
+  - `ventas.pagado` vuelve a `0`.
+
+Motivo:
+
+- Evitar eliminacion fisica de ventas.
+- Mantener trazabilidad financiera y de inventario.
+- Evitar que cartera siga cobrando cargos anulados.
+
+Migracion aplicada:
+
+```powershell
+.\venv\Scripts\python.exe apply_migration.py migrations\20260527_ventas_anulacion.sql
+```
+
+Resultado:
+
+- `tenant_colegio_1`: OK.
+- `tenant_3333`: OK.
+- La migracion quedo registrada en `public.schema_migrations`.
+
+Pruebas manuales recomendadas:
+
+- Crear una venta/cargo de inventario.
+- Confirmar que baja el stock.
+- Anular la venta desde el listado de cargos recientes.
+- Confirmar que la venta queda `Anulada`.
+- Confirmar que el stock vuelve.
+- Si tenia pagos asociados, confirmar que quedan anulados y no suman en reportes.
+
+## 2026-05-27 - Ingresos Hoy usa fecha local Colombia
+
+Se ajusto el calculo de `ingresos_hoy` del reporte general para comparar contra
+la fecha local de Colombia.
+
+Archivo modificado:
+
+- `app/controllers/reportes_controller.py`
+
+Cambio:
+
+- Antes usaba `CURRENT_DATE` de PostgreSQL.
+- Ahora usa `(NOW() AT TIME ZONE 'America/Bogota')::date`.
+- Se mantiene la regla de no sumar pagos con `estado = 'Anulado'`.
+
+Motivo:
+
+- Evitar que Neon/PostgreSQL calcule "hoy" con una zona horaria distinta a la
+  fecha local con la que se registran los pagos.
+
+Pruebas manuales recomendadas:
+
+- Registrar un pago con fecha de hoy.
+- Abrir Admin > Reportes y Estadisticas.
+- Confirmar que `Ingresos Hoy` suma el pago.
+- Anular ese pago y confirmar que `Ingresos Hoy` deja de sumarlo.
+
+## 2026-05-27 - Bloqueo de eliminacion fisica de ventas
+
+Se bloqueo el endpoint legacy de eliminacion fisica de ventas.
+
+Archivo modificado:
+
+- `app/routes/ventas.py`
+
+Cambio:
+
+- `DELETE /api/ventas/{venta_id}` ya no elimina la venta.
+- Ahora responde `405` con mensaje indicando usar:
+  - `POST /api/ventas/{venta_id}/anular`
+
+Motivo:
+
+- Evitar perdida de trazabilidad financiera e inventario.
+- Forzar el flujo seguro de anulacion con motivo, devolucion de stock y anulacion
+  de pagos asociados.
+
+Pruebas manuales recomendadas:
+
+- Intentar llamar `DELETE /api/ventas/{venta_id}`.
+- Confirmar que responde bloqueado.
+- Anular una venta desde el frontend y confirmar que usa el endpoint de anulacion.
+
+## 2026-05-27 - Pruebas de anulaciones financieras
+
+Se agregaron pruebas unitarias para blindar los flujos de anulacion financiera.
+
+Archivo agregado:
+
+- `tests/test_anulaciones_financieras.py`
+
+Casos cubiertos:
+
+- Anular pago academico sin tocar ventas.
+- Anular pago de inventario descontando el abono de la venta asociada.
+- Anular venta con devolucion de stock.
+- Anular venta dejando pagos asociados en estado `Anulado`.
+- Reporte general excluyendo pagos anulados de ingresos y de ingresos de hoy.
+- Formato de ingresos marcando `monto_valido = 0` cuando el pago esta anulado.
+
+Comando ejecutado:
+
+```powershell
+.\venv\Scripts\python.exe -B -m pytest -q tests\test_anulaciones_financieras.py -p no:cacheprovider
+```
+
+Resultado:
+
+- 5 pruebas pasaron correctamente.
+
+Motivo:
+
+- Evitar regresiones en anulaciones de pagos academicos, pagos de inventario,
+  ventas, reportes y devolucion de stock antes de produccion.

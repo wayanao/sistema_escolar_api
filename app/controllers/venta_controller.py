@@ -1,4 +1,8 @@
 from app.database import get_connection
+import datetime
+from zoneinfo import ZoneInfo
+
+ZONA_HORARIA_LOCAL = ZoneInfo("America/Bogota")
 
 def _formatear_venta(row, detalles_por_venta):
     return {
@@ -10,6 +14,8 @@ def _formatear_venta(row, detalles_por_venta):
         "estado": row[6],
         "notas": row[7],
         "estudiante_id": row[8],
+        "motivo_anulacion": row[9] if len(row) > 9 else None,
+        "fecha_anulacion": str(row[10]) if len(row) > 10 and row[10] else None,
         "detalles": detalles_por_venta.get(row[0], [])
     }
 
@@ -19,7 +25,8 @@ def obtener_ventas():
     try:
         # Obtener ventas
         cursor.execute('''
-            SELECT v.id, e.nombre, e.apellido, v.fecha, v.tipo_venta, v.total, v.estado, v.notas, v.estudiante_id 
+            SELECT v.id, e.nombre, e.apellido, v.fecha, v.tipo_venta, v.total, v.estado, v.notas, v.estudiante_id,
+                   v.motivo_anulacion, v.fecha_anulacion
             FROM ventas v
             LEFT JOIN estudiantes e ON v.estudiante_id = e.id
             ORDER BY v.fecha DESC, v.id DESC
@@ -86,7 +93,8 @@ def obtener_ventas_paginado(limit=50, offset=0, busqueda=None, estudiante_id=Non
         total = cursor.fetchone()[0]
 
         cursor.execute(f'''
-            SELECT v.id, e.nombre, e.apellido, v.fecha, v.tipo_venta, v.total, v.estado, v.notas, v.estudiante_id
+            SELECT v.id, e.nombre, e.apellido, v.fecha, v.tipo_venta, v.total, v.estado, v.notas, v.estudiante_id,
+                   v.motivo_anulacion, v.fecha_anulacion
             FROM ventas v
             LEFT JOIN estudiantes e ON v.estudiante_id = e.id
             {where_sql}
@@ -230,6 +238,85 @@ def eliminar_venta(venta_id):
         cursor.execute("DELETE FROM ventas WHERE id = %s", (venta_id,))
         conn.commit()
         return {"mensaje": "Venta eliminada"}
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def anular_venta(venta_id, motivo, admin_id):
+    motivo_limpio = str(motivo or "").strip()
+    if len(motivo_limpio) < 5:
+        raise ValueError("Debes escribir un motivo de anulación de al menos 5 caracteres.")
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            SELECT id, estado
+            FROM ventas
+            WHERE id = %s
+            FOR UPDATE
+        """, (venta_id,))
+        venta = cursor.fetchone()
+
+        if not venta:
+            raise ValueError("La venta no existe.")
+
+        if str(venta[1]).strip().lower() == "anulada":
+            raise ValueError("Esta venta ya está anulada.")
+
+        cursor.execute("""
+            SELECT inventario_id, cantidad
+            FROM ventas_detalle
+            WHERE venta_id = %s
+        """, (venta_id,))
+        detalles = cursor.fetchall()
+
+        for inventario_id, cantidad in detalles:
+            cursor.execute("""
+                UPDATE inventario
+                SET stock_actual = COALESCE(stock_actual, 0) + %s
+                WHERE id = %s
+            """, (cantidad, inventario_id))
+
+        fecha_anulacion = datetime.datetime.now(ZONA_HORARIA_LOCAL).replace(tzinfo=None)
+
+        cursor.execute("""
+            UPDATE pagos
+            SET estado = 'Anulado',
+                motivo_anulacion = COALESCE(motivo_anulacion, %s),
+                fecha_anulacion = COALESCE(fecha_anulacion, %s),
+                anulado_por = COALESCE(anulado_por, %s),
+                venta_id = COALESCE(venta_id, %s)
+            WHERE COALESCE(estado, 'Pagado') <> 'Anulado'
+              AND (
+                    venta_id = %s
+                    OR descripcion ILIKE %s
+                  )
+        """, (
+            f"Venta anulada: {motivo_limpio}",
+            fecha_anulacion,
+            admin_id,
+            venta_id,
+            venta_id,
+            f"%Cargo #{venta_id}%",
+        ))
+
+        cursor.execute("""
+            UPDATE ventas
+            SET estado = 'Anulada',
+                pagado = 0,
+                motivo_anulacion = %s,
+                fecha_anulacion = %s,
+                anulado_por = %s
+            WHERE id = %s
+        """, (motivo_limpio, fecha_anulacion, admin_id, venta_id))
+
+        conn.commit()
+        return {"mensaje": "Venta anulada correctamente", "venta_id": venta_id}
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         cursor.close()
         conn.close()

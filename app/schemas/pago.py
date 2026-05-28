@@ -16,3 +16,6 @@ class PagoCreate(BaseModel):
     fecha: Optional[date] = None
     venta_id: Optional[int] = None
     metodos: Optional[List[MetodoPago]] = None
+
+class PagoAnular(BaseModel):
+    motivo: str

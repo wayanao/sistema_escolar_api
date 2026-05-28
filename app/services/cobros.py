@@ -112,6 +112,7 @@ def obtener_pagos_por_concepto(cursor, estudiante_id: int) -> tuple[dict[str, fl
         SELECT LOWER(COALESCE(tipo_pago, '')), COALESCE(SUM(monto), 0)
         FROM pagos
         WHERE estudiante_id = %s
+          AND COALESCE(estado, 'Pagado') <> 'Anulado'
         GROUP BY LOWER(COALESCE(tipo_pago, ''))
         """,
         (estudiante_id,),
@@ -122,7 +123,9 @@ def obtener_pagos_por_concepto(cursor, estudiante_id: int) -> tuple[dict[str, fl
         """
         SELECT LOWER(COALESCE(descripcion, '')), COALESCE(SUM(monto), 0)
         FROM pagos
-        WHERE estudiante_id = %s AND descripcion IS NOT NULL
+        WHERE estudiante_id = %s
+          AND descripcion IS NOT NULL
+          AND COALESCE(estado, 'Pagado') <> 'Anulado'
         GROUP BY LOWER(COALESCE(descripcion, ''))
         """,
         (estudiante_id,),

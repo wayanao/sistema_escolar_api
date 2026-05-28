@@ -7,13 +7,20 @@ from app.services.cobros import (
 
 
 def _formatear_ingreso(row):
+    estado = row[7] if len(row) > 7 and row[7] else "Pagado"
+    anulado = str(estado).strip().lower() == "anulado"
     return {
         "id": row[0],
         "estudiante": f"{row[1]} {row[2]}" if row[1] else "Desconocido",
         "monto": float(row[3]),
+        "monto_valido": 0 if anulado else float(row[3]),
         "fecha": row[4].strftime("%d/%m/%Y %H:%M") if row[4] else None,
         "descripcion": row[5] or "Sin descripción",
-        "tipo_pago": row[6] if len(row) > 6 else None
+        "tipo_pago": row[6] if len(row) > 6 else None,
+        "estado": estado,
+        "anulado": anulado,
+        "motivo_anulacion": row[8] if len(row) > 8 else None,
+        "fecha_anulacion": row[9].strftime("%d/%m/%Y %H:%M") if len(row) > 9 and row[9] else None,
     }
 
 # 📊 Reporte general del sistema
@@ -29,11 +36,12 @@ def reporte_general_controller():
                 (SELECT COUNT(*) FROM profesor) as total_profesores,
                 (SELECT COUNT(*) FROM cursos) as total_cursos,
                 (SELECT COUNT(*) FROM materias) as total_materias,
-                (SELECT COALESCE(SUM(monto), 0) FROM pagos) as total_ingresos,
+                (SELECT COALESCE(SUM(monto), 0) FROM pagos WHERE COALESCE(estado, 'Pagado') <> 'Anulado') as total_ingresos,
                 (
                     SELECT COALESCE(SUM(monto), 0)
                     FROM pagos
-                    WHERE DATE(COALESCE(fecha, fecha_pago::timestamp)) = CURRENT_DATE
+                    WHERE DATE(COALESCE(fecha, fecha_pago::timestamp)) = (NOW() AT TIME ZONE 'America/Bogota')::date
+                      AND COALESCE(estado, 'Pagado') <> 'Anulado'
                 ) as ingresos_hoy
         """)
 
@@ -56,7 +64,7 @@ def reporte_general_controller():
         cursor.execute("""
             SELECT
                 TO_CHAR(COALESCE(fecha, fecha_pago::timestamp), 'YYYY-MM') as mes,
-                SUM(monto) as total
+                SUM(CASE WHEN COALESCE(estado, 'Pagado') = 'Anulado' THEN 0 ELSE monto END) as total
             FROM pagos
             WHERE COALESCE(fecha, fecha_pago::timestamp) >= CURRENT_DATE - INTERVAL '6 months'
             GROUP BY TO_CHAR(COALESCE(fecha, fecha_pago::timestamp), 'YYYY-MM')
@@ -124,7 +132,10 @@ def reporte_ingresos_mes_controller(mes: str, limit=None, offset=0):
                     p.monto,
                     COALESCE(p.fecha, p.fecha_pago::timestamp) AS fecha,
                     p.descripcion,
-                    p.tipo_pago
+                    p.tipo_pago,
+                    COALESCE(p.estado, 'Pagado') AS estado,
+                    p.motivo_anulacion,
+                    p.fecha_anulacion
                 FROM pagos p
                 LEFT JOIN estudiantes e ON p.estudiante_id = e.id
                 WHERE TO_CHAR(COALESCE(p.fecha, p.fecha_pago::timestamp), 'YYYY-MM') = %s
@@ -148,7 +159,10 @@ def reporte_ingresos_mes_controller(mes: str, limit=None, offset=0):
                 p.monto,
                 COALESCE(p.fecha, p.fecha_pago::timestamp) AS fecha,
                 p.descripcion,
-                p.tipo_pago
+                p.tipo_pago,
+                COALESCE(p.estado, 'Pagado') AS estado,
+                p.motivo_anulacion,
+                p.fecha_anulacion
             FROM pagos p
             LEFT JOIN estudiantes e ON p.estudiante_id = e.id
             WHERE TO_CHAR(COALESCE(p.fecha, p.fecha_pago::timestamp), 'YYYY-MM') = %s
@@ -196,13 +210,17 @@ def reporte_estado_cuenta_curso_controller(curso_id):
                 SELECT concepto_id, COALESCE(SUM(monto), 0)
                 FROM pagos
                 WHERE estudiante_id = %s
+                  AND COALESCE(estado, 'Pagado') <> 'Anulado'
                 GROUP BY concepto_id
             ''', (est_id,))
             pagos_dict = {row[0]: float(row[1]) for row in cursor.fetchall()}
 
             cursor.execute('''
                 SELECT tipo_pago, COALESCE(SUM(monto), 0)
-                FROM pagos WHERE estudiante_id = %s GROUP BY tipo_pago
+                FROM pagos
+                WHERE estudiante_id = %s
+                  AND COALESCE(estado, 'Pagado') <> 'Anulado'
+                GROUP BY tipo_pago
             ''', (est_id,))
             pagos_por_nombre = {str(r[0]).lower(): float(r[1]) for r in cursor.fetchall() if r[0]}
             for tipo in tipos_list:
@@ -241,6 +259,7 @@ def reporte_estado_cuenta_curso_controller(curso_id):
                 SELECT COALESCE(SUM(monto), 0) 
                 FROM pagos 
                 WHERE estudiante_id = %s AND (concepto_id IS NULL OR concepto_id NOT IN (SELECT id FROM tipos_de_pagos))
+                  AND COALESCE(estado, 'Pagado') <> 'Anulado'
             ''', (est_id,))
             row = cursor.fetchone()
             pagos_otros = float(row[0]) if row and row[0] else 0.0
@@ -297,7 +316,10 @@ def reporte_ingresos_rango_controller(fecha_inicio: str, fecha_fin: str, limit=N
                     p.monto,
                     COALESCE(p.fecha, p.fecha_pago::timestamp) AS fecha,
                     p.descripcion,
-                    p.tipo_pago
+                    p.tipo_pago,
+                    COALESCE(p.estado, 'Pagado') AS estado,
+                    p.motivo_anulacion,
+                    p.fecha_anulacion
                 FROM pagos p
                 LEFT JOIN estudiantes e ON p.estudiante_id = e.id
                 WHERE COALESCE(p.fecha, p.fecha_pago::timestamp) >= %s::date
@@ -322,7 +344,10 @@ def reporte_ingresos_rango_controller(fecha_inicio: str, fecha_fin: str, limit=N
                 p.monto,
                 COALESCE(p.fecha, p.fecha_pago::timestamp) AS fecha,
                 p.descripcion,
-                p.tipo_pago
+                p.tipo_pago,
+                COALESCE(p.estado, 'Pagado') AS estado,
+                p.motivo_anulacion,
+                p.fecha_anulacion
             FROM pagos p
             LEFT JOIN estudiantes e ON p.estudiante_id = e.id
             WHERE COALESCE(p.fecha, p.fecha_pago::timestamp) >= %s::date

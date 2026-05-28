@@ -143,13 +143,17 @@ CREATE INDEX idx_tipos_pagos_cursos_curso ON tipos_pagos_cursos(curso_id);
 CREATE TABLE pagos (
     id SERIAL PRIMARY KEY,
     estudiante_id INTEGER REFERENCES estudiantes(id),
+    venta_id INTEGER REFERENCES ventas(id),
     tipo_pago VARCHAR(100),
     monto NUMERIC,
     fecha_pago DATE,
     estado VARCHAR(50),
     mes VARCHAR(50),
     fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    descripcion TEXT
+    descripcion TEXT,
+    motivo_anulacion TEXT,
+    fecha_anulacion TIMESTAMP,
+    anulado_por INTEGER
 );
 
 -- (Si faltan tablas como inventario/egresos, se pueden agregar fácilmente aquí)

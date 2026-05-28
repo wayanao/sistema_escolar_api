@@ -1,9 +1,10 @@
 from typing import Annotated, List, Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from app.controllers.venta_controller import (
+    anular_venta,
     crear_venta,
     eliminar_venta,
     obtener_ventas,
@@ -26,6 +27,9 @@ class VentaCreate(BaseModel):
     total: float
     notas: Optional[str] = ""
     detalles: List[VentaDetalleCreate]
+
+class VentaAnular(BaseModel):
+    motivo: str
 
 @router.get("/")
 def get_ventas(
@@ -56,4 +60,18 @@ def add_venta(venta: VentaCreate, current_admin: dict = Depends(get_current_acti
 
 @router.delete("/{venta_id}")
 def delete_venta(venta_id: int, current_admin: dict = Depends(get_current_active_admin)):
-    return eliminar_venta(venta_id)
+    raise HTTPException(
+        status_code=405,
+        detail="Las ventas no se eliminan físicamente. Usa POST /api/ventas/{venta_id}/anular."
+    )
+
+@router.post("/{venta_id}/anular")
+def anular_venta_route(
+    venta_id: int,
+    data: VentaAnular,
+    current_admin: dict = Depends(get_current_active_admin),
+):
+    try:
+        return anular_venta(venta_id, data.motivo, current_admin["id"])
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))

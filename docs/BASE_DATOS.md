@@ -136,6 +136,9 @@ Archivos en `migrations/`:
 - `20260509_branding_plantillas_impresion.sql`
 - `20260517_tipos_pagos_avanzado.sql`
 - `20260526_cursos_solo_academicos.sql`
+- `20260527_pagos_anulacion.sql`
+- `20260527_pagos_venta_id.sql`
+- `20260527_ventas_anulacion.sql`
 - `README.md`
 
 ## Riesgos pendientes documentados

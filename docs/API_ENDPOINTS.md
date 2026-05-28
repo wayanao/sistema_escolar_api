@@ -42,6 +42,7 @@ Los demas routers usan paths completos en cada decorator.
 
 - `POST /pagos`
 - `GET /pagos/{estudiante_id}`
+- `POST /pagos/{pago_id}/anular`
 
 ## Cursos
 
@@ -177,7 +178,8 @@ Router prefix: `/api/ventas`
 - `GET /api/ventas/`
 - `GET /api/ventas/pendientes/{estudiante_id}`
 - `POST /api/ventas/`
-- `DELETE /api/ventas/{venta_id}`
+- `POST /api/ventas/{venta_id}/anular`
+- `DELETE /api/ventas/{venta_id}` bloqueado: usar anulacion
 
 ## Nomina
 

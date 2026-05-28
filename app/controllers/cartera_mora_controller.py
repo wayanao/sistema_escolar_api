@@ -102,6 +102,7 @@ def reporte_cartera_vencida(curso_id: int | None = None):
             SELECT estudiante_id, LOWER(COALESCE(tipo_pago, '')), COALESCE(SUM(monto), 0)
             FROM pagos
             WHERE estudiante_id IN %s
+              AND COALESCE(estado, 'Pagado') <> 'Anulado'
             GROUP BY estudiante_id, LOWER(COALESCE(tipo_pago, ''))
             """,
             (est_ids,),
@@ -114,7 +115,9 @@ def reporte_cartera_vencida(curso_id: int | None = None):
             """
             SELECT estudiante_id, LOWER(COALESCE(descripcion, '')), COALESCE(SUM(monto), 0)
             FROM pagos
-            WHERE estudiante_id IN %s AND descripcion IS NOT NULL
+            WHERE estudiante_id IN %s
+              AND descripcion IS NOT NULL
+              AND COALESCE(estado, 'Pagado') <> 'Anulado'
             GROUP BY estudiante_id, LOWER(COALESCE(descripcion, ''))
             """,
             (est_ids,),

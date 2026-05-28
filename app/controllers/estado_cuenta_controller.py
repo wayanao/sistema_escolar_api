@@ -9,6 +9,7 @@ def _resumen_pagos_estudiante(cursor, estudiante_id):
                STRING_AGG(DISTINCT descripcion, ', ')
         FROM pagos
         WHERE estudiante_id = %s
+          AND COALESCE(estado, 'Pagado') <> 'Anulado'
         """,
         (estudiante_id,),
     )

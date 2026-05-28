@@ -15,6 +15,9 @@ Archivos actuales:
 - `20260509_branding_plantillas_impresion.sql`
 - `20260517_tipos_pagos_avanzado.sql`
 - `20260526_cursos_solo_academicos.sql`
+- `20260527_pagos_anulacion.sql`
+- `20260527_pagos_venta_id.sql`
+- `20260527_ventas_anulacion.sql`
 - `README.md`
 
 ## Runner actual
@@ -142,6 +145,61 @@ Objetivo:
   - `mensualidad`;
   - `meses`.
 - Mantener `tipos_de_pagos` y `tipos_pagos_cursos` como fuente de cobros por curso.
+
+Estado:
+
+- Aplicada en tenants activos.
+- Registrada en `public.schema_migrations`.
+
+## Migracion 20260527_pagos_anulacion.sql
+
+Objetivo:
+
+- Permitir anular pagos sin eliminarlos fisicamente.
+- Mantener huella financiera de pagos anulados.
+- Hacer que cartera, estado de cuenta y reportes sumen solo pagos validos.
+
+Columnas agregadas a `pagos`:
+
+- `estado`
+- `motivo_anulacion`
+- `fecha_anulacion`
+- `anulado_por`
+
+Estado:
+
+- Aplicada en tenants activos.
+- Registrada en `public.schema_migrations`.
+
+## Migracion 20260527_pagos_venta_id.sql
+
+Objetivo:
+
+- Vincular pagos con ventas de inventario.
+- Permitir que al anular un pago de inventario se reverse el abono de la venta.
+
+Columnas agregadas a `pagos`:
+
+- `venta_id`
+
+Estado:
+
+- Aplicada en tenants activos.
+- Registrada en `public.schema_migrations`.
+
+## Migracion 20260527_ventas_anulacion.sql
+
+Objetivo:
+
+- Permitir anular ventas de inventario sin eliminarlas.
+- Mantener huella de anulacion.
+- Devolver stock y anular pagos asociados desde backend.
+
+Columnas agregadas a `ventas`:
+
+- `motivo_anulacion`
+- `fecha_anulacion`
+- `anulado_por`
 
 Estado:
 

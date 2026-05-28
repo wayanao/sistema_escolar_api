@@ -25,6 +25,13 @@ class Settings(BaseSettings):
     ALLOW_DEV_CORS_ORIGINS: bool = True
     SESSION_COOKIE_SECURE: bool = False
     SESSION_COOKIE_SAMESITE: str = "lax"
+    STORAGE_PROVIDER: str = "local"
+    R2_ACCOUNT_ID: str = ""
+    R2_ACCESS_KEY_ID: str = ""
+    R2_SECRET_ACCESS_KEY: str = ""
+    R2_BUCKET: str = ""
+    R2_ENDPOINT_URL: str = ""
+    R2_REGION: str = "auto"
 
     model_config = SettingsConfigDict(
         # Prueba primero sistema_escolar_api/.env, luego la raíz del proyecto.
@@ -38,3 +45,5 @@ class Settings(BaseSettings):
     )
 
 settings = Settings()
+
+

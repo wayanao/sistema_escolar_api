@@ -1,47 +1,16 @@
 import json
-import os
 import uuid
 from pathlib import Path
-from typing import Optional
 
 from fastapi import HTTPException, UploadFile, status
 
 from app.database import get_connection
 from app.globals import tenant_schema_var
+from app.services.storage import delete_file, save_bytes, storage_url_for_key
 
 ALLOWED_IMAGE_TYPES = {"image/png", "image/jpeg", "image/jpg", "image/webp"}
 ALLOWED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 MAX_LOGO_BYTES = 2 * 1024 * 1024  # 2MB
-
-# Carpeta base de uploads, servida por endpoint autenticado en main.py.
-UPLOADS_ROOT = Path("uploads") / "branding"
-UPLOADS_BASE = Path("uploads").resolve()
-
-
-def _branding_dir_for_tenant() -> Path:
-    schema = tenant_schema_var.get()
-    folder = UPLOADS_ROOT / schema
-    folder.mkdir(parents=True, exist_ok=True)
-    return folder
-
-
-def _public_url(file_path: Path) -> str:
-    # Convierte ruta local a URL servida por el endpoint autenticado "/uploads/...".
-    rel = file_path.as_posix().split("uploads/", 1)[-1]
-    return f"/uploads/{rel}"
-
-
-def _delete_local_file_from_url(url: Optional[str]) -> None:
-    if not url:
-        return
-    try:
-        rel = url.split("/uploads/", 1)[-1]
-        local = (Path("uploads") / rel).resolve()
-        local.relative_to(UPLOADS_BASE)
-        if local.exists() and local.is_file():
-            local.unlink()
-    except (Exception, ValueError):
-        pass  # No bloquear flujo si el archivo ya no existe
 
 
 def obtener_branding_controller():
@@ -57,7 +26,6 @@ def obtener_branding_controller():
     """)
     row = cursor.fetchone()
 
-    # Si por algun motivo no existe la fila, la creamos vacia.
     if not row:
         cursor.execute("""
             INSERT INTO institucion_branding (nombre_institucion)
@@ -151,17 +119,16 @@ async def subir_logo_controller(archivo: UploadFile, slot: str):
             detail=f"Archivo demasiado grande (max {MAX_LOGO_BYTES // 1024}KB)"
         )
 
-    folder = _branding_dir_for_tenant()
+    schema = tenant_schema_var.get()
     nombre_archivo = f"logo_{slot}_{uuid.uuid4().hex}{ext}"
-    destino = folder / nombre_archivo
-    destino.write_bytes(contenido)
+    key = f"branding/{schema}/{nombre_archivo}"
+    save_bytes(key, contenido, archivo.content_type)
 
-    nueva_url = _public_url(destino)
+    nueva_url = storage_url_for_key(key)
     columna = "logo_principal_url" if slot == "principal" else "logo_secundario_url"
 
     conn = get_connection()
     cursor = conn.cursor()
-    # Recuperar URL anterior para borrarla del disco.
     cursor.execute(f"""
         SELECT {columna} FROM institucion_branding
         ORDER BY id ASC LIMIT 1
@@ -180,7 +147,7 @@ async def subir_logo_controller(archivo: UploadFile, slot: str):
     conn.close()
 
     if url_anterior and url_anterior != nueva_url:
-        _delete_local_file_from_url(url_anterior)
+        delete_file(url_anterior)
 
     return {"url": nueva_url, "slot": slot}
 
@@ -212,5 +179,5 @@ def eliminar_logo_controller(slot: str):
     cursor.close()
     conn.close()
 
-    _delete_local_file_from_url(url_anterior)
+    delete_file(url_anterior)
     return {"mensaje": "Logo eliminado", "slot": slot}

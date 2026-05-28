@@ -180,3 +180,21 @@ La bitacora oficial registra cambios ya realizados sobre:
 
 
 
+
+## Uploads con storage local o Cloudflare R2
+
+El endpoint protegido `GET /uploads/{file_path:path}` se mantiene como puerta unica de acceso a archivos.
+
+Estado actual:
+
+- En desarrollo puede usar disco local con `STORAGE_PROVIDER=local`.
+- En produccion puede usar Cloudflare R2 con `STORAGE_PROVIDER=r2`.
+- El backend valida tenant y permisos antes de servir el archivo.
+- Branding permite archivos bajo `branding/{tenant}/...` solo al mismo tenant.
+- Plan diario permite archivos bajo `{tenant}/plan_de_clases/...` al admin del tenant o al profesor propietario del plan.
+
+Riesgo cubierto:
+
+- Evita exponer directamente el bucket al frontend.
+- Evita acceso cruzado por cambiar la URL del archivo.
+- Evita depender del disco local del servidor para produccion.

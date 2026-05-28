@@ -1990,3 +1990,46 @@ Motivo:
 
 - Evitar regresiones en anulaciones de pagos academicos, pagos de inventario,
   ventas, reportes y devolucion de stock antes de produccion.
+
+## 2026-05-28 - Soporte Cloudflare R2 para uploads
+
+Se agrego una capa de almacenamiento para que logos e imagenes del plan diario puedan guardarse en Cloudflare R2 sin romper las URLs actuales.
+
+Archivos modificados/agregados:
+
+- `app/services/storage.py`
+- `app/config.py`
+- `app/main.py`
+- `app/controllers/branding_controller.py`
+- `app/controllers/plan_de_clases_controller.py`
+- `.env.example`
+- `requirements.txt`
+- `docs/PRODUCCION_BACKEND.md`
+- `docs/SEGURIDAD.md`
+
+Cambio:
+
+- `STORAGE_PROVIDER=local` mantiene `uploads/` local.
+- `STORAGE_PROVIDER=r2` usa Cloudflare R2 compatible con S3.
+- `/uploads/...` sigue siendo el endpoint de lectura protegido.
+- Se agrego dependencia `boto3`.
+
+Comandos ejecutados:
+
+```powershell
+.\venv\Scripts\python.exe -B -m py_compile app\config.py app\services\storage.py app\controllers\plan_de_clases_controller.py app\controllers\branding_controller.py app\main.py
+.\venv\Scripts\python.exe -B -m pytest -q tests\test_uploads_permissions.py -p no:cacheprovider --basetemp=.pytest_tmp
+```
+
+Resultado:
+
+- Sintaxis OK.
+- Pruebas de permisos de uploads: 6 pasaron.
+
+Pendiente para activar R2 real:
+
+- Crear bucket en Cloudflare R2.
+- Crear Access Key/Secret con permiso sobre el bucket.
+- Configurar variables R2 en produccion.
+- Reiniciar backend.
+- Probar subida/visualizacion/eliminacion de logo y plan diario.

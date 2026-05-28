@@ -4,7 +4,7 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -16,6 +16,12 @@ from app.database import close_pool
 from app.db.tenant import TENANT_SCHEMA_PATTERN
 from app.dependencies import get_current_user
 from app.globals import tenant_schema_var
+from app.services.storage import (
+    normalize_storage_key,
+    read_file_bytes,
+    remote_file_exists,
+    using_remote_storage,
+)
 
 from app.routes import (
     asignaciones,
@@ -75,22 +81,26 @@ def _is_relative_to(path: Path, parent: Path) -> bool:
         return False
 
 
-def _validar_acceso_archivo_upload(file_path: str, current_user: dict) -> Path:
+def _validar_acceso_archivo_upload(file_path: str, current_user: dict):
     tenant = current_user["tenant"]
-    normalized = file_path.replace("\\", "/").lstrip("/")
+    normalized = normalize_storage_key(file_path)
     candidate = (UPLOADS_ROOT / normalized).resolve()
 
-    if not _is_relative_to(candidate, UPLOADS_ROOT) or not candidate.is_file():
+    if using_remote_storage():
+        if not remote_file_exists(normalized):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Archivo no encontrado")
+    elif not _is_relative_to(candidate, UPLOADS_ROOT) or not candidate.is_file():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Archivo no encontrado")
 
     parts = Path(normalized).parts
+    allowed_file = normalized if using_remote_storage() else candidate
 
     if len(parts) >= 3 and parts[0] == "branding" and parts[1] == tenant:
-        return candidate
+        return allowed_file
 
     if len(parts) >= 3 and parts[0] == tenant and parts[1] == "plan_de_clases":
         if current_user.get("rol") == "admin":
-            return candidate
+            return allowed_file
 
         from app.database import get_connection
 
@@ -109,7 +119,7 @@ def _validar_acceso_archivo_upload(file_path: str, current_user: dict) -> Path:
                 (stored_path, stored_path, current_user.get("id")),
             )
             if cursor.fetchone():
-                return candidate
+                return allowed_file
         finally:
             cursor.close()
             conn.close()
@@ -120,8 +130,10 @@ def _validar_acceso_archivo_upload(file_path: str, current_user: dict) -> Path:
 @app.get("/uploads/{file_path:path}")
 def servir_upload(file_path: str, current_user: dict = Depends(get_current_user)):
     archivo = _validar_acceso_archivo_upload(file_path, current_user)
+    if using_remote_storage():
+        stream, content_type = read_file_bytes(str(archivo))
+        return StreamingResponse(stream, media_type=content_type or "application/octet-stream")
     return FileResponse(archivo)
-
 # Inicializar limiter en la app
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
@@ -196,3 +208,5 @@ app.include_router(boletines.router)
 app.include_router(branding.router)
 app.include_router(plantillas.router)
 app.include_router(cartera.router)
+
+

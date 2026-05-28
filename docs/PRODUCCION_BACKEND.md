@@ -135,3 +135,46 @@ Scripts operativos:
 - CORS conserva origins localhost si `ALLOW_DEV_CORS_ORIGINS=true`.
 - No se observo configuracion Alembic activa.
 - La preparacion de produccion depende de ejecutar migraciones, indices y verificacion de tenants.
+
+## Cloudflare R2 para uploads
+
+El backend soporta almacenamiento local y Cloudflare R2/S3 compatible para archivos subidos.
+
+Archivos relacionados:
+
+- `app/services/storage.py`
+- `app/controllers/plan_de_clases_controller.py`
+- `app/controllers/branding_controller.py`
+- `app/main.py`
+
+Variables de entorno:
+
+```env
+STORAGE_PROVIDER=r2
+R2_ACCOUNT_ID=<account-id-cloudflare>
+R2_ACCESS_KEY_ID=<access-key-r2>
+R2_SECRET_ACCESS_KEY=<secret-key-r2>
+R2_BUCKET=<bucket-r2>
+R2_ENDPOINT_URL=
+R2_REGION=auto
+```
+
+Notas:
+
+- `STORAGE_PROVIDER=local` mantiene el comportamiento anterior con carpeta `uploads/`.
+- `STORAGE_PROVIDER=r2` guarda logos e imagenes de plan diario en Cloudflare R2.
+- Las URLs publicas de la app no cambian: siguen entrando por `/uploads/...`.
+- El backend sigue validando autenticacion, tenant y ownership antes de entregar archivos.
+- La base de datos guarda rutas tipo `uploads/<tenant>/plan_de_clases/<archivo>` o `/uploads/branding/<tenant>/<archivo>`.
+- R2 guarda el objeto con key sin el prefijo inicial `/uploads/`, por ejemplo `tenant_3333/plan_de_clases/archivo.png`.
+
+Prueba recomendada en produccion:
+
+1. Configurar las variables R2.
+2. Reiniciar backend.
+3. Subir logo desde Admin.
+4. Confirmar que aparece en R2 dentro de `branding/<tenant>/`.
+5. Subir imagen en plan diario.
+6. Confirmar que aparece en R2 dentro de `<tenant>/plan_de_clases/`.
+7. Entrar con otro tenant y confirmar que no puede abrir esa URL.
+8. Eliminar una imagen/logo y confirmar que se borra del registro y del bucket.

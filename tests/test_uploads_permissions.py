@@ -44,6 +44,7 @@ def crear_archivo_upload(tmp_path, relative_path):
 def test_upload_branding_allows_same_tenant(tmp_path, monkeypatch):
     archivo = crear_archivo_upload(tmp_path, "branding/tenant_demo/logo.png")
     monkeypatch.setattr(main, "UPLOADS_ROOT", tmp_path.resolve())
+    monkeypatch.setattr(main, "using_remote_storage", lambda: False)
 
     result = main._validar_acceso_archivo_upload(
         "branding/tenant_demo/logo.png",
@@ -56,6 +57,7 @@ def test_upload_branding_allows_same_tenant(tmp_path, monkeypatch):
 def test_upload_branding_blocks_other_tenant(tmp_path, monkeypatch):
     crear_archivo_upload(tmp_path, "branding/tenant_otro/logo.png")
     monkeypatch.setattr(main, "UPLOADS_ROOT", tmp_path.resolve())
+    monkeypatch.setattr(main, "using_remote_storage", lambda: False)
 
     with pytest.raises(HTTPException) as exc:
         main._validar_acceso_archivo_upload(
@@ -70,6 +72,7 @@ def test_upload_blocks_path_traversal(tmp_path, monkeypatch):
     outside_file = tmp_path.parent / "fuera.png"
     outside_file.write_bytes(b"imagen")
     monkeypatch.setattr(main, "UPLOADS_ROOT", tmp_path.resolve())
+    monkeypatch.setattr(main, "using_remote_storage", lambda: False)
 
     with pytest.raises(HTTPException) as exc:
         main._validar_acceso_archivo_upload("../fuera.png", {"id": 1, "rol": "admin", "tenant": "tenant_demo"})
@@ -80,6 +83,7 @@ def test_upload_blocks_path_traversal(tmp_path, monkeypatch):
 def test_upload_plan_de_clases_allows_admin_same_tenant(tmp_path, monkeypatch):
     archivo = crear_archivo_upload(tmp_path, "tenant_demo/plan_de_clases/plan.png")
     monkeypatch.setattr(main, "UPLOADS_ROOT", tmp_path.resolve())
+    monkeypatch.setattr(main, "using_remote_storage", lambda: False)
 
     result = main._validar_acceso_archivo_upload(
         "tenant_demo/plan_de_clases/plan.png",
@@ -95,6 +99,7 @@ def test_upload_plan_de_clases_allows_owner_profesor(tmp_path, monkeypatch):
 
     monkeypatch.setattr(main, "UPLOADS_ROOT", tmp_path.resolve())
     monkeypatch.setattr("app.database.get_connection", lambda: connection)
+    monkeypatch.setattr(main, "using_remote_storage", lambda: False)
 
     result = main._validar_acceso_archivo_upload(
         "tenant_demo/plan_de_clases/plan.png",
@@ -117,6 +122,7 @@ def test_upload_plan_de_clases_blocks_non_owner_profesor(tmp_path, monkeypatch):
 
     monkeypatch.setattr(main, "UPLOADS_ROOT", tmp_path.resolve())
     monkeypatch.setattr("app.database.get_connection", lambda: connection)
+    monkeypatch.setattr(main, "using_remote_storage", lambda: False)
 
     with pytest.raises(HTTPException) as exc:
         main._validar_acceso_archivo_upload(

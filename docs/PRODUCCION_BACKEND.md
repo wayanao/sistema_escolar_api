@@ -167,6 +167,10 @@ Notas:
 - El backend sigue validando autenticacion, tenant y ownership antes de entregar archivos.
 - La base de datos guarda rutas tipo `uploads/<tenant>/plan_de_clases/<archivo>` o `/uploads/branding/<tenant>/<archivo>`.
 - R2 guarda el objeto con key sin el prefijo inicial `/uploads/`, por ejemplo `tenant_3333/plan_de_clases/archivo.png`.
+- Las pruebas unitarias de permisos de uploads no deben depender del bucket real
+  ni del `.env` productivo. En `tests/test_uploads_permissions.py` se simula
+  storage local con `monkeypatch` para validar permisos usando archivos
+  temporales.
 
 Prueba recomendada en produccion:
 

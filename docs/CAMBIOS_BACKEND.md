@@ -2126,3 +2126,39 @@ Correccion del dashboard profesor:
 - El backend valida que el curso pertenezca al profesor.
 - Si se envia asignacion, valida que la asignacion pertenezca al profesor y al curso seleccionado.
 
+## 2026-05-28 - Tests de uploads aislados de R2
+
+Se ajustaron las pruebas de permisos de uploads para que no dependan del `.env`
+real ni del bucket Cloudflare R2 configurado en desarrollo/produccion.
+
+Archivo modificado:
+
+- `tests/test_uploads_permissions.py`
+
+Cambio:
+
+- Cada prueba que crea archivos temporales locales fuerza
+  `using_remote_storage()` a `False` mediante `monkeypatch`.
+- Esto permite probar permisos de branding, plan de clases, tenant y path
+  traversal usando archivos temporales locales.
+- La aplicacion real puede seguir usando `STORAGE_PROVIDER=r2` sin que estas
+  pruebas intenten consultar el bucket.
+
+Motivo:
+
+- Con `STORAGE_PROVIDER=r2`, el backend busca archivos en R2.
+- Estas pruebas no suben objetos al bucket; crean archivos temporales locales.
+- Sin aislar el storage, las pruebas fallaban con `404` aunque la logica de
+  permisos pudiera estar correcta.
+
+Verificacion ejecutada:
+
+```powershell
+.\venv\Scripts\python.exe -B -m pytest -q tests\test_uploads_permissions.py -p no:cacheprovider --basetemp=.pytest_tmp
+```
+
+Resultado:
+
+- 6 pruebas pasaron correctamente.
+- Se elimino la carpeta temporal `.pytest_tmp` despues de la verificacion.
+

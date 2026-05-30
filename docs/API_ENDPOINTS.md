@@ -75,7 +75,6 @@ Los demas routers usan paths completos en cada decorator.
 - `GET /boletin/{estudiante_id}`
 - `GET /planilla/{asignacion_id}`
 - `GET /boletin/detallado/{estudiante_id}`
-- `POST /boletin/guardar`
 
 ## Planilla
 

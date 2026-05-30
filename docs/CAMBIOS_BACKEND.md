@@ -221,7 +221,9 @@ Cambio:
 - `DELETE /planilla/tipo` valida ownership.
 - `POST /notas` valida ownership de `nota.asignacion_id`.
 - `GET /planilla/{asignacion_id}` valida ownership.
-- `POST /boletin/guardar` valida ownership de cada `materia.asignacion_id`.
+- `POST /boletin/guardar` validaba ownership de cada `materia.asignacion_id`;
+  esta ruta legacy fue retirada el 2026-05-30 y el flujo actual usa
+  `/boletines/guardar`.
 
 Impacto:
 - Profesor no puede registrar, borrar o consultar planillas/notas de asignaciones ajenas.
@@ -2161,4 +2163,36 @@ Resultado:
 
 - 6 pruebas pasaron correctamente.
 - Se elimino la carpeta temporal `.pytest_tmp` despues de la verificacion.
+
+## 2026-05-30 - Retiro de endpoint legacy de boletin
+
+Se retiro la ruta legacy `POST /boletin/guardar` del router de notas.
+
+Archivos modificados:
+
+- `app/routes/notas.py`
+- `app/controllers/notas_controller.py`
+- `app/schemas/nota.py`
+- `docs/API_ENDPOINTS.md`
+- `docs/CAMBIOS_BACKEND.md`
+
+Motivo:
+
+- El frontend actual y el build generado usan `POST /boletines/guardar`.
+- La ruta nueva valida `require_asignacion_access` y
+  `require_estudiante_in_asignacion`.
+- La ruta legacy no aparecia usada por el frontend actual y quedaba como
+  superficie innecesaria antes de produccion.
+
+Verificacion ejecutada:
+
+```powershell
+.\venv\Scripts\python.exe -B -m pytest -q tests\test_auth_tenant.py tests\test_permissions.py tests\test_notas_permissions.py tests\test_uploads_permissions.py tests\test_anulaciones_financieras.py -p no:cacheprovider --basetemp=.pytest_tmp
+```
+
+Resultado:
+
+- 34 pruebas pasaron correctamente.
+- Solo quedaron warnings conocidos de `slowapi` y configuracion legacy de
+  Pydantic.
 

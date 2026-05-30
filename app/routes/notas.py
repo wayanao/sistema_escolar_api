@@ -1,15 +1,14 @@
 from fastapi import APIRouter, Depends
 from app.dependencies import get_current_user
 from app.core.permissions import require_asignacion_access, require_estudiante_access
-from app.schemas.nota import NotaCreate, BoletinGuardar
+from app.schemas.nota import NotaCreate
 
 from app.controllers.notas_controller import (
     crear_nota_controller,
     notas_estudiante_controller,
     boletin_estudiante_controller,
     planilla_asignacion_controller,
-    boletin_detallado_controller,
-    guardar_boletin_controller
+    boletin_detallado_controller
 )
 
 router = APIRouter(tags=["Notas"], dependencies=[Depends(get_current_user)])
@@ -56,9 +55,3 @@ def boletin_detallado(
 ):
     require_estudiante_access(estudiante_id, current_user)
     return boletin_detallado_controller(estudiante_id, periodo)
-
-@router.post("/boletin/guardar")
-def guardar_boletin(data: BoletinGuardar, current_user: dict = Depends(get_current_user)):
-    for materia in data.materias:
-        require_asignacion_access(materia.asignacion_id, current_user)
-    return guardar_boletin_controller(data)

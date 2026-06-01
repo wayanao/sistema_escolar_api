@@ -1,4 +1,4 @@
-"""Aplica un archivo SQL de migracion en todos los schemas tenant activos.
+"""Aplica un archivo SQL de migracion en todos los schemas tenant operativos.
 
 Uso:
     python apply_migration.py migrations/20260509_branding_plantillas_impresion.sql
@@ -41,7 +41,7 @@ def fetch_active_tenants(cursor):
     cursor.execute("""
         SELECT esquema_db, nombre
         FROM public.colegios
-        WHERE estado = 'activo'
+        WHERE LOWER(estado) IN ('activo', 'en_mora')
         ORDER BY id
     """)
     return cursor.fetchall()
@@ -93,7 +93,7 @@ def apply_migration(sql_path: Path, dry_run: bool = False) -> int:
     cur.close()
 
     if not tenants:
-        print("! No hay tenants activos. Nada que aplicar.")
+        print("! No hay tenants operativos. Nada que aplicar.")
         conn.close()
         return 0
 
@@ -146,12 +146,12 @@ def apply_migration(sql_path: Path, dry_run: bool = False) -> int:
     if dry_run:
         print("\n>> Simulacion completada. No se aplicaron cambios.")
     else:
-        print("\n>> Migracion aplicada en todos los tenants activos.")
+        print("\n>> Migracion aplicada en todos los tenants operativos.")
     return 0
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Aplica una migracion SQL a todos los tenants activos.")
+    parser = argparse.ArgumentParser(description="Aplica una migracion SQL a todos los tenants operativos.")
     parser.add_argument("sql_path", help="Ruta al archivo SQL de migracion")
     parser.add_argument("--dry-run", action="store_true", help="Muestra que tenants recibirian la migracion sin aplicarla")
     args = parser.parse_args()

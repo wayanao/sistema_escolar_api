@@ -28,7 +28,7 @@ def fetch_tenants(cursor):
     cursor.execute("""
         SELECT esquema_db
         FROM public.colegios
-        WHERE estado = 'activo'
+        WHERE LOWER(estado) IN ('activo', 'en_mora')
         ORDER BY esquema_db
     """)
     return [row[0] for row in cursor.fetchall()]
@@ -100,7 +100,7 @@ def apply_indexes(dry_run=False):
             print("\n>> Simulacion completada. No se crearon indices.")
         else:
             conn.commit()
-            print("\n>> Indices verificados en todos los tenants activos.")
+            print("\n>> Indices verificados en todos los tenants operativos.")
     except Exception:
         conn.rollback()
         raise
@@ -109,7 +109,7 @@ def apply_indexes(dry_run=False):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Crea/verifica indices recomendados en todos los tenants activos.")
+    parser = argparse.ArgumentParser(description="Crea/verifica indices recomendados en todos los tenants operativos.")
     parser.add_argument("--dry-run", action="store_true", help="Muestra que indices se revisarian sin crearlos")
     args = parser.parse_args()
     apply_indexes(dry_run=args.dry_run)

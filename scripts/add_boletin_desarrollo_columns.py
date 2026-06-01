@@ -12,7 +12,7 @@ def fetch_tenants(cursor):
     cursor.execute("""
         SELECT esquema_db
         FROM public.colegios
-        WHERE estado = 'activo'
+        WHERE LOWER(estado) IN ('activo', 'en_mora')
         ORDER BY esquema_db
     """)
     return [row[0] for row in cursor.fetchall()]

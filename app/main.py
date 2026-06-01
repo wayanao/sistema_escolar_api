@@ -48,6 +48,8 @@ from app.routes import (
     prestamos,
     profesores,
     reportes,
+    super_admin,
+    tenant,
     tipos_pagos,
     usuario,
     ventas,
@@ -198,6 +200,8 @@ app.include_router(dashboard.router)
 app.include_router(planeador_anual.router)
 app.include_router(usuario.router)
 app.include_router(reportes.router)
+app.include_router(super_admin.router)
+app.include_router(tenant.router)
 app.include_router(tipos_pagos.router)
 app.include_router(inventario.router)
 app.include_router(egresos.router)

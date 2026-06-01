@@ -2196,3 +2196,184 @@ Resultado:
 - Solo quedaron warnings conocidos de `slowapi` y configuracion legacy de
   Pydantic.
 
+## 2026-05-30 - Estados SaaS iniciales por tenant
+
+Se agrego soporte backend para controlar el estado operativo inicial de cada
+tenant desde `public.colegios.estado`.
+
+Estados reconocidos:
+
+- `activo`
+- `en_mora`
+- `suspendido`
+- `cancelado`
+
+Archivos modificados/agregados:
+
+- `app/core/tenant_status.py`
+- `app/controllers/auth_controller.py`
+- `app/dependencies.py`
+- `app/routes/auth.py`
+- `app/routes/tenant.py`
+- `app/main.py`
+- `apply_migration.py`
+- `scripts/check_tenant_schemas.py`
+- `scripts/apply_tenant_indexes.py`
+- scripts historicos de migracion puntual en `scripts/`
+- `tests/test_auth_tenant.py`
+- `tests/test_apply_migration.py`
+- `docs/API_ENDPOINTS.md`
+- `docs/MULTITENANT.md`
+- `docs/PRODUCCION_BACKEND.md`
+- `docs/SEGURIDAD.md`
+
+Cambio:
+
+- `POST /login` permite tenants `activo` y `en_mora`.
+- `POST /login` rechaza tenants `suspendido` y `cancelado`.
+- `get_current_user` revalida el estado del tenant en cada peticion
+  autenticada.
+- Estados vacios o desconocidos se normalizan como `suspendido` para bloquear
+  por defecto.
+- Se agrego `GET /tenant/status` para que el frontend pueda mostrar avisos
+  cuando el tenant este `en_mora`.
+- La respuesta de login incluye `tenant_estado` como dato informativo.
+- Los scripts operativos de migraciones, comparacion de schemas e indices ahora
+  incluyen tenants `activo` y `en_mora`.
+
+Verificacion ejecutada:
+
+```powershell
+.\venv\Scripts\python.exe -B -m py_compile app\core\tenant_status.py app\controllers\auth_controller.py app\dependencies.py app\routes\auth.py app\routes\tenant.py app\main.py
+.\venv\Scripts\python.exe -B -m pytest -q tests\test_auth_tenant.py tests\test_apply_migration.py tests\test_permissions.py tests\test_notas_permissions.py tests\test_uploads_permissions.py tests\test_anulaciones_financieras.py -p no:cacheprovider --basetemp=.pytest_tmp
+```
+
+Resultado:
+
+- Sintaxis OK.
+- 44 pruebas pasaron correctamente.
+- Solo quedaron warnings conocidos de `slowapi` y configuracion legacy de
+  Pydantic.
+
+## 2026-05-30 - Rol super admin inicial
+
+Se agrego el primer control de plataforma para administrar tenants desde la app.
+
+Archivos modificados/agregados:
+
+- `app/core/super_admin.py`
+- `app/controllers/super_admin_controller.py`
+- `app/routes/super_admin.py`
+- `app/controllers/auth_controller.py`
+- `app/main.py`
+- `migrations/public/20260530_super_admins.sql`
+- `scripts/create_super_admin.py`
+- `tests/test_super_admin.py`
+- `docs/API_ENDPOINTS.md`
+- `docs/ROLES_PERMISOS_BACKEND.md`
+- `docs/BASE_DATOS.md`
+- `docs/MIGRACIONES.md`
+- `docs/PRODUCCION_BACKEND.md`
+
+Cambio:
+
+- `super_admin` inicia sesion por el mismo `POST /login` usando codigo
+  `super_admin`.
+- `super_admin` usa `tenant = public` en el JWT, pero solo lo acepta
+  `get_current_super_admin`.
+- `get_current_user` sigue rechazando `public` para usuarios de colegios.
+- Se agregaron endpoints `GET /super-admin/tenants` y
+  `PATCH /super-admin/tenants/{tenant_id}/estado`.
+- Se agrego script para crear/actualizar el primer super admin con password
+  hasheada.
+
+Verificacion ejecutada:
+
+```powershell
+.\venv\Scripts\python.exe -B -m py_compile app\core\super_admin.py app\controllers\super_admin_controller.py app\routes\super_admin.py app\controllers\auth_controller.py app\main.py scripts\create_super_admin.py
+.\venv\Scripts\python.exe -B -m pytest -q tests\test_super_admin.py tests\test_auth_tenant.py tests\test_apply_migration.py tests\test_permissions.py tests\test_notas_permissions.py tests\test_uploads_permissions.py tests\test_anulaciones_financieras.py -p no:cacheprovider --basetemp=.pytest_tmp
+```
+
+Resultado:
+
+- Sintaxis OK.
+- 50 pruebas pasaron correctamente.
+- Solo quedaron warnings conocidos de `slowapi` y configuracion legacy de
+  Pydantic.
+
+## 2026-06-01 - Mensaje claro para tenants suspendidos/cancelados
+
+Se separo el error de login por credenciales del error por estado SaaS del
+colegio.
+
+Archivos modificados:
+
+- `app/core/tenant_status.py`
+- `app/controllers/auth_controller.py`
+- `app/routes/auth.py`
+- `tests/test_auth_tenant.py`
+- `docs/SEGURIDAD.md`
+
+Cambio:
+
+- Si el colegio no existe o las credenciales no validan, `POST /login` sigue
+  respondiendo `401`.
+- Si el colegio existe pero esta `suspendido` o `cancelado`, `POST /login`
+  responde `403` con `detail.code = tenant_blocked`, `estado` y mensaje
+  especifico.
+- Esto evita mostrar "credenciales incorrectas" cuando en realidad el servicio
+  esta bloqueado por estado del tenant.
+
+Verificacion ejecutada:
+
+```powershell
+.\venv\Scripts\python.exe -B -m py_compile app\core\tenant_status.py app\controllers\auth_controller.py app\routes\auth.py
+.\venv\Scripts\python.exe -B -m pytest -q tests\test_super_admin.py tests\test_auth_tenant.py tests\test_apply_migration.py tests\test_permissions.py tests\test_notas_permissions.py tests\test_uploads_permissions.py tests\test_anulaciones_financieras.py -p no:cacheprovider --basetemp=.pytest_tmp
+```
+
+Resultado:
+
+- Sintaxis OK.
+- 52 pruebas pasaron correctamente.
+- Solo quedaron warnings conocidos de `slowapi` y configuracion legacy de
+  Pydantic.
+
+## 2026-06-01 - Auditoria de cambios de estado de tenant
+
+Se agrego trazabilidad para cambios de estado SaaS realizados por super admin.
+
+Archivos modificados/agregados:
+
+- `app/controllers/super_admin_controller.py`
+- `app/routes/super_admin.py`
+- `migrations/public/20260601_tenant_estado_auditoria.sql`
+- `tests/test_super_admin.py`
+- `docs/API_ENDPOINTS.md`
+- `docs/BASE_DATOS.md`
+- `docs/MIGRACIONES.md`
+- `docs/PRODUCCION_BACKEND.md`
+- `docs/CHECKLIST_PRODUCCION_BACKEND.md`
+- `docs/PLAN_EJECUCION_BACKEND.md`
+
+Cambio:
+
+- Al cambiar estado de tenant se registra auditoria en
+  `public.tenant_estado_auditoria`.
+- La auditoria guarda estado anterior, estado nuevo, motivo, super admin y
+  fecha.
+- Se agrego `GET /super-admin/tenants/{tenant_id}/estado-auditoria` para
+  consultar los ultimos 50 cambios.
+- Si el estado solicitado es igual al actual, no se crea registro de auditoria.
+
+Verificacion ejecutada:
+
+```powershell
+.\venv\Scripts\python.exe -B -m py_compile app\controllers\super_admin_controller.py app\routes\super_admin.py
+.\venv\Scripts\python.exe -B -m pytest -q tests\test_super_admin.py -p no:cacheprovider --basetemp=.pytest_tmp
+```
+
+Resultado:
+
+- Sintaxis OK.
+- 8 pruebas de super admin pasaron correctamente.
+

@@ -1,25 +1,30 @@
 from app.database import get_connection
 from app.security import verify_password, get_password_hash
 from app.globals import tenant_schema_var
+from app.core.tenant_status import (
+    TenantLoginBlocked,
+    get_tenant_by_code,
+    get_tenant_login_block_message,
+    is_tenant_allowed_for_login,
+)
+from app.core.super_admin import authenticate_super_admin, is_super_admin_login_code
 
 def login_controller(email, password, codigo_colegio):
-    # Forzamos conextarse a public un momento para validar el colegio
-    tenant_schema_var.set("public")
-    conn = get_connection()
-    cursor = conn.cursor()
-    
-    # 1. Buscar si el colegio (subdominio) existe
-    cursor.execute("SELECT esquema_db, estado FROM colegios WHERE subdominio = %s", (codigo_colegio,))
-    colegio = cursor.fetchone()
-    
-    if not colegio or colegio[1] != 'activo':
-        cursor.close()
-        conn.close()
-        return None # Colegio no existe o está inactivo
-        
-    esquema_db = colegio[0]
-    cursor.close()
-    conn.close()
+    if is_super_admin_login_code(codigo_colegio):
+        return authenticate_super_admin(email, password, verify_password)
+
+    colegio = get_tenant_by_code(codigo_colegio)
+
+    if not colegio:
+        return None
+
+    if not is_tenant_allowed_for_login(colegio["estado"]):
+        raise TenantLoginBlocked(
+            colegio["estado"],
+            get_tenant_login_block_message(colegio["estado"]),
+        )
+
+    esquema_db = colegio["esquema_db"]
 
     # 2. Cambiar la BD al esquema específico del colegio
     tenant_schema_var.set(esquema_db)
@@ -60,7 +65,8 @@ def login_controller(email, password, codigo_colegio):
                 "id": user[0],
                 "nombre": user[1],
                 "rol": user[3],
-                "tenant": esquema_db
+                "tenant": esquema_db,
+                "tenant_estado": colegio["estado"],
             }
 
     # Si no está en usuarios o pass inválido, buscar en profesor
@@ -100,7 +106,8 @@ def login_controller(email, password, codigo_colegio):
                 "id": profesor[0],
                 "nombre": f"{profesor[1]} {profesor[2]}",
                 "rol": "profesor",
-                "tenant": esquema_db
+                "tenant": esquema_db,
+                "tenant_estado": colegio["estado"],
             }
 
     return None

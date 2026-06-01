@@ -51,11 +51,11 @@ def test_record_migration_stores_name_schema_and_checksum():
     assert cursor.calls[0][1] == ("001.sql", "tenant_demo", "abc123")
 
 
-def test_fetch_active_tenants_only_active_ordered():
+def test_fetch_active_tenants_only_operational_ordered():
     cursor = FakeCursor()
     cursor.fetchall_result = [("tenant_demo", "Colegio Demo")]
 
     result = apply_migration.fetch_active_tenants(cursor)
 
     assert result == [("tenant_demo", "Colegio Demo")]
-    assert "WHERE estado = 'activo'" in cursor.calls[0][0]
+    assert "WHERE LOWER(estado) IN ('activo', 'en_mora')" in cursor.calls[0][0]

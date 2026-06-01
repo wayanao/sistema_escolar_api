@@ -4,6 +4,7 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 from app.config import settings
 from app.controllers.auth_controller import login_controller
+from app.core.tenant_status import TenantLoginBlocked
 from app.security import create_access_token
 
 router = APIRouter()
@@ -18,7 +19,17 @@ class Login(BaseModel):
 @limiter.limit("5/minute")
 def login(request: Request, response: Response, data: Login):
     # Pasamos el código de colegio al controlador de login
-    user = login_controller(data.email, data.password, data.codigo_colegio)
+    try:
+        user = login_controller(data.email, data.password, data.codigo_colegio)
+    except TenantLoginBlocked as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "tenant_blocked",
+                "estado": exc.estado,
+                "message": exc.message,
+            },
+        ) from exc
 
     if not user:
         raise HTTPException(
@@ -51,6 +62,7 @@ def login(request: Request, response: Response, data: Login):
         "nombre": user["nombre"],
         "rol": user["rol"],
         "tenant": user["tenant"],
+        "tenant_estado": user.get("tenant_estado"),
         "access_token": access_token,
         "token_type": "bearer"
     }

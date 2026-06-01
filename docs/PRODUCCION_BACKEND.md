@@ -68,8 +68,32 @@ Produccion requiere configurar:
 
 - `DATABASE_URL`
 - pool minimo/maximo
-- tenants activos en `public.colegios`
+- estados de tenants en `public.colegios.estado`
 - migraciones/indices aplicados a schemas activos
+
+Estados SaaS iniciales:
+
+- `activo`: login y uso normal.
+- `en_mora`: login y uso permitidos; se expone aviso por `GET /tenant/status`.
+- `suspendido`: login y peticiones autenticadas bloqueadas.
+- `cancelado`: login y peticiones autenticadas bloqueadas.
+
+Los scripts operativos de migraciones, verificacion de schemas e indices deben
+considerar como tenants operativos a `activo` y `en_mora`.
+
+## Super admin de plataforma
+
+El rol `super_admin` vive en `public.super_admins` y entra por el mismo
+`POST /login` usando codigo de colegio `super_admin`.
+
+Preparacion inicial:
+
+```powershell
+.\venv\Scripts\python.exe scripts\create_super_admin.py --nombre "David" --email "tu-correo@dominio.com" --password "password-seguro"
+```
+
+El script crea/verifica `public.super_admins`, guarda la password hasheada y
+deja el usuario en estado `activo`.
 
 ## CORS
 
@@ -182,3 +206,37 @@ Prueba recomendada en produccion:
 6. Confirmar que aparece en R2 dentro de `<tenant>/plan_de_clases/`.
 7. Entrar con otro tenant y confirmar que no puede abrir esa URL.
 8. Eliminar una imagen/logo y confirmar que se borra del registro y del bucket.
+
+## Pendientes antes de seguir
+
+Super admin:
+
+- Resetear la password real del super admin antes de usarlo en serio.
+- Reiniciar el backend para cargar los cambios nuevos.
+- Probar login manual usando codigo `super_admin`.
+- Validar manualmente `/super-admin` con un tenant de prueba.
+
+SaaS/cobro:
+
+- Mantener esta regla operativa:
+  - `activo`: pago al dia;
+  - `en_mora`: pago vencido, acceso permitido con aviso;
+  - `suspendido`: bloqueo temporal por no pago;
+  - `cancelado`: cliente retirado/contrato terminado.
+- Pendiente agregar auditoria y motivo al cambio de estado.
+- Pendiente agregar canales de pago configurables para el aviso de mora.
+
+Auditoria de estado:
+
+- Los cambios de estado de tenant quedan registrados en
+  `public.tenant_estado_auditoria`.
+- Se guarda tenant, estado anterior, estado nuevo, motivo, super admin y fecha.
+- El endpoint `GET /super-admin/tenants/{tenant_id}/estado-auditoria` expone
+  los ultimos 50 cambios para consulta desde el panel.
+
+Passwords:
+
+- Pendiente implementar recuperacion/cambio de password para:
+  - admin de colegio;
+  - profesor;
+  - super admin.

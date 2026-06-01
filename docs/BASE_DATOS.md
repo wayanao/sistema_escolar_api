@@ -50,6 +50,11 @@ Tabla global usada por login y scripts:
 
 - `public.colegios`
 
+Tabla global usada por administracion de plataforma:
+
+- `public.super_admins`
+- `public.tenant_estado_auditoria`
+
 Tabla global de historial de migraciones:
 
 - `public.schema_migrations`
@@ -121,7 +126,7 @@ Indices configurados actualmente:
 
 El script:
 
-- lee tenants activos de `public.colegios`;
+- lee tenants operativos (`activo` y `en_mora`) de `public.colegios`;
 - valida existencia de tabla;
 - valida existencia de columnas;
 - crea indices con nombre prefijado por schema;
@@ -140,6 +145,11 @@ Archivos en `migrations/`:
 - `20260527_pagos_venta_id.sql`
 - `20260527_ventas_anulacion.sql`
 - `README.md`
+
+Migraciones globales en `public`:
+
+- `migrations/public/20260530_super_admins.sql`
+- `migrations/public/20260601_tenant_estado_auditoria.sql`
 
 ## Riesgos pendientes documentados
 

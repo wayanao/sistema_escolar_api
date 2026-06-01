@@ -22,10 +22,21 @@ El login recibe `codigo_colegio` y consulta:
 - columna usada para buscar: `subdominio`
 - columnas leidas: `esquema_db`, `estado`
 
-Si el colegio existe y esta activo, el login cambia el contexto al schema del colegio y busca el usuario en:
+Estados SaaS reconocidos en `public.colegios.estado`:
+
+- `activo`: acceso normal.
+- `en_mora`: acceso permitido; el frontend puede mostrar aviso de pago.
+- `suspendido`: acceso bloqueado.
+- `cancelado`: acceso bloqueado.
+
+Si el colegio existe y esta `activo` o `en_mora`, el login cambia el contexto al schema del colegio y busca el usuario en:
 
 - `usuarios`
 - `profesor`
+
+Las sesiones existentes tambien revalidan el estado del tenant en
+`get_current_user`; si el tenant pasa a `suspendido` o `cancelado`, las
+peticiones autenticadas quedan bloqueadas.
 
 El JWT emitido incluye:
 
@@ -112,7 +123,7 @@ El login hace:
 
 1. `tenant_schema_var.set("public")`.
 2. Consulta `colegios`.
-3. Si el colegio esta activo, cambia a `tenant_schema_var.set(esquema_db)`.
+3. Si el colegio esta `activo` o `en_mora`, cambia a `tenant_schema_var.set(esquema_db)`.
 4. Busca usuario en el schema del tenant.
 
 ## Creacion actual de tenants

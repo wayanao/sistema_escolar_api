@@ -22,12 +22,20 @@ El login requiere:
 El controlador:
 
 - consulta `public.colegios` por `subdominio`;
-- exige colegio con `estado = 'activo'`;
+- exige colegio con estado operativo permitido: `activo` o `en_mora`;
+- responde `403` con mensaje especifico si el colegio esta `suspendido` o
+  `cancelado`;
 - cambia al schema del colegio;
 - busca primero en `usuarios`;
 - si no valida, busca en `profesor`;
 - acepta passwords bcrypt;
 - si detecta password legacy en texto plano y valida, rehashea y actualiza.
+
+Respuestas esperadas:
+
+- `401`: credenciales incorrectas o codigo de colegio inexistente.
+- `403`: colegio existente pero bloqueado por estado SaaS (`suspendido` o
+  `cancelado`).
 
 ## JWT
 

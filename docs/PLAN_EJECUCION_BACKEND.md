@@ -126,7 +126,7 @@ En backend esta fase corresponde a separar rutas, controladores, servicios y rep
   - Revisar reportes financieros con datos grandes.
   - Revisar endpoints que devuelven listas sin paginacion o limites.
   - Ejecutar `EXPLAIN ANALYZE` en consultas criticas.
-  - Confirmar que migraciones e indices esten aplicados en todos los tenants activos.
+  - Confirmar que migraciones e indices esten aplicados en todos los tenants operativos.
 - Archivos probables:
   - `scripts/apply_tenant_indexes.py`
   - `scripts/check_tenant_schemas.py`
@@ -249,4 +249,42 @@ Siguiente bloque recomendado:
 
 - Definir valores reales de produccion y probar login/logout con dominio real.
 - Revisar `SECRET_KEY` del entorno real.
-- Continuar con migraciones, indices y verificacion de tenants activos.
+- Continuar con migraciones, indices y verificacion de tenants operativos.
+
+## Pendiente 2026-05-30 - Despues de super admin inicial
+
+Estado actual:
+
+- El rol `super_admin` ya existe en backend.
+- El login por codigo `super_admin` ya esta implementado.
+- Los endpoints de plataforma para listar tenants y cambiar estado ya existen.
+- Las pruebas automatizadas quedaron pasando.
+
+Pendiente operativo:
+
+- Reiniciar backend despues de desplegar estos cambios.
+- Crear o resetear la cuenta real de `super_admin` con una password nueva,
+  porque durante la prueba se escribio una clave en terminal/chat.
+- Probar login manual con:
+  - codigo colegio: `super_admin`;
+  - correo del super admin;
+  - password nueva.
+- Entrar a `/super-admin` desde frontend y confirmar que lista tenants.
+- Cambiar un tenant de `activo` a `en_mora` y confirmar que admin/profesor ven
+  el aviso.
+- Cambiar un tenant de `en_mora` a `suspendido` y confirmar que login/sesion
+  quedan bloqueados.
+- Devolver el tenant de prueba a `activo`.
+
+Pendiente tecnico recomendado:
+
+- Agregar campo/mensaje configurable de pago para mostrar canal de pago,
+  referencia y fecha limite cuando el tenant este `en_mora`.
+- Agregar recuperacion/cambio de password para admin de colegio y super admin.
+- Definir si `cancelado` requiere bloqueo permanente o solo ocultarlo de
+  listados operativos.
+
+Completado despues:
+
+- Auditoria de cambios de estado de tenant con motivo y super admin responsable.
+- Consulta de historial por tenant desde endpoints de super admin.

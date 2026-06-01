@@ -2,6 +2,7 @@ from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from app.config import settings
+from app.core.tenant_status import ensure_tenant_allowed_for_app
 from app.database import get_connection
 from app.db.tenant import TENANT_SCHEMA_PATTERN
 from app.globals import tenant_schema_var
@@ -104,6 +105,8 @@ async def get_current_user(request: Request, token: str = Depends(oauth2_scheme)
             raise credentials_exception
             
         user_id_int = int(user_id)
+
+        ensure_tenant_allowed_for_app(tenant)
 
         # Configuramos el contexto de esta petición para que la BD apunte al colegio correcto
         tenant_schema_var.set(tenant)

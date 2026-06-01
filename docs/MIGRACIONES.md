@@ -20,6 +20,11 @@ Archivos actuales:
 - `20260527_ventas_anulacion.sql`
 - `README.md`
 
+Migraciones globales `public`:
+
+- `public/20260530_super_admins.sql`
+- `public/20260601_tenant_estado_auditoria.sql`
+
 ## Runner actual
 
 Archivo:
@@ -40,7 +45,7 @@ Comportamiento actual:
 - carga `.env`;
 - usa `DATABASE_URL`;
 - crea/verifica `public.schema_migrations`;
-- busca tenants activos en `public.colegios`;
+- busca tenants operativos (`activo` y `en_mora`) en `public.colegios`;
 - por tenant, valida si la migracion ya fue aplicada;
 - si el mismo nombre existe con checksum diferente, bloquea ese tenant;
 - en `--dry-run` imprime `PENDIENTE` sin aplicar;
@@ -65,6 +70,11 @@ Columnas creadas por el runner:
 Restriccion:
 
 - `UNIQUE (migration_name, target_schema)`
+
+Nota:
+
+- Las migraciones dentro de `migrations/public/` son globales y no se ejecutan
+  con `apply_migration.py`, que esta pensado para schemas tenant.
 
 ## Scripts de migracion/operacion existentes
 
@@ -92,7 +102,7 @@ Soporta:
 
 - `--dry-run`
 
-Lee tenants activos de:
+Lee tenants operativos (`activo` y `en_mora`) de:
 
 - `public.colegios`
 
@@ -132,7 +142,7 @@ Puntos relevantes documentados alli:
 - checksum SHA-256 por migracion;
 - modo `--dry-run`;
 - script `scripts/apply_tenant_indexes.py` con validacion de tablas/columnas;
-- indices aplicados/verificados en tenants activos;
+- indices aplicados/verificados en tenants operativos;
 - paginacion compatible agregada en endpoints principales.
 
 ## Migracion 20260526_cursos_solo_academicos.sql
@@ -148,7 +158,7 @@ Objetivo:
 
 Estado:
 
-- Aplicada en tenants activos.
+- Aplicada en los tenants operativos existentes durante la auditoria.
 - Registrada en `public.schema_migrations`.
 
 ## Migracion 20260527_pagos_anulacion.sql
@@ -168,7 +178,7 @@ Columnas agregadas a `pagos`:
 
 Estado:
 
-- Aplicada en tenants activos.
+- Aplicada en los tenants operativos existentes durante la auditoria.
 - Registrada en `public.schema_migrations`.
 
 ## Migracion 20260527_pagos_venta_id.sql
@@ -184,7 +194,7 @@ Columnas agregadas a `pagos`:
 
 Estado:
 
-- Aplicada en tenants activos.
+- Aplicada en los tenants operativos existentes durante la auditoria.
 - Registrada en `public.schema_migrations`.
 
 ## Migracion 20260527_ventas_anulacion.sql
@@ -203,7 +213,7 @@ Columnas agregadas a `ventas`:
 
 Estado:
 
-- Aplicada en tenants activos.
+- Aplicada en los tenants operativos existentes durante la auditoria.
 - Registrada en `public.schema_migrations`.
 
 

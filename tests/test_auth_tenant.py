@@ -2,6 +2,8 @@ import pytest
 from fastapi import HTTPException
 
 from app import dependencies
+from app.controllers import auth_controller
+from app.core import tenant_status
 from app.globals import tenant_schema_var
 from app.security import create_access_token
 
@@ -45,6 +47,7 @@ async def test_get_current_user_sets_tenant_and_revalidates_user(monkeypatch):
         calls.append((user_id, rol, tenant_schema_var.get()))
 
     monkeypatch.setattr(dependencies, "_validar_usuario_en_bd", fake_validar_usuario_en_bd)
+    monkeypatch.setattr(dependencies, "ensure_tenant_allowed_for_app", lambda tenant: {"estado": "activo"})
 
     token = create_access_token({"sub": "9", "rol": "profesor", "tenant": "tenant_demo"})
     user = await dependencies.get_current_user(FakeRequest(), token=token)
@@ -59,6 +62,7 @@ async def test_get_current_user_rejects_user_removed_or_role_changed(monkeypatch
         raise ValueError("Usuario no valido")
 
     monkeypatch.setattr(dependencies, "_validar_usuario_en_bd", fake_validar_usuario_en_bd)
+    monkeypatch.setattr(dependencies, "ensure_tenant_allowed_for_app", lambda tenant: {"estado": "activo"})
 
     token = create_access_token({"sub": "9", "rol": "profesor", "tenant": "tenant_demo"})
 
@@ -66,3 +70,69 @@ async def test_get_current_user_rejects_user_removed_or_role_changed(monkeypatch
         await dependencies.get_current_user(FakeRequest(), token=token)
 
     assert exc.value.status_code == 401
+
+
+@pytest.mark.anyio
+async def test_get_current_user_rejects_suspended_tenant(monkeypatch):
+    def fake_tenant_status(tenant):
+        raise HTTPException(status_code=403, detail="Tenant no autorizado")
+
+    def fail_validar_usuario_en_bd(user_id, rol):
+        raise AssertionError("No debe validar usuario si el tenant esta suspendido")
+
+    monkeypatch.setattr(dependencies, "ensure_tenant_allowed_for_app", fake_tenant_status)
+    monkeypatch.setattr(dependencies, "_validar_usuario_en_bd", fail_validar_usuario_en_bd)
+
+    token = create_access_token({"sub": "9", "rol": "profesor", "tenant": "tenant_demo"})
+
+    with pytest.raises(HTTPException) as exc:
+        await dependencies.get_current_user(FakeRequest(), token=token)
+
+    assert exc.value.status_code == 403
+
+
+def test_tenant_status_normalizes_allowed_states():
+    assert tenant_status.normalize_tenant_status("Activo") == "activo"
+    assert tenant_status.normalize_tenant_status(" en_mora ") == "en_mora"
+    assert tenant_status.normalize_tenant_status("suspendido") == "suspendido"
+    assert tenant_status.normalize_tenant_status("cancelado") == "cancelado"
+
+
+def test_tenant_status_unknown_state_is_suspended():
+    assert tenant_status.normalize_tenant_status("demo") == "suspendido"
+    assert tenant_status.normalize_tenant_status(None) == "suspendido"
+    assert tenant_status.normalize_tenant_status("") == "suspendido"
+
+
+def test_tenant_login_allows_active_and_past_due_only():
+    assert tenant_status.is_tenant_allowed_for_login("activo") is True
+    assert tenant_status.is_tenant_allowed_for_login("en_mora") is True
+    assert tenant_status.is_tenant_allowed_for_login("suspendido") is False
+    assert tenant_status.is_tenant_allowed_for_login("cancelado") is False
+
+
+def test_tenant_login_block_message_is_specific():
+    assert "suspendido" in tenant_status.get_tenant_login_block_message("suspendido")
+    assert "cancelado" in tenant_status.get_tenant_login_block_message("cancelado")
+
+
+def test_login_controller_raises_specific_block_for_suspended_tenant(monkeypatch):
+    monkeypatch.setattr(
+        auth_controller,
+        "get_tenant_by_code",
+        lambda codigo: {"estado": "suspendido", "esquema_db": "tenant_demo"},
+    )
+
+    with pytest.raises(tenant_status.TenantLoginBlocked) as exc:
+        auth_controller.login_controller("admin@test.com", "secret", "demo")
+
+    assert exc.value.estado == "suspendido"
+    assert "suspendido" in exc.value.message
+
+
+def test_tenant_status_response_for_past_due():
+    response = tenant_status.build_tenant_status_response({"estado": "en_mora"})
+
+    assert response["estado"] == "en_mora"
+    assert response["mostrar_aviso"] is True
+    assert "mora" in response["mensaje"]

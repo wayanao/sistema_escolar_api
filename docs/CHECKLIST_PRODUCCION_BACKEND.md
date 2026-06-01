@@ -104,7 +104,7 @@ Como probarlo:
 - Abrir imagen de plan de profesor A con profesor B.
 - Confirmar `401`, `403` o `404` segun caso.
 
-### 1.5 Verificar migraciones aplicadas en todos los tenants activos
+### 1.5 Verificar migraciones aplicadas en todos los tenants operativos
 
 Archivo afectado:
 
@@ -494,7 +494,7 @@ Checklist operativo revisado contra la base:
 
 ```text
 Base de datos
-[x] migraciones aplicadas en todos los tenants activos
+[x] migraciones aplicadas en todos los tenants operativos
 [x] indices aplicados
 [x] revisar public.schema_migrations
 [ ] backup antes de salir
@@ -502,7 +502,7 @@ Base de datos
 
 Detalle:
 
-- Tenants activos revisados:
+- Tenants operativos revisados:
   - `tenant_colegio_1`
   - `tenant_3333`
 - Las migraciones de `migrations/` quedaron registradas en `public.schema_migrations` para ambos tenants.
@@ -512,3 +512,37 @@ Pendiente antes de produccion:
 
 - Realizar backup de la base de datos.
 - Conservar evidencia/archivo del backup y probar restauracion en entorno de prueba cuando sea posible.
+
+## Pendientes 2026-05-30 - SaaS y super admin
+
+Checklist antes de continuar:
+
+```text
+Super admin
+[x] endpoints backend creados
+[x] pruebas automatizadas pasando
+[ ] reiniciar backend con el codigo nuevo
+[ ] resetear password real del super admin
+[ ] probar login manual con codigo super_admin
+[ ] probar listado de tenants en /super-admin
+[ ] probar cambio activo -> en_mora -> suspendido -> activo con tenant de prueba
+```
+
+Checklist SaaS pendiente:
+
+```text
+Estados de tenant
+[x] activo permite uso normal
+[x] en_mora permite uso y muestra aviso
+[x] suspendido bloquea login/sesiones
+[x] cancelado bloquea login/sesiones
+[x] guardar auditoria de cambios de estado
+[x] agregar motivo/nota al cambio de estado
+[ ] agregar datos de canales de pago para aviso en mora
+```
+
+Nota operativa:
+
+- `en_mora` significa pago vencido con acceso permitido.
+- `suspendido` significa bloqueo temporal por no pago despues del tiempo de gracia.
+- `cancelado` significa cliente retirado o contrato terminado.

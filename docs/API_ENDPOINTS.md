@@ -21,6 +21,16 @@ Los demas routers usan paths completos en cada decorator.
 - `POST /login`
 - `POST /logout`
 
+## Tenant
+
+- `GET /tenant/status`
+
+## Super Admin
+
+- `GET /super-admin/tenants`
+- `PATCH /super-admin/tenants/{tenant_id}/estado`
+- `GET /super-admin/tenants/{tenant_id}/estado-auditoria`
+
 ## Uploads
 
 - `GET /uploads/{file_path:path}`

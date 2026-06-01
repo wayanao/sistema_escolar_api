@@ -8,6 +8,7 @@ Roles usados en el backend:
 
 - `admin`
 - `profesor`
+- `super_admin`
 
 El rol se incluye en el JWT como claim `rol`.
 
@@ -37,6 +38,14 @@ Funciones:
 - depende de `get_current_user`;
 - exige `rol == "admin"`;
 - si no cumple responde `403`.
+
+`super_admin` usa una dependencia separada:
+
+- archivo: `app/core/super_admin.py`;
+- funcion: `get_current_super_admin`;
+- exige JWT con `rol = "super_admin"` y `tenant = "public"`;
+- revalida el usuario contra `public.super_admins`;
+- no pasa por `get_current_user`, para no permitir `public` como tenant de usuarios normales.
 
 ## Revalidacion contra base de datos
 
@@ -115,6 +124,13 @@ Segun los routers actuales, usan `get_current_active_admin`:
 - cartera
 - nomina
 - varias rutas admin de plan de clases, plantillas, branding, ventas, prestamos y egresos
+
+## Routers protegidos por super admin
+
+Usan `get_current_super_admin`:
+
+- `GET /super-admin/tenants`
+- `PATCH /super-admin/tenants/{tenant_id}/estado`
 
 ## Routers con usuario autenticado y permisos de ownership
 

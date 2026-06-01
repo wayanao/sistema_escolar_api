@@ -161,7 +161,7 @@ Antes de aplicarlos en produccion, deben pasar por migracion y probarse en una c
 
 ## Proxima fase recomendada
 
-1. Revisar que los tenants activos tengan la misma estructura.
+1. Revisar que los tenants operativos (`activo` y `en_mora`) tengan la misma estructura.
 2. Agregar indices principales por tenant.
 3. Crear migraciones Alembic reales.
 4. Refactorizar primero `estudiante_controller.py`, `pagos_controller.py` y `boletin_controller.py`.

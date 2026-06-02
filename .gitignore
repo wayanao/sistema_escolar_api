@@ -10,9 +10,6 @@ env/
 *.db
 *.sqlite3
 
-# Archivos subidos por los usuarios (no se suben a Git)
-uploads/
-
 # Archivos de VSCode y OS
 .vscode/
 .idea/

@@ -2487,3 +2487,58 @@ Resultado:
 - `listar_tenants_controller()` devolvio los colegios locales con `estado` y
   `estado_manual`.
 
+## 2026-06-02 - Asignaciones activas y asignador unico
+
+Se reestructuro el flujo de asignacion de clases para proteger historial
+academico y dejar un solo asignador administrativo.
+
+Archivos modificados/agregados:
+
+- `app/controllers/asignacion_controller.py`
+- `app/routes/asignaciones.py`
+- `migrations/20260602_asignaciones_activo.sql`
+- `tests/test_asignaciones_activo.py`
+- `docs/API_ENDPOINTS.md`
+- `docs/BASE_DATOS.md`
+- `docs/PRODUCCION_BACKEND.md`
+
+Cambio:
+
+- `asignaciones` ahora usa `activo = TRUE/FALSE`.
+- `DELETE /asignaciones/{asignacion_id}` desactiva la asignacion y conserva
+  planes de clase, asistencia, notas, boletines y observaciones.
+- Los listados actuales, horarios, clases del profesor y validaciones de cruce
+  solo consideran asignaciones activas.
+- Se agrego `GET /profesores/{profesor_id}/disponibilidad?dia=<dia>` para
+  calcular rangos libres del profesor.
+- El backend valida que las horas queden dentro de `06:30-12:30` o
+  `13:00-18:00`.
+- Si una asignacion ya tiene historial academico, no se permite cambiar
+  profesor, curso o materia; se debe desactivar y crear una nueva.
+
+Frontend relacionado:
+
+- `src/components/AsignarClase.jsx` queda como unico asignador tipo formulario.
+- `src/components/AsignarClaseGrid.jsx` se retiro porque ya no forma parte del
+  flujo oficial.
+- El admin selecciona primero curso, luego profesor/materia/dia/horas, ve
+  disponibilidad del profesor y abajo el horario activo del curso.
+
+Verificacion ejecutada:
+
+```powershell
+.\venv\Scripts\python.exe -B -m py_compile app\controllers\asignacion_controller.py app\routes\asignaciones.py
+.\venv\Scripts\python.exe -B -m pytest -q tests\test_asignaciones_activo.py tests\test_asignaciones_pagination.py --basetemp=.pytest_tmp
+python apply_migration.py migrations\20260602_asignaciones_activo.sql --dry-run
+python apply_migration.py migrations\20260602_asignaciones_activo.sql
+```
+
+Resultado:
+
+- Sintaxis backend OK.
+- 5 pruebas enfocadas de asignaciones pasaron correctamente.
+- Build frontend `pnpm run build` OK.
+- Dry-run de migracion OK en `tenant_colegio_1`, `tenant_3333` y
+  `tenant_4444`.
+- Migracion aplicada en los tres tenants locales.
+

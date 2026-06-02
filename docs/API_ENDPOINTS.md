@@ -71,12 +71,13 @@ Los demas routers usan paths completos en cada decorator.
 
 - `GET /asignaciones/lista`
 - `PUT /asignaciones/{asignacion_id}`
-- `DELETE /asignaciones/{asignacion_id}`
+- `DELETE /asignaciones/{asignacion_id}` desactiva la asignacion; no borra historial academico.
 - `GET /hora/horarios-admin`
 - `POST /asignaciones`
+- `GET /profesores/{profesor_id}/disponibilidad?dia=Lunes`
 - `GET /profesores/{profesor_id}/cursos`
 - `GET /cursos/{curso_id}/profesores`
-- `DELETE /asignaciones/{profesor_id}/{curso_id}`
+- `DELETE /asignaciones/{profesor_id}/{curso_id}` legacy; desactiva la asignacion activa mas reciente.
 - `GET /mis-clases/{profesor_id}`
 
 ## Notas y boletin legacy
@@ -280,3 +281,4 @@ Se observo soporte de `limit`/`offset` en endpoints como:
 - `/cursos`
 - `/materias`
 - `/usuarios`
+ffff

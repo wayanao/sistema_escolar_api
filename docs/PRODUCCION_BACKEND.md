@@ -278,5 +278,18 @@ Migraciones antes de deploy:
   - `migrations/public/20260601_tenant_eventos_auditoria.sql`
 - Ejecutar migraciones tenant/template antes de crear colegios:
   - `migrations/20260601_usuarios_password_obligatorio.sql`
+  - `migrations/20260602_asignaciones_activo.sql`
 - Las consultas normales ya no crean `public.tenant_suscripciones`; si falta la
   migracion, el deploy debe corregirse antes de usar el sistema.
+
+Asignaciones de clases:
+
+- El asignador administrativo usa una sola vista tipo formulario.
+- El admin selecciona primero el curso y luego profesor, materia, dia, hora de
+  inicio y hora de fin.
+- La disponibilidad del profesor es una guia calculada desde asignaciones
+  activas en los rangos `06:30-12:30` y `13:00-18:00`.
+- El backend valida conflictos de profesor, conflictos de curso, horas
+  invalidas y jornada del curso antes de guardar.
+- Desactivar una asignacion no borra planes de clase, notas, asistencia,
+  boletines ni observaciones historicas.

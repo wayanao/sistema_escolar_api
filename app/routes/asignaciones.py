@@ -16,7 +16,8 @@ from app.controllers.asignacion_controller import (
     obtener_horarios_admin_controller,
     obtener_todas_asignaciones_paginado_controller,
     obtener_todas_asignaciones_controller,
-    editar_asignacion_controller
+    editar_asignacion_controller,
+    obtener_disponibilidad_profesor_controller,
 )
 
 router = APIRouter(tags=["Asignaciones"])
@@ -71,6 +72,20 @@ def eliminar_asignacion_por_id(
 @router.get("/hora/horarios-admin")
 def horarios_admin(_admin: dict = Depends(get_current_active_admin)):
     return obtener_horarios_admin_controller()
+
+
+@router.get("/profesores/{profesor_id}/disponibilidad")
+def disponibilidad_profesor(
+    profesor_id: int,
+    dia: str,
+    excluir_asignacion_id: Optional[int] = None,
+    _admin: dict = Depends(get_current_active_admin),
+):
+    return obtener_disponibilidad_profesor_controller(
+        profesor_id=profesor_id,
+        dia=dia,
+        excluir_asignacion_id=excluir_asignacion_id,
+    )
 
 # 🚀 Asignar profesor a curso
 @router.post("/asignaciones")
@@ -142,6 +157,7 @@ def obtener_clases_profesor(
         JOIN cursos c ON a.curso_id = c.id
 
         WHERE a.profesor_id = %s
+          AND a.activo = TRUE
     """, (profesor_id,))
 
     clases = cursor.fetchall()

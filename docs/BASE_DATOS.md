@@ -89,6 +89,15 @@ El codigo consulta o modifica tablas como:
 - `institucion_branding`
 - `plantilla_impresion`
 
+Nota sobre `asignaciones`:
+
+- `asignaciones.activo` indica si la asignacion sigue vigente en horarios y
+  listados actuales.
+- El sistema no debe borrar fisicamente asignaciones con historial academico.
+  Al "eliminar" desde administracion se marca `activo = FALSE`.
+- Planes de clase, asistencia, notas, boletines y observaciones conservan su
+  referencia historica a la asignacion original.
+
 ## Cursos y cobros
 
 Estado actual:

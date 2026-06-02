@@ -9,8 +9,9 @@ from dotenv import load_dotenv
 
 from app.security import get_password_hash
 
-# Cargar variables de entorno del proyecto.
-load_dotenv(Path(__file__).resolve().parent / ".env")
+# Cargar variables de entorno del proyecto desde la raiz del backend.
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+load_dotenv(PROJECT_ROOT / ".env")
 DATABASE_URL = os.getenv("DATABASE_URL")
 TEMPLATE_SCHEMA = os.getenv("DEFAULT_TENANT_SCHEMA", "tenant_colegio_1")
 TENANT_CODE_PATTERN = re.compile(r"^[a-z0-9_]{3,50}$")

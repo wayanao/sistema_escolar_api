@@ -115,21 +115,25 @@ Lee tenants operativos (`activo` y `en_mora`) de:
 
 ## Provisionamiento de tenant
 
-Archivo:
+Flujo oficial:
 
-- `crear_cliente.py`
+- `/super-admin` -> `Crear colegio`
+- `POST /super-admin/tenants`
 
 Estado actual:
 
-- crea tenants desde terminal;
+- crea tenants desde el panel super admin;
 - copia tablas desde `DEFAULT_TENANT_SCHEMA`;
-- inserta admin inicial con password hasheada.
+- inserta admin inicial con password hasheada y cambio obligatorio;
+- registra suscripcion y auditoria de creacion.
 
 ## Riesgos pendientes documentados
 
 - Hay varios scripts historicos ademas del runner principal.
 - El flujo actual depende de ejecutar correctamente scripts por tenant.
 - Alembic aun no aparece como fuente formal de verdad.
+- `scripts/legacy/crear_cliente.py` y `scripts/legacy/setup_saas.py` son
+  referencia antigua, no flujo de deploy actual.
 
 ## Historial operativo relacionado
 

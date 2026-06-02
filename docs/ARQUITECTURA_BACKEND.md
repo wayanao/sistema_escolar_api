@@ -21,8 +21,8 @@ Estado documentado: 2026-05-25.
 - `tests/`: pruebas automatizadas.
 - `uploads/`: archivos subidos, servidos por endpoint autenticado.
 - `apply_migration.py`: runner de migraciones por tenant.
-- `crear_cliente.py`: script actual para crear un tenant/colegio y admin inicial.
-- `setup_saas.py`: script existente de setup SaaS.
+- `scripts/legacy/crear_cliente.py`: script antiguo para crear un tenant/colegio por terminal.
+- `scripts/legacy/setup_saas.py`: script antiguo de migracion inicial SaaS.
 - `.env` y `.env.example`: variables de entorno.
 - `requirements.txt`: dependencias Python.
 

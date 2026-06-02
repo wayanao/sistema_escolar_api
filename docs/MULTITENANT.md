@@ -136,24 +136,28 @@ El login hace:
 
 ## Creacion actual de tenants
 
-Archivo:
+Flujo oficial:
 
-- `crear_cliente.py`
+- panel `/super-admin`;
+- boton `Crear colegio`;
+- endpoint `POST /super-admin/tenants`.
 
-Flujo actual:
+Flujo backend:
 
-- pide datos por terminal;
 - valida codigo con `^[a-z0-9_]{3,50}$`;
 - crea schema `tenant_<codigo>`;
 - registra colegio en `public.colegios`;
 - copia tablas desde `DEFAULT_TENANT_SCHEMA`;
 - inserta branding inicial vacio;
 - copia plantillas predefinidas;
-- crea usuario admin con password hasheada.
+- crea usuario admin con password hasheada y cambio obligatorio;
+- registra suscripcion y auditoria de creacion.
 
 ## Riesgos pendientes documentados
 
 - El tenant se apoya en `search_path`; cualquier conexion usada sin contexto de tenant falla o puede requerir contexto interno.
 - Existen scripts historicos que tambien manipulan schemas y `search_path`.
 - La consistencia entre tenants depende de migraciones/scripts aplicados correctamente.
-- `crear_cliente.py` contiene un bloque SQL base antiguo comentado/definido en `ESQUEMA_BASE_SQL`, aunque el flujo actual copia tablas desde el template.
+- `scripts/legacy/crear_cliente.py` contiene un bloque SQL base antiguo en
+  `ESQUEMA_BASE_SQL`; se conserva solo como referencia historica y no es flujo
+  oficial.

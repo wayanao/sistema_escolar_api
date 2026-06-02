@@ -143,7 +143,8 @@ Scripts operativos:
 - `apply_migration.py`
 - `scripts/apply_tenant_indexes.py`
 - `scripts/check_tenant_schemas.py`
-- `crear_cliente.py`
+- `/super-admin` para crear colegios
+- `scripts/legacy/crear_cliente.py` y `scripts/legacy/setup_saas.py` solo como referencia historica
 
 ## Estado 2026-05-26
 

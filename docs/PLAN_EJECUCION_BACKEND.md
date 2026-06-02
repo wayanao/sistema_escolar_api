@@ -179,14 +179,15 @@ En backend esta fase significa preparacion real de despliegue: variables, CORS, 
   - Confirmar `SECRET_KEY` fuerte y privado.
   - Confirmar `FRONTEND_URL` real y CORS sin origins innecesarios en produccion.
   - Confirmar `SESSION_COOKIE_SECURE=True` en HTTPS.
-  - Probar `crear_cliente.py` para tenant nuevo.
+  - Probar creacion de tenant nuevo desde `/super-admin`.
   - Probar migraciones con `--dry-run` y aplicacion controlada.
   - Validar rate limit detras de proxy/load balancer.
 - Archivos probables:
   - `.env.example`
   - `app/config.py`
   - `app/main.py`
-  - `crear_cliente.py`
+  - `POST /super-admin/tenants`
+  - `scripts/legacy/crear_cliente.py` solo como referencia antigua
   - `apply_migration.py`
   - `scripts/*.py`
   - `migrations/`

@@ -193,7 +193,9 @@ Ese segundo script solo usa `CREATE INDEX IF NOT EXISTS`. Si una tabla no existe
 
 ## Crear nuevos colegios
 
-El script `crear_cliente.py` crea un schema nuevo copiando la estructura desde el schema configurado en:
+El flujo oficial para crear colegios es el panel `/super-admin`, boton
+`Crear colegio`. El backend usa `POST /super-admin/tenants` para crear un
+schema nuevo copiando la estructura desde el schema configurado en:
 
 ```env
 DEFAULT_TENANT_SCHEMA=tenant_colegio_1
@@ -201,4 +203,4 @@ DEFAULT_TENANT_SCHEMA=tenant_colegio_1
 
 Eso significa que `tenant_colegio_1` funciona como plantilla inicial mientras no tengamos Alembic completo. Por eso, antes de crear colegios reales, conviene tener ese tenant con todas las tablas actuales.
 
-El script no elimina tablas existentes. Si el codigo del colegio ya existe, la transaccion se revierte.
+El flujo no elimina tablas existentes. Si el codigo del colegio ya existe, la transaccion se revierte.

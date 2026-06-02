@@ -271,7 +271,8 @@ Como probarlo:
 
 Archivo afectado:
 
-- `crear_cliente.py`
+- `POST /super-admin/tenants`
+- `scripts/legacy/crear_cliente.py` solo como referencia historica
 - `app/controllers/auth_controller.py`
 - `scripts/apply_tenant_indexes.py`
 - `apply_migration.py`
@@ -408,7 +409,8 @@ Archivo afectado:
 
 - `scripts/*.py`
 - `apply_migration.py`
-- `crear_cliente.py`
+- `scripts/legacy/crear_cliente.py`
+- `scripts/legacy/setup_saas.py`
 
 Riesgo:
 

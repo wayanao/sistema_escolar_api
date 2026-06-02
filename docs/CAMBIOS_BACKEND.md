@@ -351,7 +351,9 @@ Cambio:
 
 Impacto:
 - Elimina el riesgo de ejecutar por accidente un script que crea un admin con password en texto plano.
-- El flujo recomendado para crear tenants y admin inicial sigue siendo `crear_cliente.py`, porque hashea la password.
+- Actualizacion 2026-06-02: el flujo recomendado para crear tenants y admin
+  inicial es `/super-admin` -> `Crear colegio`. `crear_cliente.py` paso a
+  `scripts/legacy/crear_cliente.py`.
 
 ### 19. Prueba base de permiso por estudiante
 
@@ -803,7 +805,7 @@ Riesgo residual:
 ### 2. Provisionamiento de tenants
 
 Archivo:
-- `crear_cliente.py`
+- `scripts/legacy/crear_cliente.py`
 
 Estado:
 - Actualmente el alta de tenant se hace por terminal.
@@ -865,7 +867,8 @@ Riesgo:
 
 Accion recomendada:
 - Hecho: fue eliminado por completo porque no era necesario para el funcionamiento del sistema.
-- Mantener como flujo oficial `crear_cliente.py`, porque hashea la password.
+- Actualizacion 2026-06-02: el flujo oficial ahora es `/super-admin` ->
+  `Crear colegio`. `crear_cliente.py` paso a `scripts/legacy/crear_cliente.py`.
 
 ### 3. Pruebas base de seguridad
 
@@ -1028,15 +1031,15 @@ Accion recomendada para produccion:
 
 ### 10. Provisionamiento de tenants
 
-Archivo actual:
-- `crear_cliente.py`
+Archivo legacy:
+- `scripts/legacy/crear_cliente.py`
 
 Estado:
-- Hoy el tenant se crea desde terminal.
-- El flujo actual hashea la password del admin inicial.
+- Antes el tenant se creaba desde terminal.
+- El flujo actual crea colegios desde `/super-admin`.
 
 Accion recomendada:
-- Mantener terminal por ahora, pero documentar checklist.
+- Mantener el script solo como referencia historica.
 - Validar que cada tenant nuevo reciba todas las tablas, datos iniciales,
   plantillas, branding vacio, indices y migraciones.
 - A mediano plazo crear flujo superadmin o comando CLI mas robusto.
@@ -1592,7 +1595,7 @@ Archivos modificados:
 - `app/services/cobros.py`
 - `app/controllers/cartera_mora_controller.py`
 - `app/controllers/reportes_controller.py`
-- `crear_cliente.py`
+- `scripts/legacy/crear_cliente.py`
 - `migrations/20260526_cursos_solo_academicos.sql`
 
 Cambios:
@@ -1610,7 +1613,7 @@ Cambios:
 - Los listados de cursos ya no retornan campos financieros.
 - `app/services/cobros.py` ya no usa fallback legacy contra `cursos.matricula`, `cursos.mensualidad` ni `cursos.meses`.
 - `cartera_mora_controller.py` y `reportes_controller.py` ya no seleccionan ni pasan esos campos al servicio de cobros.
-- `crear_cliente.py` se actualizo para que el SQL base de `cursos` no incluya columnas financieras.
+- `scripts/legacy/crear_cliente.py` se habia actualizado para que el SQL base de `cursos` no incluyera columnas financieras.
 
 Migracion aplicada:
 
@@ -1769,7 +1772,7 @@ Archivos modificados:
 - `app/controllers/cartera_mora_controller.py`
 - `app/controllers/estado_cuenta_controller.py`
 - `app/controllers/reportes_controller.py`
-- `crear_cliente.py`
+- `scripts/legacy/crear_cliente.py`
 - `docs/MIGRACIONES.md`
 - `docs/BASE_DATOS.md`
 
@@ -1818,7 +1821,7 @@ Archivos modificados:
 
 - `migrations/20260527_pagos_venta_id.sql`
 - `app/controllers/pagos_controller.py`
-- `crear_cliente.py`
+- `scripts/legacy/crear_cliente.py`
 - `docs/MIGRACIONES.md`
 - `docs/BASE_DATOS.md`
 
@@ -2460,6 +2463,8 @@ Cambio:
 - Se agrego `POST /auth/cambiar-password` para que el admin cambie la password
   temporal y apague `debe_cambiar_password`.
 - Crear colegio registra evento en `public.tenant_eventos_auditoria`.
+- `crear_cliente.py` y `setup_saas.py` se movieron a `scripts/legacy/` para
+  evitar usarlos por error; el flujo oficial queda en el panel super admin.
 
 Verificacion ejecutada:
 

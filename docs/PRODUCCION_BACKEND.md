@@ -215,6 +215,8 @@ Super admin:
 - Reiniciar el backend para cargar los cambios nuevos.
 - Probar login manual usando codigo `super_admin`.
 - Validar manualmente `/super-admin` con un tenant de prueba.
+- Crear un colegio desde `/super-admin` con admin inicial y suscripcion.
+- Confirmar que el admin inicial puede entrar usando el codigo del colegio.
 
 SaaS/cobro:
 
@@ -226,6 +228,27 @@ SaaS/cobro:
 - Pendiente agregar auditoria y motivo al cambio de estado.
 - Pendiente agregar canales de pago configurables para el aviso de mora.
 
+Creacion de colegios:
+
+- `POST /super-admin/tenants` crea el registro en `public.colegios`.
+- Crea el schema `tenant_<codigo>`.
+- Copia tablas desde `DEFAULT_TENANT_SCHEMA`.
+- Crea identidad institucional y plantillas iniciales.
+- Crea el admin inicial dentro del schema del colegio.
+- Crea `public.tenant_suscripciones` con fecha de inicio, proximo pago y dias
+  de gracia.
+
+Calculo efectivo por suscripcion:
+
+- El backend considera `public.tenant_suscripciones` al resolver estado de
+  tenant para login y sesiones.
+- Si `fecha_proximo_pago` ya paso y todavia esta dentro de `dias_gracia`, el
+  estado efectivo es `en_mora`.
+- Si `fecha_proximo_pago + dias_gracia` ya paso, el estado efectivo es
+  `suspendido`.
+- Estados manuales `suspendido` y `cancelado` siguen bloqueando sin importar la
+  fecha.
+
 Auditoria de estado:
 
 - Los cambios de estado de tenant quedan registrados en
@@ -236,7 +259,23 @@ Auditoria de estado:
 
 Passwords:
 
-- Pendiente implementar recuperacion/cambio de password para:
-  - admin de colegio;
-  - profesor;
-  - super admin.
+- El admin inicial creado desde super admin queda con
+  `debe_cambiar_password = TRUE`.
+- El primer ingreso usa la password temporal y despues llama
+  `POST /auth/cambiar-password`.
+- La nueva password debe tener minimo 10 caracteres, una mayuscula, una
+  minuscula y un numero.
+- Sigue pendiente recuperacion de password por correo para admin, profesor y
+  super admin.
+
+Migraciones antes de deploy:
+
+- Ejecutar migraciones publicas antes de arrancar backend:
+  - `migrations/public/20260530_super_admins.sql`
+  - `migrations/public/20260601_tenant_estado_auditoria.sql`
+  - `migrations/public/20260601_tenant_suscripciones.sql`
+  - `migrations/public/20260601_tenant_eventos_auditoria.sql`
+- Ejecutar migraciones tenant/template antes de crear colegios:
+  - `migrations/20260601_usuarios_password_obligatorio.sql`
+- Las consultas normales ya no crean `public.tenant_suscripciones`; si falta la
+  migracion, el deploy debe corregirse antes de usar el sistema.

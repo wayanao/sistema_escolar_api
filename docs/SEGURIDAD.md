@@ -23,6 +23,8 @@ El controlador:
 
 - consulta `public.colegios` por `subdominio`;
 - exige colegio con estado operativo permitido: `activo` o `en_mora`;
+- calcula estado efectivo con `public.tenant_suscripciones` cuando existen
+  `fecha_proximo_pago` y `dias_gracia`;
 - responde `403` con mensaje especifico si el colegio esta `suspendido` o
   `cancelado`;
 - cambia al schema del colegio;
@@ -163,6 +165,16 @@ Funciones:
 - `require_plan_de_clases_access`
 
 ## Riesgos pendientes documentados
+
+Actualizacion 2026-06-01:
+
+- El admin inicial de un colegio ya no debe conservar la password temporal.
+- `usuarios.debe_cambiar_password` obliga el cambio en primer ingreso.
+- `POST /auth/cambiar-password` exige password actual y password nueva fuerte.
+- El panel de super admin muestra estado efectivo por suscripcion y conserva
+  `estado_manual` para decisiones administrativas.
+- Las tablas publicas SaaS deben existir por migracion previa al deploy; las
+  consultas normales no deben crear tablas en caliente.
 
 - La respuesta de login todavia devuelve `access_token`, ademas de cookie HttpOnly.
 - Existen endpoints con SQL directo en rutas.

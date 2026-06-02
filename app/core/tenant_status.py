@@ -1,3 +1,5 @@
+from datetime import date, timedelta
+
 from fastapi import HTTPException, status
 
 from app.database import get_connection
@@ -25,7 +27,6 @@ APP_ALLOWED_STATUSES = {
     TENANT_STATUS_PAST_DUE,
 }
 
-
 class TenantLoginBlocked(Exception):
     def __init__(self, estado: str, message: str):
         self.estado = estado
@@ -46,6 +47,35 @@ def normalize_tenant_status(value: str | None) -> str:
     return TENANT_STATUS_SUSPENDED
 
 
+def calculate_effective_tenant_status(
+    estado: str | None,
+    fecha_proximo_pago=None,
+    dias_gracia: int | None = 0,
+    today: date | None = None,
+) -> str:
+    normalized = normalize_tenant_status(estado)
+    if normalized in {TENANT_STATUS_SUSPENDED, TENANT_STATUS_CANCELLED}:
+        return normalized
+
+    if not fecha_proximo_pago:
+        return normalized
+
+    current_date = today or date.today()
+    if isinstance(fecha_proximo_pago, str):
+        fecha_pago = date.fromisoformat(fecha_proximo_pago)
+    else:
+        fecha_pago = fecha_proximo_pago
+
+    grace_days = int(dias_gracia or 0)
+    if current_date <= fecha_pago:
+        return normalized
+
+    if current_date <= fecha_pago + timedelta(days=grace_days):
+        return TENANT_STATUS_PAST_DUE
+
+    return TENANT_STATUS_SUSPENDED
+
+
 def _query_public_colegio(where_sql: str, params: tuple) -> dict | None:
     token = tenant_schema_var.set("public")
     conn = get_connection()
@@ -53,8 +83,16 @@ def _query_public_colegio(where_sql: str, params: tuple) -> dict | None:
     try:
         cursor.execute(
             f"""
-            SELECT id, nombre, subdominio, esquema_db, estado
-            FROM colegios
+            SELECT
+                c.id,
+                c.nombre,
+                c.subdominio,
+                c.esquema_db,
+                c.estado,
+                s.fecha_proximo_pago,
+                s.dias_gracia
+            FROM colegios c
+            LEFT JOIN public.tenant_suscripciones s ON s.tenant_id = c.id
             WHERE {where_sql}
             """,
             params,
@@ -67,7 +105,7 @@ def _query_public_colegio(where_sql: str, params: tuple) -> dict | None:
             "nombre": row[1],
             "subdominio": row[2],
             "esquema_db": row[3],
-            "estado": normalize_tenant_status(row[4]),
+            "estado": calculate_effective_tenant_status(row[4], row[5], row[6]),
         }
     finally:
         cursor.close()
@@ -77,11 +115,11 @@ def _query_public_colegio(where_sql: str, params: tuple) -> dict | None:
 
 def get_tenant_by_code(codigo_colegio: str) -> dict | None:
     codigo = str(codigo_colegio or "").strip().lower()
-    return _query_public_colegio("subdominio = %s", (codigo,))
+    return _query_public_colegio("c.subdominio = %s", (codigo,))
 
 
 def get_tenant_by_schema(schema_name: str) -> dict | None:
-    return _query_public_colegio("esquema_db = %s", (schema_name,))
+    return _query_public_colegio("c.esquema_db = %s", (schema_name,))
 
 
 def is_tenant_allowed_for_login(estado: str | None) -> bool:

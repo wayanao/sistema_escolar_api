@@ -5,6 +5,19 @@ from jose import jwt, JWTError
 import bcrypt
 from app.config import settings
 
+
+def password_policy_errors(password: str) -> list[str]:
+    errors = []
+    if len(password or "") < 10:
+        errors.append("minimo 10 caracteres")
+    if not any(char.isupper() for char in password or ""):
+        errors.append("una mayuscula")
+    if not any(char.islower() for char in password or ""):
+        errors.append("una minuscula")
+    if not any(char.isdigit() for char in password or ""):
+        errors.append("un numero")
+    return errors
+
 def get_password_hash(password: str) -> str:
     """Retorna el hash bcrypt de una contraseña en texto plano. Evita fallos de passlib."""
     hashed = bcrypt.hashpw(password[:72].encode('utf-8'), bcrypt.gensalt())

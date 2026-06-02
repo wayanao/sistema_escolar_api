@@ -23,6 +23,7 @@ Archivos actuales:
 Migraciones globales `public`:
 
 - `public/20260530_super_admins.sql`
+- `public/20260601_tenant_suscripciones.sql`
 - `public/20260601_tenant_estado_auditoria.sql`
 
 ## Runner actual
@@ -160,6 +161,39 @@ Estado:
 
 - Aplicada en los tenants operativos existentes durante la auditoria.
 - Registrada en `public.schema_migrations`.
+
+## Migraciones publicas SaaS
+
+Las migraciones dentro de `migrations/public/` se aplican contra el schema
+`public`.
+
+Archivos actuales:
+
+- `20260530_super_admins.sql`
+- `20260601_tenant_estado_auditoria.sql`
+- `20260601_tenant_suscripciones.sql`
+- `20260601_tenant_eventos_auditoria.sql`
+
+Desde 2026-06-01, `apply_migration.py` detecta estos archivos y los aplica como
+target `public`, incluso si no existen colegios registrados.
+
+## Migracion 20260601_usuarios_password_obligatorio.sql
+
+Objetivo:
+
+- Agregar `usuarios.debe_cambiar_password`.
+- Forzar cambio de password en primer ingreso del admin inicial creado desde
+  super admin.
+
+SQL:
+
+- `ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS debe_cambiar_password BOOLEAN NOT NULL DEFAULT FALSE;`
+
+Estado esperado:
+
+- Aplicar sobre el schema plantilla (`DEFAULT_TENANT_SCHEMA`) antes de crear
+  nuevos colegios.
+- Aplicar sobre tenants existentes cuando ya haya colegios en produccion.
 
 ## Migracion 20260527_pagos_anulacion.sql
 

@@ -2377,3 +2377,108 @@ Resultado:
 - Sintaxis OK.
 - 8 pruebas de super admin pasaron correctamente.
 
+## 2026-06-01 - Creacion de colegios desde super admin
+
+Se agrego el flujo backend para crear nuevos colegios desde el panel de
+plataforma.
+
+Archivos modificados/agregados:
+
+- `app/controllers/super_admin_controller.py`
+- `app/routes/super_admin.py`
+- `migrations/public/20260601_tenant_suscripciones.sql`
+- `tests/test_super_admin.py`
+- `docs/API_ENDPOINTS.md`
+- `docs/BASE_DATOS.md`
+- `docs/MIGRACIONES.md`
+- `docs/PRODUCCION_BACKEND.md`
+- `docs/CHECKLIST_PRODUCCION_BACKEND.md`
+- `docs/PLAN_EJECUCION_BACKEND.md`
+
+Cambio:
+
+- Se agrego `POST /super-admin/tenants`.
+- El endpoint crea `public.colegios`, schema `tenant_<codigo>`, tablas desde
+  `DEFAULT_TENANT_SCHEMA`, branding inicial, plantillas iniciales y admin
+  inicial con password hasheada.
+- Se agrego `public.tenant_suscripciones` para guardar fecha de inicio,
+  proximo pago y dias de gracia.
+- El listado de tenants ahora devuelve datos basicos de suscripcion.
+
+Verificacion ejecutada:
+
+```powershell
+.\venv\Scripts\python.exe -B -m py_compile app\controllers\super_admin_controller.py app\routes\super_admin.py
+.\venv\Scripts\python.exe -B -m pytest -q tests\test_super_admin.py tests\test_auth_tenant.py tests\test_apply_migration.py tests\test_permissions.py tests\test_notas_permissions.py tests\test_uploads_permissions.py tests\test_anulaciones_financieras.py -p no:cacheprovider --basetemp=.pytest_tmp
+```
+
+Resultado:
+
+- Sintaxis OK.
+- 58 pruebas pasaron correctamente.
+- Solo quedaron warnings conocidos de `slowapi` y configuracion legacy de
+  Pydantic.
+
+Actualizacion posterior:
+
+- `app/core/tenant_status.py` calcula el estado efectivo usando
+  `public.tenant_suscripciones`.
+- Si vencio `fecha_proximo_pago` pero esta dentro de `dias_gracia`, el estado
+  efectivo es `en_mora`.
+- Si vencieron tambien los dias de gracia, el estado efectivo es `suspendido`.
+- Esto se usa en login y en revalidacion de sesiones existentes.
+
+## 2026-06-01 - Cierre fase SaaS super admin
+
+Se cerraron endurecimientos previos a produccion para la operacion SaaS.
+
+Archivos modificados/agregados:
+
+- `app/controllers/auth_controller.py`
+- `app/controllers/super_admin_controller.py`
+- `app/routes/auth.py`
+- `app/routes/super_admin.py`
+- `app/core/tenant_status.py`
+- `app/security.py`
+- `apply_migration.py`
+- `migrations/public/20260601_tenant_eventos_auditoria.sql`
+- `migrations/20260601_usuarios_password_obligatorio.sql`
+- `tests/test_super_admin.py`
+- `tests/test_auth_tenant.py`
+- `tests/test_apply_migration.py`
+
+Cambio:
+
+- El listado de tenants devuelve `estado` efectivo por fecha de pago y
+  `estado_manual` como estado administrativo guardado.
+- Se quito la creacion automatica de tablas publicas desde consultas normales.
+  Las tablas publicas deben existir por migracion antes del deploy.
+- `apply_migration.py` detecta archivos dentro de `migrations/public/` y los
+  aplica contra `public`, incluso si no hay tenants registrados.
+- Al crear colegio se exige password temporal fuerte para el admin inicial.
+- El admin inicial se crea con `debe_cambiar_password = TRUE`.
+- Se agrego `POST /auth/cambiar-password` para que el admin cambie la password
+  temporal y apague `debe_cambiar_password`.
+- Crear colegio registra evento en `public.tenant_eventos_auditoria`.
+
+Verificacion ejecutada:
+
+```powershell
+.\venv\Scripts\python.exe -B -m py_compile app\controllers\auth_controller.py app\controllers\super_admin_controller.py app\routes\auth.py app\routes\super_admin.py app\core\tenant_status.py app\security.py apply_migration.py
+.\venv\Scripts\python.exe -B -m pytest -q tests\test_super_admin.py tests\test_auth_tenant.py tests\test_apply_migration.py --basetemp=.pytest_tmp
+.\venv\Scripts\python.exe apply_migration.py migrations\public\20260530_super_admins.sql
+.\venv\Scripts\python.exe apply_migration.py migrations\public\20260601_tenant_estado_auditoria.sql
+.\venv\Scripts\python.exe apply_migration.py migrations\public\20260601_tenant_suscripciones.sql
+.\venv\Scripts\python.exe apply_migration.py migrations\public\20260601_tenant_eventos_auditoria.sql
+.\venv\Scripts\python.exe apply_migration.py migrations\20260601_usuarios_password_obligatorio.sql
+```
+
+Resultado:
+
+- Sintaxis OK.
+- 33 pruebas enfocadas pasaron correctamente.
+- Migraciones publicas SaaS registradas/aplicadas en local.
+- `debe_cambiar_password` aplicado en `tenant_colegio_1` y `tenant_3333`.
+- `listar_tenants_controller()` devolvio los colegios locales con `estado` y
+  `estado_manual`.
+

@@ -53,6 +53,8 @@ Tabla global usada por login y scripts:
 Tabla global usada por administracion de plataforma:
 
 - `public.super_admins`
+- `public.tenant_suscripciones`
+- `public.tenant_eventos_auditoria`
 - `public.tenant_estado_auditoria`
 
 Tabla global de historial de migraciones:
@@ -149,6 +151,9 @@ Archivos en `migrations/`:
 Migraciones globales en `public`:
 
 - `migrations/public/20260530_super_admins.sql`
+- `migrations/public/20260601_tenant_suscripciones.sql`
+- `migrations/public/20260601_tenant_eventos_auditoria.sql`
+- `migrations/20260601_usuarios_password_obligatorio.sql`
 - `migrations/public/20260601_tenant_estado_auditoria.sql`
 
 ## Riesgos pendientes documentados

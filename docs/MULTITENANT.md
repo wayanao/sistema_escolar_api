@@ -29,6 +29,14 @@ Estados SaaS reconocidos en `public.colegios.estado`:
 - `suspendido`: acceso bloqueado.
 - `cancelado`: acceso bloqueado.
 
+Si existe suscripcion en `public.tenant_suscripciones`, el estado efectivo se
+calcula tambien con `fecha_proximo_pago` y `dias_gracia`:
+
+- antes o en `fecha_proximo_pago`: conserva `activo` o el estado manual actual.
+- despues de `fecha_proximo_pago` y dentro de `dias_gracia`: `en_mora`.
+- despues de vencer los dias de gracia: `suspendido`.
+- `suspendido` o `cancelado` manual no se rebajan automaticamente.
+
 Si el colegio existe y esta `activo` o `en_mora`, el login cambia el contexto al schema del colegio y busca el usuario en:
 
 - `usuarios`

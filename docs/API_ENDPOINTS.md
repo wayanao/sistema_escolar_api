@@ -28,6 +28,7 @@ Los demas routers usan paths completos en cada decorator.
 ## Super Admin
 
 - `GET /super-admin/tenants`
+- `POST /super-admin/tenants`
 - `PATCH /super-admin/tenants/{tenant_id}/estado`
 - `GET /super-admin/tenants/{tenant_id}/estado-auditoria`
 
@@ -186,6 +187,42 @@ Router prefix: `/api/ventas`
 
 - `GET /api/ventas/`
 - `GET /api/ventas/pendientes/{estudiante_id}`
+
+## Auth SaaS
+
+### POST /auth/cambiar-password
+
+Protegido por sesion normal de admin de colegio.
+
+Body:
+
+```json
+{
+  "password_actual": "Temporal123",
+  "password_nueva": "NuevaClave123"
+}
+```
+
+Respuesta:
+
+```json
+{
+  "mensaje": "Password actualizada",
+  "debe_cambiar_password": false
+}
+```
+
+Uso:
+
+- Primer ingreso del admin inicial creado por super admin.
+- Apaga `usuarios.debe_cambiar_password`.
+- Rechaza passwords debiles o iguales a la temporal.
+
+## Super Admin SaaS
+
+- `GET /super-admin/tenants` devuelve `estado` efectivo y `estado_manual`.
+- `POST /super-admin/tenants` crea admin inicial con
+  `debe_cambiar_password = TRUE` y registra evento `tenant_creado`.
 - `POST /api/ventas/`
 - `POST /api/ventas/{venta_id}/anular`
 - `DELETE /api/ventas/{venta_id}` bloqueado: usar anulacion

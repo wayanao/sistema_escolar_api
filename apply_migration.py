@@ -69,6 +69,10 @@ def record_migration(cursor, migration_name: str, target_schema: str, checksum: 
     )
 
 
+def is_public_migration(sql_path: Path) -> bool:
+    return sql_path.parent.name == "public"
+
+
 def apply_migration(sql_path: Path, dry_run: bool = False) -> int:
     if not sql_path.exists():
         print(f"X No existe el archivo: {sql_path}")
@@ -88,6 +92,37 @@ def apply_migration(sql_path: Path, dry_run: bool = False) -> int:
     cur = conn.cursor()
 
     ensure_migration_history(cur)
+    if is_public_migration(sql_path):
+        try:
+            record = get_migration_record(cur, sql_path.name, "public")
+            if record:
+                if record[0] != checksum:
+                    print("X Migracion publica con mismo nombre y checksum diferente")
+                    conn.rollback()
+                    return 2
+                print("OMITIDA (migracion publica ya aplicada)")
+                conn.rollback()
+                return 0
+
+            if dry_run:
+                print(f"PENDIENTE public/{sql_path.name}")
+                conn.rollback()
+                return 0
+
+            cur.execute("SET search_path TO public")
+            cur.execute(sql_text)
+            record_migration(cur, sql_path.name, "public", checksum)
+            conn.commit()
+            print(f"OK public/{sql_path.name}")
+            return 0
+        except Exception as exc:
+            conn.rollback()
+            print(f"FALLO public/{sql_path.name} ({type(exc).__name__}: {exc})")
+            return 2
+        finally:
+            cur.close()
+            conn.close()
+
     tenants = fetch_active_tenants(cur)
     conn.commit()
     cur.close()

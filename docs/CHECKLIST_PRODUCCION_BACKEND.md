@@ -525,6 +525,8 @@ Super admin
 [ ] resetear password real del super admin
 [ ] probar login manual con codigo super_admin
 [ ] probar listado de tenants en /super-admin
+[ ] probar creacion de colegio desde /super-admin
+[ ] probar login del admin inicial del colegio creado
 [ ] probar cambio activo -> en_mora -> suspendido -> activo con tenant de prueba
 ```
 
@@ -538,6 +540,8 @@ Estados de tenant
 [x] cancelado bloquea login/sesiones
 [x] guardar auditoria de cambios de estado
 [x] agregar motivo/nota al cambio de estado
+[x] registrar suscripcion inicial con fecha de inicio, proximo pago y dias de gracia
+[x] calcular estado efectivo por fecha de proximo pago y dias de gracia
 [ ] agregar datos de canales de pago para aviso en mora
 ```
 

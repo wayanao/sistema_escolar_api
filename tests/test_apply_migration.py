@@ -59,3 +59,8 @@ def test_fetch_active_tenants_only_operational_ordered():
 
     assert result == [("tenant_demo", "Colegio Demo")]
     assert "WHERE LOWER(estado) IN ('activo', 'en_mora')" in cursor.calls[0][0]
+
+
+def test_is_public_migration_detects_public_folder():
+    assert apply_migration.is_public_migration(apply_migration.Path("migrations/public/001.sql")) is True
+    assert apply_migration.is_public_migration(apply_migration.Path("migrations/001.sql")) is False

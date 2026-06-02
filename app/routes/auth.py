@@ -1,10 +1,11 @@
-from fastapi import APIRouter, HTTPException, status, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
 from pydantic import BaseModel
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from app.config import settings
-from app.controllers.auth_controller import login_controller
+from app.controllers.auth_controller import cambiar_password_actual_controller, login_controller
 from app.core.tenant_status import TenantLoginBlocked
+from app.dependencies import get_current_user
 from app.security import create_access_token
 
 router = APIRouter()
@@ -14,6 +15,11 @@ class Login(BaseModel):
     email: str
     password: str
     codigo_colegio: str
+
+
+class CambioPassword(BaseModel):
+    password_actual: str
+    password_nueva: str
 
 @router.post("/login")
 @limiter.limit("5/minute")
@@ -63,6 +69,7 @@ def login(request: Request, response: Response, data: Login):
         "rol": user["rol"],
         "tenant": user["tenant"],
         "tenant_estado": user.get("tenant_estado"),
+        "debe_cambiar_password": user.get("debe_cambiar_password", False),
         "access_token": access_token,
         "token_type": "bearer"
     }
@@ -78,3 +85,15 @@ def logout(response: Response):
         samesite=settings.SESSION_COOKIE_SAMESITE,
     )
     return {"mensaje": "Sesion cerrada"}
+
+
+@router.post("/auth/cambiar-password")
+def cambiar_password(
+    data: CambioPassword,
+    current_user: dict = Depends(get_current_user),
+):
+    return cambiar_password_actual_controller(
+        current_user,
+        data.password_actual,
+        data.password_nueva,
+    )

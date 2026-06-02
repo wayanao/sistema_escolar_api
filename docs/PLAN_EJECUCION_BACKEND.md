@@ -258,6 +258,7 @@ Estado actual:
 - El rol `super_admin` ya existe en backend.
 - El login por codigo `super_admin` ya esta implementado.
 - Los endpoints de plataforma para listar tenants y cambiar estado ya existen.
+- El endpoint para crear colegio desde super admin ya existe.
 - Las pruebas automatizadas quedaron pasando.
 
 Pendiente operativo:
@@ -270,6 +271,10 @@ Pendiente operativo:
   - correo del super admin;
   - password nueva.
 - Entrar a `/super-admin` desde frontend y confirmar que lista tenants.
+- Crear un colegio de prueba desde `/super-admin`.
+- Confirmar que se crea el schema `tenant_<codigo>`.
+- Confirmar que el admin inicial puede entrar con codigo, email y password
+  definidos en el formulario.
 - Cambiar un tenant de `activo` a `en_mora` y confirmar que admin/profesor ven
   el aviso.
 - Cambiar un tenant de `en_mora` a `suspendido` y confirmar que login/sesion
@@ -288,3 +293,4 @@ Completado despues:
 
 - Auditoria de cambios de estado de tenant con motivo y super admin responsable.
 - Consulta de historial por tenant desde endpoints de super admin.
+- Creacion de colegio desde super admin con admin inicial y suscripcion.

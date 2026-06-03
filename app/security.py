@@ -1,7 +1,5 @@
-import os
-import secrets
 from datetime import datetime, timedelta, timezone
-from jose import jwt, JWTError
+from jose import jwt
 import bcrypt
 from app.config import settings
 

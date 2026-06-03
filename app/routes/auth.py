@@ -70,8 +70,6 @@ def login(request: Request, response: Response, data: Login):
         "tenant": user["tenant"],
         "tenant_estado": user.get("tenant_estado"),
         "debe_cambiar_password": user.get("debe_cambiar_password", False),
-        "access_token": access_token,
-        "token_type": "bearer"
     }
 
 

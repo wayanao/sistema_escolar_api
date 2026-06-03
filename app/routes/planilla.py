@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends
 from app.dependencies import get_current_user
 from app.core.permissions import require_asignacion_access
+from app.controllers.planilla_excel_controller import planilla_excel_controller
 from app.schemas.planilla import NotaPlanillaCreate
 from app.controllers.planilla_controller import registrar_nota_planilla_controller
 from app.controllers.planilla_controller import eliminar_tipo_controller
@@ -14,7 +15,6 @@ def registrar_nota(data: NotaPlanillaCreate, current_user: dict = Depends(get_cu
     require_asignacion_access(data.asignacion_id, current_user)
 
     return registrar_nota_planilla_controller(data)
-from app.controllers.planilla_excel_controller import planilla_excel_controller
 
 # 📊 Descargar planilla en formato Excel
 @router.get("/planilla-excel/{asignacion_id}/{periodo}")

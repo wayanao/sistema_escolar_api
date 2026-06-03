@@ -2,7 +2,7 @@ from pydantic import BaseModel
 from typing import Optional
 from datetime import date
 
-from typing import List, Dict
+from typing import List
 
 class MetodoPago(BaseModel):
     tipo: str

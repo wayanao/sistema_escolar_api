@@ -288,7 +288,6 @@ def obtener_estudiante_por_id_controller(est_id):
     conn.close()
     return None
 
-import datetime
 
 def obtener_detalles_estudiante_controller(est_id):
     conn = get_connection()

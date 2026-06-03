@@ -1,5 +1,4 @@
 from app.database import get_connection
-import psycopg2
 
 def obtener_estado_cuenta_profesores():
     """

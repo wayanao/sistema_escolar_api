@@ -56,7 +56,6 @@ def registrar_nota_planilla_controller(data):
 
 
 # 🔥 eliminar tipo (columna)
-from app.database import get_connection
 
 def eliminar_tipo_controller(asignacion_id, descripcion, periodo: int = 1):
 

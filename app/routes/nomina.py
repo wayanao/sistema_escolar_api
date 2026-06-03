@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Body
+from fastapi import APIRouter, Depends, HTTPException
 from app.controllers.nomina_controller import obtener_estado_cuenta_profesores, procesar_pago_nomina, obtener_historial_nomina
 from app.dependencies import get_current_active_admin
 from app.schemas.nomina import NominaCreate

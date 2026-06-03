@@ -156,7 +156,7 @@ def obtener_ventas_pendientes(estudiante_id):
             
         venta_ids = tuple([v[0] for v in ventas_rows])
         
-        cursor.execute(f'''
+        cursor.execute('''
             SELECT vd.venta_id, i.nombre, vd.cantidad, vd.precio_unitario, vd.subtotal
             FROM ventas_detalle vd
             JOIN inventario i ON vd.inventario_id = i.id

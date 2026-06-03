@@ -27,7 +27,7 @@ def crear_tipo_pago(nombre, valor=0):
     except TipoPagoDuplicadoError:
         conn.rollback()
         raise
-    except Exception as e:
+    except Exception:
         conn.rollback()
         return None
     finally:
@@ -68,7 +68,7 @@ def actualizar_tipo_pago(id, nombre, valor=0):
     except TipoPagoDuplicadoError:
         conn.rollback()
         raise
-    except Exception as e:
+    except Exception:
         conn.rollback()
         return False
     finally:
@@ -84,7 +84,7 @@ def eliminar_tipo_pago(id):
             conn.commit()
             return True
         return False
-    except Exception as e:
+    except Exception:
         conn.rollback()
         return False
     finally:

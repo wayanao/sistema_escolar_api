@@ -6,7 +6,6 @@ from pydantic import BaseModel
 from app.controllers.venta_controller import (
     anular_venta,
     crear_venta,
-    eliminar_venta,
     obtener_ventas,
     obtener_ventas_paginado,
     obtener_ventas_pendientes,

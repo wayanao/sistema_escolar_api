@@ -264,8 +264,16 @@ Notas:
 Router prefix: `/api/egresos`
 
 - `GET /api/egresos/`
+- `GET /api/egresos/?fecha_desde=YYYY-MM-DD&fecha_hasta=YYYY-MM-DD`
 - `POST /api/egresos/`
-- `DELETE /api/egresos/{egreso_id}`
+- `DELETE /api/egresos/{egreso_id}` bloqueado: los egresos no se eliminan
+  fisicamente.
+
+Notas:
+
+- Si no se envian fechas, el backend devuelve solo los egresos del dia actual.
+- Si se envia solo `fecha_desde`, se consulta ese dia.
+- Si se envian `fecha_desde` y `fecha_hasta`, se consulta el rango inclusivo.
 
 ## Prestamos
 

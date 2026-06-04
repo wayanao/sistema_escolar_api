@@ -1,6 +1,6 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from typing import Optional
+from typing import Annotated, Optional
 from datetime import date
 from app.controllers.egreso_controller import obtener_egresos, crear_egreso, eliminar_egreso
 from app.dependencies import get_current_active_admin
@@ -15,8 +15,19 @@ class EgresoCreate(BaseModel):
     notas: Optional[str] = ""
 
 @router.get("/")
-def get_egresos(current_admin: dict = Depends(get_current_active_admin)):
-    return obtener_egresos()
+def get_egresos(
+    fecha_desde: Annotated[Optional[date], Query()] = None,
+    fecha_hasta: Annotated[Optional[date], Query()] = None,
+    current_admin: dict = Depends(get_current_active_admin),
+):
+    hoy = date.today()
+    desde = fecha_desde or hoy
+    hasta = fecha_hasta or fecha_desde or hoy
+
+    if desde > hasta:
+        raise HTTPException(status_code=422, detail="La fecha desde no puede ser mayor que la fecha hasta.")
+
+    return obtener_egresos(fecha_desde=desde, fecha_hasta=hasta)
 
 @router.post("/")
 def add_egreso(egreso: EgresoCreate, current_admin: dict = Depends(get_current_active_admin)):
@@ -24,4 +35,5 @@ def add_egreso(egreso: EgresoCreate, current_admin: dict = Depends(get_current_a
 
 @router.delete("/{egreso_id}")
 def delete_egreso(egreso_id: int, current_admin: dict = Depends(get_current_active_admin)):
-    return eliminar_egreso(egreso_id)
+    resultado = eliminar_egreso(egreso_id)
+    raise HTTPException(status_code=405, detail=resultado["error"])

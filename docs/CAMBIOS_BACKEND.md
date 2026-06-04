@@ -2746,3 +2746,38 @@ Resultado:
 - Migracion aplicada en los tres tenants locales.
 - Un dry-run posterior mostro la migracion como omitida por ya aplicada.
 
+## 2026-06-04 - Egresos filtrados por fecha y sin eliminacion fisica
+
+Se ajusto el modulo de egresos para consultar por fechas y conservar
+trazabilidad contable.
+
+Archivos modificados/agregados:
+
+- `app/controllers/egreso_controller.py`
+- `app/routes/egresos.py`
+- `tests/test_egresos_fechas.py`
+- `docs/API_ENDPOINTS.md`
+
+Cambio:
+
+- `GET /api/egresos/` devuelve por defecto solo los egresos del dia actual.
+- Se agregaron filtros `fecha_desde` y `fecha_hasta`.
+- Si se envia solo `fecha_desde`, se consulta ese dia.
+- Si se envia rango, se valida que `fecha_desde <= fecha_hasta`.
+- `DELETE /api/egresos/{egreso_id}` queda bloqueado con `405`; los egresos no
+  se eliminan fisicamente.
+
+Verificacion ejecutada:
+
+```powershell
+$env:RUFF_CACHE_DIR = "$env:TEMP\ruff-cache-sistema-escolar"; .\venv\Scripts\python.exe -m ruff check app tests scripts apply_migration.py
+.\venv\Scripts\python.exe -m pytest tests\test_egresos_fechas.py
+.\venv\Scripts\python.exe -m pytest --basetemp=.pytest_tmp_egresos
+```
+
+Resultado:
+
+- Ruff OK.
+- 4 pruebas enfocadas de egresos pasaron correctamente.
+- 109 pruebas completas pasaron correctamente.
+

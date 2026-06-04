@@ -1,10 +1,31 @@
 from app.database import get_connection
 
-def obtener_egresos():
+def obtener_egresos(fecha_desde=None, fecha_hasta=None):
     conn = get_connection()
     cursor = conn.cursor()
     try:
-        cursor.execute("SELECT id, concepto, monto, fecha, categoria, notas FROM egresos ORDER BY fecha DESC, id DESC")
+        filtros = []
+        params = []
+
+        if fecha_desde:
+            filtros.append("fecha::date >= %s")
+            params.append(fecha_desde)
+
+        if fecha_hasta:
+            filtros.append("fecha::date <= %s")
+            params.append(fecha_hasta)
+
+        where_sql = f"WHERE {' AND '.join(filtros)}" if filtros else ""
+
+        cursor.execute(
+            f"""
+            SELECT id, concepto, monto, fecha, categoria, notas
+            FROM egresos
+            {where_sql}
+            ORDER BY fecha DESC, id DESC
+            """,
+            params,
+        )
         egresos = cursor.fetchall()
         return [{"id": e[0], "concepto": e[1], "monto": float(e[2]), "fecha": e[3], "categoria": e[4], "notas": e[5]} for e in egresos]
     finally:
@@ -27,12 +48,9 @@ def crear_egreso(datos):
         conn.close()
 
 def eliminar_egreso(egreso_id):
-    conn = get_connection()
-    cursor = conn.cursor()
-    try:
-        cursor.execute("DELETE FROM egresos WHERE id = %s", (egreso_id,))
-        conn.commit()
-        return {"mensaje": "Egreso eliminado"}
-    finally:
-        cursor.close()
-        conn.close()
+    return {
+        "error": (
+            "Los egresos no se eliminan fisicamente. "
+            "Conserva el registro contable para trazabilidad."
+        )
+    }

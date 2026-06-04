@@ -105,3 +105,23 @@ def test_asignar_profesor_bloquea_profesor_inactivo(monkeypatch):
 
     assert response == {"error": "No se puede asignar un profesor inactivo."}
     assert conn.commits == 0
+
+
+def test_asignar_profesor_bloquea_curso_inactivo(monkeypatch):
+    cursor = FakeCursor(fetchone_values=[(1,), None])
+    conn = FakeConnection(cursor)
+    monkeypatch.setattr(asignacion_controller, "get_connection", lambda: conn)
+
+    response = asignacion_controller.asignar_profesor_controller(
+        AsignacionCreate(
+            profesor_id=3,
+            curso_id=2,
+            materia_id=5,
+            dia="Lunes",
+            hora_inicio="08:00",
+            hora_fin="09:00",
+        )
+    )
+
+    assert response == {"error": "No se puede asignar un curso inactivo."}
+    assert conn.commits == 0

@@ -2599,3 +2599,52 @@ Resultado:
 - Migracion aplicada en `tenant_colegio_1`, `tenant_3333` y `tenant_4444`.
 - Frontend relacionado probado con `pnpm run build` y `pnpm run lint`.
 
+## 2026-06-04 - Estado operativo de cursos
+
+Se implemento manejo por estado para cursos, manteniendo historial academico y
+evitando borrado fisico.
+
+Archivos modificados/agregados:
+
+- `app/schemas/curso.py`
+- `app/controllers/curso_controller.py`
+- `app/routes/cursos.py`
+- `app/controllers/asignacion_controller.py`
+- `app/routes/asignaciones.py`
+- `migrations/20260604_cursos_estado.sql`
+- `tests/test_catalogos_pagination.py`
+- `tests/test_asignaciones_activo.py`
+- `docs/API_ENDPOINTS.md`
+- `docs/PRODUCCION_BACKEND.md`
+
+Cambio:
+
+- Cursos soportan estados `activo` e `inactivo`.
+- `GET /cursos` filtra `activo` por defecto.
+- `estado=todos` permite consulta administrativa/historica.
+- Se agrego `PATCH /cursos/{curso_id}/estado`.
+- Cursos `inactivo` no pueden usarse en nuevas asignaciones ni en ediciones de
+  asignaciones activas.
+- Las vistas operativas de asignaciones, horarios y clases del profesor filtran
+  cursos activos para no seguir usando cursos cerrados.
+- La migracion `20260604_cursos_estado.sql` agrega `cursos.estado`, normaliza
+  cursos existentes a `activo` y crea indice por estado.
+
+Verificacion ejecutada:
+
+```powershell
+.\venv\Scripts\python.exe -m ruff check app tests scripts apply_migration.py
+.\venv\Scripts\python.exe -m pytest
+.\venv\Scripts\python.exe apply_migration.py migrations\20260604_cursos_estado.sql --dry-run
+.\venv\Scripts\python.exe apply_migration.py migrations\20260604_cursos_estado.sql
+```
+
+Resultado:
+
+- Ruff OK.
+- 99 pruebas pasaron correctamente.
+- Dry-run de migracion OK en `tenant_colegio_1`, `tenant_3333` y
+  `tenant_4444`.
+- Migracion aplicada en los tres tenants locales.
+- Un dry-run posterior mostro la migracion como omitida por ya aplicada.
+

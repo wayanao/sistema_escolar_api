@@ -1,16 +1,29 @@
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from app.dependencies import get_current_active_admin
-from app.schemas.curso import CursoCreate
+from app.schemas.curso import CursoCreate, CursoEstadoUpdate
 from app.controllers.curso_controller import (
     actualizar_curso_controller,
+    actualizar_estado_curso_controller,
     crear_curso_controller,
     obtener_cursos_paginado_controller,
     obtener_cursos_controller
 )
 
 router = APIRouter(tags=["Cursos"], dependencies=[Depends(get_current_active_admin)])
+
+ESTADOS_CURSO_FILTRO = {"activo", "inactivo", "todos"}
+
+
+def validar_estado_filtro(estado: str) -> str:
+    estado_normalizado = str(estado or "activo").strip().lower()
+    if estado_normalizado not in ESTADOS_CURSO_FILTRO:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Estado de curso inválido.",
+        )
+    return estado_normalizado
 
 
 # 🚀 Crear curso
@@ -31,10 +44,22 @@ def obtener_cursos(
     limit: Annotated[Optional[int], Query(ge=1, le=200)] = None,
     offset: Annotated[int, Query(ge=0)] = 0,
     busqueda: Optional[str] = None,
+    estado: str = "activo",
 ):
+    estado = validar_estado_filtro(estado)
     if limit is not None:
-        return obtener_cursos_paginado_controller(limit=limit, offset=offset, busqueda=busqueda)
-    return obtener_cursos_controller()
+        return obtener_cursos_paginado_controller(limit=limit, offset=offset, busqueda=busqueda, estado=estado)
+    return obtener_cursos_controller(estado=estado)
+
+
 @router.put("/cursos/{curso_id}")
 def actualizar_curso(curso_id: int, curso: CursoCreate):
     return actualizar_curso_controller(curso_id, curso)
+
+
+@router.patch("/cursos/{curso_id}/estado")
+def actualizar_estado_curso(curso_id: int, payload: CursoEstadoUpdate):
+    resultado = actualizar_estado_curso_controller(curso_id, payload.estado)
+    if "error" in resultado:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=resultado["error"])
+    return resultado

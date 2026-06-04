@@ -158,6 +158,7 @@ def obtener_clases_profesor(
 
         WHERE a.profesor_id = %s
           AND a.activo = TRUE
+          AND COALESCE(LOWER(c.estado), 'activo') = 'activo'
     """, (profesor_id,))
 
     clases = cursor.fetchall()

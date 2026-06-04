@@ -76,7 +76,26 @@ Notas:
 
 - `POST /cursos`
 - `GET /cursos`
+- `GET /cursos?estado=activo|inactivo|todos`
 - `PUT /cursos/{curso_id}`
+- `PATCH /cursos/{curso_id}/estado`
+
+Notas:
+
+- Si no se envia `estado`, el listado devuelve cursos `activo`.
+- `estado=todos` permite consultar historico/administrativo sin filtrar por
+  estado operativo.
+- `PATCH /cursos/{curso_id}/estado` recibe:
+
+```json
+{
+  "estado": "inactivo"
+}
+```
+
+- Estados validos: `activo`, `inactivo`.
+- Un curso `inactivo` no puede usarse en nuevas asignaciones ni ediciones de
+  asignaciones activas.
 
 ## Profesores
 

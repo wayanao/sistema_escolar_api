@@ -281,6 +281,8 @@ Migraciones antes de deploy:
   - `migrations/20260602_asignaciones_activo.sql`
   - `migrations/20260604_profesor_estado.sql`
   - `migrations/20260604_cursos_estado.sql`
+  - `migrations/20260604_materias_estado.sql`
+  - `migrations/20260604_inventario_estado.sql`
 - Las consultas normales ya no crean `public.tenant_suscripciones`; si falta la
   migracion, el deploy debe corregirse antes de usar el sistema.
 
@@ -296,13 +298,15 @@ Asignaciones de clases:
 - Desactivar una asignacion no borra planes de clase, notas, asistencia,
   boletines ni observaciones historicas.
 
-Estados operativos de estudiantes, profesores y cursos:
+Estados operativos de estudiantes, profesores, cursos, materias e inventario:
 
 - Estudiantes usan `estado`: `activo`, `retirado`, `egresado`, `inactivo`.
 - Profesores usan `estado`: `activo`, `inactivo`.
 - Cursos usan `estado`: `activo`, `inactivo`.
-- `GET /estudiantes`, `GET /profesores` y `GET /cursos` devuelven activos por
-  defecto.
+- Materias usan `estado`: `activo`, `inactivo`.
+- Productos de inventario usan `estado`: `activo`, `inactivo`.
+- `GET /estudiantes`, `GET /profesores`, `GET /cursos`, `GET /materias` y
+  `GET /inventario` devuelven activos por defecto.
 - Para revision administrativa/historica se usa `estado=todos`.
 - No se hace borrado fisico desde estos flujos; el cambio de estado conserva
   historial academico, pagos, notas, asistencia, boletines y observaciones.
@@ -310,6 +314,12 @@ Estados operativos de estudiantes, profesores y cursos:
   asignaciones o ediciones de asignacion.
 - Cursos `inactivo` no pueden ser usados en nuevas asignaciones o ediciones de
   asignacion, y quedan fuera de vistas operativas de clases/horarios.
+- Materias `inactivo` no pueden ser usadas en nuevas asignaciones o ediciones
+  de asignacion, y quedan fuera de vistas operativas de clases/horarios.
+- Productos de inventario `inactivo` no aparecen para nuevas ventas y el
+  backend rechaza intentos de venderlos por API.
+- `DELETE /inventario/{item_id}` desactiva el producto; no borra ventas ni
+  detalles historicos.
 - Estudiantes que no estan `activo` quedan fuera de planilla diaria, asistencia
   y boletines del flujo del profesor.
 - La migracion `migrations/20260604_profesor_estado.sql` agrega
@@ -317,3 +327,9 @@ Estados operativos de estudiantes, profesores y cursos:
   por estado.
 - La migracion `migrations/20260604_cursos_estado.sql` agrega `cursos.estado`,
   normaliza registros existentes a `activo` y crea indice por estado.
+- La migracion `migrations/20260604_materias_estado.sql` agrega
+  `materias.estado`, normaliza registros existentes a `activo` y crea indice
+  por estado.
+- La migracion `migrations/20260604_inventario_estado.sql` agrega
+  `inventario.estado`, normaliza registros existentes a `activo` y crea indice
+  por estado.

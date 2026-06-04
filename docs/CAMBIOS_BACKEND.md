@@ -2648,3 +2648,101 @@ Resultado:
 - Migracion aplicada en los tres tenants locales.
 - Un dry-run posterior mostro la migracion como omitida por ya aplicada.
 
+## 2026-06-04 - Estado operativo de materias
+
+Se implemento manejo por estado para materias, manteniendo historial academico
+y evitando borrado fisico.
+
+Archivos modificados/agregados:
+
+- `app/schemas/materia.py`
+- `app/controllers/materia_controller.py`
+- `app/routes/materias.py`
+- `app/controllers/asignacion_controller.py`
+- `app/routes/asignaciones.py`
+- `migrations/20260604_materias_estado.sql`
+- `tests/test_catalogos_pagination.py`
+- `tests/test_asignaciones_activo.py`
+- `docs/API_ENDPOINTS.md`
+- `docs/PRODUCCION_BACKEND.md`
+
+Cambio:
+
+- Materias soportan estados `activo` e `inactivo`.
+- `GET /materias` filtra `activo` por defecto.
+- `estado=todos` permite consulta administrativa/historica.
+- Se agrego `PATCH /materias/{materia_id}/estado`.
+- Materias `inactivo` no pueden usarse en nuevas asignaciones ni en ediciones
+  de asignaciones activas.
+- Las vistas operativas de asignaciones, horarios y clases del profesor filtran
+  materias activas para no seguir usando materias cerradas.
+- La migracion `20260604_materias_estado.sql` agrega `materias.estado`,
+  normaliza materias existentes a `activo` y crea indice por estado.
+
+Verificacion ejecutada:
+
+```powershell
+$env:RUFF_CACHE_DIR = "$env:TEMP\ruff-cache-sistema-escolar"; .\venv\Scripts\python.exe -m ruff check app tests scripts apply_migration.py
+.\venv\Scripts\python.exe -m pytest --basetemp=.pytest_tmp_materias
+.\venv\Scripts\python.exe apply_migration.py migrations\20260604_materias_estado.sql --dry-run
+.\venv\Scripts\python.exe apply_migration.py migrations\20260604_materias_estado.sql
+```
+
+Resultado:
+
+- Ruff OK.
+- 102 pruebas pasaron correctamente.
+- Dry-run de migracion OK en `tenant_colegio_1`, `tenant_3333` y
+  `tenant_4444`.
+- Migracion aplicada en los tres tenants locales.
+- Un dry-run posterior mostro la migracion como omitida por ya aplicada.
+
+## 2026-06-04 - Estado operativo de productos de inventario
+
+Se implemento manejo por estado para productos de inventario, manteniendo
+historial de ventas y evitando borrado fisico.
+
+Archivos modificados/agregados:
+
+- `app/schemas/inventario.py`
+- `app/controllers/inventario_controller.py`
+- `app/routes/inventario.py`
+- `app/controllers/venta_controller.py`
+- `app/routes/ventas.py`
+- `migrations/20260604_inventario_estado.sql`
+- `tests/test_inventario_pagination.py`
+- `tests/test_anulaciones_financieras.py`
+- `docs/API_ENDPOINTS.md`
+- `docs/PRODUCCION_BACKEND.md`
+
+Cambio:
+
+- Productos de inventario soportan estados `activo` e `inactivo`.
+- `GET /inventario` filtra `activo` por defecto.
+- `estado=todos` permite consulta administrativa/historica.
+- Se agrego `PATCH /inventario/{item_id}/estado`.
+- `DELETE /inventario/{item_id}` ahora desactiva el producto y conserva
+  historial de ventas.
+- Productos `inactivo` no aparecen para nuevas ventas y el backend rechaza
+  intentos de venderlos por API.
+- La migracion `20260604_inventario_estado.sql` agrega `inventario.estado`,
+  normaliza productos existentes a `activo` y crea indice por estado.
+
+Verificacion ejecutada:
+
+```powershell
+$env:RUFF_CACHE_DIR = "$env:TEMP\ruff-cache-sistema-escolar"; .\venv\Scripts\python.exe -m ruff check app tests scripts apply_migration.py
+.\venv\Scripts\python.exe -m pytest --basetemp=.pytest_tmp_inventario
+.\venv\Scripts\python.exe apply_migration.py migrations\20260604_inventario_estado.sql --dry-run
+.\venv\Scripts\python.exe apply_migration.py migrations\20260604_inventario_estado.sql
+```
+
+Resultado:
+
+- Ruff OK.
+- 105 pruebas pasaron correctamente.
+- Dry-run de migracion OK en `tenant_colegio_1`, `tenant_3333` y
+  `tenant_4444`.
+- Migracion aplicada en los tres tenants locales.
+- Un dry-run posterior mostro la migracion como omitida por ya aplicada.
+

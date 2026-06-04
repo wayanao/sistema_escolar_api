@@ -55,7 +55,10 @@ def get_ventas_pendientes(estudiante_id: int, current_admin: dict = Depends(get_
 
 @router.post("/")
 def add_venta(venta: VentaCreate, current_admin: dict = Depends(get_current_active_admin)):
-    return crear_venta(venta)
+    try:
+        return crear_venta(venta)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 @router.delete("/{venta_id}")
 def delete_venta(venta_id: int, current_admin: dict = Depends(get_current_active_admin)):

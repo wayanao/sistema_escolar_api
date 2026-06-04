@@ -148,6 +148,19 @@ def curso_activo(cursor, curso_id):
     return cursor.fetchone() is not None
 
 
+def materia_activa(cursor, materia_id):
+    cursor.execute(
+        """
+        SELECT 1
+        FROM materias
+        WHERE id = %s
+          AND COALESCE(LOWER(estado), 'activo') = 'activo'
+        """,
+        (materia_id,),
+    )
+    return cursor.fetchone() is not None
+
+
 # 🎯 Asignar profesor a curso
 def asignar_profesor_controller(asignacion):
     conn = get_connection()
@@ -159,6 +172,9 @@ def asignar_profesor_controller(asignacion):
 
         if not curso_activo(cursor, asignacion.curso_id):
             return {"error": "No se puede asignar un curso inactivo."}
+
+        if not materia_activa(cursor, asignacion.materia_id):
+            return {"error": "No se puede asignar una materia inactiva."}
 
         if asignacion.hora_inicio and asignacion.hora_fin:
             error_rango = validar_rango_institucional(asignacion.hora_inicio, asignacion.hora_fin)
@@ -211,9 +227,11 @@ def cursos_por_profesor_controller(profesor_id):
             c.nombre
         FROM asignaciones a
         JOIN cursos c ON a.curso_id = c.id
+        JOIN materias m ON a.materia_id = m.id
         WHERE a.profesor_id = %s
           AND a.activo = TRUE
           AND COALESCE(LOWER(c.estado), 'activo') = 'activo'
+          AND COALESCE(LOWER(m.estado), 'activo') = 'activo'
     """, (profesor_id,))
 
     resultado = cursor.fetchall()
@@ -246,9 +264,11 @@ def profesor_por_curso_controller(curso_id):
         FROM asignaciones a
         JOIN profesor p ON a.profesor_id = p.id
         JOIN cursos c ON a.curso_id = c.id
+        JOIN materias m ON a.materia_id = m.id
         WHERE a.curso_id = %s
           AND a.activo = TRUE
           AND COALESCE(LOWER(c.estado), 'activo') = 'activo'
+          AND COALESCE(LOWER(m.estado), 'activo') = 'activo'
     """, (curso_id,))
 
     resultado = cursor.fetchall()
@@ -289,6 +309,7 @@ def obtener_horarios_admin_controller():
           AND a.hora_fin != ''
           AND a.activo = TRUE
           AND COALESCE(LOWER(c.estado), 'activo') = 'activo'
+          AND COALESCE(LOWER(m.estado), 'activo') = 'activo'
         ORDER BY 
             CASE a.dia
                 WHEN 'Lunes' THEN 1
@@ -369,6 +390,7 @@ def obtener_clases_profesor_controller(profesor_id):
         WHERE a.profesor_id = %s
           AND a.activo = TRUE
           AND COALESCE(LOWER(c.estado), 'activo') = 'activo'
+          AND COALESCE(LOWER(m.estado), 'activo') = 'activo'
     """, (profesor_id,))
 
     rows = cursor.fetchall()
@@ -493,6 +515,9 @@ def editar_asignacion_controller(asignacion_id, asignacion):
         if not curso_activo(cursor, asignacion.curso_id):
             return {"error": "No se puede asignar un curso inactivo."}
 
+        if not materia_activa(cursor, asignacion.materia_id):
+            return {"error": "No se puede asignar una materia inactiva."}
+
         cambia_relacion_academica = (
             actual[0] != asignacion.profesor_id
             or actual[1] != asignacion.curso_id
@@ -565,6 +590,7 @@ def obtener_todas_asignaciones_controller():
         JOIN materias m ON a.materia_id = m.id
         WHERE a.activo = TRUE
           AND COALESCE(LOWER(c.estado), 'activo') = 'activo'
+          AND COALESCE(LOWER(m.estado), 'activo') = 'activo'
         ORDER BY a.id DESC
     """)
 
@@ -642,6 +668,7 @@ def obtener_todas_asignaciones_paginado_controller(
 
         filtros.append("a.activo = TRUE")
         filtros.append("COALESCE(LOWER(c.estado), 'activo') = 'activo'")
+        filtros.append("COALESCE(LOWER(m.estado), 'activo') = 'activo'")
 
         where_sql = f"WHERE {' AND '.join(filtros)}" if filtros else ""
 

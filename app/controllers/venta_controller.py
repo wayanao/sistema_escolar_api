@@ -196,11 +196,47 @@ def obtener_ventas_pendientes(estudiante_id):
         cursor.close()
         conn.close()
 
+
+def validar_producto_vendible(cursor, inventario_id, cantidad):
+    if int(cantidad or 0) <= 0:
+        raise ValueError("La cantidad de cada producto debe ser mayor a cero.")
+
+    cursor.execute(
+        """
+        SELECT nombre, COALESCE(stock_actual, 0), COALESCE(LOWER(estado), 'activo')
+        FROM inventario
+        WHERE id = %s
+        FOR UPDATE
+        """,
+        (inventario_id,),
+    )
+    producto = cursor.fetchone()
+
+    if not producto:
+        raise ValueError("Uno de los productos seleccionados no existe.")
+
+    nombre, stock_actual, estado = producto
+    if estado != "activo":
+        raise ValueError(f"El producto {nombre} está inactivo y no se puede vender.")
+
+    if int(stock_actual or 0) < int(cantidad or 0):
+        raise ValueError(f"No hay stock suficiente para {nombre}.")
+
+
 def crear_venta(datos):
     conn = get_connection()
     cursor = conn.cursor()
     try:
         estado_inicial = "Pagado" if datos.tipo_venta == "Contado" else "Pendiente"
+
+        cantidades_por_producto = {}
+        for det in datos.detalles:
+            cantidades_por_producto[det.inventario_id] = (
+                cantidades_por_producto.get(det.inventario_id, 0) + int(det.cantidad or 0)
+            )
+
+        for inventario_id, cantidad in cantidades_por_producto.items():
+            validar_producto_vendible(cursor, inventario_id, cantidad)
         
         cursor.execute(
             """INSERT INTO ventas (estudiante_id, tipo_venta, total, estado, notas) 
@@ -216,7 +252,12 @@ def crear_venta(datos):
                 (venta_id, det.inventario_id, det.cantidad, det.precio_unitario, det.subtotal)
             )
             cursor.execute(
-                "UPDATE inventario SET stock_actual = stock_actual - %s WHERE id = %s",
+                """
+                UPDATE inventario
+                SET stock_actual = stock_actual - %s
+                WHERE id = %s
+                  AND COALESCE(LOWER(estado), 'activo') = 'activo'
+                """,
                 (det.cantidad, det.inventario_id)
             )
             

@@ -158,7 +158,26 @@ Notas:
 
 - `POST /materia`
 - `GET /materias`
+- `GET /materias?estado=activo|inactivo|todos`
 - `PUT /materias/{materia_id}`
+- `PATCH /materias/{materia_id}/estado`
+
+Notas:
+
+- Si no se envia `estado`, el listado devuelve materias `activo`.
+- `estado=todos` permite consultar historico/administrativo sin filtrar por
+  estado operativo.
+- `PATCH /materias/{materia_id}/estado` recibe:
+
+```json
+{
+  "estado": "inactivo"
+}
+```
+
+- Estados validos: `activo`, `inactivo`.
+- Una materia `inactivo` no puede usarse en nuevas asignaciones ni ediciones de
+  asignaciones activas.
 
 ## Observaciones
 
@@ -216,9 +235,29 @@ Notas:
 ## Inventario
 
 - `GET /inventario`
+- `GET /inventario?estado=activo|inactivo|todos`
 - `POST /inventario`
 - `PUT /inventario/{item_id}`
-- `DELETE /inventario/{item_id}`
+- `PATCH /inventario/{item_id}/estado`
+- `DELETE /inventario/{item_id}` desactiva el producto; no borra historial de
+  ventas.
+
+Notas:
+
+- Si no se envia `estado`, el listado devuelve productos `activo`.
+- `estado=todos` permite consultar historico/administrativo sin filtrar por
+  estado operativo.
+- `PATCH /inventario/{item_id}/estado` recibe:
+
+```json
+{
+  "estado": "inactivo"
+}
+```
+
+- Estados validos: `activo`, `inactivo`.
+- Un producto `inactivo` no aparece para nuevas ventas y el backend rechaza
+  intentos de venderlo por API.
 
 ## Egresos
 

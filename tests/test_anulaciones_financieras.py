@@ -1,4 +1,5 @@
 import datetime
+from types import SimpleNamespace
 
 from app.controllers import pagos_controller, reportes_controller, venta_controller
 
@@ -44,6 +45,40 @@ class FakeConnection:
 
 def _sql(cursor):
     return "\n".join(query for query, _params in cursor.executed)
+
+
+def test_crear_venta_bloquea_producto_inactivo(monkeypatch):
+    cursor = FakeCursor([
+        ("Sudadera", 10, "inactivo"),
+    ])
+    conn = FakeConnection(cursor)
+    monkeypatch.setattr(venta_controller, "get_connection", lambda: conn)
+
+    datos = SimpleNamespace(
+        estudiante_id=1,
+        tipo_venta="Credito",
+        total=50000,
+        notas="",
+        detalles=[
+            SimpleNamespace(
+                inventario_id=3,
+                cantidad=1,
+                precio_unitario=50000,
+                subtotal=50000,
+            )
+        ],
+    )
+
+    try:
+        venta_controller.crear_venta(datos)
+    except ValueError as exc:
+        assert "está inactivo" in str(exc)
+    else:
+        raise AssertionError("Expected inactive product to be rejected")
+
+    assert conn.committed is False
+    assert conn.rolled_back is True
+    assert "INSERT INTO ventas" not in _sql(cursor)
 
 
 def test_anular_pago_academico_no_toca_ventas(monkeypatch):

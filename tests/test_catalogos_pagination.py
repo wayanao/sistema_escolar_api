@@ -112,24 +112,58 @@ def test_actualizar_estado_curso_route_returns_controller_result(monkeypatch):
 
 
 def test_materias_keeps_legacy_list_response(monkeypatch):
-    monkeypatch.setattr(materias, "obtener_materias_controller", lambda: [{"id": 1}])
+    calls = []
+
+    def fake_listado(estado="activo"):
+        calls.append(estado)
+        return [{"id": 1}]
+
+    monkeypatch.setattr(materias, "obtener_materias_controller", fake_listado)
 
     assert materias.obtener_materias() == [{"id": 1}]
+    assert calls == ["activo"]
 
 
 def test_materias_returns_paginated_response_when_limit_is_sent(monkeypatch):
     calls = []
 
-    def fake(limit, offset, busqueda):
-        calls.append({"limit": limit, "offset": offset, "busqueda": busqueda})
+    def fake(limit, offset, busqueda, estado):
+        calls.append({"limit": limit, "offset": offset, "busqueda": busqueda, "estado": estado})
         return {"total": 1, "limit": limit, "offset": offset, "items": [{"id": 9}]}
 
     monkeypatch.setattr(materias, "obtener_materias_paginado_controller", fake)
 
-    response = materias.obtener_materias(limit=25, offset=50, busqueda="math")
+    response = materias.obtener_materias(limit=25, offset=50, busqueda="math", estado="inactivo")
 
     assert response == {"total": 1, "limit": 25, "offset": 50, "items": [{"id": 9}]}
-    assert calls == [{"limit": 25, "offset": 50, "busqueda": "math"}]
+    assert calls == [{"limit": 25, "offset": 50, "busqueda": "math", "estado": "inactivo"}]
+
+
+def test_materias_rejects_invalid_estado_filter():
+    try:
+        materias.obtener_materias(estado="retirada")
+    except Exception as exc:
+        assert exc.status_code == 422
+    else:
+        raise AssertionError("Expected invalid estado filter to be rejected")
+
+
+def test_actualizar_estado_materia_route_returns_controller_result(monkeypatch):
+    calls = []
+
+    def fake_update(materia_id, estado):
+        calls.append((materia_id, estado))
+        return {"id": materia_id, "estado": estado}
+
+    monkeypatch.setattr(materias, "actualizar_estado_materia_controller", fake_update)
+
+    result = materias.actualizar_estado_materia(
+        6,
+        materias.MateriaEstadoUpdate(estado="inactivo"),
+    )
+
+    assert calls == [(6, "inactivo")]
+    assert result == {"id": 6, "estado": "inactivo"}
 
 
 def test_usuarios_keeps_legacy_list_response(monkeypatch):

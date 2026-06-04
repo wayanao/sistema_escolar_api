@@ -27,6 +27,7 @@ def planilla_excel_controller(asignacion_id, periodo=1):
             AND nd.periodo = %s
 
         WHERE a.id = %s
+          AND COALESCE(LOWER(e.estado), 'activo') = 'activo'
     """, (periodo, asignacion_id))
 
     rows = cursor.fetchall()

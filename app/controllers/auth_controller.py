@@ -73,7 +73,7 @@ def login_controller(email, password, codigo_colegio):
 
     # Si no está en usuarios o pass inválido, buscar en profesor
     cursor.execute("""
-        SELECT id, nombre, apellido, email, password
+        SELECT id, nombre, apellido, email, password, COALESCE(LOWER(estado), 'activo') AS estado
         FROM profesor
         WHERE email = %s
     """, (email,))
@@ -85,6 +85,10 @@ def login_controller(email, password, codigo_colegio):
 
     if profesor:
         hashed_pw = profesor[4]
+        estado_profesor = str(profesor[5] or "activo").strip().lower()
+        if estado_profesor != "activo":
+            return None
+
         is_valid = False
 
         if hashed_pw.startswith('$2b$') or hashed_pw.startswith('$2a$'):

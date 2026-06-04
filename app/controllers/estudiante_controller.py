@@ -1,11 +1,32 @@
 from app.database import get_connection
 from app.services.cobros import calcular_deudas_estudiante
 
+ESTADOS_ESTUDIANTE = {"activo", "retirado", "egresado", "inactivo"}
+ESTADOS_FILTRO_ESTUDIANTE = ESTADOS_ESTUDIANTE | {"todos"}
+
+
+def normalizar_estado_estudiante(estado, default="activo"):
+    valor = str(estado or default).strip().lower()
+    if valor not in ESTADOS_ESTUDIANTE:
+        raise ValueError("Estado de estudiante invalido")
+    return valor
+
+
+def _build_estado_filter(estado):
+    estado_normalizado = str(estado or "activo").strip().lower()
+    if estado_normalizado not in ESTADOS_FILTRO_ESTUDIANTE:
+        raise ValueError("Filtro de estado de estudiante invalido")
+    if estado_normalizado == "todos":
+        return "", []
+    return "COALESCE(LOWER(estado), 'activo') = %s", [estado_normalizado]
+
+
 # 🎯 Crear estudiante
 def crear_estudiante_controller(est):
 
     conn = get_connection()
     cursor = conn.cursor()
+    estado = normalizar_estado_estudiante(getattr(est, "estado", None))
 
     cursor.execute("""
         INSERT INTO estudiantes 
@@ -43,9 +64,10 @@ def crear_estudiante_controller(est):
             ocupacion_madre,
             tipo_documento_madre,
             documento_madre,
-            condicion_diagnostico
+            condicion_diagnostico,
+            estado
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         RETURNING id
     """, (
         est.nombre,
@@ -81,7 +103,8 @@ def crear_estudiante_controller(est):
         est.ocupacion_madre,
         est.tipo_documento_madre,
         est.documento_madre,
-        est.condicion_diagnostico
+        est.condicion_diagnostico,
+        estado
     ))
 
     estudiante_id = cursor.fetchone()[0]
@@ -103,21 +126,34 @@ def _formatear_estudiante_lista(row):
         "apellido": row[2],
         "documento": row[3],
         "fecha_nacimiento": str(row[4]) if row[4] else None,
-        "curso_id": row[5]
+        "curso_id": row[5],
+        "email": row[6],
+        "estado": row[7] or "activo",
     }
 
 
 # 🎯 Obtener todos los estudiantes
-def obtener_estudiantes_controller():
+def obtener_estudiantes_controller(estado="activo"):
 
     conn = get_connection()
     cursor = conn.cursor()
+    estado_where, parametros = _build_estado_filter(estado)
+    where_sql = f"WHERE {estado_where}" if estado_where else ""
 
-    cursor.execute("""
-        SELECT id, nombre, apellido, documento_identidad, fecha_nacimiento, curso_id
+    cursor.execute(f"""
+        SELECT
+            id,
+            nombre,
+            apellido,
+            documento_identidad,
+            fecha_nacimiento,
+            curso_id,
+            email,
+            COALESCE(LOWER(estado), 'activo') AS estado
         FROM estudiantes
+        {where_sql}
         ORDER BY apellido ASC, nombre ASC
-    """)
+    """, tuple(parametros))
 
     resultado = cursor.fetchall()
 
@@ -127,12 +163,16 @@ def obtener_estudiantes_controller():
     return [_formatear_estudiante_lista(row) for row in resultado]
 
 
-def obtener_estudiantes_paginado_controller(limit=50, offset=0, busqueda=None):
+def obtener_estudiantes_paginado_controller(limit=50, offset=0, busqueda=None, estado="activo"):
     conn = get_connection()
     cursor = conn.cursor()
 
     condiciones = []
     parametros = []
+    estado_where, estado_params = _build_estado_filter(estado)
+    if estado_where:
+        condiciones.append(estado_where)
+        parametros.extend(estado_params)
 
     if busqueda:
         condiciones.append(
@@ -155,7 +195,15 @@ def obtener_estudiantes_paginado_controller(limit=50, offset=0, busqueda=None):
 
         cursor.execute(
             """
-            SELECT id, nombre, apellido, documento_identidad, fecha_nacimiento, curso_id
+            SELECT
+                id,
+                nombre,
+                apellido,
+                documento_identidad,
+                fecha_nacimiento,
+                curso_id,
+                email,
+                COALESCE(LOWER(estado), 'activo') AS estado
             FROM estudiantes
             """
             + where_sql
@@ -180,6 +228,11 @@ def obtener_estudiantes_paginado_controller(limit=50, offset=0, busqueda=None):
 def actualizar_estudiante_controller(est_id, est):
     conn = get_connection()
     cursor = conn.cursor()
+    estado = (
+        normalizar_estado_estudiante(est.estado)
+        if getattr(est, "estado", None) is not None
+        else None
+    )
 
     cursor.execute("""
         UPDATE estudiantes 
@@ -216,7 +269,8 @@ def actualizar_estudiante_controller(est_id, est):
             ocupacion_madre = %s,
             tipo_documento_madre = %s,
             documento_madre = %s,
-            condicion_diagnostico = %s
+            condicion_diagnostico = %s,
+            estado = COALESCE(%s, estado, 'activo')
         WHERE id = %s
         RETURNING id
     """, (
@@ -254,6 +308,7 @@ def actualizar_estudiante_controller(est_id, est):
         est.tipo_documento_madre,
         est.documento_madre,
         est.condicion_diagnostico,
+        estado,
         est_id
     ))
 
@@ -270,23 +325,58 @@ def actualizar_estudiante_controller(est_id, est):
 def obtener_estudiante_por_id_controller(est_id):
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM estudiantes WHERE id = %s", (est_id,))
-    row = cursor.fetchone()
-    if row:
-        col_names = [desc[0] for desc in cursor.description]
-        data = dict(zip(col_names, row))
-        # Format date for JSON response if available
-        if data.get('fecha_nacimiento'):
-            data['fecha_nacimiento'] = str(data['fecha_nacimiento'])
-        # Also ensure numeric things are numeric if need be
-        for key in ['descuento_matricula', 'descuento_mensualidad']:
-            if data.get(key) is not None:
-                data[key] = float(data[key])
-        return data
-        
-    cursor.close()
-    conn.close()
-    return None
+    try:
+        cursor.execute("SELECT * FROM estudiantes WHERE id = %s", (est_id,))
+        row = cursor.fetchone()
+        if row:
+            col_names = [desc[0] for desc in cursor.description]
+            data = dict(zip(col_names, row))
+            # Format date for JSON response if available
+            if data.get('fecha_nacimiento'):
+                data['fecha_nacimiento'] = str(data['fecha_nacimiento'])
+            if not data.get("estado"):
+                data["estado"] = "activo"
+            else:
+                data["estado"] = str(data["estado"]).strip().lower()
+            # Also ensure numeric things are numeric if need be
+            for key in ['descuento_matricula', 'descuento_mensualidad']:
+                if data.get(key) is not None:
+                    data[key] = float(data[key])
+            return data
+
+        return None
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def actualizar_estado_estudiante_controller(est_id, estado):
+    estado_normalizado = normalizar_estado_estudiante(estado)
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            """
+            UPDATE estudiantes
+            SET estado = %s
+            WHERE id = %s
+            RETURNING id, COALESCE(LOWER(estado), 'activo')
+            """,
+            (estado_normalizado, est_id),
+        )
+        row = cursor.fetchone()
+        if not row:
+            conn.rollback()
+            return {"error": "Estudiante no encontrado"}
+        conn.commit()
+        return {
+            "mensaje": "Estado de estudiante actualizado",
+            "id": row[0],
+            "estado": row[1],
+        }
+    finally:
+        cursor.close()
+        conn.close()
 
 
 def obtener_detalles_estudiante_controller(est_id):

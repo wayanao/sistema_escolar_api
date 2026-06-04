@@ -279,6 +279,7 @@ Migraciones antes de deploy:
 - Ejecutar migraciones tenant/template antes de crear colegios:
   - `migrations/20260601_usuarios_password_obligatorio.sql`
   - `migrations/20260602_asignaciones_activo.sql`
+  - `migrations/20260604_profesor_estado.sql`
 - Las consultas normales ya no crean `public.tenant_suscripciones`; si falta la
   migracion, el deploy debe corregirse antes de usar el sistema.
 
@@ -293,3 +294,20 @@ Asignaciones de clases:
   invalidas y jornada del curso antes de guardar.
 - Desactivar una asignacion no borra planes de clase, notas, asistencia,
   boletines ni observaciones historicas.
+
+Estados operativos de estudiantes y profesores:
+
+- Estudiantes usan `estado`: `activo`, `retirado`, `egresado`, `inactivo`.
+- Profesores usan `estado`: `activo`, `inactivo`.
+- `GET /estudiantes` y `GET /profesores` devuelven activos por defecto.
+- Para revision administrativa/historica se usa `estado=todos`.
+- No se hace borrado fisico de estudiantes o profesores desde estos flujos; el
+  cambio de estado conserva historial academico, pagos, notas, asistencia,
+  boletines y observaciones.
+- Profesores `inactivo` no pueden iniciar sesion ni ser usados en nuevas
+  asignaciones o ediciones de asignacion.
+- Estudiantes que no estan `activo` quedan fuera de planilla diaria, asistencia
+  y boletines del flujo del profesor.
+- La migracion `migrations/20260604_profesor_estado.sql` agrega
+  `profesor.estado`, normaliza registros existentes a `activo` y crea indice
+  por estado.

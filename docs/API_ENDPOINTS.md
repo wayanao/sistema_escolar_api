@@ -1,6 +1,6 @@
 # API Endpoints
 
-Estado documentado: 2026-05-25.
+Estado documentado: 2026-06-04.
 
 ## Routers
 
@@ -40,9 +40,26 @@ Los demas routers usan paths completos en cada decorator.
 
 - `POST /estudiantes`
 - `GET /estudiantes`
+- `GET /estudiantes?estado=activo|retirado|egresado|inactivo|todos`
 - `GET /estudiantes/{estudiante_id}/detalles`
 - `GET /estudiantes/{estudiante_id}`
 - `PUT /estudiantes/{estudiante_id}`
+- `PATCH /estudiantes/{estudiante_id}/estado`
+
+Notas:
+
+- Si no se envia `estado`, el listado devuelve estudiantes `activo`.
+- `estado=todos` permite consultar historico/administrativo sin filtrar por
+  estado operativo.
+- `PATCH /estudiantes/{estudiante_id}/estado` recibe:
+
+```json
+{
+  "estado": "retirado"
+}
+```
+
+- Estados validos: `activo`, `retirado`, `egresado`, `inactivo`.
 
 ## Cuentas
 
@@ -65,7 +82,26 @@ Los demas routers usan paths completos en cada decorator.
 
 - `POST /profesores`
 - `GET /profesores`
+- `GET /profesores?estado=activo|inactivo|todos`
 - `PUT /profesores/{profesor_id}`
+- `PATCH /profesores/{profesor_id}/estado`
+
+Notas:
+
+- Si no se envia `estado`, el listado devuelve profesores `activo`.
+- `estado=todos` permite consultar historico/administrativo sin filtrar por
+  estado operativo.
+- `PATCH /profesores/{profesor_id}/estado` recibe:
+
+```json
+{
+  "estado": "inactivo"
+}
+```
+
+- Estados validos: `activo`, `inactivo`.
+- Un profesor `inactivo` no puede iniciar sesion ni ser asignado/actualizado en
+  asignaciones activas.
 
 ## Asignaciones
 
@@ -281,4 +317,3 @@ Se observo soporte de `limit`/`offset` en endpoints como:
 - `/cursos`
 - `/materias`
 - `/usuarios`
-ffff

@@ -2542,3 +2542,60 @@ Resultado:
   `tenant_4444`.
 - Migracion aplicada en los tres tenants locales.
 
+## 2026-06-04 - Estados operativos de estudiantes y profesores
+
+Se implemento manejo por estado para estudiantes y profesores, manteniendo
+historial y evitando borrado fisico antes de produccion.
+
+Archivos modificados/agregados:
+
+- `app/schemas/estudiante.py`
+- `app/controllers/estudiante_controller.py`
+- `app/routes/estudiantes.py`
+- `app/schemas/profesor.py`
+- `app/controllers/profesor_controller.py`
+- `app/routes/profesores.py`
+- `app/controllers/auth_controller.py`
+- `app/controllers/asignacion_controller.py`
+- `app/controllers/planilla_excel_controller.py`
+- `app/controllers/boletin_controller.py`
+- `app/controllers/notas_controller.py`
+- `migrations/20260604_profesor_estado.sql`
+- `tests/test_estudiantes_pagination.py`
+- `tests/test_catalogos_pagination.py`
+- `tests/test_asignaciones_activo.py`
+- `docs/API_ENDPOINTS.md`
+- `docs/PRODUCCION_BACKEND.md`
+
+Cambio:
+
+- Estudiantes soportan estados `activo`, `retirado`, `egresado`, `inactivo`.
+- Profesores soportan estados `activo`, `inactivo`.
+- `GET /estudiantes` y `GET /profesores` filtran `activo` por defecto.
+- `estado=todos` permite consulta administrativa/historica.
+- Se agregaron `PATCH /estudiantes/{estudiante_id}/estado` y
+  `PATCH /profesores/{profesor_id}/estado`.
+- Estudiantes que no estan `activo` quedan fuera de planillas, asistencia y
+  boletines del flujo operativo del profesor, sin perder historial.
+- Profesores `inactivo` no pueden iniciar sesion ni ser asignados/actualizados
+  en asignaciones activas.
+- El login ya no devuelve `access_token` ni `token_type` en JSON; la sesion
+  queda por cookie `HttpOnly`.
+- La migracion `20260604_profesor_estado.sql` agrega `profesor.estado`,
+  normaliza profesores existentes a `activo` y crea indice por estado.
+
+Verificacion ejecutada:
+
+```powershell
+.\venv\Scripts\python.exe -m ruff check app tests scripts apply_migration.py
+.\venv\Scripts\python.exe -m pytest
+.\venv\Scripts\python.exe apply_migration.py migrations\20260604_profesor_estado.sql
+```
+
+Resultado:
+
+- Ruff OK.
+- 96 pruebas pasaron correctamente.
+- Migracion aplicada en `tenant_colegio_1`, `tenant_3333` y `tenant_4444`.
+- Frontend relacionado probado con `pnpm run build` y `pnpm run lint`.
+

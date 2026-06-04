@@ -179,6 +179,7 @@ def planilla_asignacion_controller(asignacion_id):
             AND nd.asignacion_id = a.id
 
         WHERE a.id = %s
+          AND COALESCE(LOWER(e.estado), 'activo') = 'activo'
 
         GROUP BY e.id, e.nombre, e.apellido, m.nombre, c.nombre
         ORDER BY e.nombre

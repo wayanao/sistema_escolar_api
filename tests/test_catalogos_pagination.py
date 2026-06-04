@@ -2,24 +2,58 @@ from app.routes import cursos, materias, profesores, usuario
 
 
 def test_profesores_keeps_legacy_list_response(monkeypatch):
-    monkeypatch.setattr(profesores, "obtener_profesores_controller", lambda: [{"id": 1}])
+    calls = []
+
+    def fake_listado(estado="activo"):
+        calls.append(estado)
+        return [{"id": 1}]
+
+    monkeypatch.setattr(profesores, "obtener_profesores_controller", fake_listado)
 
     assert profesores.obtener_profesores() == [{"id": 1}]
+    assert calls == ["activo"]
 
 
 def test_profesores_returns_paginated_response_when_limit_is_sent(monkeypatch):
     calls = []
 
-    def fake(limit, offset, busqueda):
-        calls.append({"limit": limit, "offset": offset, "busqueda": busqueda})
+    def fake(limit, offset, busqueda, estado):
+        calls.append({"limit": limit, "offset": offset, "busqueda": busqueda, "estado": estado})
         return {"total": 1, "limit": limit, "offset": offset, "items": [{"id": 9}]}
 
     monkeypatch.setattr(profesores, "obtener_profesores_paginado_controller", fake)
 
-    response = profesores.obtener_profesores(limit=25, offset=50, busqueda="ana")
+    response = profesores.obtener_profesores(limit=25, offset=50, busqueda="ana", estado="inactivo")
 
     assert response == {"total": 1, "limit": 25, "offset": 50, "items": [{"id": 9}]}
-    assert calls == [{"limit": 25, "offset": 50, "busqueda": "ana"}]
+    assert calls == [{"limit": 25, "offset": 50, "busqueda": "ana", "estado": "inactivo"}]
+
+
+def test_profesores_rejects_invalid_estado_filter():
+    try:
+        profesores.obtener_profesores(estado="retirado")
+    except Exception as exc:
+        assert exc.status_code == 422
+    else:
+        raise AssertionError("Expected invalid estado filter to be rejected")
+
+
+def test_actualizar_estado_profesor_route_returns_controller_result(monkeypatch):
+    calls = []
+
+    def fake_update(profesor_id, estado):
+        calls.append((profesor_id, estado))
+        return {"id": profesor_id, "estado": estado}
+
+    monkeypatch.setattr(profesores, "actualizar_estado_profesor_controller", fake_update)
+
+    result = profesores.actualizar_estado_profesor(
+        4,
+        profesores.ProfesorEstadoUpdate(estado="inactivo"),
+    )
+
+    assert calls == [(4, "inactivo")]
+    assert result == {"id": 4, "estado": "inactivo"}
 
 
 def test_cursos_keeps_legacy_list_response(monkeypatch):

@@ -1,16 +1,18 @@
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from app.dependencies import get_current_active_admin
-from app.schemas.estudiante import EstudianteCreate
+from app.schemas.estudiante import EstudianteCreate, EstudianteEstadoUpdate
 
 # 👇 IMPORTAMOS CONTROLLER
 from app.controllers.estudiante_controller import (
+    ESTADOS_FILTRO_ESTUDIANTE,
     crear_estudiante_controller,
     obtener_estudiantes_controller,
     obtener_estudiantes_paginado_controller,
     obtener_detalles_estudiante_controller,
     actualizar_estudiante_controller,
+    actualizar_estado_estudiante_controller,
     obtener_estudiante_por_id_controller
 )
 
@@ -35,11 +37,24 @@ def obtener_estudiantes(
     limit: Annotated[Optional[int], Query(ge=1, le=200)] = None,
     offset: Annotated[int, Query(ge=0)] = 0,
     busqueda: Optional[str] = None,
+    estado: Optional[str] = "activo",
 ):
-    if limit is not None:
-        return obtener_estudiantes_paginado_controller(limit=limit, offset=offset, busqueda=busqueda)
+    estado_normalizado = str(estado or "activo").strip().lower()
+    if estado_normalizado not in ESTADOS_FILTRO_ESTUDIANTE:
+        raise HTTPException(
+            status_code=422,
+            detail="Filtro de estado de estudiante invalido",
+        )
 
-    return obtener_estudiantes_controller()
+    if limit is not None:
+        return obtener_estudiantes_paginado_controller(
+            limit=limit,
+            offset=offset,
+            busqueda=busqueda,
+            estado=estado_normalizado,
+        )
+
+    return obtener_estudiantes_controller(estado=estado_normalizado)
 
 # 🔍 Obtener detalles de un estudiante
 @router.get("/estudiantes/{estudiante_id}/detalles")
@@ -55,3 +70,11 @@ def obtener_estudiante_por_id(estudiante_id: int):
 @router.put("/estudiantes/{estudiante_id}")
 def actualizar_estudiante(estudiante_id: int, est: EstudianteCreate):
     return actualizar_estudiante_controller(estudiante_id, est)
+
+
+@router.patch("/estudiantes/{estudiante_id}/estado")
+def actualizar_estado_estudiante(estudiante_id: int, data: EstudianteEstadoUpdate):
+    resultado = actualizar_estado_estudiante_controller(estudiante_id, data.estado)
+    if "error" in resultado:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=resultado["error"])
+    return resultado

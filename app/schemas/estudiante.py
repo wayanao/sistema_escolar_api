@@ -1,6 +1,8 @@
 from pydantic import BaseModel
 from datetime import date
-from typing import Optional
+from typing import Literal, Optional
+
+EstadoEstudiante = Literal["activo", "retirado", "egresado", "inactivo"]
 
 class EstudianteCreate(BaseModel):
     nombre: str
@@ -44,4 +46,9 @@ class EstudianteCreate(BaseModel):
     documento_madre: Optional[str] = None
 
     condicion_diagnostico: Optional[str] = None
+    estado: Optional[EstadoEstudiante] = None
+
+
+class EstudianteEstadoUpdate(BaseModel):
+    estado: EstadoEstudiante
 

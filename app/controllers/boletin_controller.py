@@ -55,6 +55,7 @@ def obtener_notas_planilla_controller(asignacion_id: int, periodo: int):
             JOIN asignaciones a ON e.curso_id = a.curso_id
             LEFT JOIN notas_detalle nd ON e.id = nd.estudiante_id AND nd.asignacion_id = a.id AND nd.periodo = %s
             WHERE a.id = %s
+              AND COALESCE(LOWER(e.estado), 'activo') = 'activo'
             ORDER BY e.apellido, e.nombre, nd.id
         """, (periodo, asignacion_id))
         
@@ -94,6 +95,7 @@ def obtener_boletin_para_profesor_controller(asignacion_id: int, periodo: int):
             LEFT JOIN notas_detalle nd ON e.id = nd.estudiante_id
                 AND nd.asignacion_id = a.id AND nd.periodo = %s
             WHERE a.id = %s
+              AND COALESCE(LOWER(e.estado), 'activo') = 'activo'
             ORDER BY e.apellido, e.nombre, nd.id
         """, (periodo, asignacion_id))
 

@@ -121,12 +121,28 @@ def verificar_cruce_horario(cursor, campo_id, valor_id, dia, hora_inicio_nueva, 
             
     return False
 
+
+def profesor_activo(cursor, profesor_id):
+    cursor.execute(
+        """
+        SELECT 1
+        FROM profesor
+        WHERE id = %s
+          AND COALESCE(LOWER(estado), 'activo') = 'activo'
+        """,
+        (profesor_id,),
+    )
+    return cursor.fetchone() is not None
+
 # 🎯 Asignar profesor a curso
 def asignar_profesor_controller(asignacion):
     conn = get_connection()
     cursor = conn.cursor()
 
     try:
+        if not profesor_activo(cursor, asignacion.profesor_id):
+            return {"error": "No se puede asignar un profesor inactivo."}
+
         if asignacion.hora_inicio and asignacion.hora_fin:
             error_rango = validar_rango_institucional(asignacion.hora_inicio, asignacion.hora_fin)
             if error_rango:
@@ -448,6 +464,9 @@ def editar_asignacion_controller(asignacion_id, asignacion):
             return {"error": "Asignación no encontrada"}
         if actual[3] is not True:
             return {"error": "No se puede editar una asignación inactiva."}
+
+        if not profesor_activo(cursor, asignacion.profesor_id):
+            return {"error": "No se puede asignar un profesor inactivo."}
 
         cambia_relacion_academica = (
             actual[0] != asignacion.profesor_id

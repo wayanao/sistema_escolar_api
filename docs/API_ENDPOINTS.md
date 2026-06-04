@@ -364,6 +364,15 @@ Router prefix: `/boletines`
 - `GET /boletines/referencia/{asignacion_id}/{periodo}`
 - `GET /boletines/admin/generar/{estudiante_id}/{periodo}`
 
+Notas:
+
+- `GET /boletines/admin/generar/{estudiante_id}/{periodo}` devuelve la
+  definitiva guardada en boletin si existe.
+- Si no existe definitiva guardada, o la definitiva guardada es `0`, usa como
+  respaldo el promedio numerico de `notas_detalle` para ese estudiante,
+  asignacion y periodo.
+- El promedio de respaldo solo considera notas numericas mayores que `0`.
+
 ## Branding
 
 - `GET /branding`

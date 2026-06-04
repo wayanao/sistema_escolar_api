@@ -178,7 +178,7 @@ def obtener_boletin_admin_controller(estudiante_id: int, periodo: int):
                 m.nombre AS materia,
                 p.nombre AS profesor_nombre,
                 p.apellido AS profesor_apellido,
-                bc.definitiva,
+                COALESCE(NULLIF(bc.definitiva, 0), nd_prom.promedio_numerico) AS definitiva,
                 bc.id as boletin_id
             FROM estudiantes e
             JOIN asignaciones asig ON e.curso_id = asig.curso_id
@@ -187,9 +187,18 @@ def obtener_boletin_admin_controller(estudiante_id: int, periodo: int):
             LEFT JOIN boletin_cabecera bc ON bc.asignacion_id = asig.id
                 AND bc.estudiante_id = e.id
                 AND bc.periodo = %s
+            LEFT JOIN LATERAL (
+                SELECT AVG(nd.nota) AS promedio_numerico
+                FROM notas_detalle nd
+                WHERE nd.estudiante_id = e.id
+                  AND nd.asignacion_id = asig.id
+                  AND nd.periodo = %s
+                  AND COALESCE(nd.tipo_evaluacion, 'numerica') <> 'desarrollo'
+                  AND nd.nota > 0
+            ) nd_prom ON TRUE
             WHERE e.id = %s
             ORDER BY m.nombre
-        ''', (periodo, estudiante_id))
+        ''', (periodo, periodo, estudiante_id))
         materias_res = cur.fetchall()
         
         asignacion_ids = [row['asignacion_id'] for row in materias_res]
@@ -233,7 +242,7 @@ def obtener_boletin_admin_controller(estudiante_id: int, periodo: int):
                     detalle['observacion'] = det['observacion']
                 if det['tipo_evaluacion']:
                     detalle['tipos_por_periodo'][str(det['periodo'])] = det['tipo_evaluacion']
-                if det['nota'] is not None:
+                if det['nota'] is not None and float(det['nota']) > 0:
                     detalle['notas_por_periodo'][str(det['periodo'])] = float(det['nota'])
                 if det['valoracion']:
                     detalle['valoraciones_por_periodo'][str(det['periodo'])] = det['valoracion']

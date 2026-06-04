@@ -2874,3 +2874,42 @@ Resultado:
   `tenant_4444`.
 - Migracion aplicada en los tres tenants locales.
 
+## 2026-06-04 - Certificados usan notas de planilla como respaldo
+
+Se ajusto la generacion administrativa de boletines/certificados para que las
+notas se reflejen aunque todavia no exista una cabecera de boletin guardada.
+
+Archivos modificados:
+
+- `app/controllers/boletin_controller.py`
+
+Cambio:
+
+- `GET /boletines/admin/generar/{estudiante_id}/{periodo}` mantiene primero la
+  definitiva guardada en `boletin_cabecera`.
+- Si esa definitiva no existe, calcula un promedio desde `notas_detalle` para
+  el mismo estudiante, asignacion y periodo.
+- Si la definitiva guardada es `0`, se trata como ausencia de definitiva y se
+  permite usar el promedio real de planilla, porque las notas numericas validas
+  del sistema van de 1 a 5.
+- El promedio de respaldo solo considera `notas_detalle.nota > 0`.
+- Las notas `0` guardadas en detalles de boletin no se devuelven como notas
+  numericas validas por periodo.
+- Se excluyen valoraciones de desarrollo del promedio numerico.
+
+Motivo:
+
+- Certificados y boletines administrativos deben poder mostrar notas ya
+  registradas en planilla, incluso antes de que el profesor guarde el resumen
+  final del boletin.
+
+Verificacion ejecutada:
+
+```powershell
+.\venv\Scripts\python.exe -B -c "import ast, pathlib; ast.parse(pathlib.Path('app/controllers/boletin_controller.py').read_text(encoding='utf-8'))"
+```
+
+Resultado:
+
+- Sintaxis OK.
+

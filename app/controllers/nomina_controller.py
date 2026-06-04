@@ -116,8 +116,8 @@ def procesar_pago_nomina(data):
         try:
             # Registrar egreso
             cursor.execute('''
-                INSERT INTO egresos (concepto, monto, fecha, categoria, notas)
-                VALUES (%s, %s, CURRENT_DATE, 'Pago Nomina', 'Recibo de Nomina')
+                INSERT INTO egresos (concepto, monto, fecha, categoria, notas, origen)
+                VALUES (%s, %s, CURRENT_DATE, 'Pago Nomina', 'Recibo de Nomina', 'nomina')
             ''', (f"Pago de Nómina - Profesor ID {data.profesor_id}", total_pagado))
             # O crear un SAVEPOINT internamente si quieres ignorar si falla
         except Exception as e:

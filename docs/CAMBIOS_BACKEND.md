@@ -2542,6 +2542,82 @@ Resultado:
   `tenant_4444`.
 - Migracion aplicada en los tres tenants locales.
 
+## 2026-06-04 - Reportes con egresos y balance
+
+Se amplio el modulo de reportes para mostrar egresos y balance financiero.
+
+Archivos modificados/agregados:
+
+- `app/controllers/reportes_controller.py`
+- `app/routes/reportes.py`
+- `tests/test_reportes_pagination.py`
+- `tests/test_anulaciones_financieras.py`
+- `docs/API_ENDPOINTS.md`
+
+Cambio:
+
+- `GET /reportes/general` ahora incluye:
+  - `total_egresos`;
+  - `egresos_hoy`;
+  - `balance_general`;
+  - `balance_hoy`;
+  - `egresos_mensuales`.
+- Se agrego `GET /reportes/egresos-rango?inicio=YYYY-MM-DD&fin=YYYY-MM-DD`.
+- El endpoint de egresos por rango conserva compatibilidad con respuesta lista
+  simple si no se envia `limit`, y respuesta paginada si se envia `limit`.
+
+Verificacion ejecutada:
+
+```powershell
+$env:RUFF_CACHE_DIR = "$env:TEMP\ruff-cache-sistema-escolar"; .\venv\Scripts\python.exe -m ruff check app tests scripts apply_migration.py
+.\venv\Scripts\python.exe -m pytest tests\test_reportes_pagination.py tests\test_anulaciones_financieras.py
+.\venv\Scripts\python.exe -m pytest --basetemp=.pytest_tmp_reportes
+```
+
+Resultado:
+
+- Ruff OK.
+- 12 pruebas enfocadas de reportes/anulaciones pasaron correctamente.
+- 127 pruebas completas pasaron correctamente.
+
+## 2026-06-04 - Prestamos sin eliminacion y filtro por profesor
+
+Se ajusto el modulo de prestamos para conservar trazabilidad financiera y
+evitar borrado fisico.
+
+Archivos modificados/agregados:
+
+- `app/controllers/prestamo_controller.py`
+- `app/routes/prestamos.py`
+- `tests/test_prestamos_validaciones.py`
+- `docs/API_ENDPOINTS.md`
+
+Cambio:
+
+- `GET /api/prestamos/` permite filtrar por `profesor_id`.
+- `POST /api/prestamos/` valida profesor, monto mayor que 0 y estado inicial
+  `Pendiente`.
+- La fecha faltante se completa con el dia actual y las notas se normalizan con
+  `strip()`.
+- `PUT /api/prestamos/{prestamo_id}/estado` solo permite saldar con estado
+  `Pagado`.
+- `DELETE /api/prestamos/{prestamo_id}` queda bloqueado con `405`; los
+  prestamos no se eliminan fisicamente.
+
+Verificacion ejecutada:
+
+```powershell
+$env:RUFF_CACHE_DIR = "$env:TEMP\ruff-cache-sistema-escolar"; .\venv\Scripts\python.exe -m ruff check app tests scripts apply_migration.py
+.\venv\Scripts\python.exe -m pytest tests\test_prestamos_validaciones.py
+.\venv\Scripts\python.exe -m pytest --basetemp=.pytest_tmp_prestamos
+```
+
+Resultado:
+
+- Ruff OK.
+- 9 pruebas enfocadas de prestamos pasaron correctamente.
+- 125 pruebas completas pasaron correctamente.
+
 ## 2026-06-04 - Estados operativos de estudiantes y profesores
 
 Se implemento manejo por estado para estudiantes y profesores, manteniendo
@@ -2754,7 +2830,9 @@ trazabilidad contable.
 Archivos modificados/agregados:
 
 - `app/controllers/egreso_controller.py`
+- `app/controllers/nomina_controller.py`
 - `app/routes/egresos.py`
+- `migrations/20260604_egresos_origen.sql`
 - `tests/test_egresos_fechas.py`
 - `docs/API_ENDPOINTS.md`
 
@@ -2764,6 +2842,16 @@ Cambio:
 - Se agregaron filtros `fecha_desde` y `fecha_hasta`.
 - Si se envia solo `fecha_desde`, se consulta ese dia.
 - Si se envia rango, se valida que `fecha_desde <= fecha_hasta`.
+- `POST /api/egresos/` valida concepto obligatorio, categoria obligatoria y
+  monto mayor que 0 antes de insertar en base de datos.
+- Los datos de texto del egreso se normalizan con `strip()` y la fecha faltante
+  se completa con el dia actual.
+- Se agrego `egresos.origen` para diferenciar egresos `manual` de egresos
+  automaticos.
+- Los egresos creados desde este modulo quedan con `origen = manual`.
+- Los egresos creados por nomina quedan con `origen = nomina`.
+- Se agrego `PUT /api/egresos/{egreso_id}` para editar solo egresos manuales.
+- Si se intenta editar un egreso automatico, el backend responde `403`.
 - `DELETE /api/egresos/{egreso_id}` queda bloqueado con `405`; los egresos no
   se eliminan fisicamente.
 
@@ -2772,12 +2860,17 @@ Verificacion ejecutada:
 ```powershell
 $env:RUFF_CACHE_DIR = "$env:TEMP\ruff-cache-sistema-escolar"; .\venv\Scripts\python.exe -m ruff check app tests scripts apply_migration.py
 .\venv\Scripts\python.exe -m pytest tests\test_egresos_fechas.py
-.\venv\Scripts\python.exe -m pytest --basetemp=.pytest_tmp_egresos
+.\venv\Scripts\python.exe apply_migration.py migrations\20260604_egresos_origen.sql --dry-run
+.\venv\Scripts\python.exe apply_migration.py migrations\20260604_egresos_origen.sql
+.\venv\Scripts\python.exe -m pytest --basetemp=.pytest_tmp_egresos_edit
 ```
 
 Resultado:
 
 - Ruff OK.
-- 4 pruebas enfocadas de egresos pasaron correctamente.
-- 109 pruebas completas pasaron correctamente.
+- 11 pruebas enfocadas de egresos pasaron correctamente.
+- 116 pruebas completas pasaron correctamente.
+- Dry-run de migracion OK en `tenant_colegio_1`, `tenant_3333` y
+  `tenant_4444`.
+- Migracion aplicada en los tres tenants locales.
 

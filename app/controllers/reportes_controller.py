@@ -23,6 +23,19 @@ def _formatear_ingreso(row):
         "fecha_anulacion": row[9].strftime("%d/%m/%Y %H:%M") if len(row) > 9 and row[9] else None,
     }
 
+
+def _formatear_egreso(row):
+    return {
+        "id": row[0],
+        "concepto": row[1] or "Sin concepto",
+        "monto": float(row[2] or 0),
+        "fecha": row[3].strftime("%d/%m/%Y") if row[3] else None,
+        "categoria": row[4] or "Otros",
+        "notas": row[5] or "",
+        "origen": row[6] if len(row) > 6 and row[6] else "manual",
+    }
+
+
 # 📊 Reporte general del sistema
 def reporte_general_controller():
     conn = get_connection()
@@ -42,7 +55,13 @@ def reporte_general_controller():
                     FROM pagos
                     WHERE DATE(COALESCE(fecha, fecha_pago::timestamp)) = (NOW() AT TIME ZONE 'America/Bogota')::date
                       AND COALESCE(estado, 'Pagado') <> 'Anulado'
-                ) as ingresos_hoy
+                ) as ingresos_hoy,
+                (SELECT COALESCE(SUM(monto), 0) FROM egresos) as total_egresos,
+                (
+                    SELECT COALESCE(SUM(monto), 0)
+                    FROM egresos
+                    WHERE fecha::date = (NOW() AT TIME ZONE 'America/Bogota')::date
+                ) as egresos_hoy
         """)
 
         stats = cursor.fetchone()
@@ -73,6 +92,18 @@ def reporte_general_controller():
 
         ingresos_mensuales = cursor.fetchall()
 
+        cursor.execute("""
+            SELECT
+                TO_CHAR(fecha::date, 'YYYY-MM') as mes,
+                SUM(monto) as total
+            FROM egresos
+            WHERE fecha::date >= CURRENT_DATE - INTERVAL '6 months'
+            GROUP BY TO_CHAR(fecha::date, 'YYYY-MM')
+            ORDER BY mes DESC
+        """)
+
+        egresos_mensuales = cursor.fetchall()
+
         return {
             "estadisticas_generales": {
                 "total_estudiantes": stats[0],
@@ -80,7 +111,11 @@ def reporte_general_controller():
                 "total_cursos": stats[2],
                 "total_materias": stats[3],
                 "total_ingresos": float(stats[4] or 0),
-                "ingresos_hoy": float(stats[5] or 0)
+                "ingresos_hoy": float(stats[5] or 0),
+                "total_egresos": float(stats[6] or 0),
+                "egresos_hoy": float(stats[7] or 0),
+                "balance_general": float((stats[4] or 0) - (stats[6] or 0)),
+                "balance_hoy": float((stats[5] or 0) - (stats[7] or 0)),
             },
             "estudiantes_por_curso": [
                 {"curso": row[0], "cantidad": row[1]}
@@ -89,6 +124,10 @@ def reporte_general_controller():
             "ingresos_mensuales": [
                 {"mes": row[0], "total": float(row[1])}
                 for row in ingresos_mensuales
+            ],
+            "egresos_mensuales": [
+                {"mes": row[0], "total": float(row[1])}
+                for row in egresos_mensuales
             ]
         }
 
@@ -101,10 +140,15 @@ def reporte_general_controller():
                 "total_cursos": 0,
                 "total_materias": 0,
                 "total_ingresos": 0,
-                "ingresos_hoy": 0
+                "ingresos_hoy": 0,
+                "total_egresos": 0,
+                "egresos_hoy": 0,
+                "balance_general": 0,
+                "balance_hoy": 0,
             },
             "estudiantes_por_curso": [],
-            "ingresos_mensuales": []
+            "ingresos_mensuales": [],
+            "egresos_mensuales": []
         }
     finally:
         cursor.close()
@@ -360,6 +404,55 @@ def reporte_ingresos_rango_controller(fecha_inicio: str, fecha_fin: str, limit=N
         return [_formatear_ingreso(row) for row in resultados]
     except Exception as e:
         print(f"Error en reporte_ingresos_rango_controller: {e}")
+        return []
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def reporte_egresos_rango_controller(fecha_inicio: str, fecha_fin: str, limit=None, offset=0):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    try:
+        if limit is not None:
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM egresos
+                WHERE fecha::date >= %s::date
+                  AND fecha::date < %s::date + interval '1 day'
+            """, (fecha_inicio, fecha_fin))
+            total = cursor.fetchone()[0]
+
+            cursor.execute("""
+                SELECT id, concepto, monto, fecha, categoria, notas, COALESCE(origen, 'manual') AS origen
+                FROM egresos
+                WHERE fecha::date >= %s::date
+                  AND fecha::date < %s::date + interval '1 day'
+                ORDER BY fecha DESC, id DESC
+                LIMIT %s OFFSET %s
+            """, (fecha_inicio, fecha_fin, limit, offset))
+
+            resultados = cursor.fetchall()
+            return {
+                "total": total,
+                "limit": limit,
+                "offset": offset,
+                "items": [_formatear_egreso(row) for row in resultados],
+            }
+
+        cursor.execute("""
+            SELECT id, concepto, monto, fecha, categoria, notas, COALESCE(origen, 'manual') AS origen
+            FROM egresos
+            WHERE fecha::date >= %s::date
+              AND fecha::date < %s::date + interval '1 day'
+            ORDER BY fecha DESC, id DESC
+        """, (fecha_inicio, fecha_fin))
+
+        resultados = cursor.fetchall()
+        return [_formatear_egreso(row) for row in resultados]
+    except Exception as e:
+        print(f"Error en reporte_egresos_rango_controller: {e}")
         return []
     finally:
         cursor.close()

@@ -165,7 +165,8 @@ def test_formatear_ingreso_anulado_no_suma_como_monto_valido():
 
 def test_reporte_general_excluye_pagos_anulados_de_totales(monkeypatch):
     cursor = FakeCursor([
-        (3, 2, 1, 4, 120000, 50000),
+        (3, 2, 1, 4, 120000, 50000, 30000, 10000),
+        [],
         [],
         [],
     ])
@@ -176,6 +177,10 @@ def test_reporte_general_excluye_pagos_anulados_de_totales(monkeypatch):
 
     assert response["estadisticas_generales"]["total_ingresos"] == 120000.0
     assert response["estadisticas_generales"]["ingresos_hoy"] == 50000.0
+    assert response["estadisticas_generales"]["total_egresos"] == 30000.0
+    assert response["estadisticas_generales"]["egresos_hoy"] == 10000.0
+    assert response["estadisticas_generales"]["balance_general"] == 90000.0
+    assert response["estadisticas_generales"]["balance_hoy"] == 40000.0
     sql = _sql(cursor)
     assert "COALESCE(estado, 'Pagado') <> 'Anulado'" in sql
     assert "America/Bogota" in sql

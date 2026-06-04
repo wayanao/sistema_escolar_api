@@ -254,4 +254,28 @@ Estado:
 - Aplicada en los tenants operativos existentes durante la auditoria.
 - Registrada en `public.schema_migrations`.
 
+## Migracion 20260604_egresos_origen.sql
+
+Objetivo:
+
+- Diferenciar egresos manuales de egresos automaticos.
+- Permitir editar solo egresos creados desde el modulo administrativo de
+  Egresos.
+- Bloquear la edicion de egresos generados por nomina u otros flujos
+  automaticos.
+
+Columnas agregadas a `egresos`:
+
+- `origen`
+
+Valores:
+
+- `manual`: egreso creado desde `/api/egresos/`.
+- `nomina`: egreso automatico creado por el pago de nomina.
+
+Estado:
+
+- Aplicada en `tenant_colegio_1`, `tenant_3333` y `tenant_4444`.
+- Registrada en `public.schema_migrations`.
+
 

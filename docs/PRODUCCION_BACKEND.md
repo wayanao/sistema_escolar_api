@@ -283,6 +283,7 @@ Migraciones antes de deploy:
   - `migrations/20260604_cursos_estado.sql`
   - `migrations/20260604_materias_estado.sql`
   - `migrations/20260604_inventario_estado.sql`
+  - `migrations/20260604_egresos_origen.sql`
 - Las consultas normales ya no crean `public.tenant_suscripciones`; si falta la
   migracion, el deploy debe corregirse antes de usar el sistema.
 
@@ -333,3 +334,25 @@ Estados operativos de estudiantes, profesores, cursos, materias e inventario:
 - La migracion `migrations/20260604_inventario_estado.sql` agrega
   `inventario.estado`, normaliza registros existentes a `activo` y crea indice
   por estado.
+- La migracion `migrations/20260604_egresos_origen.sql` agrega
+  `egresos.origen`, marca egresos de nomina como `nomina`, completa el resto
+  como `manual` y crea indice por origen.
+
+Egresos:
+
+- `GET /api/egresos/` muestra por defecto los egresos del dia actual.
+- `PUT /api/egresos/{egreso_id}` solo permite editar egresos manuales.
+- Los egresos automaticos de nomina no se editan desde el modulo de Egresos.
+- `DELETE /api/egresos/{egreso_id}` esta bloqueado para conservar trazabilidad
+  contable.
+
+Prestamos:
+
+- `POST /api/prestamos/` exige profesor valido, monto mayor que 0 y estado
+  inicial `Pendiente`.
+- `GET /api/prestamos/?profesor_id={profesor_id}` permite revisar historial por
+  profesor.
+- `PUT /api/prestamos/{prestamo_id}/estado` solo permite saldar el prestamo con
+  estado `Pagado`.
+- `DELETE /api/prestamos/{prestamo_id}` esta bloqueado para conservar
+  trazabilidad financiera.

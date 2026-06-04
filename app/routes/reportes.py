@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.dependencies import get_current_active_admin
 from app.controllers.reportes_controller import (
     reporte_general_controller,
+    reporte_egresos_rango_controller,
     reporte_estado_cuenta_curso_controller,
     reporte_ingresos_mes_controller,
     reporte_ingresos_rango_controller
@@ -52,6 +53,20 @@ async def reporte_ingresos_rango(
 ):
     try:
         data = reporte_ingresos_rango_controller(inicio, fin, limit=limit, offset=offset)
+        return data
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/reportes/egresos-rango")
+async def reporte_egresos_rango(
+    inicio: str,
+    fin: str,
+    limit: Annotated[Optional[int], Query(ge=1, le=200)] = None,
+    offset: Annotated[int, Query(ge=0)] = 0,
+):
+    try:
+        data = reporte_egresos_rango_controller(inicio, fin, limit=limit, offset=offset)
         return data
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

@@ -89,6 +89,15 @@ El codigo consulta o modifica tablas como:
 - `institucion_branding`
 - `plantilla_impresion`
 
+Nota sobre `egresos`:
+
+- `egresos.origen` identifica la fuente del movimiento.
+- `manual`: egreso creado desde el modulo administrativo de Egresos.
+- `nomina`: egreso automatico creado al pagar nomina.
+- Solo los egresos `manual` son editables desde `/api/egresos/{id}`.
+- Los egresos automaticos conservan su trazabilidad en el modulo que los
+  genero.
+
 Nota sobre `asignaciones`:
 
 - `asignaciones.activo` indica si la asignacion sigue vigente en horarios y

@@ -218,6 +218,7 @@ Notas:
 - `GET /reportes/estado-cuenta/{curso_id}`
 - `GET /reportes/ingresos-mes/{mes}`
 - `GET /reportes/ingresos-rango`
+- `GET /reportes/egresos-rango`
 
 ## Tipos de pagos
 
@@ -266,6 +267,7 @@ Router prefix: `/api/egresos`
 - `GET /api/egresos/`
 - `GET /api/egresos/?fecha_desde=YYYY-MM-DD&fecha_hasta=YYYY-MM-DD`
 - `POST /api/egresos/`
+- `PUT /api/egresos/{egreso_id}` solo para egresos con `origen = manual`.
 - `DELETE /api/egresos/{egreso_id}` bloqueado: los egresos no se eliminan
   fisicamente.
 
@@ -274,15 +276,31 @@ Notas:
 - Si no se envian fechas, el backend devuelve solo los egresos del dia actual.
 - Si se envia solo `fecha_desde`, se consulta ese dia.
 - Si se envian `fecha_desde` y `fecha_hasta`, se consulta el rango inclusivo.
+- `POST /api/egresos/` exige `concepto`, `categoria` y `monto > 0`.
+- Si el egreso es invalido, responde `400` con el detalle de validacion.
+- El listado devuelve `origen` y `editable`; los egresos automaticos de nomina
+  no son editables desde este modulo.
+- Si se intenta editar un egreso no manual, responde `403`.
 
 ## Prestamos
 
 Router prefix: `/api/prestamos`
 
 - `GET /api/prestamos/`
+- `GET /api/prestamos/?profesor_id={profesor_id}`
 - `POST /api/prestamos/`
-- `PUT /api/prestamos/{prestamo_id}/estado`
-- `DELETE /api/prestamos/{prestamo_id}`
+- `PUT /api/prestamos/{prestamo_id}/estado` solo permite saldar con
+  `{"estado": "Pagado"}`.
+- `DELETE /api/prestamos/{prestamo_id}` bloqueado: los prestamos no se
+  eliminan fisicamente.
+
+Notas:
+
+- `POST /api/prestamos/` exige profesor valido, `monto > 0` y estado inicial
+  `Pendiente`.
+- Si el prestamo es invalido, responde `400` con el detalle de validacion.
+- Los prestamos creados se conservan para trazabilidad y solo pueden pasar a
+  `Pagado`.
 
 ## Ventas
 

@@ -6,6 +6,47 @@ Estado documentado: 2026-05-25.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
+## 2026-06-10 - Bloqueo backend de eliminaciones no auditables
+
+Se cerro el acceso backend a endpoints `DELETE` que no deben eliminar registros
+operativos o contables.
+
+Archivos modificados:
+
+- `app/routes/tipos_pagos.py`
+- `app/controllers/tipos_pagos_controller.py`
+- `app/routes/inventario.py`
+- `app/controllers/inventario_controller.py`
+- `tests/test_catalogos_pagination.py`
+- `tests/test_inventario_pagination.py`
+
+Cambio:
+
+- `DELETE /tipos-pagos/{id}` responde `405 Method Not Allowed`.
+- `DELETE /inventario/{item_id}` responde `405 Method Not Allowed`.
+- Los controladores asociados ya no ejecutan SQL de borrado ni desactivacion por
+  metodo `DELETE`.
+- Para tipos de pago se debe usar la configuracion `activo/inactivo`.
+- Para inventario se debe usar `PATCH /inventario/{item_id}/estado`.
+- Egresos y prestamos ya estaban bloqueados con `405`; se mantienen igual.
+
+Motivo:
+
+- Alinear backend con la politica de no eliminar registros que afectan auditoria,
+  historial financiero, cobros, ventas o trazabilidad operativa.
+
+Verificacion ejecutada:
+
+```powershell
+.\venv\Scripts\python.exe -m pytest tests\test_egresos_fechas.py tests\test_prestamos_validaciones.py tests\test_inventario_pagination.py tests\test_catalogos_pagination.py -q
+.\venv\Scripts\python.exe -m pytest -q
+```
+
+Resultado:
+
+- Pruebas especificas OK.
+- Suite completa OK.
+
 ## Cambio documentado
 
 Fecha: 2026-05-25

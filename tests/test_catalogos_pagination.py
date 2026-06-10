@@ -1,4 +1,4 @@
-from app.routes import cursos, materias, profesores, usuario
+from app.routes import cursos, materias, profesores, tipos_pagos, usuario
 
 
 def test_profesores_keeps_legacy_list_response(monkeypatch):
@@ -185,3 +185,13 @@ def test_usuarios_returns_paginated_response_when_limit_is_sent(monkeypatch):
 
     assert response == {"total": 1, "limit": 25, "offset": 50, "items": [{"id": 9}]}
     assert calls == [{"limit": 25, "offset": 50, "busqueda": "admin", "rol": "admin"}]
+
+
+def test_tipos_pagos_delete_is_blocked():
+    try:
+        tipos_pagos.delete_tipo_pago(3)
+    except Exception as exc:
+        assert exc.status_code == 405
+        assert "no se eliminan" in exc.detail
+    else:
+        raise AssertionError("Expected tipo de pago deletion to be blocked")

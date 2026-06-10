@@ -78,3 +78,13 @@ def test_actualizar_estado_inventario_route_returns_controller_result(monkeypatc
 
     assert calls == [(8, "inactivo")]
     assert result == {"id": 8, "estado": "inactivo"}
+
+
+def test_inventario_delete_is_blocked():
+    try:
+        inventario.eliminar_producto(8)
+    except Exception as exc:
+        assert exc.status_code == 405
+        assert "no se eliminan" in exc.detail
+    else:
+        raise AssertionError("Expected inventory deletion to be blocked")

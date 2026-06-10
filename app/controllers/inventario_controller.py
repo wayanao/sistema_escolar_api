@@ -150,12 +150,12 @@ def actualizar_inventario_controller(item_id, producto):
     conn.close()
 
 def eliminar_inventario_controller(item_id):
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("UPDATE inventario SET estado = 'inactivo' WHERE id = %s", (item_id,))
-    conn.commit()
-    cursor.close()
-    conn.close()
+    return {
+        "error": (
+            "Los productos de inventario no se eliminan desde este endpoint. "
+            "Usa el cambio de estado activo/inactivo para conservar historial de ventas."
+        )
+    }
 
 
 def actualizar_estado_inventario_controller(item_id, estado):

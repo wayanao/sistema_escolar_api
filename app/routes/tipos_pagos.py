@@ -94,9 +94,7 @@ def update_tipo_pago(id: int, tipo: TipoPago):
 @router.delete('/tipos-pagos/{id}')
 def delete_tipo_pago(id: int):
     res = eliminar_tipo_pago(id)
-    if not res:
-        raise HTTPException(status_code=400, detail='Error al eliminar')
-    return {"message": "Eliminado correctamente"}
+    raise HTTPException(status_code=405, detail=res["error"])
 
 
 # -----------------------------------------------------------------------------

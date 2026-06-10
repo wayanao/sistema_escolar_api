@@ -76,20 +76,12 @@ def actualizar_tipo_pago(id, nombre, valor=0):
         conn.close()
 
 def eliminar_tipo_pago(id):
-    conn = get_connection()
-    cursor = conn.cursor()
-    try:
-        cursor.execute('DELETE FROM tipos_de_pagos WHERE id = %s RETURNING id', (id,))
-        if cursor.fetchone():
-            conn.commit()
-            return True
-        return False
-    except Exception:
-        conn.rollback()
-        return False
-    finally:
-        cursor.close()
-        conn.close()
+    return {
+        "error": (
+            "Los tipos de pago no se eliminan fisicamente. "
+            "Desactivalos desde la configuracion para conservar historial de cobros."
+        )
+    }
 
 
 # =============================================================================

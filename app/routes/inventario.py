@@ -65,5 +65,5 @@ def actualizar_estado_producto(item_id: int, payload: InventarioEstadoUpdate):
 
 @router.delete("/inventario/{item_id}")
 def eliminar_producto(item_id: int):
-    eliminar_inventario_controller(item_id)
-    return {"mensaje": "Producto desactivado. El historial de ventas se conserva."}
+    resultado = eliminar_inventario_controller(item_id)
+    raise HTTPException(status_code=status.HTTP_405_METHOD_NOT_ALLOWED, detail=resultado["error"])

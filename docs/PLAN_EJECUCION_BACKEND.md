@@ -1,6 +1,6 @@
 # Plan Ejecucion Backend
 
-Estado documentado: 2026-05-25.
+Estado documentado: 2026-06-10.
 
 Plan basado en la documentacion actual de `docs/` del backend y en `CHECKLIST_PRODUCCION_BACKEND.md`. Este archivo ordena trabajo futuro; no representa cambios de codigo ya aplicados.
 
@@ -42,7 +42,8 @@ En backend esta fase significa blindar todo lo que el navegador puede intentar m
   - Revisar `POST /login` y confirmar cookie `token` con `httponly=True`.
   - Confirmar `SESSION_COOKIE_SECURE` y `SESSION_COOKIE_SAMESITE` para produccion.
   - Mantener `POST /logout` limpiando cookie.
-  - Definir si la respuesta de login debe seguir devolviendo `access_token` cuando frontend ya use cookie HttpOnly.
+  - Mantener la respuesta de login sin `access_token` ni `token_type`; el
+    frontend debe usar cookie HttpOnly.
   - Confirmar que `get_current_user` lee Bearer token y cookie, y revalida usuario/rol contra DB.
 - Archivos probables:
   - `app/routes/auth.py`

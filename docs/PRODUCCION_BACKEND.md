@@ -1,6 +1,6 @@
 # Produccion Backend
 
-Estado documentado: 2026-05-25.
+Estado documentado: 2026-06-10.
 
 ## Variables de entorno actuales
 
@@ -20,6 +20,13 @@ Definidas en `app/config.py` y `.env.example`:
 - `ALLOW_DEV_CORS_ORIGINS`
 - `SESSION_COOKIE_SECURE`
 - `SESSION_COOKIE_SAMESITE`
+- `STORAGE_PROVIDER`
+- `R2_ACCOUNT_ID`
+- `R2_ACCESS_KEY_ID`
+- `R2_SECRET_ACCESS_KEY`
+- `R2_BUCKET`
+- `R2_ENDPOINT_URL`
+- `R2_REGION`
 
 `.env.example` contiene:
 
@@ -37,6 +44,13 @@ Definidas en `app/config.py` y `.env.example`:
 - `ALLOW_DEV_CORS_ORIGINS`
 - `SESSION_COOKIE_SECURE`
 - `SESSION_COOKIE_SAMESITE`
+- `STORAGE_PROVIDER`
+- `R2_ACCOUNT_ID`
+- `R2_ACCESS_KEY_ID`
+- `R2_SECRET_ACCESS_KEY`
+- `R2_BUCKET`
+- `R2_ENDPOINT_URL`
+- `R2_REGION`
 
 ## Configuracion de app
 
@@ -116,6 +130,9 @@ Login usa cookie:
 - `httponly=True`
 - `secure=settings.SESSION_COOKIE_SECURE`
 - `samesite=settings.SESSION_COOKIE_SAMESITE`
+
+La respuesta de login no devuelve `access_token` ni `token_type`; el JSON queda
+limitado a datos minimos de sesion para la UI.
 
 ## Logs
 
@@ -226,7 +243,8 @@ SaaS/cobro:
   - `en_mora`: pago vencido, acceso permitido con aviso;
   - `suspendido`: bloqueo temporal por no pago;
   - `cancelado`: cliente retirado/contrato terminado.
-- Pendiente agregar auditoria y motivo al cambio de estado.
+- Auditoria y motivo al cambio de estado: completado; se registra en
+  `public.tenant_estado_auditoria`.
 - Pendiente agregar canales de pago configurables para el aviso de mora.
 
 Creacion de colegios:

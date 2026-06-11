@@ -1,6 +1,6 @@
 # Seguridad
 
-Estado documentado: 2026-05-25.
+Estado documentado: 2026-06-10.
 
 ## Autenticacion
 
@@ -70,7 +70,8 @@ Claims usados:
 - `max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60`
 - `path=/`
 
-La respuesta tambien devuelve `access_token`.
+La respuesta no devuelve `access_token` ni `token_type`; la sesion real queda
+en la cookie `token` y el JSON solo entrega datos minimos de sesion para la UI.
 
 `POST /logout` elimina la cookie `token`.
 
@@ -124,8 +125,8 @@ Configurado en `app/main.py`.
 Origins:
 
 - `settings.FRONTEND_URL`
-- `http://127.0.0.1:5173`
-- `http://localhost:5173`
+- `http://127.0.0.1:5173` solo si `ALLOW_DEV_CORS_ORIGINS=true`
+- `http://localhost:5173` solo si `ALLOW_DEV_CORS_ORIGINS=true`
 
 Permite credenciales:
 
@@ -166,7 +167,7 @@ Funciones:
 
 ## Riesgos pendientes documentados
 
-Actualizacion 2026-06-01:
+Actualizacion 2026-06-10:
 
 - El admin inicial de un colegio ya no debe conservar la password temporal.
 - `usuarios.debe_cambiar_password` obliga el cambio en primer ingreso.
@@ -176,10 +177,12 @@ Actualizacion 2026-06-01:
 - Las tablas publicas SaaS deben existir por migracion previa al deploy; las
   consultas normales no deben crear tablas en caliente.
 
-- La respuesta de login todavia devuelve `access_token`, ademas de cookie HttpOnly.
+- El login ya no devuelve `access_token` ni `token_type`; mantener ese contrato
+  para no exponer JWT en el navegador.
 - Existen endpoints con SQL directo en rutas.
 - No todos los endpoints con IDs directos estan descritos con su prueba especifica en este documento.
-- CORS permite localhost y 127.0.0.1 ademas de `FRONTEND_URL`.
+- CORS solo debe permitir localhost y 127.0.0.1 en desarrollo con
+  `ALLOW_DEV_CORS_ORIGINS=true`; en produccion debe quedar `false`.
 - Hay advertencias de Pydantic v2 en pruebas para schemas con `Config` tipo clase.
 
 ## Referencia historica de endurecimiento

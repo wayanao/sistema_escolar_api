@@ -1,6 +1,6 @@
 # Migraciones
 
-Estado documentado: 2026-05-25.
+Estado documentado: 2026-06-10.
 
 ## Carpeta de migraciones
 

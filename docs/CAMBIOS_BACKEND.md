@@ -1,6 +1,6 @@
 # Cambios Backend
 
-Estado documentado: 2026-05-25.
+Estado documentado: 2026-06-10.
 
 ## Proposito
 

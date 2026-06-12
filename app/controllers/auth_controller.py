@@ -33,55 +33,53 @@ def login_controller(email, password, codigo_colegio):
     # Ahora la nueva conexión apuntará a este colegio
     conn = get_connection()
     cursor = conn.cursor()
+    try:
+        # 3. Buscar en tabla usuarios (Admin/etc en el contexto del Tenant)
+        cursor.execute("""
+            SELECT id, nombre, email, rol, password, debe_cambiar_password
+            FROM usuarios
+            WHERE email = %s
+        """, (email,))
 
-    # 3. Buscar en tabla usuarios (Admin/etc en el contexto del Tenant)
-    cursor.execute("""
-        SELECT id, nombre, email, rol, password, debe_cambiar_password
-        FROM usuarios
-        WHERE email = %s
-    """, (email,))
+        user = cursor.fetchone()
 
-    user = cursor.fetchone()
+        if user:
+            hashed_pw = user[4]
+            is_valid = False
 
-    if user:
-        hashed_pw = user[4]
-        is_valid = False
+            if hashed_pw.startswith('$2b$') or hashed_pw.startswith('$2a$'):
+                is_valid = verify_password(password, hashed_pw)
+            else:
+                # Contraseña legacy en plano: validar y rehashear inmediatamente
+                is_valid = (password == hashed_pw)
+                if is_valid:
+                    cursor.execute(
+                        "UPDATE usuarios SET password = %s WHERE id = %s",
+                        (get_password_hash(password), user[0])
+                    )
+                    conn.commit()
 
-        if hashed_pw.startswith('$2b$') or hashed_pw.startswith('$2a$'):
-            is_valid = verify_password(password, hashed_pw)
-        else:
-            # Contraseña legacy en plano: validar y rehashear inmediatamente
-            is_valid = (password == hashed_pw)
             if is_valid:
-                cursor.execute(
-                    "UPDATE usuarios SET password = %s WHERE id = %s",
-                    (get_password_hash(password), user[0])
-                )
-                conn.commit()
+                return {
+                    "id": user[0],
+                    "nombre": user[1],
+                    "rol": user[3],
+                    "tenant": esquema_db,
+                    "tenant_estado": colegio["estado"],
+                    "debe_cambiar_password": bool(user[5]),
+                }
 
-        if is_valid:
-            cursor.close()
-            conn.close()
-            return {
-                "id": user[0],
-                "nombre": user[1],
-                "rol": user[3],
-                "tenant": esquema_db,
-                "tenant_estado": colegio["estado"],
-                "debe_cambiar_password": bool(user[5]),
-            }
+        # Si no está en usuarios o pass inválido, buscar en profesor
+        cursor.execute("""
+            SELECT id, nombre, apellido, email, password, COALESCE(LOWER(estado), 'activo') AS estado
+            FROM profesor
+            WHERE email = %s
+        """, (email,))
 
-    # Si no está en usuarios o pass inválido, buscar en profesor
-    cursor.execute("""
-        SELECT id, nombre, apellido, email, password, COALESCE(LOWER(estado), 'activo') AS estado
-        FROM profesor
-        WHERE email = %s
-    """, (email,))
-
-    profesor = cursor.fetchone()
-    
-    cursor.close()
-    conn.close()
+        profesor = cursor.fetchone()
+    finally:
+        cursor.close()
+        conn.close()
 
     if profesor:
         hashed_pw = profesor[4]
@@ -99,13 +97,15 @@ def login_controller(email, password, codigo_colegio):
             if is_valid:
                 conn2 = get_connection()
                 cur2 = conn2.cursor()
-                cur2.execute(
-                    "UPDATE profesor SET password = %s WHERE id = %s",
-                    (get_password_hash(password), profesor[0])
-                )
-                conn2.commit()
-                cur2.close()
-                conn2.close()
+                try:
+                    cur2.execute(
+                        "UPDATE profesor SET password = %s WHERE id = %s",
+                        (get_password_hash(password), profesor[0])
+                    )
+                    conn2.commit()
+                finally:
+                    cur2.close()
+                    conn2.close()
 
         if is_valid:
             return {

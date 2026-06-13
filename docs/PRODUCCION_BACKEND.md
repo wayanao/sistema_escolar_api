@@ -1,6 +1,6 @@
 # Produccion Backend
 
-Estado documentado: 2026-06-10.
+Ultima revision documental: 2026-06-13.
 
 ## Variables de entorno actuales
 
@@ -74,7 +74,18 @@ Dependencias:
 - `fastapi`
 - `uvicorn[standard]`
 
-No se observo en los archivos leidos un comando unico de produccion documentado en `docs`.
+Comando sugerido en Render:
+
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port $PORT
+```
+
+Si se usan varios workers o replicas, ajustar `DB_POOL_MAX_CONNECTIONS` con el
+limite real de PostgreSQL/Neon. El maximo total aproximado es:
+
+```text
+workers * replicas * DB_POOL_MAX_CONNECTIONS
+```
 
 ## Base de datos
 
@@ -94,6 +105,42 @@ Estados SaaS iniciales:
 
 Los scripts operativos de migraciones, verificacion de schemas e indices deben
 considerar como tenants operativos a `activo` y `en_mora`.
+
+## Pool de conexiones en Render/Neon
+
+Archivo central:
+
+- `app/db/session.py`
+
+Variables:
+
+- `DB_POOL_MIN_CONNECTIONS`
+- `DB_POOL_MAX_CONNECTIONS`
+
+Reglas:
+
+- Cada request que use `get_connection()` debe cerrar cursor y conexion en
+  `finally`.
+- Para codigo nuevo, preferir `get_cursor()` porque cierra automaticamente.
+- `PooledConnection.close()` devuelve la conexion al pool.
+- `close_pool()` se ejecuta al apagar la app desde el `lifespan` de FastAPI.
+
+Incidente documentado en produccion:
+
+- Render reporto `psycopg2.pool.PoolError: connection pool exhausted`.
+- El efecto visible fue bloqueo de login porque no habia conexiones libres.
+- Se reviso `app/controllers/auth_controller.py` para cerrar conexiones del
+  flujo de login, incluyendo el rehash de password legacy.
+
+Respuesta operativa si vuelve a ocurrir:
+
+1. Reiniciar/redeployar el servicio para liberar el pool actual.
+2. Revisar logs y ultima ruta usada antes del error.
+3. Auditar los `get_connection()` tocados recientemente y exigir `finally`.
+4. Confirmar que `DB_POOL_MAX_CONNECTIONS` no exceda el limite del plan de DB
+   al multiplicarlo por workers/replicas.
+5. Revisar endpoints de alto uso: login, dashboard, asistencia, planilla,
+   reportes y cartera.
 
 ## Super admin de plataforma
 
@@ -134,6 +181,21 @@ Login usa cookie:
 La respuesta de login no devuelve `access_token` ni `token_type`; el JSON queda
 limitado a datos minimos de sesion para la UI.
 
+Configuracion productiva recomendada:
+
+- Con HTTPS: `SESSION_COOKIE_SECURE=true`.
+- Si frontend y backend estan bajo el mismo sitio registrable, mantener
+  `SESSION_COOKIE_SAMESITE=lax` suele ser suficiente.
+- Si frontend y backend estan en sitios distintos, por ejemplo un dominio de
+  frontend y otro de Render, probar `SESSION_COOKIE_SAMESITE=none` junto con
+  `SESSION_COOKIE_SECURE=true`.
+
+Sintoma relacionado:
+
+- Si el navegador no acepta o no envia la cookie `token`, el usuario entra y la
+  sesion parece cerrarse enseguida, especialmente en navegadores moviles mas
+  estrictos.
+
 ## Logs
 
 `app/main.py` llama:
@@ -163,6 +225,19 @@ Scripts operativos:
 - `/super-admin` para crear colegios
 - `scripts/legacy/crear_cliente.py` y `scripts/legacy/setup_saas.py` solo como referencia historica
 
+## Checklist post-deploy
+
+- Abrir backend y confirmar que no hay errores de arranque.
+- Probar `POST /login` desde el dominio real del frontend.
+- Revisar en navegador que la cookie `token` queda `HttpOnly`, con `Secure`
+  segun entorno y `SameSite` esperado.
+- Probar una request autenticada sin header Bearer, usando solo cookie.
+- Probar `/tenant/status` con tenant `activo` y `en_mora`.
+- Probar `/uploads/...` autenticado si se usan logos o imagenes de plan diario.
+- Revisar logs de Render durante login, dashboard profesor, asistencia,
+  planilla y reportes.
+- Confirmar que no aparece `connection pool exhausted`.
+
 ## Estado 2026-05-26
 
 - `.env.example` ya documenta `ALLOW_DEV_CORS_ORIGINS`.
@@ -177,6 +252,9 @@ Scripts operativos:
 - CORS conserva origins localhost si `ALLOW_DEV_CORS_ORIGINS=true`.
 - No se observo configuracion Alembic activa.
 - La preparacion de produccion depende de ejecutar migraciones, indices y verificacion de tenants.
+- El pool puede agotarse si alguna ruta abre conexion y no la cierra.
+- Cookies cross-site mal configuradas pueden cerrar sesion en movil aunque en
+  PC parezca funcionar.
 
 ## Cloudflare R2 para uploads
 

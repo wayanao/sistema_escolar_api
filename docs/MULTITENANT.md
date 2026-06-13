@@ -1,6 +1,6 @@
 # Multi-Tenant
 
-Estado documentado: 2026-06-10.
+Ultima revision documental: 2026-06-13.
 
 ## Modelo actual
 
@@ -121,6 +121,16 @@ El middleware:
 - ignora token invalido y deja que las dependencias de FastAPI respondan despues;
 - resetea el contexto al final de la request.
 
+Nota:
+
+- El middleware solo intenta resolver tenant desde `Authorization: Bearer ...`.
+- Las requests normales del navegador pueden autenticarse por cookie `token`;
+  en ese caso `get_current_user` valida el JWT, fija `tenant_schema_var` y
+  revalida usuario/rol contra DB.
+- Por eso, rutas privadas deben depender de `get_current_user`,
+  `get_current_active_admin` o `get_current_super_admin`, no solo del
+  middleware.
+
 ## Login contra `public`
 
 Archivo:
@@ -158,6 +168,8 @@ Flujo backend:
 - El tenant se apoya en `search_path`; cualquier conexion usada sin contexto de tenant falla o puede requerir contexto interno.
 - Existen scripts historicos que tambien manipulan schemas y `search_path`.
 - La consistencia entre tenants depende de migraciones/scripts aplicados correctamente.
+- Si una conexion queda abierta con contexto de tenant y no se devuelve al pool,
+  puede contribuir a `connection pool exhausted` en produccion.
 - `scripts/legacy/crear_cliente.py` contiene un bloque SQL base antiguo en
   `ESQUEMA_BASE_SQL`; se conserva solo como referencia historica y no es flujo
   oficial.

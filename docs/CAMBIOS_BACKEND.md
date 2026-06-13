@@ -1,10 +1,55 @@
 # Cambios Backend
 
-Estado documentado: 2026-06-10.
+Ultima revision documental: 2026-06-13.
 
 ## Proposito
 
 Bitacora de cambios documentales y tecnicos observables del backend.
+
+## 2026-06-13 - Documentacion backend de produccion, pool y endpoints
+
+Se actualizo la carpeta `docs/` del backend para reflejar el estado operativo
+actual despues del despliegue en produccion.
+
+Archivos documentales modificados/agregados:
+
+- `docs/README.md`
+- `docs/API_ENDPOINTS.md`
+- `docs/ARQUITECTURA_BACKEND.md`
+- `docs/BASE_DATOS.md`
+- `docs/CHECKLIST_PRODUCCION_BACKEND.md`
+- `docs/ESCALABILIDAD.md`
+- `docs/MIGRACIONES.md`
+- `docs/MULTITENANT.md`
+- `docs/PLAN_EJECUCION_BACKEND.md`
+- `docs/PRODUCCION_BACKEND.md`
+- `docs/ROLES_PERMISOS_BACKEND.md`
+- `docs/SEGURIDAD.md`
+
+Cambio:
+
+- Se agrego indice general de documentacion backend.
+- Se documento respuesta operativa ante
+  `psycopg2.pool.PoolError: connection pool exhausted`.
+- Se dejo como regla que todo `get_connection()` debe cerrar cursor/conexion en
+  `finally`, y que codigo nuevo deberia preferir `get_cursor()`.
+- Se agrego checklist de Render/Neon, pool, cookies moviles/cross-site y
+  post-deploy.
+- Se corrigio `API_ENDPOINTS.md`: ventas queda bajo `/api/ventas` y super admin
+  queda bajo `/super-admin`.
+- Se actualizo la lista de migraciones tenant/public observadas.
+
+Alcance:
+
+- Solo documentacion.
+- No se modifico codigo backend en esta actualizacion documental.
+
+Contexto:
+
+- En produccion se observo un error de pool agotado que bloqueo login.
+- El login ya habia sido revisado para cerrar conexiones en
+  `app/controllers/auth_controller.py`; esta sesion dejo esa regla reflejada en
+  los documentos operativos.
 
 ## 2026-06-10 - Bloqueo backend de eliminaciones no auditables
 

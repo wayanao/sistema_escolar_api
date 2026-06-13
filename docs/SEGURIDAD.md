@@ -1,6 +1,6 @@
 # Seguridad
 
-Estado documentado: 2026-06-10.
+Ultima revision documental: 2026-06-13.
 
 ## Autenticacion
 
@@ -32,6 +32,14 @@ El controlador:
 - si no valida, busca en `profesor`;
 - acepta passwords bcrypt;
 - si detecta password legacy en texto plano y valida, rehashea y actualiza.
+
+Nota operativa:
+
+- El flujo de login abre conexiones contra `public` y luego contra el schema del
+  tenant; esas conexiones deben cerrarse siempre para no agotar el pool en
+  produccion.
+- Despues del incidente `connection pool exhausted` en Render, el login quedo
+  documentado como ruta critica a revisar cuando se toque autenticacion.
 
 Respuestas esperadas:
 
@@ -74,6 +82,15 @@ La respuesta no devuelve `access_token` ni `token_type`; la sesion real queda
 en la cookie `token` y el JSON solo entrega datos minimos de sesion para la UI.
 
 `POST /logout` elimina la cookie `token`.
+
+Produccion y moviles:
+
+- Con HTTPS debe usarse `SESSION_COOKIE_SECURE=true`.
+- Si frontend y backend estan en sitios distintos, revisar
+  `SESSION_COOKIE_SAMESITE=none`; con `lax` algunos navegadores pueden no
+  enviar la cookie en requests cross-site.
+- Cuando la cookie no se guarda o no se envia, el sintoma visible es que el
+  usuario entra y queda fuera de sesion enseguida.
 
 ## Lectura de token
 

@@ -1,6 +1,6 @@
 # Roles y Permisos Backend
 
-Estado documentado: 2026-06-10.
+Ultima revision documental: 2026-06-13.
 
 ## Roles actuales
 
@@ -130,7 +130,9 @@ Segun los routers actuales, usan `get_current_active_admin`:
 Usan `get_current_super_admin`:
 
 - `GET /super-admin/tenants`
+- `POST /super-admin/tenants`
 - `PATCH /super-admin/tenants/{tenant_id}/estado`
+- `GET /super-admin/tenants/{tenant_id}/estado-auditoria`
 
 ## Routers con usuario autenticado y permisos de ownership
 

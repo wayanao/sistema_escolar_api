@@ -1,5 +1,7 @@
 # Base profesional para escalar el Sistema Escolar API
 
+Ultima revision documental: 2026-06-13.
+
 Este proyecto es una API web escolar multi-tenant construida con FastAPI y PostgreSQL. La prioridad de esta base es crecer sin romper las funcionalidades actuales: estudiantes, pagos, notas, asistencia, boletines, inventario, reportes, nomina y administracion por colegio.
 
 ## Objetivos de arquitectura
@@ -50,6 +52,17 @@ DB_POOL_MAX_CONNECTIONS=10
 ```
 
 Para produccion, ajusta `DB_POOL_MAX_CONNECTIONS` segun el limite real de PostgreSQL y la cantidad de workers.
+
+Regla importante:
+
+- El pool evita abrir conexiones nuevas por cada consulta, pero no corrige una
+  fuga de conexiones.
+- Todo uso manual de `get_connection()` debe cerrar cursor y conexion en
+  `finally`.
+- Codigo nuevo deberia usar `get_cursor()` salvo que necesite control manual de
+  transaccion.
+- Si Render muestra `connection pool exhausted`, revisar primero rutas
+  recientes o muy concurridas que usen `get_connection()`.
 
 ### Tenant mas seguro
 
@@ -156,6 +169,7 @@ Antes de aplicarlos en produccion, deben pasar por migracion y probarse en una c
 - Los errores internos no deben devolverse con `str(e)` al usuario.
 - Las reglas de negocio deben ir a `services`, no a rutas.
 - Las consultas SQL deben ir migrando a `repositories`.
+- Cada conexion abierta manualmente debe cerrarse aunque la request falle.
 - Cada modulo critico debe tener pruebas: login, pagos, boletines, notas, cartera y asistencia.
 - Cada cambio de base de datos debe ser una migracion, no un SQL suelto aplicado manualmente.
 

@@ -1,6 +1,6 @@
 # Arquitectura Backend
 
-Estado documentado: 2026-06-10.
+Ultima revision documental: 2026-06-13.
 
 ## Stack actual
 
@@ -38,10 +38,13 @@ Estado documentado: 2026-06-10.
 - `app/db/session.py`: pool y obtencion de conexiones.
 - `app/core/permissions.py`: permisos reutilizables por profesor, asignacion, estudiante y plan de clases.
 - `app/core/logging.py`: configuracion de logging.
+- `app/core/tenant_status.py`: calculo de estado efectivo del tenant por suscripcion, mora y bloqueo.
+- `app/core/super_admin.py`: dependencia de autenticacion para plataforma SaaS en `public`.
 - `app/routes/`: routers HTTP.
 - `app/controllers/`: logica de negocio y consultas principales.
 - `app/schemas/`: schemas Pydantic.
 - `app/services/`: servicios de dominio.
+- `app/services/storage.py`: abstraccion de almacenamiento local o Cloudflare R2.
 - `app/repositories/`: carpeta iniciada; actualmente contiene repositorio de plan de clases.
 
 ## Rutas y controladores
@@ -95,6 +98,8 @@ La carpeta `app/repositories/README.md` indica que los repositorios deben recibi
 - planeador_anual
 - usuario
 - reportes
+- super_admin
+- tenant
 - tipos_pagos
 - inventario
 - egresos
@@ -112,13 +117,32 @@ La carpeta `app/repositories/README.md` indica que los repositorios deben recibi
 - `tenant_middleware` intenta leer el JWT del header `Authorization: Bearer ...`, extraer `tenant` y fijarlo en `tenant_schema_var`.
 - Al finalizar la request, el middleware resetea el contexto del tenant.
 
+## Convencion de conexiones DB
+
+La conexion a PostgreSQL se centraliza en `app/db/session.py`.
+
+Reglas operativas:
+
+- Codigo nuevo deberia preferir `get_cursor()` como context manager.
+- Si un modulo usa `get_connection()` manualmente, debe cerrar cursor y
+  conexion en `finally`.
+- `PooledConnection.close()` no destruye la conexion normal: la devuelve al
+  `ThreadedConnectionPool`.
+- El pool se cierra durante el shutdown de FastAPI con `close_pool()`.
+
+Riesgo documentado:
+
+- En produccion, una ruta que abra conexiones y no las cierre puede terminar en
+  `psycopg2.pool.PoolError: connection pool exhausted`, especialmente con
+  varias requests concurrentes en Render.
+
 ## CORS y rate limit
 
 CORS permite:
 
 - `settings.FRONTEND_URL`
-- `http://127.0.0.1:5173`
-- `http://localhost:5173`
+- `http://127.0.0.1:5173` solo si `ALLOW_DEV_CORS_ORIGINS=true`
+- `http://localhost:5173` solo si `ALLOW_DEV_CORS_ORIGINS=true`
 
 Rate limit global:
 

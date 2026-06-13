@@ -1,6 +1,6 @@
 # Base de Datos
 
-Estado documentado: 2026-06-10.
+Ultima revision documental: 2026-06-13.
 
 ## Motor
 
@@ -40,6 +40,28 @@ Variables:
 - entrega cursor por context manager;
 - si `commit=True`, hace commit al salir;
 - en exception hace rollback.
+
+## Regla operativa del pool
+
+El pool de conexiones es un recurso limitado en produccion.
+
+Reglas obligatorias:
+
+- Todo `get_connection()` debe terminar cerrando cursor y conexion en un
+  bloque `finally`.
+- Para codigo nuevo se prefiere `get_cursor()` porque cierra cursor y conexion
+  automaticamente.
+- No se debe guardar una conexion global ni compartirla entre requests.
+- Si una request falla, tambien debe cerrar conexion; si queda abierta, el pool
+  puede agotarse.
+
+Incidente documentado:
+
+- En Render se observo `psycopg2.pool.PoolError: connection pool exhausted`.
+- El login fue revisado para cerrar las conexiones abiertas en
+  `app/controllers/auth_controller.py`.
+- Si vuelve a aparecer el error, revisar primero rutas tocadas recientemente
+  que usen `get_connection()` sin `finally`.
 
 ## Modelo multi-schema
 
@@ -164,6 +186,13 @@ Archivos en `migrations/`:
 - `20260527_pagos_anulacion.sql`
 - `20260527_pagos_venta_id.sql`
 - `20260527_ventas_anulacion.sql`
+- `20260601_usuarios_password_obligatorio.sql`
+- `20260602_asignaciones_activo.sql`
+- `20260604_profesor_estado.sql`
+- `20260604_cursos_estado.sql`
+- `20260604_materias_estado.sql`
+- `20260604_inventario_estado.sql`
+- `20260604_egresos_origen.sql`
 - `README.md`
 
 Migraciones globales en `public`:
@@ -171,7 +200,6 @@ Migraciones globales en `public`:
 - `migrations/public/20260530_super_admins.sql`
 - `migrations/public/20260601_tenant_suscripciones.sql`
 - `migrations/public/20260601_tenant_eventos_auditoria.sql`
-- `migrations/20260601_usuarios_password_obligatorio.sql`
 - `migrations/public/20260601_tenant_estado_auditoria.sql`
 
 ## Riesgos pendientes documentados
@@ -179,3 +207,5 @@ Migraciones globales en `public`:
 - La consistencia de schemas depende de scripts/migraciones aplicados a todos los tenants.
 - No hay configuracion Alembic inicializada como flujo principal, aunque `alembic` esta en `requirements.txt`.
 - Muchos controllers ejecutan SQL directamente.
+- Hay muchos usos directos de `get_connection()`; cada cambio en esos modulos
+  debe revisar cierre de cursor/conexion para no agotar el pool.

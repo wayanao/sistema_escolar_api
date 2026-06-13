@@ -1,6 +1,6 @@
 # API Endpoints
 
-Estado documentado: 2026-06-04.
+Ultima revision documental: 2026-06-13.
 
 ## Routers
 
@@ -11,6 +11,7 @@ Prefijos definidos en router:
 - `boletines`: prefix `/boletines`
 - `egresos`: prefix `/api/egresos`
 - `prestamos`: prefix `/api/prestamos`
+- `super_admin`: prefix `/super-admin`
 - `ventas`: prefix `/api/ventas`
 - `nomina`: incluido en `main.py` con prefix `/api/nomina`
 
@@ -20,6 +21,7 @@ Los demas routers usan paths completos en cada decorator.
 
 - `POST /login`
 - `POST /logout`
+- `POST /auth/cambiar-password`
 
 ## Tenant
 
@@ -225,7 +227,7 @@ Notas:
 - `POST /tipos-pagos`
 - `GET /tipos-pagos`
 - `PUT /tipos-pagos/{id}`
-- `DELETE /tipos-pagos/{id}`
+- `DELETE /tipos-pagos/{id}` bloqueado: responde `405 Method Not Allowed`.
 - `GET /tipos-pagos/detallado`
 - `GET /tipos-pagos/{id}/detalle`
 - `PUT /tipos-pagos/{id}/configuracion`
@@ -307,7 +309,20 @@ Notas:
 Router prefix: `/api/ventas`
 
 - `GET /api/ventas/`
+- `GET /api/ventas/?limit=50&offset=0&busqueda=<texto>&estudiante_id=<id>&estado=<estado>`
 - `GET /api/ventas/pendientes/{estudiante_id}`
+- `POST /api/ventas/`
+- `POST /api/ventas/{venta_id}/anular`
+- `DELETE /api/ventas/{venta_id}` bloqueado: usar anulacion.
+
+Notas:
+
+- El listado conserva compatibilidad: sin `limit` devuelve lista simple; con
+  `limit` devuelve respuesta paginada.
+- `POST /api/ventas/` exige detalles de inventario y valida stock/valores en el
+  controlador.
+- La anulacion conserva trazabilidad, devuelve stock y anula pagos asociados
+  cuando aplica.
 
 ## Auth SaaS
 
@@ -344,9 +359,10 @@ Uso:
 - `GET /super-admin/tenants` devuelve `estado` efectivo y `estado_manual`.
 - `POST /super-admin/tenants` crea admin inicial con
   `debe_cambiar_password = TRUE` y registra evento `tenant_creado`.
-- `POST /api/ventas/`
-- `POST /api/ventas/{venta_id}/anular`
-- `DELETE /api/ventas/{venta_id}` bloqueado: usar anulacion
+- `PATCH /super-admin/tenants/{tenant_id}/estado` cambia estado manual y
+  registra motivo/auditoria.
+- `GET /super-admin/tenants/{tenant_id}/estado-auditoria` lista los ultimos
+  cambios de estado del tenant.
 
 ## Nomina
 

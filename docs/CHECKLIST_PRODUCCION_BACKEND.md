@@ -1,6 +1,6 @@
 # Checklist Produccion Backend
 
-Estado documentado: 2026-06-10.
+Ultima revision documental: 2026-06-13.
 
 Este checklist documenta puntos pendientes o sensibles observados en el backend actual. No propone cambios de codigo dentro de este archivo; solo deja control para revision antes de produccion.
 
@@ -159,6 +159,34 @@ Como probarlo:
 - Confirmar que `.env` no este versionado.
 - Generar secret largo y aleatorio.
 
+### 1.7 Evitar agotamiento del pool de conexiones
+
+Archivo afectado:
+
+- `app/db/session.py`
+- `app/controllers/auth_controller.py`
+- todo modulo que use `get_connection()`
+
+Riesgo:
+
+- Una ruta puede abrir conexiones y no devolverlas al pool.
+
+Que puede pasar:
+
+- En produccion Render/Neon puede terminar en
+  `psycopg2.pool.PoolError: connection pool exhausted`.
+- El login y otros endpoints dejan de responder aunque la app siga encendida.
+
+Como probarlo/revisarlo:
+
+- Buscar usos de `get_connection()`.
+- Confirmar que cada cursor y conexion se cierre en `finally`.
+- Preferir `get_cursor()` para codigo nuevo.
+- Revisar especialmente rutas de alto uso: login, dashboard, asistencia,
+  planilla, reportes y cartera.
+- Confirmar que `DB_POOL_MAX_CONNECTIONS` sea compatible con workers/replicas y
+  limite real de PostgreSQL.
+
 ## 2. Importante
 
 ### 2.1 Revisar CORS para produccion
@@ -203,6 +231,13 @@ Como probarlo:
 - Revisar `SESSION_COOKIE_SECURE`.
 - Revisar `SESSION_COOKIE_SAMESITE`.
 - Hacer login en navegador y revisar atributos de cookie.
+
+Nota:
+
+- Si frontend y backend estan en sitios distintos, probar
+  `SESSION_COOKIE_SAMESITE=none` con `SESSION_COOKIE_SECURE=true`.
+- Si la cookie no se envia, el usuario puede entrar y quedar fuera de sesion
+  enseguida, sobre todo en navegadores moviles.
 
 ### 2.3 Revisar que `.env.example` refleje todas las variables usadas
 
@@ -321,6 +356,35 @@ Como probarlo:
 - Iniciar sesion como profesor.
 - Intentar consumir endpoints administrativos.
 - Confirmar `403`.
+
+### 2.8 Validar despliegue Render/Neon despues de cambios
+
+Archivo afectado:
+
+- Render start command/configuracion de servicio.
+- `app/config.py`
+- `app/db/session.py`
+- variables de entorno productivas.
+
+Riesgo:
+
+- El backend puede arrancar con variables incompletas, CORS incorrecto o pool
+  mal dimensionado.
+
+Que puede pasar:
+
+- Login intermitente, sesiones que se cierran, uploads que no cargan o errores
+  por conexiones agotadas.
+
+Como probarlo:
+
+- Confirmar start command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`.
+- Revisar `DATABASE_URL`, `SECRET_KEY`, `FRONTEND_URL`,
+  `ALLOW_DEV_CORS_ORIGINS`, `SESSION_COOKIE_SECURE` y
+  `SESSION_COOKIE_SAMESITE`.
+- Probar login desde PC, Android y un navegador movil estricto.
+- Revisar logs de Render mientras se abre dashboard profesor, asistencia,
+  planilla, reportes y cartera.
 
 ## 3. Opcional
 

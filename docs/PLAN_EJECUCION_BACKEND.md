@@ -1,6 +1,6 @@
 # Plan Ejecucion Backend
 
-Estado documentado: 2026-06-10.
+Ultima revision documental: 2026-06-13.
 
 Plan basado en la documentacion actual de `docs/` del backend y en `CHECKLIST_PRODUCCION_BACKEND.md`. Este archivo ordena trabajo futuro; no representa cambios de codigo ya aplicados.
 
@@ -45,6 +45,10 @@ En backend esta fase significa blindar todo lo que el navegador puede intentar m
   - Mantener la respuesta de login sin `access_token` ni `token_type`; el
     frontend debe usar cookie HttpOnly.
   - Confirmar que `get_current_user` lee Bearer token y cookie, y revalida usuario/rol contra DB.
+  - Probar `SESSION_COOKIE_SAMESITE` segun dominio real de frontend/backend,
+    especialmente en navegadores moviles.
+  - Confirmar que el flujo de login cierre conexiones DB aunque falle la
+    autenticacion.
 - Archivos probables:
   - `app/routes/auth.py`
   - `app/controllers/auth_controller.py`
@@ -128,6 +132,10 @@ En backend esta fase corresponde a separar rutas, controladores, servicios y rep
   - Revisar endpoints que devuelven listas sin paginacion o limites.
   - Ejecutar `EXPLAIN ANALYZE` en consultas criticas.
   - Confirmar que migraciones e indices esten aplicados en todos los tenants operativos.
+  - Auditar usos de `get_connection()` en rutas de alto trafico y migrarlos a
+    `get_cursor()` cuando sea razonable.
+  - Dimensionar `DB_POOL_MAX_CONNECTIONS` segun workers, replicas y limite real
+    de PostgreSQL/Neon.
 - Archivos probables:
   - `scripts/apply_tenant_indexes.py`
   - `scripts/check_tenant_schemas.py`
@@ -180,9 +188,13 @@ En backend esta fase significa preparacion real de despliegue: variables, CORS, 
   - Confirmar `SECRET_KEY` fuerte y privado.
   - Confirmar `FRONTEND_URL` real y CORS sin origins innecesarios en produccion.
   - Confirmar `SESSION_COOKIE_SECURE=True` en HTTPS.
+  - Confirmar `SESSION_COOKIE_SAMESITE` segun si el deploy es same-site o
+    cross-site.
   - Probar creacion de tenant nuevo desde `/super-admin`.
   - Probar migraciones con `--dry-run` y aplicacion controlada.
   - Validar rate limit detras de proxy/load balancer.
+  - Monitorear logs de Render por `connection pool exhausted` durante pruebas
+    de login, dashboard, asistencia, planilla y reportes.
 - Archivos probables:
   - `.env.example`
   - `app/config.py`

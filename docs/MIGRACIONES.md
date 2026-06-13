@@ -1,6 +1,6 @@
 # Migraciones
 
-Estado documentado: 2026-06-10.
+Ultima revision documental: 2026-06-13.
 
 ## Carpeta de migraciones
 
@@ -18,6 +18,13 @@ Archivos actuales:
 - `20260527_pagos_anulacion.sql`
 - `20260527_pagos_venta_id.sql`
 - `20260527_ventas_anulacion.sql`
+- `20260601_usuarios_password_obligatorio.sql`
+- `20260602_asignaciones_activo.sql`
+- `20260604_profesor_estado.sql`
+- `20260604_cursos_estado.sql`
+- `20260604_materias_estado.sql`
+- `20260604_inventario_estado.sql`
+- `20260604_egresos_origen.sql`
 - `README.md`
 
 Migraciones globales `public`:
@@ -25,6 +32,7 @@ Migraciones globales `public`:
 - `public/20260530_super_admins.sql`
 - `public/20260601_tenant_suscripciones.sql`
 - `public/20260601_tenant_estado_auditoria.sql`
+- `public/20260601_tenant_eventos_auditoria.sql`
 
 ## Runner actual
 
@@ -48,6 +56,7 @@ Comportamiento actual:
 - crea/verifica `public.schema_migrations`;
 - busca tenants operativos (`activo` y `en_mora`) en `public.colegios`;
 - por tenant, valida si la migracion ya fue aplicada;
+- si el archivo esta en `migrations/public/`, usa `public` como unico target;
 - si el mismo nombre existe con checksum diferente, bloquea ese tenant;
 - en `--dry-run` imprime `PENDIENTE` sin aplicar;
 - al aplicar, ejecuta `SET search_path TO <schema>, public`;
@@ -74,8 +83,9 @@ Restriccion:
 
 Nota:
 
-- Las migraciones dentro de `migrations/public/` son globales y no se ejecutan
-  con `apply_migration.py`, que esta pensado para schemas tenant.
+- Las migraciones dentro de `migrations/public/` son globales; desde
+  2026-06-01 el runner las detecta y las aplica contra `public` como target
+  unico.
 
 ## Scripts de migracion/operacion existentes
 
@@ -134,6 +144,8 @@ Estado actual:
 - Alembic aun no aparece como fuente formal de verdad.
 - `scripts/legacy/crear_cliente.py` y `scripts/legacy/setup_saas.py` son
   referencia antigua, no flujo de deploy actual.
+- Antes de crear colegios reales, `DEFAULT_TENANT_SCHEMA` debe tener aplicadas
+  las migraciones tenant actuales.
 
 ## Historial operativo relacionado
 

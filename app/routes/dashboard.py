@@ -1,7 +1,9 @@
 from fastapi import APIRouter, Depends, Query
-from app.dependencies import get_current_user, HTTPException
+from app.dependencies import get_current_active_admin, get_current_user, HTTPException
 from app.core.permissions import require_asignacion_access, require_profesor_scope
 from app.controllers.dashboard_controller import (
+    obtener_cumpleanos_admin_controller,
+    obtener_cumpleanos_profesor_controller,
     obtener_inasistencias_profesor_controller,
     obtener_notas_altas_profesor_controller,
     obtener_notas_bajas_profesor_controller,
@@ -36,6 +38,30 @@ def validar_filtro_rendimiento_profesor(
     )
     if not profesor_tiene_asignacion_en_curso_controller(profesor_id, curso_id, asignacion_id):
         raise HTTPException(status_code=403, detail="La asignación no pertenece al curso seleccionado")
+
+
+@router.get('/dashboard/cumpleanos/admin')
+async def obtener_cumpleanos_admin(
+    dias: int = Query(7, ge=0, le=31),
+    _admin: dict = Depends(get_current_active_admin),
+):
+    try:
+        return obtener_cumpleanos_admin_controller(dias=dias)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get('/dashboard/cumpleanos/profesor/{profesor_id}')
+async def obtener_cumpleanos_profesor(
+    profesor_id: int,
+    dias: int = Query(7, ge=0, le=31),
+    current_user: dict = Depends(get_current_user),
+):
+    require_profesor_scope(profesor_id, current_user, detail="No tienes permisos para consultar datos de otro profesor")
+    try:
+        return obtener_cumpleanos_profesor_controller(profesor_id, dias=dias)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.get('/dashboard/inasistencias/{profesor_id}')

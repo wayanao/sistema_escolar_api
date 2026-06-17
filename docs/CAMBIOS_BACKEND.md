@@ -1,10 +1,43 @@
 # Cambios Backend
 
-Ultima revision documental: 2026-06-13.
+Ultima revision documental: 2026-06-17.
 
 ## Proposito
 
 Bitacora de cambios documentales y tecnicos observables del backend.
+
+## 2026-06-17 - Cumpleanos de estudiantes en dashboards
+
+Se agregaron endpoints de dashboard para consultar solamente los estudiantes
+activos que cumplen anos en la semana actual/proximos dias, usando la fecha
+local de Colombia.
+
+Archivos modificados:
+
+- `app/controllers/dashboard_controller.py`
+- `app/routes/dashboard.py`
+- `docs/API_ENDPOINTS.md`
+- `docs/CAMBIOS_BACKEND.md`
+
+Cambio:
+
+- `GET /dashboard/cumpleanos/admin?dias=7` devuelve los cumpleaños de
+  estudiantes activos para el perfil admin.
+- `GET /dashboard/cumpleanos/profesor/{profesor_id}?dias=7` devuelve solo
+  estudiantes activos de cursos asignados al profesor autenticado.
+- `dias` es opcional, por defecto `7`, y se valida entre `0` y `31`.
+- Las consultas filtran por mes y dia de `fecha_nacimiento` en base de datos
+  usando `America/Bogota`, incluso si el rango cruza de diciembre a enero,
+  evitando cargar listas completas de estudiantes en el frontend.
+- Las conexiones y cursores se cierran en `finally`.
+
+Alcance:
+
+- No se crearon tablas ni migraciones.
+- No cambia el contrato de `/estudiantes`, `/mis-clases` ni
+  `/planilla-excel`.
+- El cambio es aditivo y queda protegido por permisos existentes de admin y
+  scope de profesor.
 
 ## 2026-06-13 - Documentacion backend de produccion, pool y endpoints
 

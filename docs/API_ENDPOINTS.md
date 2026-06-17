@@ -1,6 +1,6 @@
 # API Endpoints
 
-Ultima revision documental: 2026-06-13.
+Ultima revision documental: 2026-06-17.
 
 ## Routers
 
@@ -201,11 +201,22 @@ Notas:
 
 ## Dashboard
 
+- `GET /dashboard/cumpleanos/admin?dias=7`
+- `GET /dashboard/cumpleanos/profesor/{profesor_id}?dias=7`
 - `GET /dashboard/inasistencias/{profesor_id}`
 - `GET /dashboard/notas-bajas/{profesor_id}`
 - `GET /dashboard/notas-altas/{profesor_id}`
 - `GET /dashboard/ranking/{asignacion_id}/{periodo}`
 - `GET /dashboard/ranking-mejor/{asignacion_id}/{periodo}`
+
+Notas:
+
+- `/dashboard/cumpleanos/admin` es solo para rol admin y devuelve estudiantes
+  activos que cumplen anos dentro del rango solicitado con fecha local
+  `America/Bogota`.
+- `/dashboard/cumpleanos/profesor/{profesor_id}` valida el scope del profesor
+  y devuelve solo estudiantes activos de cursos asignados al profesor.
+- `dias` es opcional, por defecto `7`, y acepta valores de `0` a `31`.
 
 ## Usuarios
 

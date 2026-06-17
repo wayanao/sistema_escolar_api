@@ -1,6 +1,141 @@
 from app.database import get_connection
 
 
+def _formatear_cumpleanos_estudiante(row):
+    return {
+        "estudiante_id": row[0],
+        "nombre": row[1],
+        "apellido": row[2],
+        "curso": row[3],
+        "fecha_nacimiento": str(row[4]) if row[4] else None,
+    }
+
+
+def _normalizar_dias_cumpleanos(dias):
+    try:
+        return max(0, min(int(dias), 31))
+    except (TypeError, ValueError):
+        return 7
+
+
+def _cte_rango_cumpleanos():
+    return """
+        WITH parametros AS (
+            SELECT
+                (NOW() AT TIME ZONE 'America/Bogota')::date AS hoy,
+                ((NOW() AT TIME ZONE 'America/Bogota')::date + %s) AS fecha_fin
+        ),
+        rango AS (
+            SELECT
+                hoy,
+                fecha_fin,
+                TO_CHAR(hoy, 'MMDD') AS inicio_mmdd,
+                TO_CHAR(fecha_fin, 'MMDD') AS fin_mmdd
+            FROM parametros
+        )
+    """
+
+
+def _filtro_rango_cumpleanos(alias_estudiante="e"):
+    return f"""
+        AND (
+            (
+                r.inicio_mmdd <= r.fin_mmdd
+                AND TO_CHAR({alias_estudiante}.fecha_nacimiento, 'MMDD') BETWEEN r.inicio_mmdd AND r.fin_mmdd
+            )
+            OR (
+                r.inicio_mmdd > r.fin_mmdd
+                AND (
+                    TO_CHAR({alias_estudiante}.fecha_nacimiento, 'MMDD') >= r.inicio_mmdd
+                    OR TO_CHAR({alias_estudiante}.fecha_nacimiento, 'MMDD') <= r.fin_mmdd
+                )
+            )
+        )
+    """
+
+
+def obtener_cumpleanos_admin_controller(dias=7):
+    dias_normalizados = _normalizar_dias_cumpleanos(dias)
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            _cte_rango_cumpleanos()
+            + """
+            SELECT
+                e.id,
+                e.nombre,
+                e.apellido,
+                c.nombre AS curso,
+                e.fecha_nacimiento
+            FROM estudiantes e
+            LEFT JOIN cursos c ON e.curso_id = c.id
+            CROSS JOIN rango r
+            WHERE e.fecha_nacimiento IS NOT NULL
+              AND COALESCE(LOWER(e.estado), 'activo') = 'activo'
+            """
+            + _filtro_rango_cumpleanos()
+            + """
+            ORDER BY
+                CASE WHEN TO_CHAR(e.fecha_nacimiento, 'MMDD') >= r.inicio_mmdd THEN 0 ELSE 1 END,
+                TO_CHAR(e.fecha_nacimiento, 'MMDD') ASC,
+                c.nombre ASC NULLS LAST,
+                e.apellido ASC,
+                e.nombre ASC
+            """,
+            (dias_normalizados,),
+        )
+        return [_formatear_cumpleanos_estudiante(row) for row in cursor.fetchall()]
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def obtener_cumpleanos_profesor_controller(profesor_id, dias=7):
+    dias_normalizados = _normalizar_dias_cumpleanos(dias)
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            _cte_rango_cumpleanos()
+            + """
+            SELECT
+                e.id,
+                e.nombre,
+                e.apellido,
+                c.nombre AS curso,
+                e.fecha_nacimiento
+            FROM estudiantes e
+            JOIN cursos c ON e.curso_id = c.id
+            CROSS JOIN rango r
+            WHERE EXISTS (
+                SELECT 1
+                FROM asignaciones a
+                WHERE a.curso_id = c.id
+                  AND a.profesor_id = %s
+                  AND a.activo = TRUE
+            )
+              AND e.fecha_nacimiento IS NOT NULL
+              AND COALESCE(LOWER(e.estado), 'activo') = 'activo'
+              AND COALESCE(LOWER(c.estado), 'activo') = 'activo'
+            """
+            + _filtro_rango_cumpleanos()
+            + """
+            ORDER BY
+                CASE WHEN TO_CHAR(e.fecha_nacimiento, 'MMDD') >= r.inicio_mmdd THEN 0 ELSE 1 END,
+                TO_CHAR(e.fecha_nacimiento, 'MMDD') ASC,
+                c.nombre ASC,
+                e.apellido ASC,
+                e.nombre ASC
+            """,
+            (dias_normalizados, profesor_id),
+        )
+        return [_formatear_cumpleanos_estudiante(row) for row in cursor.fetchall()]
+    finally:
+        cursor.close()
+        conn.close()
+
+
 def profesor_tiene_curso_controller(profesor_id, curso_id):
     conn = get_connection()
     cursor = conn.cursor()

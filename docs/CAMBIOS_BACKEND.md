@@ -6,6 +6,32 @@ Ultima revision documental: 2026-06-23.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
+## 2026-06-23 - Nombres administrativos en mayuscula
+
+Se normalizo el guardado de nombres administrativos para profesores, materias y
+cursos.
+
+Archivos modificados:
+
+- `app/controllers/profesor_controller.py`
+- `app/controllers/materia_controller.py`
+- `app/controllers/curso_controller.py`
+- `migrations/20260623_admin_nombres_mayuscula.sql`
+- `docs/MIGRACIONES.md`
+- `docs/CAMBIOS_BACKEND.md`
+
+Cambio:
+
+- Profesores se guardan con `nombre` y `apellido` en mayuscula.
+- Materias se guardan con `nombre` en mayuscula.
+- Cursos se guardan con `nombre` en mayuscula.
+- La migracion convierte los registros existentes y limpia espacios duplicados.
+
+Alcance:
+
+- No modifica correos, documentos, jornadas ni estados.
+- Requiere ejecutar la migracion tenant para actualizar datos ya guardados.
+
 ## 2026-06-23 - Codigo DANE en identidad institucional
 
 Se agrego el campo institucional `codigo_dane` para que cada colegio pueda

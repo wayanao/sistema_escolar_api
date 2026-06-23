@@ -21,11 +21,8 @@ def _build_estado_filter(estado):
     return "COALESCE(LOWER(estado), 'activo') = %s", [estado_normalizado]
 
 
-def _title_case_es(value):
-    return " ".join(
-        word[:1].upper() + word[1:].lower()
-        for word in str(value or "").strip().split()
-    )
+def _upper_text(value):
+    return " ".join(str(value or "").strip().split()).upper()
 
 
 # 🎯 Crear profesor
@@ -51,8 +48,8 @@ def crear_profesor_controller(profesor):
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         RETURNING id
     """, (
-        _title_case_es(profesor.nombre),
-        _title_case_es(profesor.apellido),
+        _upper_text(profesor.nombre),
+        _upper_text(profesor.apellido),
         profesor.documento_identidad,
         str(profesor.email).strip().lower(),
         profesor.telefono,
@@ -226,13 +223,13 @@ def actualizar_profesor_controller(profesor_id, profesor):
             UPDATE profesor
             SET nombre = %s, apellido = %s, documento_identidad = %s, email = %s, telefono = %s, password = %s, sueldo = %s, estado = COALESCE(%s, estado, 'activo')
             WHERE id = %s
-        ''', (_title_case_es(profesor.nombre), _title_case_es(profesor.apellido), profesor.documento_identidad, str(profesor.email).strip().lower(), profesor.telefono, get_password_hash(profesor.password), profesor.sueldo, estado, profesor_id))
+        ''', (_upper_text(profesor.nombre), _upper_text(profesor.apellido), profesor.documento_identidad, str(profesor.email).strip().lower(), profesor.telefono, get_password_hash(profesor.password), profesor.sueldo, estado, profesor_id))
     else:
         cursor.execute('''
             UPDATE profesor 
             SET nombre = %s, apellido = %s, documento_identidad = %s, email = %s, telefono = %s, sueldo = %s, estado = COALESCE(%s, estado, 'activo')
             WHERE id = %s
-        ''', (_title_case_es(profesor.nombre), _title_case_es(profesor.apellido), profesor.documento_identidad, str(profesor.email).strip().lower(), profesor.telefono, profesor.sueldo, estado, profesor_id))
+        ''', (_upper_text(profesor.nombre), _upper_text(profesor.apellido), profesor.documento_identidad, str(profesor.email).strip().lower(), profesor.telefono, profesor.sueldo, estado, profesor_id))
     
     conn.commit()
     cursor.close()

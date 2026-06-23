@@ -4,11 +4,8 @@ ESTADOS_CURSO = {"activo", "inactivo"}
 ESTADO_CURSO_DEFAULT = "activo"
 
 
-def _title_case_es(value):
-    return " ".join(
-        word[:1].upper() + word[1:].lower()
-        for word in str(value or "").strip().split()
-    )
+def _upper_text(value):
+    return " ".join(str(value or "").strip().split()).upper()
 
 
 def _normalizar_estado(value):
@@ -36,7 +33,7 @@ def crear_curso_controller(curso):
         VALUES (%s, %s, %s)
         RETURNING id
     """, (
-        _title_case_es(curso.nombre),
+        _upper_text(curso.nombre),
         curso.jornada,
         _normalizar_estado(curso.estado),
     ))
@@ -130,7 +127,7 @@ def actualizar_curso_controller(curso_id, curso):
         UPDATE cursos
         SET nombre = %s, jornada = %s, estado = %s
         WHERE id = %s
-    ''', (_title_case_es(curso.nombre), curso.jornada, _normalizar_estado(curso.estado), curso_id))
+    ''', (_upper_text(curso.nombre), curso.jornada, _normalizar_estado(curso.estado), curso_id))
     conn.commit()
     cursor.close()
     conn.close()

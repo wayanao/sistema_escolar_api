@@ -4,11 +4,8 @@ ESTADOS_MATERIA = {"activo", "inactivo"}
 ESTADO_MATERIA_DEFAULT = "activo"
 
 
-def _title_case_es(value):
-    return " ".join(
-        word[:1].upper() + word[1:].lower()
-        for word in str(value or "").strip().split()
-    )
+def _upper_text(value):
+    return " ".join(str(value or "").strip().split()).upper()
 
 
 def _normalizar_estado(value):
@@ -41,7 +38,7 @@ def crear_materia_controller(data):
     cursor.execute("""
         INSERT INTO materias (nombre, estado)
         VALUES (%s, %s)
-    """, (_title_case_es(data["nombre"]), _normalizar_estado(data.get("estado"))))
+    """, (_upper_text(data["nombre"]), _normalizar_estado(data.get("estado"))))
 
     conn.commit()
 
@@ -122,7 +119,7 @@ def actualizar_materia_controller(materia_id, data):
         UPDATE materias
         SET nombre = %s, estado = %s
         WHERE id = %s
-    ''', (_title_case_es(data["nombre"]), _normalizar_estado(data.get("estado")), materia_id))
+    ''', (_upper_text(data["nombre"]), _normalizar_estado(data.get("estado")), materia_id))
     conn.commit()
     cursor.close()
     conn.close()

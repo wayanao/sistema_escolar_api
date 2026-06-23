@@ -137,28 +137,29 @@ def obtener_estudiantes_controller(estado="activo"):
 
     conn = get_connection()
     cursor = conn.cursor()
-    estado_where, parametros = _build_estado_filter(estado)
-    where_sql = f"WHERE {estado_where}" if estado_where else ""
+    try:
+        estado_where, parametros = _build_estado_filter(estado)
+        where_sql = f"WHERE {estado_where}" if estado_where else ""
 
-    cursor.execute(f"""
-        SELECT
-            id,
-            nombre,
-            apellido,
-            documento_identidad,
-            fecha_nacimiento,
-            curso_id,
-            email,
-            COALESCE(LOWER(estado), 'activo') AS estado
-        FROM estudiantes
-        {where_sql}
-        ORDER BY apellido ASC, nombre ASC
-    """, tuple(parametros))
+        cursor.execute(f"""
+            SELECT
+                id,
+                nombre,
+                apellido,
+                documento_identidad,
+                fecha_nacimiento,
+                curso_id,
+                email,
+                COALESCE(LOWER(estado), 'activo') AS estado
+            FROM estudiantes
+            {where_sql}
+            ORDER BY apellido ASC, nombre ASC
+        """, tuple(parametros))
 
-    resultado = cursor.fetchall()
-
-    cursor.close()
-    conn.close()
+        resultado = cursor.fetchall()
+    finally:
+        cursor.close()
+        conn.close()
 
     return [_formatear_estudiante_lista(row) for row in resultado]
 

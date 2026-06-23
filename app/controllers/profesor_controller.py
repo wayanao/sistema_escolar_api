@@ -78,28 +78,29 @@ def obtener_profesores_controller(estado="activo"):
 
     conn = get_connection()
     cursor = conn.cursor()
-    estado_where, params = _build_estado_filter(estado)
-    where_sql = f"WHERE {estado_where}" if estado_where else ""
+    try:
+        estado_where, params = _build_estado_filter(estado)
+        where_sql = f"WHERE {estado_where}" if estado_where else ""
 
-    cursor.execute(f"""
-        SELECT
-            id,
-            nombre,
-            apellido,
-            documento_identidad,
-            email,
-            telefono,
-            sueldo,
-            COALESCE(LOWER(estado), 'activo') AS estado
-        FROM profesor
-        {where_sql}
-        ORDER BY id
-    """, params)
+        cursor.execute(f"""
+            SELECT
+                id,
+                nombre,
+                apellido,
+                documento_identidad,
+                email,
+                telefono,
+                sueldo,
+                COALESCE(LOWER(estado), 'activo') AS estado
+            FROM profesor
+            {where_sql}
+            ORDER BY id
+        """, params)
 
-    resultado = cursor.fetchall()
-
-    cursor.close()
-    conn.close()
+        resultado = cursor.fetchall()
+    finally:
+        cursor.close()
+        conn.close()
 
     data = []
 

@@ -56,23 +56,23 @@ def obtener_materias_controller(estado=ESTADO_MATERIA_DEFAULT):
 
     conn = get_connection()
     cursor = conn.cursor()
+    try:
+        filtros = []
+        params = []
+        _agregar_filtro_estado(filtros, params, estado)
+        where_sql = f"WHERE {' AND '.join(filtros)}" if filtros else ""
 
-    filtros = []
-    params = []
-    _agregar_filtro_estado(filtros, params, estado)
-    where_sql = f"WHERE {' AND '.join(filtros)}" if filtros else ""
+        cursor.execute("""
+            SELECT id, nombre, COALESCE(LOWER(estado), 'activo') AS estado
+            FROM materias
+            {where_sql}
+            ORDER BY id
+        """.format(where_sql=where_sql), params)
 
-    cursor.execute("""
-        SELECT id, nombre, COALESCE(LOWER(estado), 'activo') AS estado
-        FROM materias
-        {where_sql}
-        ORDER BY id
-    """.format(where_sql=where_sql), params)
-
-    rows = cursor.fetchall()
-
-    cursor.close()
-    conn.close()
+        rows = cursor.fetchall()
+    finally:
+        cursor.close()
+        conn.close()
 
     return [_formatear_materia(r) for r in rows]
 

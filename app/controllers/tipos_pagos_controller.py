@@ -37,10 +37,12 @@ def crear_tipo_pago(nombre, valor=0):
 def listar_tipos_pagos():
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute('SELECT id, nombre, valor FROM tipos_de_pagos ORDER BY nombre')
-    rows = cursor.fetchall()
-    cursor.close()
-    conn.close()
+    try:
+        cursor.execute('SELECT id, nombre, valor FROM tipos_de_pagos ORDER BY nombre')
+        rows = cursor.fetchall()
+    finally:
+        cursor.close()
+        conn.close()
     return [{'id': r[0], 'nombre': r[1], 'valor': float(r[2]) if r[2] is not None else 0} for r in rows]
 
 def actualizar_tipo_pago(id, nombre, valor=0):

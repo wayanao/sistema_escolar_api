@@ -58,9 +58,18 @@ def get_pool() -> ThreadedConnectionPool:
 def get_connection() -> PooledConnection:
     pool = get_pool()
     connection = pool.getconn()
-    connection.autocommit = False
-    with connection.cursor() as cursor:
-        set_tenant_search_path(cursor)
+    try:
+        connection.autocommit = False
+        with connection.cursor() as cursor:
+            set_tenant_search_path(cursor)
+    except Exception:
+        try:
+            connection.rollback()
+        except psycopg2.Error:
+            pool.putconn(connection, close=True)
+        else:
+            pool.putconn(connection)
+        raise
     return PooledConnection(pool, connection)
 
 

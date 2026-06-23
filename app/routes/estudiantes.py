@@ -8,6 +8,7 @@ from app.schemas.estudiante import EstudianteCreate, EstudianteEstadoUpdate
 from app.controllers.estudiante_controller import (
     ESTADOS_FILTRO_ESTUDIANTE,
     crear_estudiante_controller,
+    obtener_deudas_estudiante_controller,
     obtener_estudiantes_controller,
     obtener_estudiantes_paginado_controller,
     obtener_detalles_estudiante_controller,
@@ -60,6 +61,14 @@ def obtener_estudiantes(
 @router.get("/estudiantes/{estudiante_id}/detalles")
 def obtener_detalles_estudiante(estudiante_id: int):
     return obtener_detalles_estudiante_controller(estudiante_id)
+
+# 🔍 Obtener deudas academicas de un estudiante
+@router.get("/estudiantes/{estudiante_id}/deudas")
+def obtener_deudas_estudiante(estudiante_id: int):
+    try:
+        return obtener_deudas_estudiante_controller(estudiante_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 # 🔍 Obtener un estudiante por ID
 @router.get("/estudiantes/{estudiante_id}")

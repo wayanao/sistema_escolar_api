@@ -44,6 +44,7 @@ Los demas routers usan paths completos en cada decorator.
 - `GET /estudiantes`
 - `GET /estudiantes?estado=activo|retirado|egresado|inactivo|todos`
 - `GET /estudiantes/{estudiante_id}/detalles`
+- `GET /estudiantes/{estudiante_id}/deudas`
 - `GET /estudiantes/{estudiante_id}`
 - `PUT /estudiantes/{estudiante_id}`
 - `PATCH /estudiantes/{estudiante_id}/estado`
@@ -62,6 +63,9 @@ Notas:
 ```
 
 - Estados validos: `activo`, `retirado`, `egresado`, `inactivo`.
+- `GET /estudiantes/{estudiante_id}/deudas` devuelve solo deuda academica
+  pendiente del estudiante usando la logica central de cobros; no depende del
+  resumen amplio de notas, observaciones o inventario.
 
 ## Cuentas
 

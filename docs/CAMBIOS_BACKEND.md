@@ -6,6 +6,34 @@ Ultima revision documental: 2026-06-17.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
+## 2026-06-23 - Endpoint dedicado para deudas de estudiante
+
+Se agrego un endpoint especifico para consultar deudas academicas pendientes
+de un estudiante sin depender del resumen amplio de detalle.
+
+Archivos modificados:
+
+- `app/controllers/estudiante_controller.py`
+- `app/routes/estudiantes.py`
+- `docs/API_ENDPOINTS.md`
+- `docs/CAMBIOS_BACKEND.md`
+
+Cambio:
+
+- Nuevo endpoint `GET /estudiantes/{estudiante_id}/deudas`.
+- Reutiliza `calcular_deudas_estudiante` del servicio central de cobros.
+- Devuelve `estudiante_id`, `curso_id`, `deudas` y `total_deuda`.
+- Usa `get_cursor()` para cerrar cursor/conexion automaticamente.
+- El endpoint existente `/estudiantes/{estudiante_id}/detalles` ahora carga notas,
+  asistencia, observaciones, deudas e inventario por secciones independientes:
+  si una seccion falla, registra el error y conserva las demas respuestas.
+
+Alcance:
+
+- No cambia cartera vencida ni el endpoint existente
+  `/estudiantes/{estudiante_id}/detalles` a nivel de contrato de respuesta.
+- No requiere migraciones.
+
 ## 2026-06-17 - Cumpleanos de estudiantes en dashboards
 
 Se agregaron endpoints de dashboard para consultar solamente los estudiantes

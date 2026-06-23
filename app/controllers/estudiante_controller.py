@@ -1,5 +1,9 @@
-from app.database import get_connection
+import logging
+
+from app.database import get_connection, get_cursor
 from app.services.cobros import calcular_deudas_estudiante
+
+logger = logging.getLogger(__name__)
 
 ESTADOS_ESTUDIANTE = {"activo", "retirado", "egresado", "inactivo"}
 ESTADOS_FILTRO_ESTUDIANTE = ESTADOS_ESTUDIANTE | {"todos"}
@@ -380,64 +384,107 @@ def actualizar_estado_estudiante_controller(est_id, estado):
         conn.close()
 
 
+def obtener_deudas_estudiante_controller(est_id):
+    with get_cursor() as cursor:
+        resumen_cobros = calcular_deudas_estudiante(cursor, est_id)
+
+    return _formatear_resumen_deudas(est_id, resumen_cobros)
+
+
+def _formatear_resumen_deudas(est_id, resumen_cobros):
+    deudas = [
+        deuda for deuda in resumen_cobros["deudas"] if deuda["deuda"] > 0
+    ]
+    return {
+        "estudiante_id": est_id,
+        "curso_id": resumen_cobros.get("curso_id"),
+        "deudas": deudas,
+        "total_deuda": sum(deuda["deuda"] for deuda in deudas),
+    }
+
+
+def _registrar_error_detalle(detalles, seccion, exc):
+    logger.exception("Error cargando %s del estudiante", seccion)
+    detalles.setdefault("errores", {})[seccion] = "No se pudo cargar esta seccion."
+
+
 def obtener_detalles_estudiante_controller(est_id):
     conn = get_connection()
     cursor = conn.cursor()
-    detalles = {}
-    
+    detalles = {
+        "notas": [],
+        "promedio_general": 0.0,
+        "inasistencias": 0,
+        "observaciones": [],
+        "deudas": [],
+        "total_deuda": 0,
+        "productos_inventario": [],
+    }
+
     try:
-        # Notas por materia (promediando los detalles de la planilla)
-        cursor.execute('''
-            SELECT m.nombre, ROUND(AVG(n.nota), 1) as promedio
-            FROM notas_detalle n
-            JOIN asignaciones a ON n.asignacion_id = a.id
-            JOIN materias m ON a.materia_id = m.id
-            WHERE n.estudiante_id = %s GROUP BY m.id
-        ''', (est_id,))
-        
-        notas_list = [{'materia': r[0], 'promedio': float(r[1])} for r in cursor.fetchall()]
-        detalles['notas'] = notas_list
-        
-        if notas_list:
-            promedio_gen = sum(n['promedio'] for n in notas_list) / len(notas_list)
-            detalles['promedio_general'] = round(promedio_gen, 1)
-        else:
-            detalles['promedio_general'] = 0.0
+        try:
+            # Notas por materia (promediando los detalles de la planilla)
+            cursor.execute('''
+                SELECT m.nombre, ROUND(AVG(n.nota), 1) as promedio
+                FROM notas_detalle n
+                JOIN asignaciones a ON n.asignacion_id = a.id
+                JOIN materias m ON a.materia_id = m.id
+                WHERE n.estudiante_id = %s GROUP BY m.id
+            ''', (est_id,))
 
-        # Inasistencias
-        cursor.execute('''
-            SELECT count(*) FROM asistencia
-            WHERE estudiante_id = %s AND estado ILIKE 'ausente'
-        ''', (est_id,))
-        detalles['inasistencias'] = cursor.fetchone()[0]
+            notas_list = [{'materia': r[0], 'promedio': float(r[1])} for r in cursor.fetchall()]
+            detalles['notas'] = notas_list
 
-        # Observaciones (conductual, cognitivo, lenguaje)
-        cursor.execute('''
-            SELECT o.id, o.periodo, o.conductual, o.cognitivo, o.lenguaje, m.nombre AS materia_nombre, p.nombre || ' ' || p.apellido AS profesor_nombre FROM observaciones o JOIN asignaciones a ON o.asignacion_id = a.id JOIN materias m ON a.materia_id = m.id JOIN profesor p ON a.profesor_id = p.id WHERE o.estudiante_id = %s ORDER BY o.periodo DESC
-        ''', (est_id,))
-        
-        obs_list = []
-        for r in cursor.fetchall():
-            obs_list.append({
-                'id': r[0],
-                'periodo': r[1],
-                'conductual': r[2],
-                'cognitivo': r[3],
-                'lenguaje': r[4],
-                'materia': r[5],
-                'profesor': r[6]
-            })
-        detalles['observaciones'] = obs_list
+            if notas_list:
+                promedio_gen = sum(n['promedio'] for n in notas_list) / len(notas_list)
+                detalles['promedio_general'] = round(promedio_gen, 1)
+        except Exception as exc:
+            conn.rollback()
+            _registrar_error_detalle(detalles, "notas", exc)
 
-        resumen_cobros = calcular_deudas_estudiante(cursor, est_id)
-        detalles['deudas'] = [
-            deuda for deuda in resumen_cobros['deudas'] if deuda['deuda'] > 0
-        ]
-        detalles['total_deuda'] = sum(deuda['deuda'] for deuda in detalles['deudas'])
+        try:
+            cursor.execute('''
+                SELECT count(*) FROM asistencia
+                WHERE estudiante_id = %s AND estado ILIKE 'ausente'
+            ''', (est_id,))
+            detalles['inasistencias'] = cursor.fetchone()[0]
+        except Exception as exc:
+            conn.rollback()
+            _registrar_error_detalle(detalles, "asistencia", exc)
 
-        if resumen_cobros:
+        try:
+            cursor.execute('''
+                SELECT o.id, o.periodo, o.conductual, o.cognitivo, o.lenguaje, m.nombre AS materia_nombre, p.nombre || ' ' || p.apellido AS profesor_nombre FROM observaciones o JOIN asignaciones a ON o.asignacion_id = a.id JOIN materias m ON a.materia_id = m.id JOIN profesor p ON a.profesor_id = p.id WHERE o.estudiante_id = %s ORDER BY o.periodo DESC
+            ''', (est_id,))
 
-            # Obtener productos del inventario (ventas al estudiante)
+            detalles['observaciones'] = [
+                {
+                    'id': r[0],
+                    'periodo': r[1],
+                    'conductual': r[2],
+                    'cognitivo': r[3],
+                    'lenguaje': r[4],
+                    'materia': r[5],
+                    'profesor': r[6]
+                }
+                for r in cursor.fetchall()
+            ]
+        except Exception as exc:
+            conn.rollback()
+            _registrar_error_detalle(detalles, "observaciones", exc)
+
+        try:
+            resumen_cobros = _formatear_resumen_deudas(
+                est_id,
+                calcular_deudas_estudiante(cursor, est_id),
+            )
+            detalles['deudas'] = resumen_cobros["deudas"]
+            detalles['total_deuda'] = resumen_cobros["total_deuda"]
+        except Exception as exc:
+            conn.rollback()
+            _registrar_error_detalle(detalles, "deudas", exc)
+
+        try:
             cursor.execute('''
                 SELECT v.id, v.fecha, v.estado, i.nombre, vd.cantidad, vd.subtotal, COALESCE(v.pagado, 0)
                 FROM ventas v
@@ -446,10 +493,9 @@ def obtener_detalles_estudiante_controller(est_id):
                 WHERE v.estudiante_id = %s
                 ORDER BY v.fecha DESC
             ''', (est_id,))
-            
+
             productos_inventario = []
             for v_row in cursor.fetchall():
-                # Si está pendiente pero tiene abonos, calcular saldo
                 estado_real = v_row[2]
                 subtotal = float(v_row[5])
                 pagado = float(v_row[6])
@@ -467,23 +513,11 @@ def obtener_detalles_estudiante_controller(est_id):
                     "saldo": saldo
                 })
             detalles['productos_inventario'] = productos_inventario
-
-        else:
-            detalles['deudas'] = []
-            detalles['total_deuda'] = 0
-            detalles['productos_inventario'] = []
+        except Exception as exc:
+            conn.rollback()
+            _registrar_error_detalle(detalles, "inventario", exc)
 
         return detalles
-    except Exception as e:
-        print(f"Error en obtener_detalles_estudiante_controller: {e}")
-        return {
-            "notas": [],
-            "inasistencias": 0,
-            "observaciones": [],
-            "deudas": [],
-            "total_deuda": 0,
-            "productos_inventario": []
-        }
     finally:
         cursor.close()
         conn.close()

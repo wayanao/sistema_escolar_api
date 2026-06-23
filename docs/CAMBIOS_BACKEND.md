@@ -1,10 +1,36 @@
 # Cambios Backend
 
-Ultima revision documental: 2026-06-17.
+Ultima revision documental: 2026-06-23.
 
 ## Proposito
 
 Bitacora de cambios documentales y tecnicos observables del backend.
+
+## 2026-06-23 - Codigo DANE en identidad institucional
+
+Se agrego el campo institucional `codigo_dane` para que cada colegio pueda
+guardarlo desde su configuracion de impresos.
+
+Archivos modificados:
+
+- `app/controllers/branding_controller.py`
+- `app/schemas/branding.py`
+- `migrations/20260623_institucion_branding_codigo_dane.sql`
+- `docs/API_ENDPOINTS.md`
+- `docs/BASE_DATOS.md`
+- `docs/MIGRACIONES.md`
+- `docs/CAMBIOS_BACKEND.md`
+
+Cambio:
+
+- `GET /branding` devuelve `codigo_dane`.
+- `PUT /branding` permite guardar `codigo_dane`.
+- La migracion agrega `institucion_branding.codigo_dane` como `VARCHAR(20)`.
+
+Alcance:
+
+- Requiere ejecutar la migracion tenant antes o junto al despliegue backend.
+- No cambia logos ni plantillas de impresion.
 
 ## 2026-06-23 - Endpoint dedicado para deudas de estudiante
 

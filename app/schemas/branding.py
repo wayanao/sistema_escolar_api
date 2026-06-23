@@ -9,6 +9,7 @@ class BrandingBase(BaseModel):
     telefono: Optional[str] = ""
     email: Optional[str] = ""
     nit: Optional[str] = ""
+    codigo_dane: Optional[str] = ""
     sitio_web: Optional[str] = ""
     color_primario: Optional[str] = "#0f314f"
     color_secundario: Optional[str] = "#526775"

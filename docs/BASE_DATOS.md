@@ -111,6 +111,12 @@ El codigo consulta o modifica tablas como:
 - `institucion_branding`
 - `plantilla_impresion`
 
+Nota sobre `institucion_branding`:
+
+- Guarda la identidad institucional usada por los impresos del tenant.
+- Incluye `codigo_dane` como texto opcional para conservar ceros a la
+  izquierda.
+
 Nota sobre `egresos`:
 
 - `egresos.origen` identifica la fuente del movimiento.

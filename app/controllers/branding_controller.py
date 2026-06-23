@@ -18,7 +18,7 @@ def obtener_branding_controller():
     cursor = conn.cursor()
     cursor.execute("""
         SELECT id, nombre_institucion, eslogan, logo_principal_url, logo_secundario_url,
-               direccion, telefono, email, nit, sitio_web,
+               direccion, telefono, email, nit, codigo_dane, sitio_web,
                color_primario, color_secundario, configuracion_extra
         FROM institucion_branding
         ORDER BY id ASC
@@ -31,7 +31,7 @@ def obtener_branding_controller():
             INSERT INTO institucion_branding (nombre_institucion)
             VALUES ('')
             RETURNING id, nombre_institucion, eslogan, logo_principal_url, logo_secundario_url,
-                     direccion, telefono, email, nit, sitio_web,
+                     direccion, telefono, email, nit, codigo_dane, sitio_web,
                      color_primario, color_secundario, configuracion_extra
         """)
         row = cursor.fetchone()
@@ -50,10 +50,11 @@ def obtener_branding_controller():
         "telefono": row[6] or "",
         "email": row[7] or "",
         "nit": row[8] or "",
-        "sitio_web": row[9] or "",
-        "color_primario": row[10] or "#0f314f",
-        "color_secundario": row[11] or "#526775",
-        "configuracion_extra": row[12] or {},
+        "codigo_dane": row[9] or "",
+        "sitio_web": row[10] or "",
+        "color_primario": row[11] or "#0f314f",
+        "color_secundario": row[12] or "#526775",
+        "configuracion_extra": row[13] or {},
     }
 
 
@@ -68,6 +69,7 @@ def actualizar_branding_controller(data):
             telefono = %s,
             email = %s,
             nit = %s,
+            codigo_dane = %s,
             sitio_web = %s,
             color_primario = %s,
             color_secundario = %s,
@@ -81,6 +83,7 @@ def actualizar_branding_controller(data):
         data.telefono or "",
         data.email or "",
         data.nit or "",
+        data.codigo_dane or "",
         data.sitio_web or "",
         data.color_primario or "#0f314f",
         data.color_secundario or "#526775",

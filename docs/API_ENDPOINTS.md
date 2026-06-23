@@ -411,6 +411,11 @@ Notas:
 - `POST /branding/logo`
 - `DELETE /branding/logo`
 
+Notas:
+
+- `GET /branding` y `PUT /branding` incluyen `codigo_dane` como dato
+  institucional opcional del colegio.
+
 ## Plantillas
 
 - `GET /plantillas`

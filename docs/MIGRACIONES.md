@@ -25,6 +25,7 @@ Archivos actuales:
 - `20260604_materias_estado.sql`
 - `20260604_inventario_estado.sql`
 - `20260604_egresos_origen.sql`
+- `20260623_institucion_branding_codigo_dane.sql`
 - `README.md`
 
 Migraciones globales `public`:

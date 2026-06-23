@@ -6,6 +6,7 @@ from app.schemas.profesor import ProfesorCreate, ProfesorEstadoUpdate
 
 from app.controllers.profesor_controller import (
     ESTADOS_FILTRO_PROFESOR,
+    ProfesorDuplicadoError,
     actualizar_profesor_controller,
     actualizar_estado_profesor_controller,
     crear_profesor_controller,
@@ -19,8 +20,12 @@ router = APIRouter(tags=["Profesores"], dependencies=[Depends(get_current_active
 # 🚀 Crear profesor
 @router.post("/profesores")
 def crear_profesor(profesor: ProfesorCreate):
-
-    profesor_id = crear_profesor_controller(profesor)
+    try:
+        profesor_id = crear_profesor_controller(profesor)
+    except ProfesorDuplicadoError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
 
     return {
         "mensaje": "Profesor creado correctamente",
@@ -55,7 +60,16 @@ def obtener_profesores(
 
 @router.put("/profesores/{profesor_id}")
 def actualizar_profesor(profesor_id: int, profesor: ProfesorCreate):
-    return actualizar_profesor_controller(profesor_id, profesor)
+    try:
+        resultado = actualizar_profesor_controller(profesor_id, profesor)
+    except ProfesorDuplicadoError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+
+    if "error" in resultado:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=resultado["error"])
+    return resultado
 
 
 @router.patch("/profesores/{profesor_id}/estado")

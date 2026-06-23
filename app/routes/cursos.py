@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from app.dependencies import get_current_active_admin
 from app.schemas.curso import CursoCreate, CursoEstadoUpdate
 from app.controllers.curso_controller import (
+    CursoDuplicadoError,
     actualizar_curso_controller,
     actualizar_estado_curso_controller,
     crear_curso_controller,
@@ -29,8 +30,12 @@ def validar_estado_filtro(estado: str) -> str:
 # 🚀 Crear curso
 @router.post("/cursos")
 def crear_curso(curso: CursoCreate):
-
-    curso_id = crear_curso_controller(curso)
+    try:
+        curso_id = crear_curso_controller(curso)
+    except CursoDuplicadoError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
 
     return {
         "mensaje": "Curso creado",
@@ -54,7 +59,16 @@ def obtener_cursos(
 
 @router.put("/cursos/{curso_id}")
 def actualizar_curso(curso_id: int, curso: CursoCreate):
-    return actualizar_curso_controller(curso_id, curso)
+    try:
+        resultado = actualizar_curso_controller(curso_id, curso)
+    except CursoDuplicadoError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+
+    if "error" in resultado:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=resultado["error"])
+    return resultado
 
 
 @router.patch("/cursos/{curso_id}/estado")

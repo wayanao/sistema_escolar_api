@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from app.dependencies import get_current_active_admin
 from app.schemas.materia import MateriaEstadoUpdate
 from app.controllers.materia_controller import (
+    MateriaDuplicadaError,
     actualizar_estado_materia_controller,
     crear_materia_controller,
     actualizar_materia_controller,
@@ -27,7 +28,12 @@ def validar_estado_filtro(estado: str) -> str:
 
 @router.post("/materia")
 def crear_materia(data: dict):
-    return crear_materia_controller(data)
+    try:
+        return crear_materia_controller(data)
+    except MateriaDuplicadaError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
 
 @router.get("/materias")
 def obtener_materias(
@@ -44,7 +50,16 @@ def obtener_materias(
 
 @router.put("/materias/{materia_id}")
 def actualizar_materia(materia_id: int, data: dict):
-    return actualizar_materia_controller(materia_id, data)
+    try:
+        resultado = actualizar_materia_controller(materia_id, data)
+    except MateriaDuplicadaError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+
+    if "error" in resultado:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=resultado["error"])
+    return resultado
 
 
 @router.patch("/materias/{materia_id}/estado")

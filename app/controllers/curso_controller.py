@@ -1,11 +1,44 @@
 from app.database import get_connection
+from psycopg2 import IntegrityError
 
 ESTADOS_CURSO = {"activo", "inactivo"}
 ESTADO_CURSO_DEFAULT = "activo"
 
 
+class CursoDuplicadoError(Exception):
+    """Se lanza cuando ya existe un curso con el mismo nombre y jornada."""
+
+
 def _upper_text(value):
     return " ".join(str(value or "").strip().split()).upper()
+
+
+def _normalizar_jornada(value):
+    return str(value or "Mañana").strip() or "Mañana"
+
+
+def _validar_nombre_obligatorio(nombre):
+    if not nombre:
+        raise ValueError("El nombre del curso es obligatorio.")
+
+
+def _validar_curso_unico(cursor, nombre, jornada, curso_id=None):
+    cursor.execute(
+        """
+        SELECT id
+        FROM cursos
+        WHERE UPPER(REGEXP_REPLACE(TRIM(nombre), '[[:space:]]+', ' ', 'g')) = %s
+          AND LOWER(COALESCE(NULLIF(TRIM(jornada), ''), 'Mañana')) =
+              LOWER(COALESCE(NULLIF(TRIM(%s), ''), 'Mañana'))
+          AND (%s IS NULL OR id <> %s)
+        LIMIT 1
+        """,
+        (nombre, jornada, curso_id, curso_id),
+    )
+    if cursor.fetchone():
+        raise CursoDuplicadoError(
+            f"Ya existe un curso llamado '{nombre}' en la jornada {jornada}."
+        )
 
 
 def _normalizar_estado(value):
@@ -28,23 +61,37 @@ def crear_curso_controller(curso):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("""
-        INSERT INTO cursos (nombre, jornada, estado)
-        VALUES (%s, %s, %s)
-        RETURNING id
-    """, (
-        _upper_text(curso.nombre),
-        curso.jornada,
-        _normalizar_estado(curso.estado),
-    ))
+    try:
+        nombre = _upper_text(curso.nombre)
+        jornada = _normalizar_jornada(curso.jornada)
+        _validar_nombre_obligatorio(nombre)
+        _validar_curso_unico(cursor, nombre, jornada)
 
-    curso_id = cursor.fetchone()[0]
+        cursor.execute("""
+            INSERT INTO cursos (nombre, jornada, estado)
+            VALUES (%s, %s, %s)
+            RETURNING id
+        """, (
+            nombre,
+            jornada,
+            _normalizar_estado(curso.estado),
+        ))
 
-    conn.commit()
-    cursor.close()
-    conn.close()
+        curso_id = cursor.fetchone()[0]
 
-    return curso_id 
+        conn.commit()
+        return curso_id
+    except (CursoDuplicadoError, ValueError):
+        conn.rollback()
+        raise
+    except IntegrityError as exc:
+        conn.rollback()
+        raise CursoDuplicadoError(
+            "Ya existe un curso con ese nombre y jornada."
+        ) from exc
+    finally:
+        cursor.close()
+        conn.close()
 
 
 def _formatear_curso(row):
@@ -120,18 +167,36 @@ def obtener_cursos_paginado_controller(limit=50, offset=0, busqueda=None, estado
         conn.close()
 
 def actualizar_curso_controller(curso_id, curso):
-    from app.database import get_connection
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute('''
-        UPDATE cursos
-        SET nombre = %s, jornada = %s, estado = %s
-        WHERE id = %s
-    ''', (_upper_text(curso.nombre), curso.jornada, _normalizar_estado(curso.estado), curso_id))
-    conn.commit()
-    cursor.close()
-    conn.close()
-    return {"mensaje": "Curso actualizado correctamente"}
+    try:
+        nombre = _upper_text(curso.nombre)
+        jornada = _normalizar_jornada(curso.jornada)
+        _validar_nombre_obligatorio(nombre)
+        _validar_curso_unico(cursor, nombre, jornada, curso_id)
+
+        cursor.execute('''
+            UPDATE cursos
+            SET nombre = %s, jornada = %s, estado = %s
+            WHERE id = %s
+            RETURNING id
+        ''', (nombre, jornada, _normalizar_estado(curso.estado), curso_id))
+        if not cursor.fetchone():
+            conn.rollback()
+            return {"error": "Curso no encontrado"}
+        conn.commit()
+        return {"mensaje": "Curso actualizado correctamente"}
+    except (CursoDuplicadoError, ValueError):
+        conn.rollback()
+        raise
+    except IntegrityError as exc:
+        conn.rollback()
+        raise CursoDuplicadoError(
+            "Ya existe un curso con ese nombre y jornada."
+        ) from exc
+    finally:
+        cursor.close()
+        conn.close()
 
 
 def actualizar_estado_curso_controller(curso_id, estado):

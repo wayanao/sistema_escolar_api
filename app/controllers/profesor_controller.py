@@ -1,8 +1,13 @@
 from app.database import get_connection
 from app.security import get_password_hash
+from psycopg2 import IntegrityError
 
 ESTADOS_PROFESOR = {"activo", "inactivo"}
 ESTADOS_FILTRO_PROFESOR = ESTADOS_PROFESOR | {"todos"}
+
+
+class ProfesorDuplicadoError(Exception):
+    """Se lanza cuando ya existe un profesor con el mismo documento o email."""
 
 
 def normalizar_estado_profesor(estado, default="activo"):
@@ -25,49 +30,110 @@ def _upper_text(value):
     return " ".join(str(value or "").strip().split()).upper()
 
 
+def _clean_text(value):
+    return " ".join(str(value or "").strip().split())
+
+
+def _normalizar_email(value):
+    return str(value or "").strip().lower()
+
+
+def _validar_campos_profesor(nombre, apellido, documento, email):
+    if not nombre:
+        raise ValueError("El nombre del profesor es obligatorio.")
+    if not apellido:
+        raise ValueError("El apellido del profesor es obligatorio.")
+    if not documento:
+        raise ValueError("El documento del profesor es obligatorio.")
+    if not email:
+        raise ValueError("El email del profesor es obligatorio.")
+
+
+def _validar_profesor_unico(cursor, documento, email, profesor_id=None):
+    cursor.execute(
+        """
+        SELECT id
+        FROM profesor
+        WHERE TRIM(documento_identidad) = %s
+          AND (%s IS NULL OR id <> %s)
+        LIMIT 1
+        """,
+        (documento, profesor_id, profesor_id),
+    )
+    if cursor.fetchone():
+        raise ProfesorDuplicadoError(
+            f"Ya existe un profesor con el documento '{documento}'."
+        )
+
+    cursor.execute(
+        """
+        SELECT id
+        FROM profesor
+        WHERE LOWER(TRIM(email)) = %s
+          AND (%s IS NULL OR id <> %s)
+        LIMIT 1
+        """,
+        (email, profesor_id, profesor_id),
+    )
+    if cursor.fetchone():
+        raise ProfesorDuplicadoError(
+            f"Ya existe un profesor con el email '{email}'."
+        )
+
+
 # 🎯 Crear profesor
 def crear_profesor_controller(profesor):
 
-    # 🔌 Abrimos conexión
     conn = get_connection()
     cursor = conn.cursor()
-    estado = normalizar_estado_profesor(getattr(profesor, "estado", None))
+    try:
+        nombre = _upper_text(profesor.nombre)
+        apellido = _upper_text(profesor.apellido)
+        documento = _clean_text(profesor.documento_identidad)
+        email = _normalizar_email(profesor.email)
+        estado = normalizar_estado_profesor(getattr(profesor, "estado", None))
 
-    # 🧠 Insertamos en la base de datos (AGREGAMOS EMAIL)
-    cursor.execute("""
-        INSERT INTO profesor (
+        _validar_campos_profesor(nombre, apellido, documento, email)
+        _validar_profesor_unico(cursor, documento, email)
+
+        cursor.execute("""
+            INSERT INTO profesor (
+                nombre,
+                apellido,
+                documento_identidad,
+                email,
+                telefono,
+                password,
+                sueldo,
+                estado
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
+        """, (
             nombre,
             apellido,
-            documento_identidad,
+            documento,
             email,
-            telefono,
-            password,
-            sueldo,
+            profesor.telefono,
+            get_password_hash(profesor.password),
+            profesor.sueldo,
             estado
-        )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-        RETURNING id
-    """, (
-        _upper_text(profesor.nombre),
-        _upper_text(profesor.apellido),
-        profesor.documento_identidad,
-        str(profesor.email).strip().lower(),
-        profesor.telefono,
-        get_password_hash(profesor.password),
-        profesor.sueldo,
-        estado
-    ))
-    # 📥 Obtener ID
-    profesor_id = cursor.fetchone()[0]
+        ))
+        profesor_id = cursor.fetchone()[0]
 
-    # 💾 Guardar cambios
-    conn.commit()
-
-    # 🔒 Cerrar conexión
-    cursor.close()
-    conn.close()
-
-    return profesor_id
+        conn.commit()
+        return profesor_id
+    except (ProfesorDuplicadoError, ValueError):
+        conn.rollback()
+        raise
+    except IntegrityError as exc:
+        conn.rollback()
+        raise ProfesorDuplicadoError(
+            "Ya existe un profesor con ese documento o email."
+        ) from exc
+    finally:
+        cursor.close()
+        conn.close()
 
 
 # 🎯 Obtener todos los profesores
@@ -212,29 +278,52 @@ def obtener_clases_profesor_controller(profesor_id):
 def actualizar_profesor_controller(profesor_id, profesor):
     conn = get_connection()
     cursor = conn.cursor()
-    estado = (
-        normalizar_estado_profesor(profesor.estado)
-        if getattr(profesor, "estado", None) is not None
-        else None
-    )
+    try:
+        nombre = _upper_text(profesor.nombre)
+        apellido = _upper_text(profesor.apellido)
+        documento = _clean_text(profesor.documento_identidad)
+        email = _normalizar_email(profesor.email)
+        estado = (
+            normalizar_estado_profesor(profesor.estado)
+            if getattr(profesor, "estado", None) is not None
+            else None
+        )
 
-    if profesor.password:
-        cursor.execute('''
-            UPDATE profesor
-            SET nombre = %s, apellido = %s, documento_identidad = %s, email = %s, telefono = %s, password = %s, sueldo = %s, estado = COALESCE(%s, estado, 'activo')
-            WHERE id = %s
-        ''', (_upper_text(profesor.nombre), _upper_text(profesor.apellido), profesor.documento_identidad, str(profesor.email).strip().lower(), profesor.telefono, get_password_hash(profesor.password), profesor.sueldo, estado, profesor_id))
-    else:
-        cursor.execute('''
-            UPDATE profesor 
-            SET nombre = %s, apellido = %s, documento_identidad = %s, email = %s, telefono = %s, sueldo = %s, estado = COALESCE(%s, estado, 'activo')
-            WHERE id = %s
-        ''', (_upper_text(profesor.nombre), _upper_text(profesor.apellido), profesor.documento_identidad, str(profesor.email).strip().lower(), profesor.telefono, profesor.sueldo, estado, profesor_id))
-    
-    conn.commit()
-    cursor.close()
-    conn.close()
-    return {"mensaje": "Profesor actualizado correctamente"}
+        _validar_campos_profesor(nombre, apellido, documento, email)
+        _validar_profesor_unico(cursor, documento, email, profesor_id)
+
+        if profesor.password:
+            cursor.execute('''
+                UPDATE profesor
+                SET nombre = %s, apellido = %s, documento_identidad = %s, email = %s, telefono = %s, password = %s, sueldo = %s, estado = COALESCE(%s, estado, 'activo')
+                WHERE id = %s
+                RETURNING id
+            ''', (nombre, apellido, documento, email, profesor.telefono, get_password_hash(profesor.password), profesor.sueldo, estado, profesor_id))
+        else:
+            cursor.execute('''
+                UPDATE profesor
+                SET nombre = %s, apellido = %s, documento_identidad = %s, email = %s, telefono = %s, sueldo = %s, estado = COALESCE(%s, estado, 'activo')
+                WHERE id = %s
+                RETURNING id
+            ''', (nombre, apellido, documento, email, profesor.telefono, profesor.sueldo, estado, profesor_id))
+
+        if not cursor.fetchone():
+            conn.rollback()
+            return {"error": "Profesor no encontrado"}
+
+        conn.commit()
+        return {"mensaje": "Profesor actualizado correctamente"}
+    except (ProfesorDuplicadoError, ValueError):
+        conn.rollback()
+        raise
+    except IntegrityError as exc:
+        conn.rollback()
+        raise ProfesorDuplicadoError(
+            "Ya existe un profesor con ese documento o email."
+        ) from exc
+    finally:
+        cursor.close()
+        conn.close()
 
 
 def actualizar_estado_profesor_controller(profesor_id, estado):

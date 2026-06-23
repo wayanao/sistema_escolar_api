@@ -102,6 +102,8 @@ Notas:
 - Estados validos: `activo`, `inactivo`.
 - Un curso `inactivo` no puede usarse en nuevas asignaciones ni ediciones de
   asignaciones activas.
+- `POST /cursos` y `PUT /cursos/{curso_id}` responden `409 Conflict` si ya
+  existe un curso con el mismo `nombre` y `jornada`.
 
 ## Profesores
 
@@ -127,6 +129,8 @@ Notas:
 - Estados validos: `activo`, `inactivo`.
 - Un profesor `inactivo` no puede iniciar sesion ni ser asignado/actualizado en
   asignaciones activas.
+- `POST /profesores` y `PUT /profesores/{profesor_id}` responden
+  `409 Conflict` si ya existe un profesor con el mismo documento o email.
 
 ## Asignaciones
 
@@ -184,6 +188,8 @@ Notas:
 - Estados validos: `activo`, `inactivo`.
 - Una materia `inactivo` no puede usarse en nuevas asignaciones ni ediciones de
   asignaciones activas.
+- `POST /materia` y `PUT /materias/{materia_id}` responden `409 Conflict` si
+  ya existe una materia con el mismo nombre.
 
 ## Observaciones
 

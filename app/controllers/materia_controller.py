@@ -1,11 +1,36 @@
 from app.database import get_connection
+from psycopg2 import IntegrityError
 
 ESTADOS_MATERIA = {"activo", "inactivo"}
 ESTADO_MATERIA_DEFAULT = "activo"
 
 
+class MateriaDuplicadaError(Exception):
+    """Se lanza cuando ya existe una materia con el mismo nombre."""
+
+
 def _upper_text(value):
     return " ".join(str(value or "").strip().split()).upper()
+
+
+def _validar_nombre_obligatorio(nombre):
+    if not nombre:
+        raise ValueError("El nombre de la materia es obligatorio.")
+
+
+def _validar_materia_unica(cursor, nombre, materia_id=None):
+    cursor.execute(
+        """
+        SELECT id
+        FROM materias
+        WHERE UPPER(REGEXP_REPLACE(TRIM(nombre), '[[:space:]]+', ' ', 'g')) = %s
+          AND (%s IS NULL OR id <> %s)
+        LIMIT 1
+        """,
+        (nombre, materia_id, materia_id),
+    )
+    if cursor.fetchone():
+        raise MateriaDuplicadaError(f"Ya existe una materia llamada '{nombre}'.")
 
 
 def _normalizar_estado(value):
@@ -35,17 +60,29 @@ def crear_materia_controller(data):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("""
-        INSERT INTO materias (nombre, estado)
-        VALUES (%s, %s)
-    """, (_upper_text(data["nombre"]), _normalizar_estado(data.get("estado"))))
+    try:
+        nombre = _upper_text(data.get("nombre"))
+        _validar_nombre_obligatorio(nombre)
+        _validar_materia_unica(cursor, nombre)
 
-    conn.commit()
+        cursor.execute("""
+            INSERT INTO materias (nombre, estado)
+            VALUES (%s, %s)
+        """, (nombre, _normalizar_estado(data.get("estado"))))
 
-    cursor.close()
-    conn.close()
-
-    return {"mensaje": "Materia creada"}
+        conn.commit()
+        return {"mensaje": "Materia creada"}
+    except (MateriaDuplicadaError, ValueError):
+        conn.rollback()
+        raise
+    except IntegrityError as exc:
+        conn.rollback()
+        raise MateriaDuplicadaError(
+            "Ya existe una materia con ese nombre."
+        ) from exc
+    finally:
+        cursor.close()
+        conn.close()
 
 
 
@@ -112,18 +149,35 @@ def obtener_materias_paginado_controller(limit=50, offset=0, busqueda=None, esta
         conn.close()
 
 def actualizar_materia_controller(materia_id, data):
-    from app.database import get_connection
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute('''
-        UPDATE materias
-        SET nombre = %s, estado = %s
-        WHERE id = %s
-    ''', (_upper_text(data["nombre"]), _normalizar_estado(data.get("estado")), materia_id))
-    conn.commit()
-    cursor.close()
-    conn.close()
-    return {"mensaje": "Materia actualizada correctamente"}
+    try:
+        nombre = _upper_text(data.get("nombre"))
+        _validar_nombre_obligatorio(nombre)
+        _validar_materia_unica(cursor, nombre, materia_id)
+
+        cursor.execute('''
+            UPDATE materias
+            SET nombre = %s, estado = %s
+            WHERE id = %s
+            RETURNING id
+        ''', (nombre, _normalizar_estado(data.get("estado")), materia_id))
+        if not cursor.fetchone():
+            conn.rollback()
+            return {"error": "Materia no encontrada"}
+        conn.commit()
+        return {"mensaje": "Materia actualizada correctamente"}
+    except (MateriaDuplicadaError, ValueError):
+        conn.rollback()
+        raise
+    except IntegrityError as exc:
+        conn.rollback()
+        raise MateriaDuplicadaError(
+            "Ya existe una materia con ese nombre."
+        ) from exc
+    finally:
+        cursor.close()
+        conn.close()
 
 
 def actualizar_estado_materia_controller(materia_id, estado):

@@ -6,6 +6,40 @@ Ultima revision documental: 2026-06-23.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
+## 2026-06-23 - Validaciones de duplicados academicos
+
+Se blindaron los modulos administrativos de profesores, materias y cursos
+contra duplicados.
+
+Archivos modificados:
+
+- `app/controllers/profesor_controller.py`
+- `app/controllers/materia_controller.py`
+- `app/controllers/curso_controller.py`
+- `app/routes/profesores.py`
+- `app/routes/materias.py`
+- `app/routes/cursos.py`
+- `migrations/20260623_admin_unicos_academicos.sql`
+- `docs/API_ENDPOINTS.md`
+- `docs/MIGRACIONES.md`
+- `docs/CAMBIOS_BACKEND.md`
+
+Cambio:
+
+- Profesores no permiten repetir `documento_identidad` ni `email`.
+- Materias no permiten repetir `nombre`.
+- Cursos no permiten repetir la combinacion `nombre + jornada`.
+- El backend responde `409 Conflict` con un mensaje claro cuando detecta un
+  duplicado.
+- La base de datos agrega indices unicos por tenant para cubrir tambien casos
+  concurrentes o llamadas directas al API.
+
+Alcance:
+
+- No bloquea profesores por nombre, porque pueden existir homonimos reales.
+- No modifica correos de estudiantes ni usuarios.
+- Requiere auditoria previa limpia y ejecucion de migracion tenant.
+
 ## 2026-06-23 - Nombres administrativos en mayuscula
 
 Se normalizo el guardado de nombres administrativos para profesores, materias y

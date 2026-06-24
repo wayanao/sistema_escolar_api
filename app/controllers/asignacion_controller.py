@@ -260,6 +260,147 @@ def obtener_asignacion_academica_id(cursor, profesor_id, curso_id, materia_id, a
     return row[0] if row else None
 
 
+def obtener_orden_boletin_materia_curso(cursor, curso_id, materia_id):
+    cursor.execute(
+        """
+        SELECT COALESCE(MIN(orden_boletin), 100)
+        FROM asignaciones
+        WHERE curso_id = %s
+          AND materia_id = %s
+          AND activo = TRUE
+        """,
+        (curso_id, materia_id),
+    )
+    row = cursor.fetchone()
+    return row[0] if row and row[0] is not None else 100
+
+
+def _formatear_orden_boletin(row):
+    return {
+        "asignacion_academica_id": row[0],
+        "curso_id": row[1],
+        "curso_nombre": row[2],
+        "materia_id": row[3],
+        "materia_nombre": row[4],
+        "profesor_id": row[5],
+        "profesor_nombre": row[6],
+        "orden_boletin": row[7],
+        "horarios": row[8],
+    }
+
+
+def _obtener_orden_boletin_curso(cursor, curso_id):
+    cursor.execute(
+        """
+        SELECT
+            MIN(COALESCE(a.asignacion_academica_id, a.id)) AS asignacion_academica_id,
+            a.curso_id,
+            c.nombre AS curso_nombre,
+            a.materia_id,
+            m.nombre AS materia_nombre,
+            MIN(a.profesor_id) AS profesor_id,
+            MIN(p.nombre || ' ' || p.apellido) AS profesor_nombre,
+            COALESCE(MIN(a.orden_boletin), 100) AS orden_boletin,
+            COUNT(*) AS horarios
+        FROM asignaciones a
+        JOIN cursos c ON c.id = a.curso_id
+        JOIN materias m ON m.id = a.materia_id
+        JOIN profesor p ON p.id = a.profesor_id
+        WHERE a.curso_id = %s
+          AND a.activo = TRUE
+          AND COALESCE(LOWER(c.estado), 'activo') = 'activo'
+          AND COALESCE(LOWER(m.estado), 'activo') = 'activo'
+        GROUP BY a.curso_id, c.nombre, a.materia_id, m.nombre
+        ORDER BY COALESCE(MIN(a.orden_boletin), 100), m.nombre
+        """,
+        (curso_id,),
+    )
+    return [_formatear_orden_boletin(row) for row in cursor.fetchall()]
+
+
+def obtener_orden_boletin_curso_controller(curso_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        return {
+            "curso_id": curso_id,
+            "items": _obtener_orden_boletin_curso(cursor, curso_id),
+        }
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def actualizar_orden_boletin_curso_controller(curso_id, data):
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            """
+            SELECT 1
+            FROM cursos
+            WHERE id = %s
+              AND COALESCE(LOWER(estado), 'activo') = 'activo'
+            """,
+            (curso_id,),
+        )
+        if not cursor.fetchone():
+            return {"error": "Curso no encontrado o inactivo."}
+
+        materia_ids = [item.materia_id for item in data.materias]
+        if len(materia_ids) != len(set(materia_ids)):
+            return {"error": "El orden enviado contiene materias repetidas."}
+
+        cursor.execute(
+            """
+            SELECT DISTINCT materia_id
+            FROM asignaciones
+            WHERE curso_id = %s
+              AND activo = TRUE
+            """,
+            (curso_id,),
+        )
+        materias_asignadas = {row[0] for row in cursor.fetchall()}
+        materias_invalidas = [materia_id for materia_id in materia_ids if materia_id not in materias_asignadas]
+        if materias_invalidas:
+            return {"error": "El orden contiene materias que no están asignadas a este curso."}
+
+        cursor.execute(
+            """
+            UPDATE asignaciones
+            SET orden_boletin = 100
+            WHERE curso_id = %s
+              AND activo = TRUE
+            """,
+            (curso_id,),
+        )
+
+        for posicion, item in enumerate(data.materias, start=1):
+            cursor.execute(
+                """
+                UPDATE asignaciones
+                SET orden_boletin = %s
+                WHERE curso_id = %s
+                  AND materia_id = %s
+                  AND activo = TRUE
+                """,
+                (posicion, curso_id, item.materia_id),
+            )
+
+        conn.commit()
+        return {
+            "mensaje": "Orden del boletín actualizado",
+            "curso_id": curso_id,
+            "items": _obtener_orden_boletin_curso(cursor, curso_id),
+        }
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+        conn.close()
+
+
 # 🎯 Asignar profesor a curso
 def asignar_profesor_controller(asignacion):
     conn = get_connection()
@@ -296,6 +437,11 @@ def asignar_profesor_controller(asignacion):
             asignacion.curso_id,
             asignacion.materia_id,
         )
+        orden_boletin = obtener_orden_boletin_materia_curso(
+            cursor,
+            asignacion.curso_id,
+            asignacion.materia_id,
+        )
 
         if asignacion.hora_inicio and asignacion.hora_fin:
             error_rango = validar_rango_institucional(asignacion.hora_inicio, asignacion.hora_fin)
@@ -322,9 +468,10 @@ def asignar_profesor_controller(asignacion):
                     hora_inicio,
                     hora_fin,
                     activo,
-                    asignacion_academica_id
+                    asignacion_academica_id,
+                    orden_boletin
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, TRUE, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, TRUE, %s, %s)
                 RETURNING id
             """, (
                 asignacion.profesor_id,
@@ -333,7 +480,8 @@ def asignar_profesor_controller(asignacion):
                 asignacion.dia,
                 asignacion.hora_inicio,
                 asignacion.hora_fin,
-                asignacion_academica_id
+                asignacion_academica_id,
+                orden_boletin
             ))
         except IntegrityError as exc:
             conn.rollback()
@@ -771,7 +919,8 @@ def obtener_todas_asignaciones_controller():
             p.nombre || ' ' || p.apellido AS profesor_nombre,
             c.nombre AS curso_nombre,
             m.nombre AS materia_nombre,
-            COALESCE(a.asignacion_academica_id, a.id) AS asignacion_academica_id
+            COALESCE(a.asignacion_academica_id, a.id) AS asignacion_academica_id,
+            COALESCE(a.orden_boletin, 100) AS orden_boletin
         FROM asignaciones a
         JOIN profesor p ON a.profesor_id = p.id
         JOIN cursos c ON a.curso_id = c.id
@@ -800,7 +949,8 @@ def obtener_todas_asignaciones_controller():
             "profesor_nombre": r[7],
             "curso_nombre": r[8],
             "materia_nombre": r[9],
-            "asignacion_academica_id": r[10]
+            "asignacion_academica_id": r[10],
+            "orden_boletin": r[11]
         })
         
     return resultado
@@ -817,7 +967,8 @@ def _formatear_asignacion(row):
         "profesor_nombre": row[7],
         "curso_nombre": row[8],
         "materia_nombre": row[9],
-        "asignacion_academica_id": row[10]
+        "asignacion_academica_id": row[10],
+        "orden_boletin": row[11]
     }
 
 def obtener_todas_asignaciones_paginado_controller(
@@ -878,7 +1029,8 @@ def obtener_todas_asignaciones_paginado_controller(
                 p.nombre || ' ' || p.apellido AS profesor_nombre,
                 c.nombre AS curso_nombre,
                 m.nombre AS materia_nombre,
-                COALESCE(a.asignacion_academica_id, a.id) AS asignacion_academica_id
+                COALESCE(a.asignacion_academica_id, a.id) AS asignacion_academica_id,
+                COALESCE(a.orden_boletin, 100) AS orden_boletin
             FROM asignaciones a
             JOIN profesor p ON a.profesor_id = p.id
             JOIN cursos c ON a.curso_id = c.id

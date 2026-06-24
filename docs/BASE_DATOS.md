@@ -1,6 +1,6 @@
 # Base de Datos
 
-Ultima revision documental: 2026-06-13.
+Ultima revision documental: 2026-06-24.
 
 ## Motor
 
@@ -134,6 +134,11 @@ Nota sobre `asignaciones`:
   Al "eliminar" desde administracion se marca `activo = FALSE`.
 - Planes de clase, asistencia, notas, boletines y observaciones conservan su
   referencia historica a la asignacion original.
+- `asignaciones.orden_boletin` define el orden de impresion de materias por
+  curso. El valor por defecto `100` conserva el orden alfabetico cuando el
+  colegio no ha configurado prioridades.
+- Si una materia tiene varios horarios activos en el mismo curso, todos esos
+  horarios deben compartir el mismo `orden_boletin`.
 
 ## Cursos y cobros
 

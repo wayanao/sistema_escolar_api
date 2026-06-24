@@ -1,6 +1,6 @@
 # API Endpoints
 
-Ultima revision documental: 2026-06-17.
+Ultima revision documental: 2026-06-24.
 
 ## Routers
 
@@ -142,8 +142,27 @@ Notas:
 - `GET /profesores/{profesor_id}/disponibilidad?dia=Lunes`
 - `GET /profesores/{profesor_id}/cursos`
 - `GET /cursos/{curso_id}/profesores`
+- `GET /cursos/{curso_id}/orden-boletin`
+- `PUT /cursos/{curso_id}/orden-boletin`
 - `DELETE /asignaciones/{profesor_id}/{curso_id}` legacy; desactiva la asignacion activa mas reciente.
 - `GET /mis-clases/{profesor_id}`
+
+`GET /cursos/{curso_id}/orden-boletin` devuelve una fila por materia activa
+del curso, agrupando varios horarios de la misma materia.
+
+`PUT /cursos/{curso_id}/orden-boletin` recibe el orden completo:
+
+```json
+{
+  "materias": [
+    { "materia_id": 10 },
+    { "materia_id": 12 }
+  ]
+}
+```
+
+El backend convierte la posicion de la lista en `orden_boletin = 1, 2, 3...`
+y actualiza todos los horarios activos de esa materia en el curso.
 
 ## Notas y boletin legacy
 

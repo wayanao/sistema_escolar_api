@@ -181,10 +181,11 @@ def obtener_boletin_admin_controller(estudiante_id: int, periodo: int):
                     COALESCE(a.asignacion_academica_id, a.id) AS id,
                     a.curso_id,
                     a.materia_id,
-                    a.profesor_id
+                    a.profesor_id,
+                    COALESCE(a.orden_boletin, 100) AS orden_boletin
                 FROM asignaciones a
                 WHERE a.activo = TRUE
-                ORDER BY COALESCE(a.asignacion_academica_id, a.id), a.id
+                ORDER BY COALESCE(a.asignacion_academica_id, a.id), COALESCE(a.orden_boletin, 100), a.id
             )
             SELECT 
                 asig.id as asignacion_id,
@@ -193,7 +194,8 @@ def obtener_boletin_admin_controller(estudiante_id: int, periodo: int):
                 p.nombre AS profesor_nombre,
                 p.apellido AS profesor_apellido,
                 COALESCE(NULLIF(bc.definitiva, 0), nd_prom.promedio_numerico) AS definitiva,
-                bc.id as boletin_id
+                bc.id as boletin_id,
+                asig.orden_boletin
             FROM estudiantes e
             JOIN asignaciones_academicas asig ON e.curso_id = asig.curso_id
             JOIN materias m ON asig.materia_id = m.id
@@ -211,7 +213,7 @@ def obtener_boletin_admin_controller(estudiante_id: int, periodo: int):
                   AND nd.nota > 0
             ) nd_prom ON TRUE
             WHERE e.id = %s
-            ORDER BY m.nombre
+            ORDER BY asig.orden_boletin, m.nombre
         ''', (periodo, periodo, estudiante_id))
         materias_res = cur.fetchall()
         
@@ -337,6 +339,7 @@ def obtener_boletin_admin_controller(estudiante_id: int, periodo: int):
                 'profesor_apellido': row['profesor_apellido'],
                 'definitiva': float(row['definitiva']) if row['definitiva'] is not None else None,
                 'boletin_id': row['boletin_id'],
+                'orden_boletin': row['orden_boletin'],
                 'detalles': detalles
             }
             resultado['materias'].append(mat_info)

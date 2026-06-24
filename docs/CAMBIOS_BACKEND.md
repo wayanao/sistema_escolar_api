@@ -1,10 +1,38 @@
 # Cambios Backend
 
-Ultima revision documental: 2026-06-23.
+Ultima revision documental: 2026-06-24.
 
 ## Proposito
 
 Bitacora de cambios documentales y tecnicos observables del backend.
+
+## 2026-06-24 - Orden configurable de materias en boletin
+
+Se agrego soporte backend para ordenar materias del boletin por curso.
+
+Archivos modificados:
+
+- `app/controllers/asignacion_controller.py`
+- `app/routes/asignaciones.py`
+- `app/schemas/asignacion.py`
+- `app/controllers/boletin_controller.py`
+- `app/controllers/notas_controller.py`
+- `migrations/20260624_asignaciones_orden_boletin.sql`
+- `docs/API_ENDPOINTS.md`
+- `docs/BASE_DATOS.md`
+- `docs/MIGRACIONES.md`
+- `docs/CAMBIOS_BACKEND.md`
+
+Cambio:
+
+- Se agrego `asignaciones.orden_boletin` con default `100`.
+- Se agregaron `GET` y `PUT /cursos/{curso_id}/orden-boletin` para consultar
+  y guardar el orden de materias por curso.
+- El guardado actualiza todos los horarios activos de la materia en el curso.
+- Los boletines administrativos ordenan por `orden_boletin` y luego por nombre
+  de materia como respaldo.
+- Las consultas legacy de boletin de estudiante tambien respetan el nuevo
+  orden.
 
 ## 2026-06-23 - Horarios multiples por asignacion academica
 

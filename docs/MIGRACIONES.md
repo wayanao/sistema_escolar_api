@@ -1,6 +1,6 @@
 # Migraciones
 
-Ultima revision documental: 2026-06-13.
+Ultima revision documental: 2026-06-24.
 
 ## Carpeta de migraciones
 
@@ -29,6 +29,7 @@ Archivos actuales:
 - `20260623_admin_unicos_academicos.sql`
 - `20260623_asignaciones_unicas_activas.sql`
 - `20260623_asignaciones_horarios_historial_unico.sql`
+- `20260624_asignaciones_orden_boletin.sql`
 - `20260623_institucion_branding_codigo_dane.sql`
 - `README.md`
 

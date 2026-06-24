@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.core.permissions import require_profesor_scope
 from app.dependencies import get_current_active_admin, get_current_user
-from app.schemas.asignacion import AsignacionCreate, AsignacionEdit
+from app.schemas.asignacion import AsignacionCreate, AsignacionEdit, OrdenBoletinUpdate
 from app.database import get_connection
 
 from app.controllers.asignacion_controller import (
@@ -18,6 +18,8 @@ from app.controllers.asignacion_controller import (
     obtener_todas_asignaciones_paginado_controller,
     obtener_todas_asignaciones_controller,
     editar_asignacion_controller,
+    actualizar_orden_boletin_curso_controller,
+    obtener_orden_boletin_curso_controller,
     obtener_disponibilidad_profesor_controller,
 )
 
@@ -129,6 +131,26 @@ def profesores_curso(
 ):
 
     return profesor_por_curso_controller(curso_id)
+
+
+@router.get("/cursos/{curso_id}/orden-boletin")
+def obtener_orden_boletin_curso(
+    curso_id: int,
+    _admin: dict = Depends(get_current_active_admin),
+):
+    return obtener_orden_boletin_curso_controller(curso_id)
+
+
+@router.put("/cursos/{curso_id}/orden-boletin")
+def actualizar_orden_boletin_curso(
+    curso_id: int,
+    data: OrdenBoletinUpdate,
+    _admin: dict = Depends(get_current_active_admin),
+):
+    resultado = actualizar_orden_boletin_curso_controller(curso_id, data)
+    if "error" in resultado:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=resultado["error"])
+    return resultado
 
 # ❌ Eliminar asignación (MEJOR FORMA)
 @router.delete("/asignaciones/{profesor_id}/{curso_id}")

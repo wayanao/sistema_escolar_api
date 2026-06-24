@@ -105,10 +105,11 @@ def boletin_estudiante_controller(estudiante_id):
             SELECT DISTINCT ON (COALESCE(a.asignacion_academica_id, a.id))
                 COALESCE(a.asignacion_academica_id, a.id) AS id,
                 a.curso_id,
-                a.materia_id
+                a.materia_id,
+                COALESCE(a.orden_boletin, 100) AS orden_boletin
             FROM asignaciones a
             WHERE a.activo = TRUE
-            ORDER BY COALESCE(a.asignacion_academica_id, a.id), a.id
+            ORDER BY COALESCE(a.asignacion_academica_id, a.id), COALESCE(a.orden_boletin, 100), a.id
         )
         SELECT 
             e.nombre,
@@ -128,7 +129,8 @@ def boletin_estudiante_controller(estudiante_id):
 
         WHERE e.id = %s
 
-        GROUP BY e.nombre, e.apellido, c.nombre, m.nombre
+        GROUP BY e.nombre, e.apellido, c.nombre, m.nombre, a.orden_boletin
+        ORDER BY a.orden_boletin, m.nombre
     """, (estudiante_id,))
 
     resultado = cursor.fetchall()
@@ -228,10 +230,11 @@ def boletin_detallado_controller(estudiante_id, periodo=1):
                 COALESCE(a.asignacion_academica_id, a.id) AS id,
                 a.curso_id,
                 a.materia_id,
-                a.profesor_id
+                a.profesor_id,
+                COALESCE(a.orden_boletin, 100) AS orden_boletin
             FROM asignaciones a
             WHERE a.activo = TRUE
-            ORDER BY COALESCE(a.asignacion_academica_id, a.id), a.id
+            ORDER BY COALESCE(a.asignacion_academica_id, a.id), COALESCE(a.orden_boletin, 100), a.id
         )
         SELECT 
             m.id, 
@@ -244,6 +247,7 @@ def boletin_detallado_controller(estudiante_id, periodo=1):
         JOIN materias m ON a.materia_id = m.id
         JOIN profesor p ON a.profesor_id = p.id
         WHERE e.id = %s
+        ORDER BY a.orden_boletin, m.nombre
     """, (estudiante_id,))
     asignaciones_estudiante = cursor.fetchall()
     

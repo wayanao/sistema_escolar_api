@@ -1,4 +1,5 @@
 from app.database import get_connection
+from app.services.asignacion_academica import resolver_asignacion_academica_id_cursor
 from app.services.planilla_service import validar_estudiante_asignacion
 
 
@@ -11,6 +12,7 @@ def registrar_nota_planilla_controller(data):
 
     conn = get_connection()
     cursor = conn.cursor()
+    asignacion_id = resolver_asignacion_academica_id_cursor(cursor, data.asignacion_id)
     tipo_evaluacion = getattr(data, "tipo_evaluacion", "numerica") or "numerica"
     nota = data.nota if tipo_evaluacion == "numerica" else None
     valoracion = getattr(data, "valoracion", None) if tipo_evaluacion == "desarrollo" else None
@@ -19,7 +21,7 @@ def registrar_nota_planilla_controller(data):
     cursor.execute("""
         DELETE FROM notas_detalle
         WHERE estudiante_id = %s AND asignacion_id = %s AND periodo = %s AND LOWER(TRIM(descripcion)) = LOWER(TRIM(%s))
-    """, (data.estudiante_id, data.asignacion_id, data.periodo, data.descripcion))
+    """, (data.estudiante_id, asignacion_id, data.periodo, data.descripcion))
 
     cursor.execute("""
         INSERT INTO notas_detalle (
@@ -35,7 +37,7 @@ def registrar_nota_planilla_controller(data):
         RETURNING id
     """, (
         data.estudiante_id,
-        data.asignacion_id,
+        asignacion_id,
         data.periodo,
         nota,
         data.descripcion,
@@ -61,6 +63,7 @@ def eliminar_tipo_controller(asignacion_id, descripcion, periodo: int = 1):
 
     conn = get_connection()
     cursor = conn.cursor()
+    asignacion_id = resolver_asignacion_academica_id_cursor(cursor, asignacion_id)
 
     cursor.execute("""
         DELETE FROM notas_detalle

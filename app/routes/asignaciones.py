@@ -8,6 +8,7 @@ from app.schemas.asignacion import AsignacionCreate, AsignacionEdit
 from app.database import get_connection
 
 from app.controllers.asignacion_controller import (
+    AsignacionDuplicadaError,
     asignar_profesor_controller,
     cursos_por_profesor_controller,
     profesor_por_curso_controller,
@@ -50,7 +51,11 @@ def editar_asignacion(
     asignacion: AsignacionEdit,
     _admin: dict = Depends(get_current_active_admin)
 ):
-    resultado = editar_asignacion_controller(asignacion_id, asignacion)
+    try:
+        resultado = editar_asignacion_controller(asignacion_id, asignacion)
+    except AsignacionDuplicadaError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
     if "error" in resultado:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=resultado["error"])
     return resultado
@@ -94,7 +99,10 @@ def asignar_profesor(
     _admin: dict = Depends(get_current_active_admin)
 ):
 
-    resultado = asignar_profesor_controller(asignacion)
+    try:
+        resultado = asignar_profesor_controller(asignacion)
+    except AsignacionDuplicadaError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     
     if "error" in resultado:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=resultado["error"])
@@ -144,7 +152,8 @@ def obtener_clases_profesor(
 
     cursor.execute("""
         SELECT 
-            a.id,
+            COALESCE(a.asignacion_academica_id, a.id) AS asignacion_id,
+            a.id AS horario_id,
             m.nombre AS materia,
             c.nombre AS curso,
             c.id AS curso_id,
@@ -160,6 +169,20 @@ def obtener_clases_profesor(
           AND a.activo = TRUE
           AND COALESCE(LOWER(c.estado), 'activo') = 'activo'
           AND COALESCE(LOWER(m.estado), 'activo') = 'activo'
+        ORDER BY
+            c.nombre,
+            m.nombre,
+            CASE a.dia
+                WHEN 'Lunes' THEN 1
+                WHEN 'Martes' THEN 2
+                WHEN 'Miércoles' THEN 3
+                WHEN 'Jueves' THEN 4
+                WHEN 'Viernes' THEN 5
+                WHEN 'Sábado' THEN 6
+                WHEN 'Domingo' THEN 7
+                ELSE 8
+            END,
+            a.hora_inicio
     """, (profesor_id,))
 
     clases = cursor.fetchall()
@@ -168,12 +191,13 @@ def obtener_clases_profesor(
     for c in clases:
         resultado.append({
             "id": c[0],
-            "materia": c[1],
-            "curso": c[2],
-            "curso_id": c[3],
-            "dia": c[4],
-            "hora_inicio": c[5],
-            "hora_fin": c[6]
+            "horario_id": c[1],
+            "materia": c[2],
+            "curso": c[3],
+            "curso_id": c[4],
+            "dia": c[5],
+            "hora_inicio": c[6],
+            "hora_fin": c[7]
         })
 
     cursor.close()

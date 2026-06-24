@@ -1,4 +1,5 @@
 from app.database import get_connection
+from app.services.asignacion_academica import resolver_asignacion_academica_id_cursor
 
 
 def _formatear_cumpleanos_estudiante(row):
@@ -159,6 +160,7 @@ def profesor_tiene_asignacion_en_curso_controller(profesor_id, curso_id, asignac
     conn = get_connection()
     cursor = conn.cursor()
     try:
+        asignacion_id = resolver_asignacion_academica_id_cursor(cursor, asignacion_id)
         cursor.execute(
             """
             SELECT 1
@@ -223,6 +225,9 @@ def obtener_inasistencias_profesor_controller(profesor_id):
 def _obtener_notas_profesor(profesor_id, curso_id, asignacion_id=None, altas=False):
     conn = get_connection()
     cursor = conn.cursor()
+
+    if asignacion_id is not None:
+        asignacion_id = resolver_asignacion_academica_id_cursor(cursor, asignacion_id)
 
     filtro_asignacion = "AND asi.id = %s" if asignacion_id is not None else ""
     params = [profesor_id, curso_id]
@@ -292,6 +297,7 @@ def obtener_notas_altas_profesor_controller(profesor_id, curso_id, asignacion_id
 def obtener_ranking_rendimiento_controller(asignacion_id, periodo):
     conn = get_connection()
     cursor = conn.cursor()
+    asignacion_id = resolver_asignacion_academica_id_cursor(cursor, asignacion_id)
 
     cursor.execute("""
         SELECT
@@ -319,6 +325,7 @@ def obtener_ranking_rendimiento_controller(asignacion_id, periodo):
 def obtener_ranking_mejor_rendimiento_controller(asignacion_id, periodo):
     conn = get_connection()
     cursor = conn.cursor()
+    asignacion_id = resolver_asignacion_academica_id_cursor(cursor, asignacion_id)
 
     cursor.execute("""
         SELECT

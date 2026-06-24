@@ -6,6 +6,56 @@ Ultima revision documental: 2026-06-23.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
+## 2026-06-23 - Horarios multiples por asignacion academica
+
+Se ajusto la regla de asignaciones academicas:
+
+- Un curso y una materia solo pueden tener un profesor responsable activo.
+- Ese mismo profesor puede tener varios horarios/dias para esa materia.
+- Los horarios comparten `asignacion_academica_id`, para que notas,
+  boletines, asistencia, observaciones y planeadores apunten a un solo historial.
+- Se retiro el indice estricto por `profesor_id`, `curso_id`, `materia_id`.
+- Se agrego indice unico por horario exacto y trigger para impedir otro profesor
+  en la misma materia del mismo curso.
+- Se resolvio de forma canonica cualquier `asignacion_id` de horario antes de
+  consultar o guardar historial academico.
+
+Archivos modificados:
+
+- `app/controllers/asignacion_controller.py`
+- `app/routes/asignaciones.py`
+- `app/services/asignacion_academica.py`
+- `migrations/20260623_asignaciones_horarios_historial_unico.sql`
+
+## 2026-06-23 - Asignaciones activas unicas
+
+Se corrigieron asignaciones duplicadas activas por profesor, curso y materia, y
+se agrego proteccion para evitar que vuelvan a generarse.
+
+Archivos modificados:
+
+- `app/controllers/asignacion_controller.py`
+- `app/routes/asignaciones.py`
+- `migrations/20260623_asignaciones_unicas_activas.sql`
+- `docs/MIGRACIONES.md`
+- `docs/CAMBIOS_BACKEND.md`
+
+Cambio:
+
+- La migracion conserva activa la asignacion con mas historial academico.
+- Si las duplicadas no tienen historial, conserva la asignacion mas reciente.
+- Las duplicadas restantes quedan `activo = FALSE`, preservando historial.
+- Se crea un indice unico parcial para impedir mas de una asignacion activa con
+  el mismo `profesor_id`, `curso_id` y `materia_id`.
+- El API responde `409 Conflict` con un mensaje claro cuando se intenta crear o
+  editar una asignacion duplicada.
+
+Alcance:
+
+- No borra notas, boletines, asistencias, observaciones ni planes.
+- Corrige el caso donde el perfil profesor podia mostrar una asignacion vacia
+  en lugar de la asignacion con notas.
+
 ## 2026-06-23 - Validaciones de duplicados academicos
 
 Se blindaron los modulos administrativos de profesores, materias y cursos

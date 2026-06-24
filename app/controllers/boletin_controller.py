@@ -1,10 +1,12 @@
 from app.database import get_connection
+from app.services.asignacion_academica import resolver_asignacion_academica_id_cursor
 from psycopg2.extras import RealDictCursor
 
 def guardar_boletin_controller(data):
     conn = get_connection()
     cursor = conn.cursor()
     try:
+        asignacion_id = resolver_asignacion_academica_id_cursor(cursor, data.asignacion_id)
         tipo_evaluacion = getattr(data, "tipo_evaluacion", "numerica") or "numerica"
         cursor.execute("""
             INSERT INTO boletin_cabecera (estudiante_id, asignacion_id, periodo, definitiva)
@@ -12,7 +14,7 @@ def guardar_boletin_controller(data):
             ON CONFLICT (estudiante_id, asignacion_id, periodo) 
             DO UPDATE SET definitiva = EXCLUDED.definitiva
             RETURNING id
-        """, (data.estudiante_id, data.asignacion_id, data.periodo, data.definitiva))
+        """, (data.estudiante_id, asignacion_id, data.periodo, data.definitiva))
         
         boletin_id = cursor.fetchone()[0]
         
@@ -49,6 +51,7 @@ def obtener_notas_planilla_controller(asignacion_id: int, periodo: int):
     conn = get_connection()
     cursor = conn.cursor()
     try:
+        asignacion_id = resolver_asignacion_academica_id_cursor(cursor, asignacion_id)
         cursor.execute("""
             SELECT e.id as estudiante_id, e.nombre, e.apellido, nd.descripcion as tipo_nota, nd.nota
             FROM estudiantes e
@@ -84,6 +87,7 @@ def obtener_boletin_para_profesor_controller(asignacion_id: int, periodo: int):
     conn = get_connection()
     cursor = conn.cursor(cursor_factory=RealDictCursor)
     try:
+        asignacion_id = resolver_asignacion_academica_id_cursor(cursor, asignacion_id)
         cursor.execute("""
             SELECT e.id as estudiante_id, e.nombre, e.apellido,
                    nd.descripcion as tipo_nota,
@@ -172,6 +176,16 @@ def obtener_boletin_admin_controller(estudiante_id: int, periodo: int):
         cur = conn.cursor(cursor_factory=RealDictCursor)
         
         cur.execute('''
+            WITH asignaciones_academicas AS (
+                SELECT DISTINCT ON (COALESCE(a.asignacion_academica_id, a.id))
+                    COALESCE(a.asignacion_academica_id, a.id) AS id,
+                    a.curso_id,
+                    a.materia_id,
+                    a.profesor_id
+                FROM asignaciones a
+                WHERE a.activo = TRUE
+                ORDER BY COALESCE(a.asignacion_academica_id, a.id), a.id
+            )
             SELECT 
                 asig.id as asignacion_id,
                 m.id as materia_id,
@@ -181,7 +195,7 @@ def obtener_boletin_admin_controller(estudiante_id: int, periodo: int):
                 COALESCE(NULLIF(bc.definitiva, 0), nd_prom.promedio_numerico) AS definitiva,
                 bc.id as boletin_id
             FROM estudiantes e
-            JOIN asignaciones asig ON e.curso_id = asig.curso_id
+            JOIN asignaciones_academicas asig ON e.curso_id = asig.curso_id
             JOIN materias m ON asig.materia_id = m.id
             JOIN profesor p ON asig.profesor_id = p.id
             LEFT JOIN boletin_cabecera bc ON bc.asignacion_id = asig.id

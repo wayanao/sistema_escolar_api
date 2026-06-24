@@ -1,4 +1,5 @@
 from app.database import get_connection
+from app.services.asignacion_academica import resolver_asignacion_academica_id_cursor
 
 def guardar_asistencia_controller(data):
     conn = get_connection()
@@ -6,14 +7,17 @@ def guardar_asistencia_controller(data):
 
     # 🔥 PRIMERO borrar TODO del día (solo una vez)
     if len(data) > 0:
+        asignacion_id = resolver_asignacion_academica_id_cursor(cursor, data[0].asignacion_id)
         cursor.execute("""
             DELETE FROM asistencia
             WHERE asignacion_id = %s AND fecha = %s AND periodo = %s
         """, (
-            data[0].asignacion_id,
+            asignacion_id,
             data[0].fecha,
             data[0].periodo
         ))
+    else:
+        asignacion_id = None
 
     # 🔥 LUEGO insertar TODOS
     for item in data:
@@ -22,7 +26,7 @@ def guardar_asistencia_controller(data):
             VALUES (%s, %s, %s, %s, %s)
         """, (
             item.estudiante_id,
-            item.asignacion_id,
+            asignacion_id or resolver_asignacion_academica_id_cursor(cursor, item.asignacion_id),
             item.fecha,
             item.estado,
             item.periodo
@@ -39,6 +43,7 @@ def obtener_historial_asistencia(asignacion_id, periodo=1):
 
     conn = get_connection()
     cursor = conn.cursor()
+    asignacion_id = resolver_asignacion_academica_id_cursor(cursor, asignacion_id)
 
     cursor.execute("""
         SELECT

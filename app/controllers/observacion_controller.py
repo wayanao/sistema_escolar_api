@@ -1,4 +1,5 @@
 from app.database import get_connection
+from app.services.asignacion_academica import resolver_asignacion_academica_id_cursor
 
 
 
@@ -6,6 +7,7 @@ def guardar_observacion_controller(data):
 
     conn = get_connection()
     cursor = conn.cursor()
+    asignacion_id = resolver_asignacion_academica_id_cursor(cursor, data["asignacion_id"])
 
     cursor.execute("""
         INSERT INTO observaciones (
@@ -24,7 +26,7 @@ def guardar_observacion_controller(data):
             lenguaje = EXCLUDED.lenguaje
     """, (
         data["estudiante_id"],
-        data["asignacion_id"],
+        asignacion_id,
         data["periodo"],
         data["conductual"],
         data["cognitivo"],

@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 from app.core.permissions import require_asignacion_access, require_estudiante_in_asignacion
 from app.dependencies import get_current_user
 from app.controllers.observacion_controller import guardar_observacion_controller
+from app.services.asignacion_academica import resolver_asignacion_academica_id_cursor
 
 router = APIRouter(tags=["Observaciones"], dependencies=[Depends(get_current_user)])
 
@@ -25,6 +26,7 @@ def obtener_observacion(
 
     conn = get_connection()
     cursor = conn.cursor()
+    asignacion_id = resolver_asignacion_academica_id_cursor(cursor, asignacion_id)
 
     cursor.execute("""
         SELECT conductual, cognitivo, lenguaje 

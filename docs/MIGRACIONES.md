@@ -27,6 +27,8 @@ Archivos actuales:
 - `20260604_egresos_origen.sql`
 - `20260623_admin_nombres_mayuscula.sql`
 - `20260623_admin_unicos_academicos.sql`
+- `20260623_asignaciones_unicas_activas.sql`
+- `20260623_asignaciones_horarios_historial_unico.sql`
 - `20260623_institucion_branding_codigo_dane.sql`
 - `README.md`
 

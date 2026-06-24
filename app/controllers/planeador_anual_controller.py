@@ -1,16 +1,18 @@
 from app.database import get_connection
 from app.schemas.planeador_anual import PlaneadorAnualCreate, PlaneadorAnualUpdate
+from app.services.asignacion_academica import resolver_asignacion_academica_id_cursor
 from typing import List
 
 def crear_planeador_anual_controller(planeador: PlaneadorAnualCreate):
     conn = get_connection()
     cursor = conn.cursor()
+    asignacion_id = resolver_asignacion_academica_id_cursor(cursor, planeador.asignacion_id)
     cursor.execute("""
         INSERT INTO planeador_anual (asignacion_id, periodo, slot, unidad_tematica, estandar_competencia, contenido, actividades_recursos, fecha)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         RETURNING id
     """, (
-        planeador.asignacion_id,
+        asignacion_id,
         planeador.periodo,
         planeador.slot,
         planeador.unidad_tematica,
@@ -28,6 +30,7 @@ def crear_planeador_anual_controller(planeador: PlaneadorAnualCreate):
 def obtener_planeadores_anual_controller(asignacion_id: int, periodo: int) -> List[dict]:
     conn = get_connection()
     cursor = conn.cursor()
+    asignacion_id = resolver_asignacion_academica_id_cursor(cursor, asignacion_id)
     cursor.execute("""
         SELECT id, asignacion_id, periodo, slot, unidad_tematica, estandar_competencia, contenido, actividades_recursos, fecha
         FROM planeador_anual
@@ -74,6 +77,7 @@ def actualizar_planeador_anual_controller(planeador_id: int, planeador: Planeado
 def bulk_actualizar_planeadores_controller(asignacion_id: int, periodo: int, planeadores: List[PlaneadorAnualUpdate]):
     conn = get_connection()
     cursor = conn.cursor()
+    asignacion_id = resolver_asignacion_academica_id_cursor(cursor, asignacion_id)
     for i, planeador in enumerate(planeadores):
         slot = i + 1
         cursor.execute("""

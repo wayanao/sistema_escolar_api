@@ -1,4 +1,19 @@
+from psycopg2 import IntegrityError, errorcodes
+
 from app.database import get_connection
+
+
+ASIGNACION_OTRO_PROFESOR_MENSAJE = (
+    "Esta materia ya está asignada en este curso a otro profesor. "
+    "No puedes asignarla a un profesor diferente."
+)
+ASIGNACION_HORARIO_DUPLICADO_MENSAJE = (
+    "Ese horario ya está registrado para este profesor, curso y materia."
+)
+
+
+class AsignacionDuplicadaError(Exception):
+    pass
 
 # Rangos institucionales permitidos (formato HH:MM 24h)
 MANANA_INICIO = "06:30"
@@ -161,6 +176,90 @@ def materia_activa(cursor, materia_id):
     return cursor.fetchone() is not None
 
 
+def validar_profesor_responsable_materia(cursor, profesor_id, curso_id, materia_id, asignacion_id=None):
+    params = [curso_id, materia_id, profesor_id]
+    filtro_asignacion = ""
+    if asignacion_id is not None:
+        filtro_asignacion = "AND a.id != %s"
+        params.append(asignacion_id)
+
+    cursor.execute(
+        f"""
+        SELECT p.nombre || ' ' || p.apellido AS profesor_nombre
+        FROM asignaciones a
+        JOIN profesor p ON p.id = a.profesor_id
+        WHERE a.curso_id = %s
+          AND a.materia_id = %s
+          AND a.profesor_id != %s
+          AND a.activo = TRUE
+          {filtro_asignacion}
+        LIMIT 1
+        """,
+        params,
+    )
+    row = cursor.fetchone()
+    if row:
+        profesor_nombre = row[0] or "otro profesor"
+        raise AsignacionDuplicadaError(
+            f"Esta materia ya está asignada en este curso al profesor {profesor_nombre}."
+        )
+
+
+def validar_horario_unico(cursor, profesor_id, curso_id, materia_id, dia, hora_inicio, hora_fin, asignacion_id=None):
+    if not dia or not hora_inicio or not hora_fin:
+        return
+
+    params = [profesor_id, curso_id, materia_id, dia, hora_inicio, hora_fin]
+    filtro_asignacion = ""
+    if asignacion_id is not None:
+        filtro_asignacion = "AND id != %s"
+        params.append(asignacion_id)
+
+    cursor.execute(
+        f"""
+        SELECT 1
+        FROM asignaciones
+        WHERE profesor_id = %s
+          AND curso_id = %s
+          AND materia_id = %s
+          AND dia IS NOT DISTINCT FROM %s
+          AND hora_inicio IS NOT DISTINCT FROM %s
+          AND hora_fin IS NOT DISTINCT FROM %s
+          AND activo = TRUE
+          {filtro_asignacion}
+        LIMIT 1
+        """,
+        params,
+    )
+    if cursor.fetchone():
+        raise AsignacionDuplicadaError(ASIGNACION_HORARIO_DUPLICADO_MENSAJE)
+
+
+def obtener_asignacion_academica_id(cursor, profesor_id, curso_id, materia_id, asignacion_id=None):
+    params = [profesor_id, curso_id, materia_id]
+    filtro_asignacion = ""
+    if asignacion_id is not None:
+        filtro_asignacion = "AND id != %s"
+        params.append(asignacion_id)
+
+    cursor.execute(
+        f"""
+        SELECT COALESCE(asignacion_academica_id, id)
+        FROM asignaciones
+        WHERE profesor_id = %s
+          AND curso_id = %s
+          AND materia_id = %s
+          AND activo = TRUE
+          {filtro_asignacion}
+        ORDER BY id ASC
+        LIMIT 1
+        """,
+        params,
+    )
+    row = cursor.fetchone()
+    return row[0] if row else None
+
+
 # 🎯 Asignar profesor a curso
 def asignar_profesor_controller(asignacion):
     conn = get_connection()
@@ -175,6 +274,28 @@ def asignar_profesor_controller(asignacion):
 
         if not materia_activa(cursor, asignacion.materia_id):
             return {"error": "No se puede asignar una materia inactiva."}
+
+        validar_profesor_responsable_materia(
+            cursor,
+            asignacion.profesor_id,
+            asignacion.curso_id,
+            asignacion.materia_id,
+        )
+        validar_horario_unico(
+            cursor,
+            asignacion.profesor_id,
+            asignacion.curso_id,
+            asignacion.materia_id,
+            asignacion.dia,
+            asignacion.hora_inicio,
+            asignacion.hora_fin,
+        )
+        asignacion_academica_id = obtener_asignacion_academica_id(
+            cursor,
+            asignacion.profesor_id,
+            asignacion.curso_id,
+            asignacion.materia_id,
+        )
 
         if asignacion.hora_inicio and asignacion.hora_fin:
             error_rango = validar_rango_institucional(asignacion.hora_inicio, asignacion.hora_fin)
@@ -191,20 +312,45 @@ def asignar_profesor_controller(asignacion):
             if verificar_cruce_horario(cursor, "curso_id", asignacion.curso_id, asignacion.dia, asignacion.hora_inicio, asignacion.hora_fin):
                 return {"error": "Error: El curso (salón) ya tiene otra clase asignada en ese horario y ese día."}
 
-        cursor.execute("""
-            INSERT INTO asignaciones (profesor_id, curso_id, materia_id, dia, hora_inicio, hora_fin, activo)
-            VALUES (%s, %s, %s, %s, %s, %s, TRUE)
-            RETURNING id
-        """, (
-            asignacion.profesor_id,
-            asignacion.curso_id,
-            asignacion.materia_id,
-            asignacion.dia,
-            asignacion.hora_inicio,
-            asignacion.hora_fin
-        ))
+        try:
+            cursor.execute("""
+                INSERT INTO asignaciones (
+                    profesor_id,
+                    curso_id,
+                    materia_id,
+                    dia,
+                    hora_inicio,
+                    hora_fin,
+                    activo,
+                    asignacion_academica_id
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, TRUE, %s)
+                RETURNING id
+            """, (
+                asignacion.profesor_id,
+                asignacion.curso_id,
+                asignacion.materia_id,
+                asignacion.dia,
+                asignacion.hora_inicio,
+                asignacion.hora_fin,
+                asignacion_academica_id
+            ))
+        except IntegrityError as exc:
+            conn.rollback()
+            if exc.pgcode == errorcodes.UNIQUE_VIOLATION:
+                raise AsignacionDuplicadaError(ASIGNACION_OTRO_PROFESOR_MENSAJE) from exc
+            raise
 
         asignacion_id = cursor.fetchone()[0]
+        if asignacion_academica_id is None:
+            cursor.execute(
+                """
+                UPDATE asignaciones
+                SET asignacion_academica_id = id
+                WHERE id = %s
+                """,
+                (asignacion_id,),
+            )
         conn.commit()
         return {
             "mensaje": "Asignación creada",
@@ -222,7 +368,7 @@ def cursos_por_profesor_controller(profesor_id):
     cursor = conn.cursor()
 
     cursor.execute("""
-        SELECT 
+        SELECT DISTINCT
             c.id,
             c.nombre
         FROM asignaciones a
@@ -257,7 +403,7 @@ def profesor_por_curso_controller(curso_id):
     cursor = conn.cursor()
 
     cursor.execute("""
-        SELECT 
+        SELECT DISTINCT
             p.id,
             p.nombre,
             p.apellido
@@ -499,7 +645,7 @@ def editar_asignacion_controller(asignacion_id, asignacion):
 
     try:
         cursor.execute("""
-            SELECT profesor_id, curso_id, materia_id, activo
+            SELECT profesor_id, curso_id, materia_id, activo, COALESCE(asignacion_academica_id, id)
             FROM asignaciones
             WHERE id = %s
         """, (asignacion_id,))
@@ -531,6 +677,34 @@ def editar_asignacion_controller(asignacion_id, asignacion):
                 )
             }
 
+        validar_profesor_responsable_materia(
+            cursor,
+            asignacion.profesor_id,
+            asignacion.curso_id,
+            asignacion.materia_id,
+            asignacion_id=asignacion_id,
+        )
+        validar_horario_unico(
+            cursor,
+            asignacion.profesor_id,
+            asignacion.curso_id,
+            asignacion.materia_id,
+            asignacion.dia,
+            asignacion.hora_inicio,
+            asignacion.hora_fin,
+            asignacion_id=asignacion_id,
+        )
+        if cambia_relacion_academica:
+            asignacion_academica_id = obtener_asignacion_academica_id(
+                cursor,
+                asignacion.profesor_id,
+                asignacion.curso_id,
+                asignacion.materia_id,
+                asignacion_id=asignacion_id,
+            ) or asignacion_id
+        else:
+            asignacion_academica_id = actual[4]
+
         if asignacion.hora_inicio and asignacion.hora_fin:
             error_rango = validar_rango_institucional(asignacion.hora_inicio, asignacion.hora_fin)
             if error_rango:
@@ -546,21 +720,34 @@ def editar_asignacion_controller(asignacion_id, asignacion):
             if verificar_cruce_horario_editar(cursor, "curso_id", asignacion.curso_id, asignacion.dia, asignacion.hora_inicio, asignacion.hora_fin, asignacion_id):
                 return {"error": "Error: El curso (salón) ya tiene otra clase asignada en ese horario y ese día."}
 
-        cursor.execute("""
-            UPDATE asignaciones
-            SET profesor_id = %s, curso_id = %s, materia_id = %s, dia = %s, hora_inicio = %s, hora_fin = %s
-            WHERE id = %s
-              AND activo = TRUE
-            RETURNING id
-        """, (
-            asignacion.profesor_id,
-            asignacion.curso_id,
-            asignacion.materia_id,
-            asignacion.dia,
-            asignacion.hora_inicio,
-            asignacion.hora_fin,
-            asignacion_id
-        ))
+        try:
+            cursor.execute("""
+                UPDATE asignaciones
+                SET profesor_id = %s,
+                    curso_id = %s,
+                    materia_id = %s,
+                    dia = %s,
+                    hora_inicio = %s,
+                    hora_fin = %s,
+                    asignacion_academica_id = %s
+                WHERE id = %s
+                  AND activo = TRUE
+                RETURNING id
+            """, (
+                asignacion.profesor_id,
+                asignacion.curso_id,
+                asignacion.materia_id,
+                asignacion.dia,
+                asignacion.hora_inicio,
+                asignacion.hora_fin,
+                asignacion_academica_id,
+                asignacion_id
+            ))
+        except IntegrityError as exc:
+            conn.rollback()
+            if exc.pgcode == errorcodes.UNIQUE_VIOLATION:
+                raise AsignacionDuplicadaError(ASIGNACION_OTRO_PROFESOR_MENSAJE) from exc
+            raise
 
         res = cursor.fetchone()
         if not res:
@@ -583,7 +770,8 @@ def obtener_todas_asignaciones_controller():
             a.id, a.profesor_id, a.curso_id, a.materia_id, a.dia, a.hora_inicio, a.hora_fin,
             p.nombre || ' ' || p.apellido AS profesor_nombre,
             c.nombre AS curso_nombre,
-            m.nombre AS materia_nombre
+            m.nombre AS materia_nombre,
+            COALESCE(a.asignacion_academica_id, a.id) AS asignacion_academica_id
         FROM asignaciones a
         JOIN profesor p ON a.profesor_id = p.id
         JOIN cursos c ON a.curso_id = c.id
@@ -611,7 +799,8 @@ def obtener_todas_asignaciones_controller():
             "hora_fin": r[6] or "",
             "profesor_nombre": r[7],
             "curso_nombre": r[8],
-            "materia_nombre": r[9]
+            "materia_nombre": r[9],
+            "asignacion_academica_id": r[10]
         })
         
     return resultado
@@ -627,7 +816,8 @@ def _formatear_asignacion(row):
         "hora_fin": row[6] or "",
         "profesor_nombre": row[7],
         "curso_nombre": row[8],
-        "materia_nombre": row[9]
+        "materia_nombre": row[9],
+        "asignacion_academica_id": row[10]
     }
 
 def obtener_todas_asignaciones_paginado_controller(
@@ -687,7 +877,8 @@ def obtener_todas_asignaciones_paginado_controller(
                 a.id, a.profesor_id, a.curso_id, a.materia_id, a.dia, a.hora_inicio, a.hora_fin,
                 p.nombre || ' ' || p.apellido AS profesor_nombre,
                 c.nombre AS curso_nombre,
-                m.nombre AS materia_nombre
+                m.nombre AS materia_nombre,
+                COALESCE(a.asignacion_academica_id, a.id) AS asignacion_academica_id
             FROM asignaciones a
             JOIN profesor p ON a.profesor_id = p.id
             JOIN cursos c ON a.curso_id = c.id

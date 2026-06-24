@@ -1,9 +1,11 @@
 from app.database import get_connection
+from app.services.asignacion_academica import resolver_asignacion_academica_id_cursor
 
 def planilla_excel_controller(asignacion_id, periodo=1):
 
     conn = get_connection()
     cursor = conn.cursor()
+    asignacion_id = resolver_asignacion_academica_id_cursor(cursor, asignacion_id)
 
     cursor.execute("""
         SELECT 

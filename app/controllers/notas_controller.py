@@ -1,4 +1,5 @@
 from app.database import get_connection
+from app.services.asignacion_academica import resolver_asignacion_academica_id_cursor
 
 # 👇 IMPORTAMOS SERVICES
 from app.services.nota_service import (
@@ -24,6 +25,7 @@ def crear_nota_controller(nota):
     # 🔌 conexión
     conn = get_connection()
     cursor = conn.cursor()
+    asignacion_id = resolver_asignacion_academica_id_cursor(cursor, nota.asignacion_id)
 
     # 🧠 Insertar nota
     cursor.execute("""
@@ -37,7 +39,7 @@ def crear_nota_controller(nota):
         RETURNING id
     """, (
         nota.estudiante_id,
-        nota.asignacion_id,
+        asignacion_id,
         nota.nota,
         nota.descripcion
     ))
@@ -99,6 +101,15 @@ def boletin_estudiante_controller(estudiante_id):
     cursor = conn.cursor()
 
     cursor.execute("""
+        WITH asignaciones_academicas AS (
+            SELECT DISTINCT ON (COALESCE(a.asignacion_academica_id, a.id))
+                COALESCE(a.asignacion_academica_id, a.id) AS id,
+                a.curso_id,
+                a.materia_id
+            FROM asignaciones a
+            WHERE a.activo = TRUE
+            ORDER BY COALESCE(a.asignacion_academica_id, a.id), a.id
+        )
         SELECT 
             e.nombre,
             e.apellido,
@@ -108,7 +119,7 @@ def boletin_estudiante_controller(estudiante_id):
 
         FROM estudiantes e
         JOIN cursos c ON e.curso_id = c.id
-        JOIN asignaciones a ON a.curso_id = c.id
+        JOIN asignaciones_academicas a ON a.curso_id = c.id
         JOIN materias m ON a.materia_id = m.id
 
         LEFT JOIN notas_detalle nd 
@@ -158,6 +169,7 @@ def planilla_asignacion_controller(asignacion_id):
 
     conn = get_connection()
     cursor = conn.cursor()
+    asignacion_id = resolver_asignacion_academica_id_cursor(cursor, asignacion_id)
 
     cursor.execute("""
         SELECT 
@@ -211,6 +223,16 @@ def boletin_detallado_controller(estudiante_id, periodo=1):
 
     # Obtener todas las materias asignadas al curso del estudiante
     cursor.execute("""
+        WITH asignaciones_academicas AS (
+            SELECT DISTINCT ON (COALESCE(a.asignacion_academica_id, a.id))
+                COALESCE(a.asignacion_academica_id, a.id) AS id,
+                a.curso_id,
+                a.materia_id,
+                a.profesor_id
+            FROM asignaciones a
+            WHERE a.activo = TRUE
+            ORDER BY COALESCE(a.asignacion_academica_id, a.id), a.id
+        )
         SELECT 
             m.id, 
             m.nombre AS area, 
@@ -218,7 +240,7 @@ def boletin_detallado_controller(estudiante_id, periodo=1):
             a.id AS asignacion_id
         FROM estudiantes e
         JOIN cursos c ON e.curso_id = c.id
-        JOIN asignaciones a ON a.curso_id = c.id
+        JOIN asignaciones_academicas a ON a.curso_id = c.id
         JOIN materias m ON a.materia_id = m.id
         JOIN profesor p ON a.profesor_id = p.id
         WHERE e.id = %s

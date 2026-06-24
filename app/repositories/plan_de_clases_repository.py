@@ -1,4 +1,5 @@
 from app.database import get_cursor
+from app.services.asignacion_academica import resolver_asignacion_academica_id_cursor
 
 
 PLAN_SELECT = """
@@ -58,6 +59,7 @@ def _row_to_plan(row):
 
 def guardar_plan_de_clases(plan, imagen1_path=None, imagen2_path=None):
     with get_cursor(commit=True) as cursor:
+        asignacion_id = resolver_asignacion_academica_id_cursor(cursor, plan.asignacion_id)
         cursor.execute(
             """
             UPDATE plan_de_clases
@@ -89,7 +91,7 @@ def guardar_plan_de_clases(plan, imagen1_path=None, imagen2_path=None):
                 plan.tema,
                 imagen1_path,
                 imagen2_path,
-                plan.asignacion_id,
+                asignacion_id,
                 plan.fecha,
             ),
         )
@@ -107,7 +109,7 @@ def guardar_plan_de_clases(plan, imagen1_path=None, imagen2_path=None):
             RETURNING id
             """,
             (
-                plan.asignacion_id,
+                asignacion_id,
                 plan.periodo,
                 plan.unidad,
                 plan.proposito,
@@ -127,6 +129,7 @@ def guardar_plan_de_clases(plan, imagen1_path=None, imagen2_path=None):
 
 def obtener_plan_por_dia(asignacion_id, fecha):
     with get_cursor() as cursor:
+        asignacion_id = resolver_asignacion_academica_id_cursor(cursor, asignacion_id)
         cursor.execute(
             PLAN_SELECT
             + """
@@ -140,6 +143,7 @@ def obtener_plan_por_dia(asignacion_id, fecha):
 
 def obtener_planes_por_asignacion(asignacion_id):
     with get_cursor() as cursor:
+        asignacion_id = resolver_asignacion_academica_id_cursor(cursor, asignacion_id)
         cursor.execute(
             PLAN_SELECT
             + """

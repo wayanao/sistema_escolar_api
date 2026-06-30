@@ -2823,7 +2823,7 @@ Cambio:
 - Se agrego `GET /profesores/{profesor_id}/disponibilidad?dia=<dia>` para
   calcular rangos libres del profesor.
 - El backend valida que las horas queden dentro de `06:30-12:30` o
-  `13:00-18:00`.
+  `12:30-18:30`.
 - Si una asignacion ya tiene historial academico, no se permite cambiar
   profesor, curso o materia; se debe desactivar y crear una nueva.
 

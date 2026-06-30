@@ -18,8 +18,8 @@ class AsignacionDuplicadaError(Exception):
 # Rangos institucionales permitidos (formato HH:MM 24h)
 MANANA_INICIO = "06:30"
 MANANA_FIN = "12:30"
-TARDE_INICIO = "13:00"
-TARDE_FIN = "18:00"
+TARDE_INICIO = "12:30"
+TARDE_FIN = "18:30"
 JORNADAS_PERMITIDAS = (
     ("Mañana", MANANA_INICIO, MANANA_FIN),
     ("Tarde", TARDE_INICIO, TARDE_FIN),

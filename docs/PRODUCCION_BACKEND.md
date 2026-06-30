@@ -389,7 +389,7 @@ Asignaciones de clases:
 - El admin selecciona primero el curso y luego profesor, materia, dia, hora de
   inicio y hora de fin.
 - La disponibilidad del profesor es una guia calculada desde asignaciones
-  activas en los rangos `06:30-12:30` y `13:00-18:00`.
+  activas en los rangos `06:30-12:30` y `12:30-18:30`.
 - El backend valida conflictos de profesor, conflictos de curso, horas
   invalidas y jornada del curso antes de guardar.
 - Desactivar una asignacion no borra planes de clase, notas, asistencia,

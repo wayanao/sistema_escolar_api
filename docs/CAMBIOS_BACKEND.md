@@ -6,6 +6,24 @@ Ultima revision documental: 2026-06-24.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
+## 2026-06-30 - Sesion de 2 horas
+
+Se amplio la duracion por defecto de la sesion autenticada.
+
+Archivos modificados:
+
+- `app/config.py`
+- `.env.example`
+- `docs/SEGURIDAD.md`
+- `docs/PRODUCCION_BACKEND.md`
+
+Cambio:
+
+- `ACCESS_TOKEN_EXPIRE_MINUTES` pasa de `30` a `120` minutos por defecto.
+- El JWT y la cookie `token` usan el mismo valor, por lo que la sesion queda
+  activa hasta 2 horas si no existe una variable de entorno externa que lo
+  sobrescriba.
+
 ## 2026-06-24 - Orden configurable de materias en boletin
 
 Se agrego soporte backend para ordenar materias del boletin por curso.

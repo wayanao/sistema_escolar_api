@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     # Genera una con: python -c "import secrets; print(secrets.token_hex(32))"
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 120
 
     DATABASE_URL: str
     DB_POOL_MIN_CONNECTIONS: int = 1

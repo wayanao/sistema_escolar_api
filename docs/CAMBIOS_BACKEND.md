@@ -1,10 +1,36 @@
 # Cambios Backend
 
-Ultima revision documental: 2026-06-24.
+Ultima revision documental: 2026-07-13.
 
 ## Proposito
 
 Bitacora de cambios documentales y tecnicos observables del backend.
+
+## 2026-07-13 - Valores personalizados de pago por estudiante
+
+Se agrego soporte para que un estudiante tenga un valor distinto al valor del
+curso en un concepto de cartera, sin modificar el curso ni el tipo de pago.
+
+Archivos modificados:
+
+- `app/services/cobros.py`
+- `app/controllers/tipos_pagos_controller.py`
+- `app/routes/tipos_pagos.py`
+- `app/controllers/cartera_mora_controller.py`
+- `app/controllers/reportes_controller.py`
+- `migrations/20260713_tipos_pagos_estudiantes.sql`
+- `docs/CAMBIOS_BACKEND.md`
+
+Cambio:
+
+- Nueva tabla tenant `tipos_pagos_estudiantes`.
+- Nueva regla central de valor: estudiante activo > curso > valor base.
+- `GET /estudiantes/{estudiante_id}/deudas` respeta el valor personalizado.
+- Cartera vencida y estado de cuenta por curso usan la misma regla.
+- Se agregaron endpoints admin para listar, guardar y quitar valores
+  personalizados por estudiante.
+- El backend valida que el concepto este asignado al curso del estudiante antes
+  de aceptar una excepcion individual.
 
 ## 2026-06-30 - Sesion de 2 horas
 

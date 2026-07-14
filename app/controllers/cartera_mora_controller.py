@@ -13,6 +13,7 @@ from app.database import get_connection
 from app.services.cobros import (
     calcular_deudas_desde_contexto,
     obtener_tipos_pago,
+    obtener_valores_personalizados_por_estudiantes,
 )
 
 
@@ -97,6 +98,10 @@ def reporte_cartera_vencida(curso_id: int | None = None):
 
         # 5. Pagos por estudiante: agrupados por tipo_pago (nombre, descripcion)
         est_ids = tuple(e[0] for e in estudiantes)
+        valores_por_estudiante = obtener_valores_personalizados_por_estudiantes(
+            cursor,
+            est_ids,
+        )
         cursor.execute(
             """
             SELECT estudiante_id, LOWER(COALESCE(tipo_pago, '')), COALESCE(SUM(monto), 0)
@@ -167,6 +172,7 @@ def reporte_cartera_vencida(curso_id: int | None = None):
                 asignaciones_curso=asign_curso,
                 pagos_nombre=pagos_nombre,
                 pagos_descripcion=pagos_desc,
+                valores_estudiante=valores_por_estudiante.get(est_id, {}),
             )
             conceptos = [
                 deuda for deuda in resumen["deudas"] if deuda["deuda"] > 0

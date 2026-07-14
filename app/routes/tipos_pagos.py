@@ -16,6 +16,9 @@ from app.controllers.tipos_pagos_controller import (
     listar_cursos_asignados,
     upsert_cursos_asignados,
     eliminar_curso_asignado,
+    listar_valores_personalizados_estudiante,
+    upsert_valor_personalizado_estudiante,
+    eliminar_valor_personalizado_estudiante,
     MigracionPendienteError,
     TipoPagoDuplicadoError,
 )
@@ -57,6 +60,12 @@ class CursoAsignacionItem(BaseModel):
 
 class CursoAsignacionPayload(BaseModel):
     cursos: List[CursoAsignacionItem] = Field(default_factory=list)
+
+
+class ValorPersonalizadoEstudiante(BaseModel):
+    valor: confloat(ge=0)
+    motivo: Optional[str] = None
+    activo: bool = True
 
 
 # -----------------------------------------------------------------------------
@@ -153,3 +162,50 @@ def delete_curso_asignado(id: int, curso_id: int):
     if not res:
         raise HTTPException(status_code=404, detail='Asignación no encontrada')
     return {"message": "Curso desasignado"}
+
+
+# -----------------------------------------------------------------------------
+# Valores personalizados por estudiante
+# -----------------------------------------------------------------------------
+@router.get('/estudiantes/{estudiante_id}/valores-pago-personalizados')
+def get_valores_personalizados_estudiante(estudiante_id: int):
+    try:
+        return listar_valores_personalizados_estudiante(estudiante_id)
+    except MigracionPendienteError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+
+@router.put('/estudiantes/{estudiante_id}/valores-pago-personalizados/{tipo_pago_id}')
+def put_valor_personalizado_estudiante(
+    estudiante_id: int,
+    tipo_pago_id: int,
+    payload: ValorPersonalizadoEstudiante,
+):
+    try:
+        res = upsert_valor_personalizado_estudiante(
+            estudiante_id,
+            tipo_pago_id,
+            payload.valor,
+            motivo=payload.motivo,
+            activo=payload.activo,
+        )
+    except MigracionPendienteError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if res is None:
+        raise HTTPException(status_code=400, detail='No se pudo guardar el valor personalizado')
+    return {"message": "Valor personalizado guardado", "valores": res}
+
+
+@router.delete('/estudiantes/{estudiante_id}/valores-pago-personalizados/{tipo_pago_id}')
+def delete_valor_personalizado_estudiante(estudiante_id: int, tipo_pago_id: int):
+    try:
+        res = eliminar_valor_personalizado_estudiante(estudiante_id, tipo_pago_id)
+    except MigracionPendienteError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+    if not res:
+        raise HTTPException(status_code=404, detail='Valor personalizado no encontrado')
+    return {"message": "Valor personalizado eliminado"}

@@ -416,3 +416,182 @@ def eliminar_curso_asignado(tipo_pago_id, curso_id):
     finally:
         cursor.close()
         conn.close()
+
+
+# =============================================================================
+# Valores personalizados por estudiante
+# =============================================================================
+
+def _exigir_tabla_valores_estudiantes(cursor):
+    if "tipos_pagos_estudiantes" not in _table_names(cursor):
+        raise MigracionPendienteError(
+            "La tabla 'tipos_pagos_estudiantes' no existe. "
+            "Ejecuta la migracion 20260713_tipos_pagos_estudiantes.sql"
+        )
+
+
+def listar_valores_personalizados_estudiante(estudiante_id):
+    from psycopg2.extras import RealDictCursor
+
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        _exigir_tabla_valores_estudiantes(cursor)
+        cursor.execute(
+            """
+            SELECT
+                tpe.id,
+                tpe.tipo_pago_id,
+                tpe.estudiante_id,
+                tpe.valor,
+                tpe.motivo,
+                tpe.activo,
+                tpe.created_at,
+                tpe.updated_at,
+                t.nombre AS tipo_pago_nombre,
+                t.valor AS valor_base,
+                tpc.valor AS valor_curso
+            FROM tipos_pagos_estudiantes tpe
+            JOIN tipos_de_pagos t ON t.id = tpe.tipo_pago_id
+            JOIN estudiantes e ON e.id = tpe.estudiante_id
+            LEFT JOIN tipos_pagos_cursos tpc
+                ON tpc.tipo_pago_id = tpe.tipo_pago_id
+               AND tpc.curso_id = e.curso_id
+               AND tpc.activo = TRUE
+            WHERE tpe.estudiante_id = %s
+              AND tpe.activo = TRUE
+            ORDER BY t.nombre
+            """,
+            (estudiante_id,),
+        )
+        return [
+            {
+                "id": r["id"],
+                "tipo_pago_id": r["tipo_pago_id"],
+                "estudiante_id": r["estudiante_id"],
+                "tipo_pago_nombre": r["tipo_pago_nombre"],
+                "valor": float(r["valor"] or 0),
+                "valor_base": float(r["valor_base"] or 0),
+                "valor_curso": float(r["valor_curso"] or 0) if r["valor_curso"] is not None else None,
+                "motivo": r["motivo"] or "",
+                "activo": r["activo"],
+                "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+                "updated_at": r["updated_at"].isoformat() if r["updated_at"] else None,
+            }
+            for r in cursor.fetchall()
+        ]
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def upsert_valor_personalizado_estudiante(
+    estudiante_id,
+    tipo_pago_id,
+    valor,
+    motivo=None,
+    activo=True,
+):
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        _exigir_tabla_valores_estudiantes(cursor)
+
+        cursor.execute(
+            "SELECT curso_id FROM estudiantes WHERE id = %s",
+            (estudiante_id,),
+        )
+        estudiante = cursor.fetchone()
+        if not estudiante:
+            raise ValueError("Estudiante no encontrado.")
+
+        curso_id = estudiante[0]
+        cursor.execute(
+            "SELECT 1 FROM tipos_de_pagos WHERE id = %s",
+            (tipo_pago_id,),
+        )
+        if not cursor.fetchone():
+            raise ValueError("Tipo de pago no encontrado.")
+
+        if "tipos_pagos_cursos" in _table_names(cursor):
+            cursor.execute(
+                """
+                SELECT 1
+                FROM tipos_pagos_cursos
+                WHERE tipo_pago_id = %s
+                  AND curso_id = %s
+                  AND activo = TRUE
+                """,
+                (tipo_pago_id, curso_id),
+            )
+            if not cursor.fetchone():
+                raise ValueError(
+                    "Este concepto no esta asignado al curso del estudiante."
+                )
+
+        cursor.execute(
+            """
+            INSERT INTO tipos_pagos_estudiantes
+                (tipo_pago_id, estudiante_id, valor, motivo, activo)
+            VALUES (%s, %s, %s, %s, %s)
+            ON CONFLICT (tipo_pago_id, estudiante_id)
+            DO UPDATE SET
+                valor = EXCLUDED.valor,
+                motivo = EXCLUDED.motivo,
+                activo = EXCLUDED.activo,
+                updated_at = CURRENT_TIMESTAMP
+            RETURNING id
+            """,
+            (
+                tipo_pago_id,
+                estudiante_id,
+                valor or 0,
+                (motivo or "").strip() or None,
+                activo,
+            ),
+        )
+        cursor.fetchone()
+        conn.commit()
+        return listar_valores_personalizados_estudiante(estudiante_id)
+    except (MigracionPendienteError, ValueError):
+        conn.rollback()
+        raise
+    except Exception:
+        conn.rollback()
+        return None
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def eliminar_valor_personalizado_estudiante(estudiante_id, tipo_pago_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        _exigir_tabla_valores_estudiantes(cursor)
+        cursor.execute(
+            """
+            UPDATE tipos_pagos_estudiantes
+            SET activo = FALSE,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE estudiante_id = %s
+              AND tipo_pago_id = %s
+              AND activo = TRUE
+            RETURNING id
+            """,
+            (estudiante_id, tipo_pago_id),
+        )
+        if cursor.fetchone():
+            conn.commit()
+            return True
+        conn.rollback()
+        return False
+    except MigracionPendienteError:
+        conn.rollback()
+        raise
+    except Exception:
+        conn.rollback()
+        return False
+    finally:
+        cursor.close()
+        conn.close()

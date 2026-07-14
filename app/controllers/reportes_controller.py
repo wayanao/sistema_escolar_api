@@ -3,6 +3,7 @@ from app.services.cobros import (
     calcular_deudas_desde_contexto,
     obtener_asignaciones_cobro_por_curso,
     obtener_tipos_pago,
+    obtener_valores_personalizados_estudiante,
 )
 
 
@@ -277,6 +278,7 @@ def reporte_estado_cuenta_curso_controller(curso_id):
                 asignaciones_curso=valor_por_tipo_en_curso,
                 pagos_nombre=pagos_por_nombre,
                 pagos_descripcion={},
+                valores_estudiante=obtener_valores_personalizados_estudiante(cursor, est_id),
             )
 
             deudas_detalle = []

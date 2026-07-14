@@ -78,6 +78,17 @@ def _tabla_puente_existe(cursor) -> bool:
     return cursor.fetchone() is not None
 
 
+def _tabla_valores_estudiantes_existe(cursor) -> bool:
+    cursor.execute(
+        """
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = ANY (current_schemas(false))
+          AND table_name = 'tipos_pagos_estudiantes'
+        """
+    )
+    return cursor.fetchone() is not None
+
+
 def obtener_asignaciones_cobro_por_curso(cursor, curso_id: int) -> dict[int, float]:
     if not _tabla_puente_existe(cursor):
         return {}
@@ -91,6 +102,43 @@ def obtener_asignaciones_cobro_por_curso(cursor, curso_id: int) -> dict[int, flo
         (curso_id,),
     )
     return {row[0]: float(row[1] or 0) for row in cursor.fetchall()}
+
+
+def obtener_valores_personalizados_estudiante(cursor, estudiante_id: int) -> dict[int, float]:
+    if not _tabla_valores_estudiantes_existe(cursor):
+        return {}
+
+    cursor.execute(
+        """
+        SELECT tipo_pago_id, valor
+        FROM tipos_pagos_estudiantes
+        WHERE estudiante_id = %s AND activo = TRUE
+        """,
+        (estudiante_id,),
+    )
+    return {row[0]: float(row[1] or 0) for row in cursor.fetchall()}
+
+
+def obtener_valores_personalizados_por_estudiantes(
+    cursor,
+    estudiante_ids: tuple[int, ...],
+) -> dict[int, dict[int, float]]:
+    if not estudiante_ids or not _tabla_valores_estudiantes_existe(cursor):
+        return {}
+
+    cursor.execute(
+        """
+        SELECT estudiante_id, tipo_pago_id, valor
+        FROM tipos_pagos_estudiantes
+        WHERE estudiante_id IN %s AND activo = TRUE
+        """,
+        (estudiante_ids,),
+    )
+
+    valores = {}
+    for estudiante_id, tipo_pago_id, valor in cursor.fetchall():
+        valores.setdefault(estudiante_id, {})[tipo_pago_id] = float(valor or 0)
+    return valores
 
 
 def obtener_curso_estudiante(cursor, estudiante_id: int):
@@ -139,15 +187,19 @@ def _valor_unitario_concepto(
     *,
     tipo_pago: dict,
     asignaciones_curso: dict[int, float],
-) -> Optional[float]:
+    valores_estudiante: dict[int, float],
+) -> tuple[Optional[float], str]:
     if tipo_pago["id"] not in asignaciones_curso:
-        return None
+        return None, "sin_asignacion"
+
+    if tipo_pago["id"] in valores_estudiante:
+        return max(0.0, float(valores_estudiante[tipo_pago["id"]] or 0)), "estudiante"
 
     valor_asignado = float(asignaciones_curso[tipo_pago["id"]] or 0)
     if valor_asignado > 0:
-        return valor_asignado
+        return valor_asignado, "curso"
 
-    return float(tipo_pago["valor"] or 0)
+    return float(tipo_pago["valor"] or 0), "base"
 
 
 def _calcular_deudas(
@@ -156,19 +208,22 @@ def _calcular_deudas(
     asignaciones_curso: dict[int, float],
     pagos_nombre: dict[str, float],
     pagos_descripcion: dict[str, float],
+    valores_estudiante: Optional[dict[int, float]] = None,
     hoy: Optional[date] = None,
 ) -> dict:
     deudas = []
     total_deuda = 0.0
+    valores_estudiante = valores_estudiante or {}
 
     for tipo_pago in tipos_pago:
         tipo_cobro = normalizar_concepto(tipo_pago["tipo_cobro"] or "unico")
         if not tipo_pago["activo"] or tipo_cobro == "opcional":
             continue
 
-        valor_unitario = _valor_unitario_concepto(
+        valor_unitario, valor_origen = _valor_unitario_concepto(
             tipo_pago=tipo_pago,
             asignaciones_curso=asignaciones_curso,
+            valores_estudiante=valores_estudiante,
         )
         if valor_unitario is None:
             continue
@@ -202,6 +257,9 @@ def _calcular_deudas(
                 "deuda": resultado["deuda"],
                 "mora": resultado["mora"],
                 "cuotas_vencidas": resultado["cuotas_vencidas"],
+                "valor_unitario": max(0.0, float(valor_unitario or 0)),
+                "valor_origen": valor_origen,
+                "valor_personalizado": valor_origen == "estudiante",
             }
         )
         total_deuda += resultado["deuda"]
@@ -224,11 +282,13 @@ def calcular_deudas_estudiante(
 
     curso_id = datos[0]
     asignaciones_curso = obtener_asignaciones_cobro_por_curso(cursor, curso_id)
+    valores_estudiante = obtener_valores_personalizados_estudiante(cursor, estudiante_id)
     pagos_nombre, pagos_descripcion = obtener_pagos_por_concepto(cursor, estudiante_id)
 
     resultado = _calcular_deudas(
         tipos_pago=obtener_tipos_pago(cursor),
         asignaciones_curso=asignaciones_curso,
+        valores_estudiante=valores_estudiante,
         pagos_nombre=pagos_nombre,
         pagos_descripcion=pagos_descripcion,
         hoy=hoy,
@@ -243,6 +303,7 @@ def calcular_deudas_desde_contexto(
     asignaciones_curso: dict[int, float],
     pagos_nombre: dict[str, float],
     pagos_descripcion: dict[str, float],
+    valores_estudiante: Optional[dict[int, float]] = None,
     hoy: Optional[date] = None,
 ) -> dict:
     """Calcula deuda con datos ya precargados.
@@ -253,6 +314,7 @@ def calcular_deudas_desde_contexto(
     return _calcular_deudas(
         tipos_pago=tipos_pago,
         asignaciones_curso=asignaciones_curso,
+        valores_estudiante=valores_estudiante,
         pagos_nombre=pagos_nombre,
         pagos_descripcion=pagos_descripcion,
         hoy=hoy,

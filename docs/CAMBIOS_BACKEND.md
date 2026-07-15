@@ -6,6 +6,22 @@ Ultima revision documental: 2026-07-15.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
+## 2026-07-15 - Limpieza operativa de tenant plantilla
+
+Se limpio la informacion registrada por uso en `tenant_colegio_1`, conservando el schema, las tablas, el usuario admin y la configuracion base del tenant ejemplo.
+
+Alcance:
+
+- Se conservaron `usuarios`, `institucion_branding`, `plantilla_impresion`, `cursos`, `materias`, `tipos_de_pagos` y `tipos_pagos_cursos`.
+- Se vaciaron datos operativos como estudiantes, profesores, asignaciones, asistencia, notas, pagos, ventas, inventario, boletines, planes de clase, planeadores, nomina, prestamos y egresos.
+- No se ejecuto `DROP SCHEMA`, no se eliminaron tablas y no se tocaron otros tenants.
+- Se genero respaldo local antes de limpiar: `backups/tenant_colegio_1_datos_operativos_20260715_001239.jsonl.gz`.
+
+Verificacion:
+
+- `tenant_colegio_1.usuarios` conserva el admin `admin@sabiduria.com`.
+- Las tablas operativas verificadas quedaron en 0 registros.
+- `tenant_2005` conserva datos activos; verificacion posterior mostro estudiantes, profesores, asignaciones, pagos y asistencia con registros.
 ## 2026-07-15 - Reparacion segura de asignaciones academicas
 
 Se corrigieron referencias `asignacion_academica_id` inconsistentes que podian hacer que un profesor abriera el ID academico de otro profesor, curso o materia.
@@ -3370,6 +3386,7 @@ Verificacion ejecutada:
 Resultado:
 
 - Sintaxis OK.
+
 
 
 

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from app.dependencies import get_current_user
 from app.core.permissions import require_asignacion_access, require_estudiante_in_asignacion
 from typing import List
@@ -12,6 +12,26 @@ router = APIRouter(tags=["Asistencia"], dependencies=[Depends(get_current_user)]
 
 @router.post("/asistencia")
 def guardar_asistencia(data: List[AsistenciaCreate], current_user: dict = Depends(get_current_user)):
+    if not data:
+        raise HTTPException(status_code=422, detail="La asistencia debe incluir al menos un estudiante.")
+
+    referencia = data[0]
+    estudiantes_vistos = set()
+
+    for item in data:
+        if (
+            item.asignacion_id != referencia.asignacion_id
+            or item.fecha != referencia.fecha
+            or item.periodo != referencia.periodo
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail="Todos los registros deben pertenecer a la misma asignación, fecha y período.",
+            )
+        if item.estudiante_id in estudiantes_vistos:
+            raise HTTPException(status_code=422, detail="La asistencia contiene estudiantes duplicados.")
+        estudiantes_vistos.add(item.estudiante_id)
+
     for item in data:
         require_asignacion_access(item.asignacion_id, current_user)
         require_estudiante_in_asignacion(item.estudiante_id, item.asignacion_id)

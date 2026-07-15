@@ -186,6 +186,12 @@ y actualiza todos los horarios activos de esa materia en el curso.
 - `POST /asistencia`
 - `GET /asistencia/historial/{asignacion_id}/{periodo}`
 
+`POST /asistencia` recibe un lote no vacio de una misma asignacion, fecha y
+periodo. Cada estudiante puede aparecer una sola vez y `estado` acepta
+`presente` o `ausente`. Al actualizar, reemplaza los registros de los
+estudiantes enviados sin eliminar asistencia historica de estudiantes que ya
+no forman parte del listado activo.
+
 ## Materias
 
 - `POST /materia`
@@ -218,6 +224,10 @@ Notas:
 - `POST /observaciones`
 - `GET /observaciones/{estudiante_id}/{asignacion_id}/{periodo}`
 
+`POST /observaciones` acepta `conductual`, `cognitivo` y `lenguaje` como textos
+opcionales con valor vacio por defecto, pero exige contenido en al menos una
+dimension. Los textos se normalizan antes de crear o actualizar el registro.
+
 ## Plan de clases
 
 - `POST /plan-de-clases`
@@ -236,6 +246,19 @@ Notas:
 
 - `GET /planeador-anual/{asignacion_id}/{periodo}`
 - `PUT /planeador-anual/{asignacion_id}/{periodo}`
+
+Notas:
+
+- El `PUT` recibe una lista cuya posicion determina el `slot` de cada fila.
+- `unidad_tematica`, `estandar_competencia`, `contenido` y
+  `actividades_recursos` son opcionales entre si, pero una fila con al menos
+  uno de ellos exige `fecha` como fecha limite.
+- Una fila con fecha y sin contenido se rechaza.
+- Las filas completamente vacias son validas y eliminan el registro existente
+  de ese `slot`, si lo habia.
+- Los textos se recortan y una fecha vacia se normaliza a `null` antes de
+  validar.
+- Este contrato usa la tabla existente y no requiere migracion.
 
 ## Dashboard
 

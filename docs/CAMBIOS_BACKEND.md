@@ -6,6 +6,94 @@ Ultima revision documental: 2026-07-15.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
+## 2026-07-15 - Fecha limite obligatoria en Malla Curricular
+
+Se formalizo el contrato de las filas del planeador anual y se corrigio el
+guardado por lote.
+
+Archivos modificados:
+
+- `app/schemas/planeador_anual.py`
+- `app/controllers/planeador_anual_controller.py`
+- `tests/test_planeador_anual_validaciones.py`
+- `docs/API_ENDPOINTS.md`
+- `docs/CAMBIOS_BACKEND.md`
+
+Cambios:
+
+- Los cuatro campos de contenido son opcionales entre si y se normalizan con
+  `strip()`.
+- Toda fila con al menos un contenido exige `fecha` como fecha limite.
+- Una fecha sin contenido es invalida y una fila completamente vacia se
+  acepta, normalizando `fecha` vacia a `null`.
+- El guardado por lote conserva el indice como `slot`, actualiza las filas con
+  contenido y elimina el registro de un `slot` que el profesor dejo vacio.
+- La operacion se ejecuta en una transaccion con rollback y cierre garantizado
+  de conexion.
+- No cambia la estructura de la base de datos y no requiere migracion.
+
+Verificacion:
+
+- 19 pruebas enfocadas de Malla Curricular y permisos.
+- Ruff sobre schema, controlador y pruebas.
+
+## 2026-07-15 - Observaciones permiten dimensiones parciales
+
+Se formalizo el contrato del observador para aceptar una o varias dimensiones.
+
+Archivos modificados:
+
+- `app/schemas/observacion.py`
+- `app/routes/observaciones.py`
+- `app/controllers/observacion_controller.py`
+- `tests/test_observaciones_validaciones.py`
+- `docs/API_ENDPOINTS.md`
+- `docs/CAMBIOS_BACKEND.md`
+
+Cambios:
+
+- `conductual`, `cognitivo` y `lenguaje` tienen texto vacio como valor por
+  defecto.
+- El backend exige que al menos una dimension tenga contenido real.
+- Los textos se normalizan con `strip()` antes de guardar.
+- La ruta usa `ObservacionCreate` en lugar de recibir un diccionario sin tipo.
+- El guardado usa rollback explicito y cierre garantizado de cursor/conexion.
+- No cambia la estructura de la base de datos y no requiere migracion.
+
+Verificacion:
+
+- 18 pruebas enfocadas de observaciones y permisos.
+- Ruff sobre schema, ruta, controlador y pruebas.
+
+## 2026-07-15 - Actualizacion segura de asistencia por lote
+
+Se reforzo el contrato que crea y modifica la asistencia del profesor.
+
+Archivos modificados:
+
+- `app/schemas/asistencia.py`
+- `app/routes/asistencia.py`
+- `app/controllers/asistencia_controller.py`
+- `tests/test_asistencia_validaciones.py`
+- `docs/API_ENDPOINTS.md`
+- `docs/CAMBIOS_BACKEND.md`
+
+Cambios:
+
+- `estado` solo acepta `presente` o `ausente`.
+- El lote no puede estar vacio, mezclar asignacion/fecha/periodo ni repetir
+  estudiantes.
+- La actualizacion elimina y reemplaza solamente los estudiantes enviados;
+  conserva registros historicos de estudiantes que ya no estan activos.
+- El reemplazo se ejecuta en una transaccion con rollback explicito ante error.
+- Se mantienen el endpoint y la estructura de base de datos existentes; no se
+  requiere migracion.
+
+Verificacion:
+
+- 21 pruebas enfocadas de asistencia y permisos.
+- Ruff sobre schema, ruta, controlador y pruebas de asistencia.
+
 ## 2026-07-15 - Jornada incluida en las clases del profesor
 
 Se amplio de forma compatible el contrato usado por el dashboard del profesor.

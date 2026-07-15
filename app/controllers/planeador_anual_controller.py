@@ -77,28 +77,47 @@ def actualizar_planeador_anual_controller(planeador_id: int, planeador: Planeado
 def bulk_actualizar_planeadores_controller(asignacion_id: int, periodo: int, planeadores: List[PlaneadorAnualUpdate]):
     conn = get_connection()
     cursor = conn.cursor()
-    asignacion_id = resolver_asignacion_academica_id_cursor(cursor, asignacion_id)
-    for i, planeador in enumerate(planeadores):
-        slot = i + 1
-        cursor.execute("""
-            INSERT INTO planeador_anual (asignacion_id, periodo, slot, unidad_tematica, estandar_competencia, contenido, actividades_recursos, fecha)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (asignacion_id, periodo, slot) DO UPDATE SET
-                unidad_tematica = EXCLUDED.unidad_tematica,
-                estandar_competencia = EXCLUDED.estandar_competencia,
-                contenido = EXCLUDED.contenido,
-                actividades_recursos = EXCLUDED.actividades_recursos,
-                fecha = EXCLUDED.fecha
-        """, (
-            asignacion_id,
-            periodo,
-            slot,
-            planeador.unidad_tematica,
-            planeador.estandar_competencia,
-            planeador.contenido,
-            planeador.actividades_recursos,
-            planeador.fecha
-        ))
-    conn.commit()
-    cursor.close()
-    conn.close()
+    try:
+        asignacion_id = resolver_asignacion_academica_id_cursor(cursor, asignacion_id)
+        for i, planeador in enumerate(planeadores):
+            slot = i + 1
+            tiene_contenido = any((
+                planeador.unidad_tematica,
+                planeador.estandar_competencia,
+                planeador.contenido,
+                planeador.actividades_recursos,
+            ))
+
+            if not tiene_contenido:
+                cursor.execute("""
+                    DELETE FROM planeador_anual
+                    WHERE asignacion_id = %s AND periodo = %s AND slot = %s
+                """, (asignacion_id, periodo, slot))
+                continue
+
+            cursor.execute("""
+                INSERT INTO planeador_anual (asignacion_id, periodo, slot, unidad_tematica, estandar_competencia, contenido, actividades_recursos, fecha)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (asignacion_id, periodo, slot) DO UPDATE SET
+                    unidad_tematica = EXCLUDED.unidad_tematica,
+                    estandar_competencia = EXCLUDED.estandar_competencia,
+                    contenido = EXCLUDED.contenido,
+                    actividades_recursos = EXCLUDED.actividades_recursos,
+                    fecha = EXCLUDED.fecha
+            """, (
+                asignacion_id,
+                periodo,
+                slot,
+                planeador.unidad_tematica,
+                planeador.estandar_competencia,
+                planeador.contenido,
+                planeador.actividades_recursos,
+                planeador.fecha,
+            ))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+        conn.close()

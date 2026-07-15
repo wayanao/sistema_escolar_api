@@ -4,39 +4,39 @@ from app.services.asignacion_academica import resolver_asignacion_academica_id_c
 def guardar_asistencia_controller(data):
     conn = get_connection()
     cursor = conn.cursor()
-
-    # 🔥 PRIMERO borrar TODO del día (solo una vez)
-    if len(data) > 0:
+    try:
         asignacion_id = resolver_asignacion_academica_id_cursor(cursor, data[0].asignacion_id)
         cursor.execute("""
             DELETE FROM asistencia
             WHERE asignacion_id = %s AND fecha = %s AND periodo = %s
+              AND estudiante_id = ANY(%s)
         """, (
             asignacion_id,
             data[0].fecha,
-            data[0].periodo
-        ))
-    else:
-        asignacion_id = None
-
-    # 🔥 LUEGO insertar TODOS
-    for item in data:
-        cursor.execute("""
-            INSERT INTO asistencia (estudiante_id, asignacion_id, fecha, estado, periodo)
-            VALUES (%s, %s, %s, %s, %s)
-        """, (
-            item.estudiante_id,
-            asignacion_id or resolver_asignacion_academica_id_cursor(cursor, item.asignacion_id),
-            item.fecha,
-            item.estado,
-            item.periodo
+            data[0].periodo,
+            [item.estudiante_id for item in data],
         ))
 
-    conn.commit()
-    cursor.close()
-    conn.close()
+        for item in data:
+            cursor.execute("""
+                INSERT INTO asistencia (estudiante_id, asignacion_id, fecha, estado, periodo)
+                VALUES (%s, %s, %s, %s, %s)
+            """, (
+                item.estudiante_id,
+                asignacion_id,
+                item.fecha,
+                item.estado,
+                item.periodo
+            ))
 
-    return {"mensaje": "Asistencia guardada"}
+        conn.commit()
+        return {"mensaje": "Asistencia guardada"}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+        conn.close()
 
 
 def obtener_historial_asistencia(asignacion_id, periodo=1):

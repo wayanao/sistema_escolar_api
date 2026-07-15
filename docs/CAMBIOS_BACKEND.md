@@ -6,6 +6,31 @@ Ultima revision documental: 2026-07-15.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
+## 2026-07-15 - Jornada incluida en las clases del profesor
+
+Se amplio de forma compatible el contrato usado por el dashboard del profesor.
+
+Archivos modificados:
+
+- `app/routes/asignaciones.py`
+- `tests/test_asignaciones_pagination.py`
+- `tests/test_asignaciones_activo.py`
+- `docs/API_ENDPOINTS.md`
+- `docs/CAMBIOS_BACKEND.md`
+
+Cambios:
+
+- `GET /mis-clases/{profesor_id}` incluye `jornada`, tomada directamente de
+  `cursos.jornada`.
+- No se cambian IDs academicos, permisos, horarios ni asignaciones existentes.
+- Se actualizaron expectativas antiguas de pruebas para los rangos
+  institucionales vigentes: mañana `06:30-12:30` y tarde `12:30-18:30`.
+
+Verificacion:
+
+- Pruebas enfocadas de asignaciones.
+- Revision de sintaxis de la ruta y su prueba de contrato.
+
 ## 2026-07-15 - Limpieza operativa de tenant plantilla
 
 Se limpio la informacion registrada por uso en `tenant_colegio_1`, conservando el schema, las tablas, el usuario admin y la configuracion base del tenant ejemplo.

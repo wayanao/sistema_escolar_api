@@ -145,7 +145,10 @@ Notas:
 - `GET /cursos/{curso_id}/orden-boletin`
 - `PUT /cursos/{curso_id}/orden-boletin`
 - `DELETE /asignaciones/{profesor_id}/{curso_id}` legacy; desactiva la asignacion activa mas reciente.
-- `GET /mis-clases/{profesor_id}` devuelve el ID academico seguro de la clase; si el puntero almacenado no coincide con el mismo profesor, curso y materia, el backend usa el ID real de la asignacion.
+- `GET /mis-clases/{profesor_id}` devuelve el ID academico seguro de la clase y
+  la `jornada` definida en el curso; si el puntero almacenado no coincide con
+  el mismo profesor, curso y materia, el backend usa el ID real de la
+  asignacion.
 
 `GET /cursos/{curso_id}/orden-boletin` devuelve una fila por materia activa
 del curso, agrupando varios horarios de la misma materia.

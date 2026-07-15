@@ -76,14 +76,14 @@ def test_obtener_disponibilidad_profesor_calcula_rangos_libres(monkeypatch):
         {"inicio": "09:00", "fin": "12:30"},
     ]
     assert tarde["rangos"] == [
-        {"inicio": "13:00", "fin": "14:00"},
-        {"inicio": "15:30", "fin": "18:00"},
+        {"inicio": "12:30", "fin": "14:00"},
+        {"inicio": "15:30", "fin": "18:30"},
     ]
 
 
 def test_validar_rango_institucional_bloquea_cruce_entre_jornadas():
     assert asignacion_controller.validar_rango_institucional("12:00", "14:00") == (
-        "El horario debe estar dentro de una jornada válida: 06:30-12:30 o 13:00-18:00."
+        "El horario debe estar dentro de una jornada válida: 06:30-12:30 o 12:30-18:30."
     )
 
 

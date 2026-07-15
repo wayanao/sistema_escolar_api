@@ -40,7 +40,8 @@ Alcance:
 - Se conservaron `usuarios`, `institucion_branding`, `plantilla_impresion`, `cursos`, `materias`, `tipos_de_pagos` y `tipos_pagos_cursos`.
 - Se vaciaron datos operativos como estudiantes, profesores, asignaciones, asistencia, notas, pagos, ventas, inventario, boletines, planes de clase, planeadores, nomina, prestamos y egresos.
 - No se ejecuto `DROP SCHEMA`, no se eliminaron tablas y no se tocaron otros tenants.
-- Se genero respaldo local antes de limpiar: `backups/tenant_colegio_1_datos_operativos_20260715_001239.jsonl.gz`.
+- Se genero un respaldo temporal antes de limpiar; se descarto posteriormente
+  porque contenia exclusivamente datos artificiales de una prueba de carga.
 
 Verificacion:
 

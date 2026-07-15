@@ -1,10 +1,13 @@
 # Entorno virtual y Python
 __pycache__/
+.pytest_cache/
+.ruff_cache/
 *.py[cod]
 *$py.class
 venv/
 env/
 .env
+backups/
 
 # Bases de datos SQLite
 *.db

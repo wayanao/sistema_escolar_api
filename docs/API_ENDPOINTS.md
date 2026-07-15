@@ -1,6 +1,6 @@
 # API Endpoints
 
-Ultima revision documental: 2026-06-24.
+Ultima revision documental: 2026-07-15.
 
 ## Routers
 
@@ -145,7 +145,7 @@ Notas:
 - `GET /cursos/{curso_id}/orden-boletin`
 - `PUT /cursos/{curso_id}/orden-boletin`
 - `DELETE /asignaciones/{profesor_id}/{curso_id}` legacy; desactiva la asignacion activa mas reciente.
-- `GET /mis-clases/{profesor_id}`
+- `GET /mis-clases/{profesor_id}` devuelve el ID academico seguro de la clase; si el puntero almacenado no coincide con el mismo profesor, curso y materia, el backend usa el ID real de la asignacion.
 
 `GET /cursos/{curso_id}/orden-boletin` devuelve una fila por materia activa
 del curso, agrupando varios horarios de la misma materia.
@@ -223,6 +223,12 @@ Notas:
 - `GET /admin/plan-de-clases`
 - `DELETE /admin/plan-de-clases/{plan_id}/imagen`
 
+Notas:
+
+- `POST /plan-de-clases` exige `asignacion_id`, `periodo` y `fecha`.
+- Las cajas de texto (`unidad`, `proposito`, `clase`, `estandar`, `dba`, `competencias`, `actividad_casa` y `tema`) son opcionales, aceptan texto largo y se guardan como texto vacio si no se envian.
+- Las imagenes `imagen1` e `imagen2` tambien son opcionales.
+
 ## Planeador anual
 
 - `GET /planeador-anual/{asignacion_id}/{periodo}`
@@ -233,8 +239,8 @@ Notas:
 - `GET /dashboard/cumpleanos/admin?dias=7`
 - `GET /dashboard/cumpleanos/profesor/{profesor_id}?dias=7`
 - `GET /dashboard/inasistencias/{profesor_id}`
-- `GET /dashboard/notas-bajas/{profesor_id}`
-- `GET /dashboard/notas-altas/{profesor_id}`
+- `GET /dashboard/notas-bajas/{profesor_id}?curso_id={curso_id}&asignacion_id={asignacion_id}`
+- `GET /dashboard/notas-altas/{profesor_id}?curso_id={curso_id}&asignacion_id={asignacion_id}`
 - `GET /dashboard/ranking/{asignacion_id}/{periodo}`
 - `GET /dashboard/ranking-mejor/{asignacion_id}/{periodo}`
 
@@ -246,6 +252,8 @@ Notas:
 - `/dashboard/cumpleanos/profesor/{profesor_id}` valida el scope del profesor
   y devuelve solo estudiantes activos de cursos asignados al profesor.
 - `dias` es opcional, por defecto `7`, y acepta valores de `0` a `31`.
+- `/dashboard/notas-bajas/{profesor_id}` y `/dashboard/notas-altas/{profesor_id}` validan que el profesor solo consulte su propio scope.
+- `curso_id` y `asignacion_id` son filtros opcionales para rendimiento; si se envian, el backend valida que pertenezcan al profesor.
 
 ## Usuarios
 
@@ -274,6 +282,26 @@ Notas:
 - `GET /tipos-pagos/{id}/cursos`
 - `PUT /tipos-pagos/{id}/cursos`
 - `DELETE /tipos-pagos/{id}/cursos/{curso_id}`
+- `GET /estudiantes/{estudiante_id}/valores-pago-personalizados`
+- `PUT /estudiantes/{estudiante_id}/valores-pago-personalizados/{tipo_pago_id}`
+- `DELETE /estudiantes/{estudiante_id}/valores-pago-personalizados/{tipo_pago_id}`
+
+Valores personalizados por estudiante:
+
+```json
+{
+  "valor": 120000,
+  "motivo": "Acuerdo individual",
+  "activo": true
+}
+```
+
+Uso:
+
+- Permiten definir una excepcion individual para un concepto sin modificar el valor base ni el valor asignado al curso.
+- El backend exige que el concepto este asignado al curso del estudiante antes de guardar la excepcion.
+- `DELETE` desactiva la excepcion vigente; no elimina historico fisicamente.
+- Si falta la migracion `20260713_tipos_pagos_estudiantes.sql`, estos endpoints responden `409` con instruccion operativa.
 
 ## Inventario
 
@@ -471,3 +499,4 @@ Se observo soporte de `limit`/`offset` en endpoints como:
 - `/cursos`
 - `/materias`
 - `/usuarios`
+

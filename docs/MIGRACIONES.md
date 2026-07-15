@@ -1,6 +1,6 @@
 # Migraciones
 
-Ultima revision documental: 2026-06-24.
+Ultima revision documental: 2026-07-15.
 
 ## Carpeta de migraciones
 
@@ -31,6 +31,10 @@ Archivos actuales:
 - `20260623_asignaciones_horarios_historial_unico.sql`
 - `20260624_asignaciones_orden_boletin.sql`
 - `20260623_institucion_branding_codigo_dane.sql`
+- `20260713_tipos_pagos_estudiantes.sql`
+- `20260715_plan_de_clases_textos_largos.sql`
+- `20260715_plan_de_clases_estandar_dba_text.sql`
+- `20260715_reparar_asignacion_academica_invalida.sql`
 - `README.md`
 
 Migraciones globales `public`:
@@ -199,6 +203,34 @@ Archivos actuales:
 Desde 2026-06-01, `apply_migration.py` detecta estos archivos y los aplica como
 target `public`, incluso si no existen colegios registrados.
 
+## Migracion 20260713_tipos_pagos_estudiantes.sql
+
+Objetivo:
+
+- Agregar excepciones de valor por estudiante para conceptos de cartera.
+- Mantener `tipos_de_pagos` como valor base y `tipos_pagos_cursos` como valor por curso.
+- Permitir que la regla central de cobros use prioridad: estudiante > curso > base.
+
+Tabla creada:
+
+- `tipos_pagos_estudiantes`
+
+Campos principales:
+
+- `tipo_pago_id`
+- `estudiante_id`
+- `valor`
+- `motivo`
+- `activo`
+- `created_at`
+- `updated_at`
+
+Estado esperado:
+
+- Aplicar sobre el schema plantilla (`DEFAULT_TENANT_SCHEMA`) antes de crear nuevos colegios.
+- Aplicar sobre tenants existentes para habilitar los endpoints de valores personalizados.
+- Si no esta aplicada, el backend responde `409` en los endpoints de valores personalizados.
+
 ## Migracion 20260601_usuarios_password_obligatorio.sql
 
 Objetivo:
@@ -295,5 +327,7 @@ Estado:
 
 - Aplicada en `tenant_colegio_1`, `tenant_3333` y `tenant_4444`.
 - Registrada en `public.schema_migrations`.
+
+
 
 

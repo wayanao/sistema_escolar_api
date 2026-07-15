@@ -1,6 +1,6 @@
 # Produccion Backend
 
-Ultima revision documental: 2026-06-13.
+Ultima revision documental: 2026-07-15.
 
 ## Variables de entorno actuales
 

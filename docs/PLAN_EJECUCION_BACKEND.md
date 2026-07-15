@@ -1,10 +1,10 @@
 # Plan Ejecucion Backend
 
-Ultima revision documental: 2026-06-13.
+Ultima revision documental: 2026-07-15.
 
 Plan basado en la documentacion actual de `docs/` del backend y en `CHECKLIST_PRODUCCION_BACKEND.md`. Este archivo ordena trabajo futuro; no representa cambios de codigo ya aplicados.
 
-## 1. Seguridad frontend
+## 1. Seguridad de API y permisos
 
 En backend esta fase significa blindar todo lo que el navegador puede intentar manipular: token, rol, tenant, IDs directos y archivos.
 
@@ -66,7 +66,7 @@ En backend esta fase significa blindar todo lo que el navegador puede intentar m
 - Cuando hacer commit:
   - Despues de probar login, request autenticado, revalidacion contra DB y logout.
 
-## 3. Roles y guards
+## 3. Roles y dependencias
 
 En backend los guards reales son las dependencias FastAPI y funciones de permisos. La UI solo oculta o muestra pantallas.
 
@@ -99,7 +99,7 @@ En backend los guards reales son las dependencias FastAPI y funciones de permiso
 - Cuando hacer commit:
   - Despues de cerrar una familia de rutas y dejar pruebas o evidencia manual clara.
 
-## 4. Componentes grandes
+## 4. Controladores y modulos grandes
 
 En backend esta fase corresponde a separar rutas, controladores, servicios y repositorios donde hoy haya SQL o logica pesada mezclada.
 
@@ -178,7 +178,7 @@ En backend esta fase corresponde a separar rutas, controladores, servicios y rep
 - Cuando hacer commit:
   - Despues de validar respuestas en al menos login, ruta admin, ruta profesor y upload protegido.
 
-## 7. Build produccion
+## 7. Despliegue de produccion
 
 En backend esta fase significa preparacion real de despliegue: variables, CORS, cookies, migraciones, tenants y scripts operativos.
 

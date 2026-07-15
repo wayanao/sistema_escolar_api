@@ -1,6 +1,6 @@
 # Base de Datos
 
-Ultima revision documental: 2026-06-24.
+Ultima revision documental: 2026-07-15.
 
 ## Motor
 
@@ -100,6 +100,7 @@ El codigo consulta o modifica tablas como:
 - `pagos`
 - `tipos_de_pagos`
 - `tipos_pagos_cursos`
+- `tipos_pagos_estudiantes`
 - `inventario`
 - `ventas`
 - `ventas_detalle`
@@ -147,6 +148,8 @@ Estado actual:
 - `cursos` queda como entidad academica.
 - Los cobros academicos se definen desde `tipos_de_pagos`.
 - La asignacion de cobros por curso se hace en `tipos_pagos_cursos`.
+- Las excepciones por estudiante se guardan en `tipos_pagos_estudiantes`.
+- La regla de valor vigente es: valor activo del estudiante > valor activo del curso > valor base del tipo de pago.
 - `cursos` ya no debe contener ni alimentar:
   - `matricula`;
   - `mensualidad`;
@@ -155,6 +158,7 @@ Estado actual:
 Migracion relacionada:
 
 - `migrations/20260526_cursos_solo_academicos.sql`
+- `migrations/20260713_tipos_pagos_estudiantes.sql`
 
 ## Indices por tenant
 
@@ -204,6 +208,14 @@ Archivos en `migrations/`:
 - `20260604_materias_estado.sql`
 - `20260604_inventario_estado.sql`
 - `20260604_egresos_origen.sql`
+- `20260623_admin_nombres_mayuscula.sql`
+- `20260623_admin_unicos_academicos.sql`
+- `20260623_asignaciones_unicas_activas.sql`
+- `20260623_asignaciones_horarios_historial_unico.sql`
+- `20260623_institucion_branding_codigo_dane.sql`
+- `20260624_asignaciones_orden_boletin.sql`
+- `20260713_tipos_pagos_estudiantes.sql`
+- `20260715_plan_de_clases_textos_largos.sql`
 - `README.md`
 
 Migraciones globales en `public`:
@@ -220,3 +232,4 @@ Migraciones globales en `public`:
 - Muchos controllers ejecutan SQL directamente.
 - Hay muchos usos directos de `get_connection()`; cada cambio en esos modulos
   debe revisar cierre de cursor/conexion para no agotar el pool.
+

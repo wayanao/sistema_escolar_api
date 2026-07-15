@@ -1,10 +1,113 @@
 # Cambios Backend
 
-Ultima revision documental: 2026-07-13.
+Ultima revision documental: 2026-07-15.
 
 ## Proposito
 
 Bitacora de cambios documentales y tecnicos observables del backend.
+
+## 2026-07-15 - Reparacion segura de asignaciones academicas
+
+Se corrigieron referencias `asignacion_academica_id` inconsistentes que podian hacer que un profesor abriera el ID academico de otro profesor, curso o materia.
+
+Archivos modificados:
+
+- `app/services/asignacion_academica.py`
+- `app/routes/asignaciones.py`
+- `migrations/20260715_reparar_asignacion_academica_invalida.sql`
+- `docs/API_ENDPOINTS.md`
+- `docs/BASE_DATOS.md`
+- `docs/MIGRACIONES.md`
+- `docs/CAMBIOS_BACKEND.md`
+
+Cambios:
+
+- La migracion no borra datos; solo actualiza `asignaciones.asignacion_academica_id` cuando apunta a una asignacion de otro profesor, curso o materia.
+- El resolver central de asignacion academica valida que el ID apuntado pertenezca a la misma combinacion `profesor_id`, `curso_id` y `materia_id`; si no coincide, usa el ID original.
+- `GET /mis-clases/{profesor_id}` queda protegido para no entregar IDs academicos que pertenezcan a otro docente.
+
+Verificacion:
+
+- Auditoria previa en tenants activos: solo `tenant_2005` tenia 8 asignaciones activas inconsistentes.
+- Despues de aplicar la migracion, la auditoria queda en 0 inconsistencias en todos los tenants activos.
+- `tenant_2005`: Matematicas Tercero de Edgar Villanueva Mercado queda con `292 -> 292` y `328 -> 292`.
+- Se ejecuto `python -m py_compile app/services/asignacion_academica.py app/routes/asignaciones.py`.
+## 2026-07-15 - Plan de clases permite textos largos
+
+Se amplio el soporte de textos largos en plan de clases para que ninguna caja usada por el profesor bloquee el guardado por longitud.
+
+Archivos modificados:
+
+- `migrations/20260715_plan_de_clases_textos_largos.sql`
+- `migrations/20260715_plan_de_clases_estandar_dba_text.sql`
+- `docs/API_ENDPOINTS.md`
+- `docs/BASE_DATOS.md`
+- `docs/MIGRACIONES.md`
+- `docs/CAMBIOS_BACKEND.md`
+
+Cambios:
+
+- La primera migracion convierte `plan_de_clases.unidad` y `plan_de_clases.tema` a `TEXT`.
+- La migracion complementaria convierte `plan_de_clases.estandar` y `plan_de_clases.dba` a `TEXT`, que seguian limitadas a `VARCHAR(255)` en los tenants existentes.
+- `actividad_casa` ya estaba soportada como texto largo.
+- El contrato de API queda documentado como cajas opcionales con texto largo.
+
+Verificacion:
+
+- Revision estatica de migraciones y repositorio de plan de clases.
+- Consulta a `information_schema.columns` confirmando `estandar` y `dba` como `text` en los tenants activos.
+
+## 2026-07-15 - Plan de clases permite cajas de texto vacias
+
+Se ajusto el contrato backend de plan de clases para que los docentes puedan guardar el plan aunque no usen todas las cajas de texto.
+
+Archivos modificados:
+
+- `app/routes/plan_de_clases.py`
+- `app/schemas/plan_de_clases.py`
+- `docs/API_ENDPOINTS.md`
+- `docs/CAMBIOS_BACKEND.md`
+
+Cambios:
+
+- `POST /plan-de-clases` mantiene obligatorios `asignacion_id`, `periodo` y `fecha`.
+- Las cajas de texto del plan (`unidad`, `proposito`, `clase`, `estandar`, `dba`, `competencias`, `actividad_casa` y `tema`) tienen valor por defecto `""`.
+- El schema de creacion y respuesta tolera textos vacios para no bloquear planes incompletos por decision pedagogica.
+
+Verificacion:
+
+- Se ejecuto `python -m py_compile app/routes/plan_de_clases.py app/schemas/plan_de_clases.py`.
+
+## 2026-07-15 - Documentacion backend sincronizada con codigo actual
+
+Se actualizo la documentacion operativa del backend para alinear el mapa de endpoints, base de datos, migraciones y plan de ejecucion con el codigo vigente.
+
+Archivos modificados:
+
+- `docs/README.md`
+- `docs/API_ENDPOINTS.md`
+- `docs/BASE_DATOS.md`
+- `docs/MIGRACIONES.md`
+- `docs/PLAN_EJECUCION_BACKEND.md`
+- `docs/SEGURIDAD.md`
+- `docs/PRODUCCION_BACKEND.md`
+- `docs/MULTITENANT.md`
+- `docs/ARQUITECTURA_BACKEND.md`
+- `docs/ROLES_PERMISOS_BACKEND.md`
+- `docs/CAMBIOS_BACKEND.md`
+
+Cambios:
+
+- Se agregaron al mapa API los endpoints de valores personalizados por estudiante.
+- Se documentaron filtros actuales de rendimiento en dashboard profesor.
+- Se agrego `tipos_pagos_estudiantes` a la referencia de base de datos y migraciones.
+- Se alineo el plan de ejecucion para usar lenguaje propio de backend en seguridad, roles, modulos y despliegue.
+- Se actualizaron fechas de revision en documentos backend revisados.
+
+Verificacion:
+
+- Se contrasto `docs/API_ENDPOINTS.md` contra decorators reales en `app/routes/`.
+- Se contrasto la documentacion de valores personalizados contra `app/routes/tipos_pagos.py`, `app/controllers/tipos_pagos_controller.py`, `app/services/cobros.py` y `migrations/20260713_tipos_pagos_estudiantes.sql`.
 
 ## 2026-07-13 - Valores personalizados de pago por estudiante
 
@@ -3267,4 +3370,8 @@ Verificacion ejecutada:
 Resultado:
 
 - Sintaxis OK.
+
+
+
+
 

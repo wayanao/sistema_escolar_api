@@ -1,6 +1,6 @@
 # Documentacion Backend
 
-Ultima revision documental: 2026-06-13.
+Ultima revision documental: 2026-07-15.
 
 Indice operativo para mantener control del backend SaaS escolar.
 
@@ -9,7 +9,7 @@ Indice operativo para mantener control del backend SaaS escolar.
 - `PRODUCCION_BACKEND.md`: variables, Render, cookies, CORS, pool, R2 y checklist post-deploy.
 - `CHECKLIST_PRODUCCION_BACKEND.md`: riesgos criticos e importantes antes/despues de produccion.
 - `CAMBIOS_BACKEND.md`: bitacora historica de cambios tecnicos y documentales.
-- `API_ENDPOINTS.md`: mapa de endpoints incluidos en `app/main.py`.
+- `API_ENDPOINTS.md`: mapa de endpoints incluidos en `app/main.py`, incluyendo cartera, dashboard y valores personalizados de pago por estudiante.
 - `ARQUITECTURA_BACKEND.md`: estructura de carpetas, routers, servicios, repositorios y ciclo de vida.
 - `BASE_DATOS.md`: PostgreSQL, schemas tenant, pool, tablas, indices y migraciones.
 - `MULTITENANT.md`: identificacion de tenant, `search_path`, estados SaaS y creacion de colegios.

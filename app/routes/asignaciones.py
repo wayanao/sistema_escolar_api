@@ -174,7 +174,14 @@ def obtener_clases_profesor(
 
     cursor.execute("""
         SELECT 
-            COALESCE(a.asignacion_academica_id, a.id) AS asignacion_id,
+            CASE
+                WHEN base.id IS NOT NULL
+                 AND base.profesor_id = a.profesor_id
+                 AND base.curso_id = a.curso_id
+                 AND base.materia_id = a.materia_id
+                    THEN base.id
+                ELSE a.id
+            END AS asignacion_id,
             a.id AS horario_id,
             m.nombre AS materia,
             c.nombre AS curso,
@@ -186,6 +193,7 @@ def obtener_clases_profesor(
         FROM asignaciones a
         JOIN materias m ON a.materia_id = m.id
         JOIN cursos c ON a.curso_id = c.id
+        LEFT JOIN asignaciones base ON base.id = a.asignacion_academica_id
 
         WHERE a.profesor_id = %s
           AND a.activo = TRUE
@@ -226,6 +234,7 @@ def obtener_clases_profesor(
     conn.close()
 
     return resultado
+
 
 
 

@@ -28,8 +28,57 @@ class ResultadoCuotas:
     proxima_cuota_pendiente: bool  # True si la siguiente cuota ya tiene fecha asignada
 
 
+@dataclass(frozen=True)
+class CuotaVencida:
+    periodo: date
+    fecha_vencimiento: date
+    fecha_efectiva: date
+
+
 def _ultimo_dia_del_mes(anio: int, mes: int) -> int:
     return monthrange(anio, mes)[1]
+
+
+def listar_cuotas_vencidas(
+    hoy: Optional[date] = None,
+    *,
+    mes_inicial: Optional[int] = None,
+    frecuencia_meses: int = 1,
+    dia_limite_mes: Optional[int] = None,
+    dias_gracia: int = 0,
+    max_cuotas: int = 10,
+) -> list[CuotaVencida]:
+    """Devuelve las cuotas vencidas con su periodo y fecha limite real."""
+    if hoy is None:
+        hoy = date.today()
+
+    frecuencia = max(1, int(frecuencia_meses or 1))
+    gracia = max(0, int(dias_gracia or 0))
+    mes_inicio = int(mes_inicial) if mes_inicial else hoy.month
+    if not (1 <= mes_inicio <= 12):
+        mes_inicio = hoy.month
+
+    cuotas = []
+    for i in range(max(1, int(max_cuotas or 1))):
+        mes_cuota = mes_inicio + i * frecuencia
+        if mes_cuota < 1 or mes_cuota > 12:
+            break
+
+        ultimo_dia = _ultimo_dia_del_mes(hoy.year, mes_cuota)
+        dia = int(dia_limite_mes) if dia_limite_mes else ultimo_dia
+        dia = min(dia, ultimo_dia)
+        fecha_vencimiento = date(hoy.year, mes_cuota, dia)
+        fecha_efectiva = fecha_vencimiento + timedelta(days=gracia)
+        if hoy < fecha_efectiva:
+            break
+
+        cuotas.append(CuotaVencida(
+            periodo=date(hoy.year, mes_cuota, 1),
+            fecha_vencimiento=fecha_vencimiento,
+            fecha_efectiva=fecha_efectiva,
+        ))
+
+    return cuotas
 
 
 def calcular_cuotas_vencidas(
@@ -48,38 +97,28 @@ def calcular_cuotas_vencidas(
     if hoy is None:
         hoy = date.today()
 
-    frecuencia = max(1, int(frecuencia_meses or 1))
-    gracia = max(0, int(dias_gracia or 0))
+    cuotas_vencidas = listar_cuotas_vencidas(
+        hoy=hoy,
+        mes_inicial=mes_inicial,
+        frecuencia_meses=frecuencia_meses,
+        dia_limite_mes=dia_limite_mes,
+        dias_gracia=dias_gracia,
+        max_cuotas=max_cuotas,
+    )
 
-    # Si no hay mes_inicial configurado, asumimos el mes actual como inicio.
-    # Así NO se generan cuotas retroactivas no deseadas.
+    frecuencia = max(1, int(frecuencia_meses or 1))
     mes_inicio = int(mes_inicial) if mes_inicial else hoy.month
     if not (1 <= mes_inicio <= 12):
         mes_inicio = hoy.month
-
-    cuotas = 0
+    siguiente_mes = mes_inicio + len(cuotas_vencidas) * frecuencia
     proxima_fecha: Optional[date] = None
-
-    for i in range(max(1, int(max_cuotas or 1))):
-        mes_cuota = mes_inicio + i * frecuencia
-        if mes_cuota < 1 or mes_cuota > 12:
-            break
-
-        ultimo_dia = _ultimo_dia_del_mes(hoy.year, mes_cuota)
+    if 1 <= siguiente_mes <= 12:
+        ultimo_dia = _ultimo_dia_del_mes(hoy.year, siguiente_mes)
         dia = int(dia_limite_mes) if dia_limite_mes else ultimo_dia
-        dia = min(dia, ultimo_dia)
-
-        fecha_vencimiento = date(hoy.year, mes_cuota, dia)
-        fecha_efectiva = fecha_vencimiento + timedelta(days=gracia)
-
-        if hoy >= fecha_efectiva:
-            cuotas += 1
-        else:
-            proxima_fecha = fecha_vencimiento
-            break
+        proxima_fecha = date(hoy.year, siguiente_mes, min(dia, ultimo_dia))
 
     return ResultadoCuotas(
-        cuotas_vencidas=cuotas,
+        cuotas_vencidas=len(cuotas_vencidas),
         proxima_fecha=proxima_fecha,
         proxima_cuota_pendiente=proxima_fecha is not None,
     )

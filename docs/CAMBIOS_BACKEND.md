@@ -6,6 +6,46 @@ Ultima revision documental: 2026-07-16.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
+## 2026-07-16 - Seleccion auditable de meses vencidos
+
+Se amplio el pago pendiente mensual para identificar una o varias cuotas sin
+reemplazar el contrato anterior de `POST /pagos`.
+
+Archivos principales:
+
+- `app/services/cartera.py`
+- `app/services/cobros.py`
+- `app/schemas/pago.py`
+- `app/controllers/pagos_controller.py`
+- `app/routes/pagos.py`
+- `migrations/20260716_pagos_aplicaciones_parciales.sql`
+- `tests/test_pagos_meses_vencidos.py`
+
+Cambios:
+
+- El calendario central expone los periodos vencidos con su fecha limite.
+- Las opciones aplican pagos historicos sin periodo al saldo mas antiguo por
+  FIFO y respetan aplicaciones explicitas o adelantos que ya maduraron.
+- `POST /pagos` acepta `aplicaciones` opcionales y conserva el flujo anterior
+  cuando no se envian.
+- La validacion y la distribucion por metodos son transaccionales; un bloqueo
+  asesor por estudiante y concepto evita cobros simultaneos sobre el mismo
+  saldo.
+- La descripcion de recibo incluye los meses y la anulacion desactiva sus
+  aplicaciones como en el flujo de adelantos.
+
+Migracion aplicada:
+
+- `20260716_pagos_aplicaciones_parciales.sql` reemplaza el indice estricto por
+  uno auditable por pago y periodo, sin modificar filas existentes.
+- Se aplico y verifico en los 4 tenants operativos el 2026-07-16.
+
+Verificacion:
+
+- 34 pruebas enfocadas de pagos, meses, anulaciones, paginacion y permisos.
+- Suite completa: 155 aprobadas; persisten 3 pruebas antiguas de Super Admin
+  dependientes de la fecha fija `2026-07-01`.
+
 ## 2026-07-16 - Pagos de mensualidades adelantadas
 
 Se agrego un flujo optativo para cubrir meses futuros sin modificar el contrato

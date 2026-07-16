@@ -36,6 +36,7 @@ Archivos actuales:
 - `20260715_plan_de_clases_estandar_dba_text.sql`
 - `20260715_reparar_asignacion_academica_invalida.sql`
 - `20260716_pagos_adelantados.sql`
+- `20260716_pagos_aplicaciones_parciales.sql`
 - `README.md`
 
 Migraciones globales `public`:

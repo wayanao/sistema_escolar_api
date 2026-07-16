@@ -8,7 +8,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Optional
 
-from app.services.cartera import calcular_deuda_concepto
+from app.services.cartera import calcular_deuda_concepto, listar_cuotas_vencidas
 
 
 MAX_CUOTAS_ANUALES = 12
@@ -303,6 +303,87 @@ def obtener_conceptos_mensuales_estudiante(cursor, estudiante_id: int) -> list[d
         })
 
     return conceptos
+
+
+def obtener_cuotas_vencidas_estudiante(
+    cursor,
+    estudiante_id: int,
+    *,
+    hoy: Optional[date] = None,
+) -> list[dict]:
+    """Lista saldos de cuotas mensuales aplicando pagos antiguos por FIFO."""
+    fecha_referencia = hoy or date.today()
+    conceptos = obtener_conceptos_mensuales_estudiante(cursor, estudiante_id)
+    if not conceptos:
+        return []
+
+    pagos_nombre, pagos_descripcion, _ = obtener_pagos_por_concepto(
+        cursor,
+        estudiante_id,
+        hoy=fecha_referencia,
+    )
+    cursor.execute(
+        """
+        SELECT pa.tipo_pago_id, pa.periodo, COALESCE(SUM(pa.monto), 0)
+        FROM pagos_aplicaciones pa
+        JOIN pagos p ON p.id = pa.pago_id
+        WHERE pa.estudiante_id = %s
+          AND pa.activo = TRUE
+          AND COALESCE(p.estado, 'Pagado') <> 'Anulado'
+        GROUP BY pa.tipo_pago_id, pa.periodo
+        """,
+        (estudiante_id,),
+    )
+    aplicaciones = {
+        (int(tipo_pago_id), periodo): float(monto or 0)
+        for tipo_pago_id, periodo, monto in cursor.fetchall()
+    }
+
+    opciones = []
+    for concepto in conceptos:
+        nombre_normalizado = normalizar_concepto(concepto["nombre"])
+        pago_fifo = float(pagos_nombre.get(nombre_normalizado, 0) or 0)
+        if pago_fifo == 0:
+            pago_fifo = float(pagos_descripcion.get(nombre_normalizado, 0) or 0)
+
+        valor_unitario = round(float(concepto["valor_unitario"] or 0), 2)
+        cuotas = []
+        for cuota in listar_cuotas_vencidas(
+            hoy=fecha_referencia,
+            mes_inicial=concepto.get("mes_inicial"),
+            frecuencia_meses=concepto.get("frecuencia_meses", 1),
+            dia_limite_mes=concepto.get("dia_limite_mes"),
+            dias_gracia=concepto.get("dias_gracia", 0),
+            max_cuotas=MAX_CUOTAS_ANUALES,
+        ):
+            aplicado = max(0.0, aplicaciones.get((concepto["id"], cuota.periodo), 0.0))
+            saldo = max(0.0, valor_unitario - aplicado)
+            if pago_fifo > 0 and saldo > 0:
+                usado = min(pago_fifo, saldo)
+                saldo -= usado
+                pago_fifo -= usado
+
+            saldo = round(saldo, 2)
+            if saldo <= 0:
+                continue
+            cuotas.append({
+                "periodo": cuota.periodo.isoformat(),
+                "fecha_vencimiento": cuota.fecha_vencimiento.isoformat(),
+                "valor_cuota": valor_unitario,
+                "saldo": saldo,
+                "estado": "parcial" if saldo < valor_unitario else "vencido",
+            })
+
+        if cuotas:
+            opciones.append({
+                "tipo_pago_id": concepto["id"],
+                "concepto": concepto["nombre"],
+                "valor_unitario": valor_unitario,
+                "valor_origen": concepto["valor_origen"],
+                "cuotas": cuotas,
+            })
+
+    return opciones
 
 
 def _calcular_deudas(

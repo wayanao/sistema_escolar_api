@@ -9,6 +9,7 @@ from app.controllers.pagos_controller import (
     historial_pagos_paginado_controller,
     MigracionPagosAdelantadosPendienteError,
     obtener_opciones_adelanto_controller,
+    obtener_opciones_vencidas_controller,
     registrar_pago_adelantado_controller,
     registrar_pago_controller,
     historial_pagos_controller,
@@ -23,6 +24,8 @@ router = APIRouter(tags=["Pagos"], dependencies=[Depends(get_current_active_admi
 def registrar_pago(pago: PagoCreate):
     try:
         pago_id = registrar_pago_controller(pago)
+    except MigracionPagosAdelantadosPendienteError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -30,6 +33,16 @@ def registrar_pago(pago: PagoCreate):
         "mensaje": "Pago registrado correctamente",
         "pago_id": pago_id
     }
+
+
+@router.get("/pagos/vencidos/opciones/{estudiante_id}")
+def opciones_pago_vencido(estudiante_id: int):
+    try:
+        return obtener_opciones_vencidas_controller(estudiante_id)
+    except MigracionPagosAdelantadosPendienteError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/pagos/adelanto/opciones/{estudiante_id}")

@@ -9,6 +9,12 @@ class MetodoPago(BaseModel):
     monto: float
     nota: Optional[str] = None
 
+
+class PagoAplicacionCreate(BaseModel):
+    tipo_pago_id: int
+    periodo: date
+    monto: float = Field(gt=0)
+
 class PagoCreate(BaseModel):
     estudiante_id: int
     monto: float
@@ -16,6 +22,7 @@ class PagoCreate(BaseModel):
     fecha: Optional[date] = None
     venta_id: Optional[int] = None
     metodos: Optional[List[MetodoPago]] = None
+    aplicaciones: Optional[List[PagoAplicacionCreate]] = None
 
 class PagoAnular(BaseModel):
     motivo: str

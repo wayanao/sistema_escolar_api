@@ -5,7 +5,11 @@ from zoneinfo import ZoneInfo
 
 from psycopg2 import IntegrityError
 
-from app.services.cobros import obtener_conceptos_mensuales_estudiante, obtener_saldo_concepto
+from app.services.cobros import (
+    obtener_conceptos_mensuales_estudiante,
+    obtener_cuotas_vencidas_estudiante,
+    obtener_saldo_concepto,
+)
 
 ZONA_HORARIA_LOCAL = ZoneInfo("America/Bogota")
 VENTA_ID_PATTERN = re.compile(r"Cargo\s+#(\d+)", re.IGNORECASE)
@@ -58,6 +62,26 @@ def _exigir_tabla_pagos_aplicaciones(cursor):
             "La función de pagos adelantados requiere la migración "
             "20260716_pagos_adelantados.sql."
         )
+
+
+def _exigir_indice_aplicaciones_parciales(cursor):
+    cursor.execute(
+        """
+        SELECT 1 FROM pg_indexes
+        WHERE schemaname = ANY (current_schemas(false))
+          AND indexname = 'uq_pagos_aplicaciones_pago_periodo_activas'
+        """
+    )
+    if cursor.fetchone() is None:
+        raise MigracionPagosAdelantadosPendienteError(
+            "La selección de meses vencidos requiere la migración "
+            "20260716_pagos_aplicaciones_parciales.sql."
+        )
+
+
+def _bloquear_aplicaciones_concepto(cursor, estudiante_id, tipo_pago_id):
+    clave = f"pagos_aplicaciones:{estudiante_id}:{tipo_pago_id}"
+    cursor.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))", (clave,))
 
 
 def _periodos_programados(concepto, hoy):
@@ -129,6 +153,127 @@ def obtener_opciones_adelanto_controller(estudiante_id, hoy=None):
         conn.close()
 
 
+def obtener_opciones_vencidas_controller(estudiante_id, hoy=None):
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        _exigir_tabla_pagos_aplicaciones(cursor)
+        fecha_referencia = hoy or datetime.datetime.now(ZONA_HORARIA_LOCAL).date()
+        return {
+            "estudiante_id": estudiante_id,
+            "opciones": obtener_cuotas_vencidas_estudiante(
+                cursor,
+                estudiante_id,
+                hoy=fecha_referencia,
+            ),
+        }
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def _preparar_aplicaciones_pago(cursor, pago, hoy=None):
+    aplicaciones = list(getattr(pago, "aplicaciones", None) or [])
+    if not aplicaciones:
+        return None
+    if getattr(pago, "venta_id", None):
+        raise ValueError("Los cargos de inventario no admiten aplicaciones mensuales.")
+
+    _exigir_tabla_pagos_aplicaciones(cursor)
+    _exigir_indice_aplicaciones_parciales(cursor)
+    tipo_pago_ids = {int(item.tipo_pago_id) for item in aplicaciones}
+    if len(tipo_pago_ids) != 1:
+        raise ValueError("Todas las cuotas seleccionadas deben pertenecer al mismo concepto.")
+
+    tipo_pago_id = next(iter(tipo_pago_ids))
+    _bloquear_aplicaciones_concepto(cursor, pago.estudiante_id, tipo_pago_id)
+    fecha_referencia = hoy or datetime.datetime.now(ZONA_HORARIA_LOCAL).date()
+    opciones = obtener_cuotas_vencidas_estudiante(
+        cursor,
+        pago.estudiante_id,
+        hoy=fecha_referencia,
+    )
+    opcion = next(
+        (item for item in opciones if int(item["tipo_pago_id"]) == tipo_pago_id),
+        None,
+    )
+    if not opcion:
+        raise ValueError("El concepto no tiene cuotas vencidas disponibles para pagar.")
+    if str(getattr(pago, "descripcion", "") or "").strip().lower() != opcion["concepto"].strip().lower():
+        raise ValueError("El concepto seleccionado no coincide con las cuotas enviadas.")
+
+    disponibles = {item["periodo"]: item for item in opcion["cuotas"]}
+    normalizadas = []
+    vistos = set()
+    for item in aplicaciones:
+        periodo = item.periodo
+        periodo_iso = periodo.isoformat()
+        if periodo.day != 1 or periodo_iso in vistos:
+            raise ValueError("Cada mes debe aparecer una sola vez y comenzar el día 1.")
+        vistos.add(periodo_iso)
+        cuota = disponibles.get(periodo_iso)
+        if not cuota:
+            raise ValueError(f"La cuota de {_etiqueta_periodo(periodo)} ya no está disponible.")
+
+        monto = round(float(item.monto or 0), 2)
+        saldo = round(float(cuota["saldo"] or 0), 2)
+        if monto <= 0 or monto > saldo:
+            raise ValueError(
+                f"El valor para {_etiqueta_periodo(periodo)} debe ser mayor a cero "
+                f"y no superar ${saldo:,.2f}."
+            )
+        normalizadas.append({
+            "tipo_pago_id": tipo_pago_id,
+            "periodo": periodo,
+            "monto": monto,
+            "etiqueta": _etiqueta_periodo(periodo),
+        })
+
+    total_aplicaciones = round(sum(item["monto"] for item in normalizadas), 2)
+    total_pago = round(_calcular_total_pago(pago), 2)
+    if total_aplicaciones != total_pago:
+        raise ValueError("El total del pago debe coincidir con los meses seleccionados.")
+
+    return {
+        "concepto": opcion["concepto"],
+        "items": normalizadas,
+    }
+
+
+def _insertar_aplicaciones_distribuidas(cursor, pagos_creados, aplicaciones):
+    pendientes = [
+        {**item, "centavos": int(round(float(item["monto"]) * 100))}
+        for item in aplicaciones
+    ]
+    indice = 0
+    for pago_id, monto_pago in pagos_creados:
+        disponibles = int(round(float(monto_pago) * 100))
+        while disponibles > 0 and indice < len(pendientes):
+            aplicacion = pendientes[indice]
+            usado = min(disponibles, aplicacion["centavos"])
+            cursor.execute(
+                """
+                INSERT INTO pagos_aplicaciones
+                    (pago_id, estudiante_id, tipo_pago_id, periodo, monto)
+                VALUES (%s, %s, %s, %s, %s)
+                """,
+                (
+                    pago_id,
+                    aplicacion["estudiante_id"],
+                    aplicacion["tipo_pago_id"],
+                    aplicacion["periodo"],
+                    usado / 100,
+                ),
+            )
+            disponibles -= usado
+            aplicacion["centavos"] -= usado
+            if aplicacion["centavos"] == 0:
+                indice += 1
+
+    if indice != len(pendientes):
+        raise ValueError("No fue posible distribuir el pago entre los meses seleccionados.")
+
+
 def registrar_pago_adelantado_controller(pago, hoy=None):
     conn = get_connection()
     cursor = conn.cursor()
@@ -140,6 +285,7 @@ def registrar_pago_adelantado_controller(pago, hoy=None):
         if not concepto:
             raise ValueError("El concepto no es mensual o no está asignado al estudiante.")
 
+        _bloquear_aplicaciones_concepto(cursor, pago.estudiante_id, concepto["id"])
         disponibles = _periodos_disponibles(cursor, pago.estudiante_id, concepto, fecha_referencia)
         if pago.cantidad_meses > len(disponibles):
             raise ValueError("No hay suficientes meses disponibles para registrar este adelanto.")
@@ -267,10 +413,16 @@ def registrar_pago_controller(pago):
     cursor = conn.cursor()
 
     try:
+        aplicaciones_preparadas = _preparar_aplicaciones_pago(cursor, pago)
         _validar_pago_no_excede_deuda(cursor, pago)
         fecha_registro = _fecha_pago_local(getattr(pago, "fecha", None))
+        descripcion_registro = getattr(pago, "descripcion", "")
+        if aplicaciones_preparadas:
+            etiquetas = ", ".join(item["etiqueta"] for item in aplicaciones_preparadas["items"])
+            descripcion_registro = f"{aplicaciones_preparadas['concepto']} · Cuotas: {etiquetas}"
 
         pago_ids = []
+        pagos_creados = []
         metodos = getattr(pago, 'metodos', None)
         if metodos and isinstance(metodos, list) and len(metodos) > 0:
             for metodo in metodos:
@@ -278,9 +430,10 @@ def registrar_pago_controller(pago):
                     INSERT INTO pagos (estudiante_id, venta_id, monto, descripcion, fecha, tipo_pago)
                     VALUES (%s, %s, %s, %s, %s, %s)
                     RETURNING id
-                """, (pago.estudiante_id, getattr(pago, 'venta_id', None), metodo.monto, getattr(pago, 'descripcion', ''), fecha_registro, _formatear_tipo_pago(metodo)))
+                """, (pago.estudiante_id, getattr(pago, 'venta_id', None), metodo.monto, descripcion_registro, fecha_registro, _formatear_tipo_pago(metodo)))
                 pago_id = cursor.fetchone()[0]
                 pago_ids.append(pago_id)
+                pagos_creados.append((pago_id, float(metodo.monto or 0)))
 
                 # Si se envía un venta_id, acumular abono a la venta (cargo de inventario)
                 if getattr(pago, 'venta_id', None):
@@ -299,9 +452,10 @@ def registrar_pago_controller(pago):
                 INSERT INTO pagos (estudiante_id, venta_id, monto, descripcion, fecha, tipo_pago)
                 VALUES (%s, %s, %s, %s, %s, %s)
                 RETURNING id
-            """, (pago.estudiante_id, getattr(pago, 'venta_id', None), pago.monto, getattr(pago, 'descripcion', ''), fecha_registro, getattr(pago, 'tipo_pago', None)))
+            """, (pago.estudiante_id, getattr(pago, 'venta_id', None), pago.monto, descripcion_registro, fecha_registro, getattr(pago, 'tipo_pago', None)))
             pago_id = cursor.fetchone()[0]
             pago_ids.append(pago_id)
+            pagos_creados.append((pago_id, float(pago.monto or 0)))
 
             if getattr(pago, 'venta_id', None):
                 cursor.execute("""
@@ -313,6 +467,17 @@ def registrar_pago_controller(pago):
                     total_venta, total_pagado = venta
                     if total_pagado >= total_venta:
                         cursor.execute("UPDATE ventas SET estado = 'Pagado' WHERE id = %s", (pago.venta_id,))
+
+        if aplicaciones_preparadas:
+            aplicaciones_con_estudiante = [
+                {**item, "estudiante_id": pago.estudiante_id}
+                for item in aplicaciones_preparadas["items"]
+            ]
+            _insertar_aplicaciones_distribuidas(
+                cursor,
+                pagos_creados,
+                aplicaciones_con_estudiante,
+            )
 
         conn.commit()
         return pago_ids[0] if len(pago_ids) == 1 else pago_ids

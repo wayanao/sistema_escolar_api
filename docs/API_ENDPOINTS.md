@@ -75,6 +75,7 @@ Notas:
 ## Pagos
 
 - `POST /pagos`
+- `GET /pagos/vencidos/opciones/{estudiante_id}`
 - `GET /pagos/adelanto/opciones/{estudiante_id}`
 - `POST /pagos/adelanto`
 - `GET /pagos/{estudiante_id}`
@@ -84,6 +85,16 @@ Notas:
 
 - `POST /pagos` mantiene el flujo compatible de pagos pendientes, abonos,
   metodos mixtos y cargos de inventario.
+- `GET /pagos/vencidos/opciones/{estudiante_id}` devuelve los conceptos
+  mensuales con sus cuotas vencidas, periodo, fecha limite, valor y saldo.
+- `POST /pagos` acepta opcionalmente `aplicaciones`, una lista con
+  `tipo_pago_id`, `periodo` y `monto`; si se omite conserva el contrato
+  anterior.
+- El backend vuelve a calcular las cuotas, bloquea el concepto durante la
+  transaccion y rechaza meses repetidos, pagados o con montos superiores al
+  saldo.
+- Los pagos antiguos sin periodo se distribuyen solo para visualizacion por
+  FIFO, desde el mes vencido mas antiguo.
 - Las opciones de adelanto incluyen solamente conceptos `mensual` asignados al
   estudiante y meses posteriores al actual dentro del mismo año.
 - `POST /pagos/adelanto` recibe `estudiante_id`, `tipo_pago_id`,
@@ -97,6 +108,8 @@ Notas:
   la cartera exigible antes del mes aplicado.
 - Los endpoints de adelanto requieren la migracion
   `20260716_pagos_adelantados.sql`; si falta responden `409`.
+- La aplicacion de pagos distintos o metodos mixtos sobre una cuota requiere
+  `20260716_pagos_aplicaciones_parciales.sql`.
 
 ## Cursos
 

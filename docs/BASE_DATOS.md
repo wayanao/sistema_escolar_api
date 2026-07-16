@@ -161,18 +161,23 @@ Migracion relacionada:
 - `migrations/20260526_cursos_solo_academicos.sql`
 - `migrations/20260713_tipos_pagos_estudiantes.sql`
 - `migrations/20260716_pagos_adelantados.sql`
+- `migrations/20260716_pagos_aplicaciones_parciales.sql`
 
-## Aplicaciones de pagos adelantados
+## Aplicaciones mensuales de pagos
 
 - `pagos` sigue siendo la fuente del ingreso, del metodo y de la anulacion.
 - `pagos_aplicaciones` relaciona un pago con estudiante, concepto mensual,
-  periodo futuro y valor de la cuota.
+  periodo vencido o futuro y monto aplicado.
 - `periodo` siempre representa el primer dia del mes cubierto.
-- Un indice unico parcial sobre estudiante, concepto y periodo impide dos
-  aplicaciones activas para el mismo mes.
+- El indice unico parcial sobre pago, concepto y periodo evita duplicar una
+  aplicacion dentro del mismo movimiento, pero permite abonos auditables desde
+  pagos distintos y la distribucion de metodos mixtos.
+- Un indice parcial por estudiante, concepto y periodo acelera el calculo del
+  saldo acumulado de cada cuota.
 - `activo = FALSE` conserva auditoria al anular y permite registrar nuevamente
   ese mes.
-- Los registros existentes de `pagos` no requieren conversion ni backfill.
+- Los registros existentes de `pagos` no requieren conversion ni backfill; al
+  listar cuotas se asignan por FIFO sin reescribir el historico.
 
 ## Indices por tenant
 

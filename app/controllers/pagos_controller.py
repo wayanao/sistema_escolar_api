@@ -3,10 +3,20 @@ import datetime
 import re
 from zoneinfo import ZoneInfo
 
-from app.services.cobros import obtener_saldo_concepto
+from psycopg2 import IntegrityError
+
+from app.services.cobros import obtener_conceptos_mensuales_estudiante, obtener_saldo_concepto
 
 ZONA_HORARIA_LOCAL = ZoneInfo("America/Bogota")
 VENTA_ID_PATTERN = re.compile(r"Cargo\s+#(\d+)", re.IGNORECASE)
+MESES_ES = (
+    "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+    "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+)
+
+
+class MigracionPagosAdelantadosPendienteError(RuntimeError):
+    pass
 
 
 def _calcular_total_pago(pago):
@@ -29,6 +39,166 @@ def _fecha_pago_local(fecha_seleccionada=None):
     if fecha_seleccionada:
         return datetime.datetime.combine(fecha_seleccionada, ahora_bogota.time()).replace(tzinfo=None)
     return ahora_bogota.replace(tzinfo=None)
+
+
+def _tabla_pagos_aplicaciones_existe(cursor):
+    cursor.execute(
+        """
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = ANY (current_schemas(false))
+          AND table_name = 'pagos_aplicaciones'
+        """
+    )
+    return cursor.fetchone() is not None
+
+
+def _exigir_tabla_pagos_aplicaciones(cursor):
+    if not _tabla_pagos_aplicaciones_existe(cursor):
+        raise MigracionPagosAdelantadosPendienteError(
+            "La función de pagos adelantados requiere la migración "
+            "20260716_pagos_adelantados.sql."
+        )
+
+
+def _periodos_programados(concepto, hoy):
+    frecuencia = max(1, int(concepto.get("frecuencia_meses") or 1))
+    mes_inicial = concepto.get("mes_inicial")
+    periodos = []
+
+    for mes in range(hoy.month + 1, 13):
+        if mes_inicial:
+            inicio = int(mes_inicial)
+            if mes < inicio or (mes - inicio) % frecuencia != 0:
+                continue
+        elif (mes - (hoy.month + 1)) % frecuencia != 0:
+            continue
+        periodos.append(datetime.date(hoy.year, mes, 1))
+
+    return periodos
+
+
+def _etiqueta_periodo(periodo):
+    return f"{MESES_ES[periodo.month - 1]} {periodo.year}"
+
+
+def _periodos_disponibles(cursor, estudiante_id, concepto, hoy):
+    cursor.execute(
+        """
+        SELECT pa.periodo
+        FROM pagos_aplicaciones pa
+        JOIN pagos p ON p.id = pa.pago_id
+        WHERE pa.estudiante_id = %s
+          AND pa.tipo_pago_id = %s
+          AND pa.activo = TRUE
+          AND COALESCE(p.estado, 'Pagado') <> 'Anulado'
+        """,
+        (estudiante_id, concepto["id"]),
+    )
+    ocupados = {row[0] for row in cursor.fetchall()}
+    return [periodo for periodo in _periodos_programados(concepto, hoy) if periodo not in ocupados]
+
+
+def _serializar_opcion_adelanto(cursor, estudiante_id, concepto, hoy):
+    periodos = _periodos_disponibles(cursor, estudiante_id, concepto, hoy)
+    return {
+        "tipo_pago_id": concepto["id"],
+        "concepto": concepto["nombre"],
+        "valor_unitario": round(float(concepto["valor_unitario"]), 2),
+        "valor_origen": concepto["valor_origen"],
+        "periodos_disponibles": [
+            {"periodo": periodo.isoformat(), "etiqueta": _etiqueta_periodo(periodo)}
+            for periodo in periodos
+        ],
+        "max_meses": len(periodos),
+    }
+
+
+def obtener_opciones_adelanto_controller(estudiante_id, hoy=None):
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        _exigir_tabla_pagos_aplicaciones(cursor)
+        fecha_referencia = hoy or datetime.datetime.now(ZONA_HORARIA_LOCAL).date()
+        opciones = [
+            _serializar_opcion_adelanto(cursor, estudiante_id, concepto, fecha_referencia)
+            for concepto in obtener_conceptos_mensuales_estudiante(cursor, estudiante_id)
+        ]
+        return {"estudiante_id": estudiante_id, "opciones": opciones}
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def registrar_pago_adelantado_controller(pago, hoy=None):
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        _exigir_tabla_pagos_aplicaciones(cursor)
+        fecha_referencia = hoy or datetime.datetime.now(ZONA_HORARIA_LOCAL).date()
+        conceptos = obtener_conceptos_mensuales_estudiante(cursor, pago.estudiante_id)
+        concepto = next((item for item in conceptos if item["id"] == pago.tipo_pago_id), None)
+        if not concepto:
+            raise ValueError("El concepto no es mensual o no está asignado al estudiante.")
+
+        disponibles = _periodos_disponibles(cursor, pago.estudiante_id, concepto, fecha_referencia)
+        if pago.cantidad_meses > len(disponibles):
+            raise ValueError("No hay suficientes meses disponibles para registrar este adelanto.")
+
+        periodos = disponibles[:pago.cantidad_meses]
+        valor_unitario = round(float(concepto["valor_unitario"]), 2)
+        total = round(valor_unitario * len(periodos), 2)
+        total_metodos = round(sum(float(metodo.monto or 0) for metodo in pago.metodos), 2)
+        if total_metodos != total:
+            raise ValueError(
+                f"La suma de los métodos (${total_metodos:,.2f}) debe ser igual "
+                f"al total del adelanto (${total:,.2f})."
+            )
+
+        etiquetas = [_etiqueta_periodo(periodo) for periodo in periodos]
+        descripcion = f"{concepto['nombre']} · Pago adelantado: {', '.join(etiquetas)}"
+        resumen_metodos = " + ".join(_formatear_tipo_pago(metodo) for metodo in pago.metodos)[:100]
+        fecha_registro = _fecha_pago_local(getattr(pago, "fecha", None))
+
+        cursor.execute(
+            """
+            INSERT INTO pagos (estudiante_id, monto, descripcion, fecha, tipo_pago)
+            VALUES (%s, %s, %s, %s, %s)
+            RETURNING id
+            """,
+            (pago.estudiante_id, total, descripcion, fecha_registro, resumen_metodos),
+        )
+        pago_id = cursor.fetchone()[0]
+
+        for periodo in periodos:
+            cursor.execute(
+                """
+                INSERT INTO pagos_aplicaciones
+                    (pago_id, estudiante_id, tipo_pago_id, periodo, monto)
+                VALUES (%s, %s, %s, %s, %s)
+                """,
+                (pago_id, pago.estudiante_id, concepto["id"], periodo, valor_unitario),
+            )
+
+        conn.commit()
+        return {
+            "mensaje": "Pago adelantado registrado correctamente",
+            "pago_id": pago_id,
+            "monto": total,
+            "descripcion": descripcion,
+            "periodos": [
+                {"periodo": periodo.isoformat(), "etiqueta": etiqueta}
+                for periodo, etiqueta in zip(periodos, etiquetas)
+            ],
+        }
+    except IntegrityError as exc:
+        conn.rollback()
+        raise ValueError("Uno de los meses seleccionados ya tiene un pago adelantado.") from exc
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+        conn.close()
 
 
 def _formatear_pago(row):
@@ -286,6 +456,16 @@ def anular_pago_controller(pago_id, motivo, admin_id):
                     estado = %s
                 WHERE id = %s
             """, (nuevo_pagado, nuevo_estado, venta_id))
+
+        if _tabla_pagos_aplicaciones_existe(cursor):
+            cursor.execute(
+                """
+                UPDATE pagos_aplicaciones
+                SET activo = FALSE
+                WHERE pago_id = %s AND activo = TRUE
+                """,
+                (pago_id,),
+            )
 
         cursor.execute("""
             UPDATE pagos

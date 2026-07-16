@@ -75,8 +75,28 @@ Notas:
 ## Pagos
 
 - `POST /pagos`
+- `GET /pagos/adelanto/opciones/{estudiante_id}`
+- `POST /pagos/adelanto`
 - `GET /pagos/{estudiante_id}`
 - `POST /pagos/{pago_id}/anular`
+
+Notas:
+
+- `POST /pagos` mantiene el flujo compatible de pagos pendientes, abonos,
+  metodos mixtos y cargos de inventario.
+- Las opciones de adelanto incluyen solamente conceptos `mensual` asignados al
+  estudiante y meses posteriores al actual dentro del mismo año.
+- `POST /pagos/adelanto` recibe `estudiante_id`, `tipo_pago_id`,
+  `cantidad_meses`, `fecha` opcional y una lista no vacia de `metodos`.
+- El cliente no define el valor de las cuotas: el backend usa la prioridad
+  valor del estudiante > valor del curso > valor base y valida la suma de los
+  metodos.
+- Un mes activo no puede adelantarse dos veces. La anulacion libera sus meses
+  y mantiene el pago visible como anulado.
+- Los adelantos futuros cuentan como ingreso desde su registro, pero no reducen
+  la cartera exigible antes del mes aplicado.
+- Los endpoints de adelanto requieren la migracion
+  `20260716_pagos_adelantados.sql`; si falta responden `409`.
 
 ## Cursos
 

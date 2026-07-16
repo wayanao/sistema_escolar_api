@@ -2,8 +2,10 @@ from app.database import get_connection
 from app.services.cobros import (
     calcular_deudas_desde_contexto,
     obtener_asignaciones_cobro_por_curso,
+    obtener_pagos_por_concepto_estudiantes,
     obtener_tipos_pago,
     obtener_valores_personalizados_estudiante,
+    tabla_pagos_aplicaciones_existe,
 )
 
 
@@ -243,6 +245,12 @@ def reporte_estado_cuenta_curso_controller(curso_id):
             ORDER BY e.apellido, e.nombre
         ''', (curso_id,))
         estudiantes = cursor.fetchall()
+        estudiante_ids = tuple(estudiante[0] for estudiante in estudiantes)
+        _, _, pagos_aplicados_por_estudiante = obtener_pagos_por_concepto_estudiantes(
+            cursor,
+            estudiante_ids,
+        )
+        tiene_aplicaciones = tabla_pagos_aplicaciones_existe(cursor)
 
         resultados = []
 
@@ -278,6 +286,7 @@ def reporte_estado_cuenta_curso_controller(curso_id):
                 asignaciones_curso=valor_por_tipo_en_curso,
                 pagos_nombre=pagos_por_nombre,
                 pagos_descripcion={},
+                pagos_aplicados=pagos_aplicados_por_estudiante.get(est_id, {}),
                 valores_estudiante=obtener_valores_personalizados_estudiante(cursor, est_id),
             )
 
@@ -286,8 +295,7 @@ def reporte_estado_cuenta_curso_controller(curso_id):
             total_pagado_general = 0.0
 
             for deuda in resumen["deudas"]:
-                concepto_id = deuda.get("concepto_id")
-                pagado = pagos_dict.get(concepto_id, deuda["pagado"])
+                pagado = deuda["pagado"]
                 total_adeudado += deuda["deuda"]
                 total_pagado_general += pagado
 
@@ -301,11 +309,18 @@ def reporte_estado_cuenta_curso_controller(curso_id):
                 })
 
             # Considerar pagos sin concepto especifico o conceptos eliminados
-            cursor.execute('''
+            excluir_adelantos = '''
+                  AND NOT EXISTS (
+                      SELECT 1 FROM pagos_aplicaciones pa
+                      WHERE pa.pago_id = pagos.id
+                  )
+            ''' if tiene_aplicaciones else ''
+            cursor.execute(f'''
                 SELECT COALESCE(SUM(monto), 0) 
-                FROM pagos 
+                FROM pagos
                 WHERE estudiante_id = %s AND (concepto_id IS NULL OR concepto_id NOT IN (SELECT id FROM tipos_de_pagos))
                   AND COALESCE(estado, 'Pagado') <> 'Anulado'
+                  {excluir_adelantos}
             ''', (est_id,))
             row = cursor.fetchone()
             pagos_otros = float(row[0]) if row and row[0] else 0.0

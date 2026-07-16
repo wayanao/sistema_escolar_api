@@ -12,6 +12,7 @@ from __future__ import annotations
 from app.database import get_connection
 from app.services.cobros import (
     calcular_deudas_desde_contexto,
+    obtener_pagos_por_concepto_estudiantes,
     obtener_tipos_pago,
     obtener_valores_personalizados_por_estudiantes,
 )
@@ -102,34 +103,14 @@ def reporte_cartera_vencida(curso_id: int | None = None):
             cursor,
             est_ids,
         )
-        cursor.execute(
-            """
-            SELECT estudiante_id, LOWER(COALESCE(tipo_pago, '')), COALESCE(SUM(monto), 0)
-            FROM pagos
-            WHERE estudiante_id IN %s
-              AND COALESCE(estado, 'Pagado') <> 'Anulado'
-            GROUP BY estudiante_id, LOWER(COALESCE(tipo_pago, ''))
-            """,
-            (est_ids,),
+        (
+            pagos_por_est_tipo,
+            pagos_por_est_desc,
+            pagos_aplicados_por_estudiante,
+        ) = obtener_pagos_por_concepto_estudiantes(
+            cursor,
+            est_ids,
         )
-        pagos_por_est_tipo = {}
-        for r in cursor.fetchall():
-            pagos_por_est_tipo.setdefault(r[0], {})[r[1]] = float(r[2] or 0)
-
-        cursor.execute(
-            """
-            SELECT estudiante_id, LOWER(COALESCE(descripcion, '')), COALESCE(SUM(monto), 0)
-            FROM pagos
-            WHERE estudiante_id IN %s
-              AND descripcion IS NOT NULL
-              AND COALESCE(estado, 'Pagado') <> 'Anulado'
-            GROUP BY estudiante_id, LOWER(COALESCE(descripcion, ''))
-            """,
-            (est_ids,),
-        )
-        pagos_por_est_desc = {}
-        for r in cursor.fetchall():
-            pagos_por_est_desc.setdefault(r[0], {})[r[1]] = float(r[2] or 0)
 
         # 6. Ventas pendientes (cargos de inventario con saldo)
         cursor.execute(
@@ -172,6 +153,7 @@ def reporte_cartera_vencida(curso_id: int | None = None):
                 asignaciones_curso=asign_curso,
                 pagos_nombre=pagos_nombre,
                 pagos_descripcion=pagos_desc,
+                pagos_aplicados=pagos_aplicados_por_estudiante.get(est_id, {}),
                 valores_estudiante=valores_por_estudiante.get(est_id, {}),
             )
             conceptos = [

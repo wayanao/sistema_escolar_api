@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, model_validator
 from typing import Optional
 from datetime import date
 
@@ -19,3 +19,17 @@ class PagoCreate(BaseModel):
 
 class PagoAnular(BaseModel):
     motivo: str
+
+
+class PagoAdelantadoCreate(BaseModel):
+    estudiante_id: int
+    tipo_pago_id: int
+    cantidad_meses: int = Field(ge=1, le=12)
+    fecha: Optional[date] = None
+    metodos: List[MetodoPago] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validar_metodos(self):
+        if any(float(metodo.monto or 0) <= 0 for metodo in self.metodos):
+            raise ValueError("Cada método de pago debe tener un monto mayor a cero.")
+        return self

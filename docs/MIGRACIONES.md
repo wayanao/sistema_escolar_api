@@ -1,6 +1,6 @@
 # Migraciones
 
-Ultima revision documental: 2026-07-15.
+Ultima revision documental: 2026-07-16.
 
 ## Carpeta de migraciones
 
@@ -35,6 +35,7 @@ Archivos actuales:
 - `20260715_plan_de_clases_textos_largos.sql`
 - `20260715_plan_de_clases_estandar_dba_text.sql`
 - `20260715_reparar_asignacion_academica_invalida.sql`
+- `20260716_pagos_adelantados.sql`
 - `README.md`
 
 Migraciones globales `public`:

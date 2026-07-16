@@ -84,6 +84,7 @@ def test_crear_venta_bloquea_producto_inactivo(monkeypatch):
 def test_anular_pago_academico_no_toca_ventas(monkeypatch):
     cursor = FakeCursor([
         (10, "Pagado", 50000, None, "Mensualidad mayo"),
+        None,
     ])
     conn = FakeConnection(cursor)
     monkeypatch.setattr(pagos_controller, "get_connection", lambda: conn)
@@ -105,6 +106,7 @@ def test_anular_pago_inventario_descuenta_abono_de_venta(monkeypatch):
     cursor = FakeCursor([
         (11, "Pagado", 40000, 5, "Cargo de Inventario #5"),
         (5, 100000, 40000),
+        None,
     ])
     conn = FakeConnection(cursor)
     monkeypatch.setattr(pagos_controller, "get_connection", lambda: conn)

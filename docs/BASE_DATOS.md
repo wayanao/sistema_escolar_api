@@ -1,6 +1,6 @@
 # Base de Datos
 
-Ultima revision documental: 2026-07-15.
+Ultima revision documental: 2026-07-16.
 
 ## Motor
 
@@ -98,6 +98,7 @@ El codigo consulta o modifica tablas como:
 - `boletin_cabecera`
 - `boletin_detalles`
 - `pagos`
+- `pagos_aplicaciones`
 - `tipos_de_pagos`
 - `tipos_pagos_cursos`
 - `tipos_pagos_estudiantes`
@@ -159,6 +160,19 @@ Migracion relacionada:
 
 - `migrations/20260526_cursos_solo_academicos.sql`
 - `migrations/20260713_tipos_pagos_estudiantes.sql`
+- `migrations/20260716_pagos_adelantados.sql`
+
+## Aplicaciones de pagos adelantados
+
+- `pagos` sigue siendo la fuente del ingreso, del metodo y de la anulacion.
+- `pagos_aplicaciones` relaciona un pago con estudiante, concepto mensual,
+  periodo futuro y valor de la cuota.
+- `periodo` siempre representa el primer dia del mes cubierto.
+- Un indice unico parcial sobre estudiante, concepto y periodo impide dos
+  aplicaciones activas para el mismo mes.
+- `activo = FALSE` conserva auditoria al anular y permite registrar nuevamente
+  ese mes.
+- Los registros existentes de `pagos` no requieren conversion ni backfill.
 
 ## Indices por tenant
 

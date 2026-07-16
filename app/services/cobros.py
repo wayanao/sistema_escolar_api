@@ -89,6 +89,17 @@ def _tabla_valores_estudiantes_existe(cursor) -> bool:
     return cursor.fetchone() is not None
 
 
+def tabla_pagos_aplicaciones_existe(cursor) -> bool:
+    cursor.execute(
+        """
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = ANY (current_schemas(false))
+          AND table_name = 'pagos_aplicaciones'
+        """
+    )
+    return cursor.fetchone() is not None
+
+
 def obtener_asignaciones_cobro_por_curso(cursor, curso_id: int) -> dict[int, float]:
     if not _tabla_puente_existe(cursor):
         return {}
@@ -154,33 +165,93 @@ def obtener_curso_estudiante(cursor, estudiante_id: int):
     return cursor.fetchone()
 
 
-def obtener_pagos_por_concepto(cursor, estudiante_id: int) -> tuple[dict[str, float], dict[str, float]]:
-    cursor.execute(
-        """
-        SELECT LOWER(COALESCE(tipo_pago, '')), COALESCE(SUM(monto), 0)
-        FROM pagos
-        WHERE estudiante_id = %s
-          AND COALESCE(estado, 'Pagado') <> 'Anulado'
-        GROUP BY LOWER(COALESCE(tipo_pago, ''))
-        """,
-        (estudiante_id,),
-    )
-    pagos_por_nombre = {row[0]: float(row[1] or 0) for row in cursor.fetchall()}
+def obtener_pagos_por_concepto_estudiantes(
+    cursor,
+    estudiante_ids: tuple[int, ...],
+    *,
+    hoy: Optional[date] = None,
+) -> tuple[dict[int, dict[str, float]], dict[int, dict[str, float]], dict[int, dict[str, float]]]:
+    if not estudiante_ids:
+        return {}, {}, {}
+
+    tiene_aplicaciones = tabla_pagos_aplicaciones_existe(cursor)
+    excluir_adelantos = """
+      AND NOT EXISTS (
+          SELECT 1 FROM pagos_aplicaciones pa
+          WHERE pa.pago_id = pagos.id
+      )
+    """ if tiene_aplicaciones else ""
 
     cursor.execute(
-        """
-        SELECT LOWER(COALESCE(descripcion, '')), COALESCE(SUM(monto), 0)
+        f"""
+        SELECT estudiante_id, LOWER(COALESCE(tipo_pago, '')), COALESCE(SUM(monto), 0)
         FROM pagos
-        WHERE estudiante_id = %s
+        WHERE estudiante_id IN %s
+          AND COALESCE(estado, 'Pagado') <> 'Anulado'
+          {excluir_adelantos}
+        GROUP BY estudiante_id, LOWER(COALESCE(tipo_pago, ''))
+        """,
+        (estudiante_ids,),
+    )
+    pagos_por_nombre = {}
+    for estudiante_id, concepto, monto in cursor.fetchall():
+        pagos_por_nombre.setdefault(estudiante_id, {})[concepto] = float(monto or 0)
+
+    cursor.execute(
+        f"""
+        SELECT estudiante_id, LOWER(COALESCE(descripcion, '')), COALESCE(SUM(monto), 0)
+        FROM pagos
+        WHERE estudiante_id IN %s
           AND descripcion IS NOT NULL
           AND COALESCE(estado, 'Pagado') <> 'Anulado'
-        GROUP BY LOWER(COALESCE(descripcion, ''))
+          {excluir_adelantos}
+        GROUP BY estudiante_id, LOWER(COALESCE(descripcion, ''))
         """,
-        (estudiante_id,),
+        (estudiante_ids,),
     )
-    pagos_por_descripcion = {row[0]: float(row[1] or 0) for row in cursor.fetchall()}
+    pagos_por_descripcion = {}
+    for estudiante_id, concepto, monto in cursor.fetchall():
+        pagos_por_descripcion.setdefault(estudiante_id, {})[concepto] = float(monto or 0)
 
-    return pagos_por_nombre, pagos_por_descripcion
+    pagos_aplicados = {}
+    if tiene_aplicaciones:
+        mes_actual = (hoy or date.today()).replace(day=1)
+        cursor.execute(
+            """
+            SELECT pa.estudiante_id, LOWER(TRIM(tp.nombre)), COALESCE(SUM(pa.monto), 0)
+            FROM pagos_aplicaciones pa
+            JOIN pagos p ON p.id = pa.pago_id
+            JOIN tipos_de_pagos tp ON tp.id = pa.tipo_pago_id
+            WHERE pa.estudiante_id IN %s
+              AND pa.activo = TRUE
+              AND pa.periodo <= %s
+              AND COALESCE(p.estado, 'Pagado') <> 'Anulado'
+            GROUP BY pa.estudiante_id, LOWER(TRIM(tp.nombre))
+            """,
+            (estudiante_ids, mes_actual),
+        )
+        for estudiante_id, concepto, monto in cursor.fetchall():
+            pagos_aplicados.setdefault(estudiante_id, {})[concepto] = float(monto or 0)
+
+    return pagos_por_nombre, pagos_por_descripcion, pagos_aplicados
+
+
+def obtener_pagos_por_concepto(
+    cursor,
+    estudiante_id: int,
+    *,
+    hoy: Optional[date] = None,
+) -> tuple[dict[str, float], dict[str, float], dict[str, float]]:
+    pagos_nombre, pagos_descripcion, pagos_aplicados = obtener_pagos_por_concepto_estudiantes(
+        cursor,
+        (estudiante_id,),
+        hoy=hoy,
+    )
+    return (
+        pagos_nombre.get(estudiante_id, {}),
+        pagos_descripcion.get(estudiante_id, {}),
+        pagos_aplicados.get(estudiante_id, {}),
+    )
 
 
 def _valor_unitario_concepto(
@@ -202,18 +273,52 @@ def _valor_unitario_concepto(
     return float(tipo_pago["valor"] or 0), "base"
 
 
+def obtener_conceptos_mensuales_estudiante(cursor, estudiante_id: int) -> list[dict]:
+    datos = obtener_curso_estudiante(cursor, estudiante_id)
+    if not datos:
+        raise ValueError("El estudiante seleccionado no existe.")
+
+    curso_id = datos[0]
+    asignaciones_curso = obtener_asignaciones_cobro_por_curso(cursor, curso_id)
+    valores_estudiante = obtener_valores_personalizados_estudiante(cursor, estudiante_id)
+    conceptos = []
+
+    for tipo_pago in obtener_tipos_pago(cursor):
+        if not tipo_pago["activo"] or normalizar_concepto(tipo_pago["tipo_cobro"]) != "mensual":
+            continue
+
+        valor_unitario, valor_origen = _valor_unitario_concepto(
+            tipo_pago=tipo_pago,
+            asignaciones_curso=asignaciones_curso,
+            valores_estudiante=valores_estudiante,
+        )
+        if valor_unitario is None or valor_unitario <= 0:
+            continue
+
+        conceptos.append({
+            **tipo_pago,
+            "curso_id": curso_id,
+            "valor_unitario": float(valor_unitario),
+            "valor_origen": valor_origen,
+        })
+
+    return conceptos
+
+
 def _calcular_deudas(
     *,
     tipos_pago: list[dict],
     asignaciones_curso: dict[int, float],
     pagos_nombre: dict[str, float],
     pagos_descripcion: dict[str, float],
+    pagos_aplicados: Optional[dict[str, float]] = None,
     valores_estudiante: Optional[dict[int, float]] = None,
     hoy: Optional[date] = None,
 ) -> dict:
     deudas = []
     total_deuda = 0.0
     valores_estudiante = valores_estudiante or {}
+    pagos_aplicados = pagos_aplicados or {}
 
     for tipo_pago in tipos_pago:
         tipo_cobro = normalizar_concepto(tipo_pago["tipo_cobro"] or "unico")
@@ -232,6 +337,7 @@ def _calcular_deudas(
         pagado = pagos_nombre.get(nombre, 0.0)
         if pagado == 0.0:
             pagado = pagos_descripcion.get(nombre, 0.0)
+        pagado += pagos_aplicados.get(nombre, 0.0)
 
         resultado = calcular_deuda_concepto(
             valor_unitario=max(0.0, float(valor_unitario or 0)),
@@ -283,7 +389,11 @@ def calcular_deudas_estudiante(
     curso_id = datos[0]
     asignaciones_curso = obtener_asignaciones_cobro_por_curso(cursor, curso_id)
     valores_estudiante = obtener_valores_personalizados_estudiante(cursor, estudiante_id)
-    pagos_nombre, pagos_descripcion = obtener_pagos_por_concepto(cursor, estudiante_id)
+    pagos_nombre, pagos_descripcion, pagos_aplicados = obtener_pagos_por_concepto(
+        cursor,
+        estudiante_id,
+        hoy=hoy,
+    )
 
     resultado = _calcular_deudas(
         tipos_pago=obtener_tipos_pago(cursor),
@@ -291,6 +401,7 @@ def calcular_deudas_estudiante(
         valores_estudiante=valores_estudiante,
         pagos_nombre=pagos_nombre,
         pagos_descripcion=pagos_descripcion,
+        pagos_aplicados=pagos_aplicados,
         hoy=hoy,
     )
     resultado["curso_id"] = curso_id
@@ -303,6 +414,7 @@ def calcular_deudas_desde_contexto(
     asignaciones_curso: dict[int, float],
     pagos_nombre: dict[str, float],
     pagos_descripcion: dict[str, float],
+    pagos_aplicados: Optional[dict[str, float]] = None,
     valores_estudiante: Optional[dict[int, float]] = None,
     hoy: Optional[date] = None,
 ) -> dict:
@@ -317,6 +429,7 @@ def calcular_deudas_desde_contexto(
         valores_estudiante=valores_estudiante,
         pagos_nombre=pagos_nombre,
         pagos_descripcion=pagos_descripcion,
+        pagos_aplicados=pagos_aplicados,
         hoy=hoy,
     )
 

@@ -2,11 +2,14 @@ from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from app.dependencies import get_current_active_admin
-from app.schemas.pago import PagoAnular, PagoCreate
+from app.schemas.pago import PagoAdelantadoCreate, PagoAnular, PagoCreate
 
 # 👇 Importamos controllers
 from app.controllers.pagos_controller import (
     historial_pagos_paginado_controller,
+    MigracionPagosAdelantadosPendienteError,
+    obtener_opciones_adelanto_controller,
+    registrar_pago_adelantado_controller,
     registrar_pago_controller,
     historial_pagos_controller,
     anular_pago_controller
@@ -27,6 +30,26 @@ def registrar_pago(pago: PagoCreate):
         "mensaje": "Pago registrado correctamente",
         "pago_id": pago_id
     }
+
+
+@router.get("/pagos/adelanto/opciones/{estudiante_id}")
+def opciones_pago_adelantado(estudiante_id: int):
+    try:
+        return obtener_opciones_adelanto_controller(estudiante_id)
+    except MigracionPagosAdelantadosPendienteError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/pagos/adelanto")
+def registrar_pago_adelantado(pago: PagoAdelantadoCreate):
+    try:
+        return registrar_pago_adelantado_controller(pago)
+    except MigracionPagosAdelantadosPendienteError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 # 📄 Ver historial

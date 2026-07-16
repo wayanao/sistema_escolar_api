@@ -1,10 +1,61 @@
 # Cambios Backend
 
-Ultima revision documental: 2026-07-15.
+Ultima revision documental: 2026-07-16.
 
 ## Proposito
 
 Bitacora de cambios documentales y tecnicos observables del backend.
+
+## 2026-07-16 - Pagos de mensualidades adelantadas
+
+Se agrego un flujo optativo para cubrir meses futuros sin modificar el contrato
+de los pagos pendientes existentes.
+
+Archivos modificados:
+
+- `app/schemas/pago.py`
+- `app/routes/pagos.py`
+- `app/controllers/pagos_controller.py`
+- `app/controllers/cartera_mora_controller.py`
+- `app/controllers/reportes_controller.py`
+- `app/services/cobros.py`
+- `migrations/20260716_pagos_adelantados.sql`
+- `tests/test_pagos_adelantados.py`
+- `tests/test_anulaciones_financieras.py`
+- `docs/API_ENDPOINTS.md`
+- `docs/BASE_DATOS.md`
+- `docs/CAMBIOS_BACKEND.md`
+- `docs/MIGRACIONES.md`
+
+Cambios:
+
+- `POST /pagos` conserva su schema, validacion y comportamiento.
+- Un endpoint de opciones devuelve solo conceptos mensuales asignados y sus
+  proximos meses disponibles dentro del año actual.
+- El endpoint de registro calcula el total con el valor vigente, exige que los
+  metodos sumen exactamente ese total y crea un unico pago/recibo.
+- Cada mes queda en `pagos_aplicaciones` con indice unico activo para impedir
+  cobros adelantados duplicados.
+- El ingreso aparece en caja desde la fecha del pago, pero cartera incorpora la
+  aplicacion solo cuando llega el mes correspondiente.
+- Los calculos individual y masivo de cartera comparten la misma separacion
+  entre pagos normales y aplicaciones de adelantos.
+- El estado de cuenta por curso reconoce solo aplicaciones cuyo mes ya llego y
+  evita mostrar el mismo adelanto como `Otros Pagos`.
+- Al anular, las aplicaciones quedan inactivas y esos meses vuelven a estar
+  disponibles sin borrar la huella del pago.
+- La operacion de registro es transaccional y un conflicto revierte tanto el
+  pago como sus aplicaciones.
+
+Migracion requerida:
+
+- `migrations/20260716_pagos_adelantados.sql` debe ejecutarse por tenant con
+  `apply_migration.py`; es aditiva y no modifica registros de pagos existentes.
+
+Verificacion:
+
+- 29 pruebas enfocadas de adelantos, anulaciones, reportes, paginacion y permisos.
+- Ruff sobre schemas, rutas, controladores y servicios modificados.
 
 ## 2026-07-15 - Fecha limite obligatoria en Malla Curricular
 

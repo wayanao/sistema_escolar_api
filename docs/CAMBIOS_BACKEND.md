@@ -6,6 +6,26 @@ Ultima revision documental: 2026-07-16.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
+## 2026-07-16 - Distribucion parcial de subsidios en adelantos
+
+- `PagoAdelantadoCreate` admite exactamente una de dos modalidades:
+  `cantidad_meses` o `monto_distribuir`.
+- Los meses futuros se consultan por saldo, de modo que un periodo con abono
+  parcial permanece disponible para completar.
+- Un monto se distribuye cronologicamente, cubriendo cuotas completas y
+  aplicando el remanente al siguiente mes.
+- El backend rechaza valores que excedan la capacidad disponible hasta
+  diciembre y exige que los metodos sumen el total recibido.
+- El recibo y la respuesta detallan el monto aplicado y saldo restante de cada
+  periodo; la anulacion existente revierte todas las aplicaciones.
+- No se requirio una nueva migracion: se reutiliza
+  `20260716_pagos_aplicaciones_parciales.sql`, ya aplicada.
+
+Verificacion:
+
+- 39 pruebas enfocadas de pagos, subsidios, meses, anulaciones, paginacion y
+  permisos.
+
 ## 2026-07-16 - Seleccion auditable de meses vencidos
 
 Se amplio el pago pendiente mensual para identificar una o varias cuotas sin

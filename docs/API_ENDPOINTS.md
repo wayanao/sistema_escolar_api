@@ -98,7 +98,12 @@ Notas:
 - Las opciones de adelanto incluyen solamente conceptos `mensual` asignados al
   estudiante y meses posteriores al actual dentro del mismo año.
 - `POST /pagos/adelanto` recibe `estudiante_id`, `tipo_pago_id`,
-  `cantidad_meses`, `fecha` opcional y una lista no vacia de `metodos`.
+  `fecha` opcional, una lista no vacia de `metodos` y exactamente una modalidad:
+  `cantidad_meses` o `monto_distribuir`.
+- Con `monto_distribuir`, el backend cubre en orden los meses futuros: completa
+  cada saldo y aplica el remanente como abono parcial al siguiente periodo.
+- Las opciones futuras incluyen `saldo` por mes y `total_disponible`; un mes
+  parcialmente abonado continua disponible por el valor restante.
 - El cliente no define el valor de las cuotas: el backend usa la prioridad
   valor del estudiante > valor del curso > valor base y valida la suma de los
   metodos.
@@ -110,6 +115,8 @@ Notas:
   `20260716_pagos_adelantados.sql`; si falta responden `409`.
 - La aplicacion de pagos distintos o metodos mixtos sobre una cuota requiere
   `20260716_pagos_aplicaciones_parciales.sql`.
+- La distribucion de subsidios reutiliza esa estructura y no requiere una
+  migracion adicional.
 
 ## Cursos
 

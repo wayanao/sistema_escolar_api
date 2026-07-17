@@ -108,18 +108,31 @@ def _etiqueta_periodo(periodo):
 def _periodos_disponibles(cursor, estudiante_id, concepto, hoy):
     cursor.execute(
         """
-        SELECT pa.periodo
+        SELECT pa.periodo, COALESCE(SUM(pa.monto), 0)
         FROM pagos_aplicaciones pa
         JOIN pagos p ON p.id = pa.pago_id
         WHERE pa.estudiante_id = %s
           AND pa.tipo_pago_id = %s
           AND pa.activo = TRUE
           AND COALESCE(p.estado, 'Pagado') <> 'Anulado'
+        GROUP BY pa.periodo
         """,
         (estudiante_id, concepto["id"]),
     )
-    ocupados = {row[0] for row in cursor.fetchall()}
-    return [periodo for periodo in _periodos_programados(concepto, hoy) if periodo not in ocupados]
+    aplicados = {row[0]: float(row[1] or 0) for row in cursor.fetchall()}
+    valor_unitario = round(float(concepto["valor_unitario"] or 0), 2)
+    periodos = []
+    for periodo in _periodos_programados(concepto, hoy):
+        monto_aplicado = max(0.0, aplicados.get(periodo, 0.0))
+        saldo = round(max(0.0, valor_unitario - monto_aplicado), 2)
+        if saldo <= 0:
+            continue
+        periodos.append({
+            "periodo": periodo,
+            "saldo": saldo,
+            "estado": "parcial" if saldo < valor_unitario else "disponible",
+        })
+    return periodos
 
 
 def _serializar_opcion_adelanto(cursor, estudiante_id, concepto, hoy):
@@ -130,11 +143,41 @@ def _serializar_opcion_adelanto(cursor, estudiante_id, concepto, hoy):
         "valor_unitario": round(float(concepto["valor_unitario"]), 2),
         "valor_origen": concepto["valor_origen"],
         "periodos_disponibles": [
-            {"periodo": periodo.isoformat(), "etiqueta": _etiqueta_periodo(periodo)}
-            for periodo in periodos
+            {
+                "periodo": item["periodo"].isoformat(),
+                "etiqueta": _etiqueta_periodo(item["periodo"]),
+                "saldo": item["saldo"],
+                "estado": item["estado"],
+            }
+            for item in periodos
         ],
         "max_meses": len(periodos),
+        "total_disponible": round(sum(item["saldo"] for item in periodos), 2),
     }
+
+
+def _distribuir_monto_adelantado(periodos, monto):
+    restante = int(round(float(monto or 0) * 100))
+    if restante <= 0:
+        raise ValueError("El monto a distribuir debe ser mayor a cero.")
+
+    distribuciones = []
+    for item in periodos:
+        saldo_centavos = int(round(float(item["saldo"] or 0) * 100))
+        usado = min(restante, saldo_centavos)
+        if usado <= 0:
+            continue
+        distribuciones.append({**item, "monto_aplicado": usado / 100})
+        restante -= usado
+        if restante == 0:
+            break
+
+    if restante > 0:
+        disponible = sum(float(item["saldo"] or 0) for item in periodos)
+        raise ValueError(
+            f"Solo hay ${disponible:,.2f} disponibles para adelantar dentro del año actual."
+        )
+    return distribuciones
 
 
 def obtener_opciones_adelanto_controller(estudiante_id, hoy=None):
@@ -287,12 +330,19 @@ def registrar_pago_adelantado_controller(pago, hoy=None):
 
         _bloquear_aplicaciones_concepto(cursor, pago.estudiante_id, concepto["id"])
         disponibles = _periodos_disponibles(cursor, pago.estudiante_id, concepto, fecha_referencia)
-        if pago.cantidad_meses > len(disponibles):
-            raise ValueError("No hay suficientes meses disponibles para registrar este adelanto.")
+        monto_distribuir = getattr(pago, "monto_distribuir", None)
+        if monto_distribuir is not None:
+            periodos = _distribuir_monto_adelantado(disponibles, monto_distribuir)
+        else:
+            cantidad_meses = int(getattr(pago, "cantidad_meses", 0) or 0)
+            if cantidad_meses > len(disponibles):
+                raise ValueError("No hay suficientes meses disponibles para registrar este adelanto.")
+            periodos = [
+                {**item, "monto_aplicado": item["saldo"]}
+                for item in disponibles[:cantidad_meses]
+            ]
 
-        periodos = disponibles[:pago.cantidad_meses]
-        valor_unitario = round(float(concepto["valor_unitario"]), 2)
-        total = round(valor_unitario * len(periodos), 2)
+        total = round(sum(float(item["monto_aplicado"]) for item in periodos), 2)
         total_metodos = round(sum(float(metodo.monto or 0) for metodo in pago.metodos), 2)
         if total_metodos != total:
             raise ValueError(
@@ -300,8 +350,12 @@ def registrar_pago_adelantado_controller(pago, hoy=None):
                 f"al total del adelanto (${total:,.2f})."
             )
 
-        etiquetas = [_etiqueta_periodo(periodo) for periodo in periodos]
-        descripcion = f"{concepto['nombre']} · Pago adelantado: {', '.join(etiquetas)}"
+        etiquetas = [_etiqueta_periodo(item["periodo"]) for item in periodos]
+        detalle_periodos = ", ".join(
+            f"{etiqueta}: ${float(item['monto_aplicado']):,.2f}"
+            for item, etiqueta in zip(periodos, etiquetas)
+        )
+        descripcion = f"{concepto['nombre']} · Pago adelantado: {detalle_periodos}"
         resumen_metodos = " + ".join(_formatear_tipo_pago(metodo) for metodo in pago.metodos)[:100]
         fecha_registro = _fecha_pago_local(getattr(pago, "fecha", None))
 
@@ -315,14 +369,20 @@ def registrar_pago_adelantado_controller(pago, hoy=None):
         )
         pago_id = cursor.fetchone()[0]
 
-        for periodo in periodos:
+        for item in periodos:
             cursor.execute(
                 """
                 INSERT INTO pagos_aplicaciones
                     (pago_id, estudiante_id, tipo_pago_id, periodo, monto)
                 VALUES (%s, %s, %s, %s, %s)
                 """,
-                (pago_id, pago.estudiante_id, concepto["id"], periodo, valor_unitario),
+                (
+                    pago_id,
+                    pago.estudiante_id,
+                    concepto["id"],
+                    item["periodo"],
+                    item["monto_aplicado"],
+                ),
             )
 
         conn.commit()
@@ -332,8 +392,13 @@ def registrar_pago_adelantado_controller(pago, hoy=None):
             "monto": total,
             "descripcion": descripcion,
             "periodos": [
-                {"periodo": periodo.isoformat(), "etiqueta": etiqueta}
-                for periodo, etiqueta in zip(periodos, etiquetas)
+                {
+                    "periodo": item["periodo"].isoformat(),
+                    "etiqueta": etiqueta,
+                    "monto_aplicado": item["monto_aplicado"],
+                    "saldo_restante": round(item["saldo"] - item["monto_aplicado"], 2),
+                }
+                for item, etiqueta in zip(periodos, etiquetas)
             ],
         }
     except IntegrityError as exc:

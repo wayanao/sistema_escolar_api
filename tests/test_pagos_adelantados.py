@@ -95,9 +95,9 @@ def test_registrar_adelanto_crea_un_pago_y_una_aplicacion_por_mes(monkeypatch):
         pagos_controller,
         "_periodos_disponibles",
         lambda _cursor, _estudiante_id, _concepto, _hoy: [
-            datetime.date(2026, 8, 1),
-            datetime.date(2026, 9, 1),
-            datetime.date(2026, 10, 1),
+            {"periodo": datetime.date(2026, 8, 1), "saldo": 300000.0, "estado": "disponible"},
+            {"periodo": datetime.date(2026, 9, 1), "saldo": 300000.0, "estado": "disponible"},
+            {"periodo": datetime.date(2026, 10, 1), "saldo": 300000.0, "estado": "disponible"},
         ],
     )
     pago = SimpleNamespace(
@@ -143,7 +143,10 @@ def test_registrar_adelanto_rechaza_metodos_que_no_suman_total(monkeypatch):
     monkeypatch.setattr(
         pagos_controller,
         "_periodos_disponibles",
-        lambda *_args: [datetime.date(2026, 8, 1), datetime.date(2026, 9, 1)],
+        lambda *_args: [
+            {"periodo": datetime.date(2026, 8, 1), "saldo": 300000.0, "estado": "disponible"},
+            {"periodo": datetime.date(2026, 9, 1), "saldo": 300000.0, "estado": "disponible"},
+        ],
     )
     pago = SimpleNamespace(
         estudiante_id=7,
@@ -162,6 +165,109 @@ def test_registrar_adelanto_rechaza_metodos_que_no_suman_total(monkeypatch):
     assert not any("INSERT INTO pagos (" in query for query, _params in cursor.executed)
     assert conn.rolled_back is True
     assert conn.committed is False
+
+
+def test_distribuir_subsidio_completa_un_mes_y_abona_el_siguiente(monkeypatch):
+    cursor = FakeCursor(fetches=[(91,)])
+    conn = FakeConnection(cursor)
+    concepto = {**_concepto_mensual(), "valor_unitario": 50000.0}
+    monkeypatch.setattr(pagos_controller, "get_connection", lambda: conn)
+    monkeypatch.setattr(pagos_controller, "_exigir_tabla_pagos_aplicaciones", lambda _cursor: None)
+    monkeypatch.setattr(
+        pagos_controller,
+        "obtener_conceptos_mensuales_estudiante",
+        lambda _cursor, _estudiante_id: [concepto],
+    )
+    monkeypatch.setattr(
+        pagos_controller,
+        "_periodos_disponibles",
+        lambda *_args: [
+            {"periodo": datetime.date(2026, 8, 1), "saldo": 50000.0, "estado": "disponible"},
+            {"periodo": datetime.date(2026, 9, 1), "saldo": 50000.0, "estado": "disponible"},
+        ],
+    )
+    pago = SimpleNamespace(
+        estudiante_id=7,
+        tipo_pago_id=4,
+        cantidad_meses=None,
+        monto_distribuir=80000,
+        fecha=datetime.date(2026, 7, 16),
+        metodos=[SimpleNamespace(tipo="transferencia", monto=80000, nota="Subsidio")],
+    )
+
+    resultado = pagos_controller.registrar_pago_adelantado_controller(
+        pago,
+        hoy=datetime.date(2026, 7, 16),
+    )
+
+    inserts = [
+        params
+        for query, params in cursor.executed
+        if "INSERT INTO pagos_aplicaciones" in query
+    ]
+    assert inserts == [
+        (91, 7, 4, datetime.date(2026, 8, 1), 50000.0),
+        (91, 7, 4, datetime.date(2026, 9, 1), 30000.0),
+    ]
+    assert resultado["monto"] == 80000.0
+    assert resultado["periodos"][1]["saldo_restante"] == 20000.0
+    assert conn.committed is True
+
+
+def test_schema_adelanto_acepta_monto_a_distribuir_sin_cantidad():
+    pago = PagoAdelantadoCreate(
+        estudiante_id=7,
+        tipo_pago_id=4,
+        monto_distribuir=80000,
+        metodos=[{"tipo": "transferencia", "monto": 80000, "nota": "Subsidio"}],
+    )
+
+    assert pago.cantidad_meses is None
+    assert pago.monto_distribuir == 80000
+
+
+def test_schema_adelanto_rechaza_dos_modalidades_a_la_vez():
+    with pytest.raises(ValidationError, match="cantidad_meses o monto_distribuir"):
+        PagoAdelantadoCreate(
+            estudiante_id=7,
+            tipo_pago_id=4,
+            cantidad_meses=1,
+            monto_distribuir=50000,
+            metodos=[{"tipo": "subsidio", "monto": 50000}],
+        )
+
+
+def test_periodos_futuros_muestran_saldo_parcial_y_mantienen_el_mes_disponible():
+    cursor = FakeCursor(fetches=[[
+        (datetime.date(2026, 8, 1), 30000),
+    ]])
+    concepto = {**_concepto_mensual(), "valor_unitario": 50000.0}
+
+    periodos = pagos_controller._periodos_disponibles(
+        cursor,
+        7,
+        concepto,
+        datetime.date(2026, 7, 16),
+    )
+
+    assert periodos[0] == {
+        "periodo": datetime.date(2026, 8, 1),
+        "saldo": 20000.0,
+        "estado": "parcial",
+    }
+    assert periodos[1] == {
+        "periodo": datetime.date(2026, 9, 1),
+        "saldo": 50000.0,
+        "estado": "disponible",
+    }
+
+
+def test_distribucion_rechaza_monto_que_no_cabe_en_el_anio():
+    with pytest.raises(ValueError, match="Solo hay"):
+        pagos_controller._distribuir_monto_adelantado(
+            [{"periodo": datetime.date(2026, 12, 1), "saldo": 50000}],
+            80000,
+        )
 
 
 def test_aplicacion_vencida_se_suma_sin_reemplazar_pago_normal():

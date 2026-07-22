@@ -1,6 +1,6 @@
 # Produccion Backend
 
-Ultima revision documental: 2026-07-15.
+Ultima revision documental: 2026-07-21.
 
 ## Variables de entorno actuales
 
@@ -182,7 +182,7 @@ Login usa cookie:
 La respuesta de login no devuelve `access_token` ni `token_type`; el JSON queda
 limitado a datos minimos de sesion para la UI.
 
-La duracion por defecto de la sesion es `ACCESS_TOKEN_EXPIRE_MINUTES=120`
+La duracion por defecto de la sesion es `ACCESS_TOKEN_EXPIRE_MINUTES=240`
 minutos. Si la plataforma define esta variable en el entorno, ese valor externo
 tiene prioridad sobre el default del codigo.
 

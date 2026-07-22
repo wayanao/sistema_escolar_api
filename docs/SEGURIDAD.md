@@ -1,6 +1,6 @@
 # Seguridad
 
-Ultima revision documental: 2026-07-15.
+Ultima revision documental: 2026-07-21.
 
 ## Autenticacion
 
@@ -78,8 +78,8 @@ Claims usados:
 - `max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60`
 - `path=/`
 
-La duracion por defecto de `ACCESS_TOKEN_EXPIRE_MINUTES` es `120` minutos
-para mantener la sesion activa hasta 2 horas.
+La duracion por defecto de `ACCESS_TOKEN_EXPIRE_MINUTES` es `240` minutos
+para mantener la sesion activa hasta 4 horas desde el inicio de sesion.
 
 La respuesta no devuelve `access_token` ni `token_type`; la sesion real queda
 en la cookie `token` y el JSON solo entrega datos minimos de sesion para la UI.

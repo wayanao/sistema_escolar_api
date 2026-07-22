@@ -1,10 +1,19 @@
 # Cambios Backend
 
-Ultima revision documental: 2026-07-16.
+Ultima revision documental: 2026-07-21.
 
 ## Proposito
 
 Bitacora de cambios documentales y tecnicos observables del backend.
+
+## 2026-07-21 - Sesion ampliada a cuatro horas
+
+- `ACCESS_TOKEN_EXPIRE_MINUTES` cambia de `120` a `240` minutos por defecto.
+- El JWT y la cookie `token` conservan la misma expiracion absoluta de cuatro
+  horas desde el inicio de sesion.
+- `.env.example` y la documentacion operativa reflejan el nuevo valor.
+- Una variable `ACCESS_TOKEN_EXPIRE_MINUTES` configurada en el proveedor de
+  despliegue sigue teniendo prioridad sobre el valor predeterminado.
 
 ## 2026-07-16 - Distribucion parcial de subsidios en adelantos
 

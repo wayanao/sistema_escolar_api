@@ -3,12 +3,22 @@ import uuid
 
 from fastapi import HTTPException, status
 
-from app.schemas.plan_de_clases import PlanDeClasesCreate
+from app.schemas.plan_de_clases import (
+    PlanDeClasesCreate,
+    PlanObservacionCreate,
+    PlanRevisionUpdate,
+)
 from app.globals import tenant_schema_var
 from app.services.plan_de_clases_service import (
+    actualizar_revision,
+    confirmar_observacion_vista,
+    crear_observacion_plan,
     eliminar_imagen_plan_admin,
     guardar_plan,
     listar_reportes_admin,
+    obtener_observaciones_plan,
+    obtener_notificaciones_planeadores,
+    obtener_plan_admin,
     obtener_historial_asignacion,
     obtener_plan_del_dia,
 )
@@ -55,15 +65,42 @@ def guardar_imagen_plan(upload_dir, imagen):
 
 def crear_plan_de_clases_controller(plan: PlanDeClasesCreate, imagen1=None, imagen2=None):
     upload_dir = obtener_directorio_archivos()
+    imagenes_creadas = []
 
-    imagen1_path = guardar_imagen_plan(upload_dir, imagen1)
-    imagen2_path = guardar_imagen_plan(upload_dir, imagen2)
+    try:
+        imagen1_path = guardar_imagen_plan(upload_dir, imagen1)
+        if imagen1_path:
+            imagenes_creadas.append(imagen1_path)
 
-    return guardar_plan(plan, imagen1_path, imagen2_path)
+        imagen2_path = guardar_imagen_plan(upload_dir, imagen2)
+        if imagen2_path:
+            imagenes_creadas.append(imagen2_path)
+
+        resultado = guardar_plan(plan, imagen1_path, imagen2_path)
+        if resultado.get("resultado") == "version_desactualizada":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "mensaje": (
+                        "Este plan fue actualizado en otra pestaña o dispositivo. "
+                        "Carga la versión más reciente antes de guardar."
+                    ),
+                    "version_actual": resultado.get("version_actual"),
+                },
+            )
+        return resultado
+    except Exception:
+        for imagen_path in imagenes_creadas:
+            delete_file(imagen_path)
+        raise
 
 
-def obtener_planes_por_asignacion_controller(asignacion_id):
-    return obtener_historial_asignacion(asignacion_id)
+def obtener_planes_por_asignacion_controller(asignacion_id, limit=None, offset=0):
+    return obtener_historial_asignacion(
+        asignacion_id,
+        limit=limit,
+        offset=offset,
+    )
 
 
 def obtener_plan_del_dia_controller(asignacion_id, fecha):
@@ -74,8 +111,87 @@ def listar_planes_admin_controller(**filtros):
     return listar_reportes_admin(**filtros)
 
 
-def eliminar_imagen_plan_admin_controller(plan_id, slot):
-    path = eliminar_imagen_plan_admin(plan_id, slot)
+def obtener_plan_admin_controller(plan_id):
+    plan = obtener_plan_admin(plan_id)
+    if plan is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Plan de clases no encontrado",
+        )
+    return plan
+
+
+def _resolver_resultado_revision(resultado):
+    if resultado["resultado"] == "no_encontrado":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Plan de clases no encontrado",
+        )
+    if resultado["resultado"] == "version_desactualizada":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "mensaje": "El plan fue actualizado. Recarga antes de continuar.",
+                "version_actual": resultado["version_actual"],
+            },
+        )
+    return resultado
+
+
+def actualizar_revision_plan_controller(
+    plan_id: int,
+    data: PlanRevisionUpdate,
+    admin_id: int,
+):
+    resultado = actualizar_revision(
+        plan_id,
+        data.estado,
+        admin_id,
+        data.version,
+        comentario=data.comentario,
+    )
+    return _resolver_resultado_revision(resultado)
+
+
+def crear_observacion_plan_controller(
+    plan_id: int,
+    data: PlanObservacionCreate,
+    admin_id: int,
+):
+    resultado = crear_observacion_plan(
+        plan_id,
+        admin_id,
+        data.version,
+        data.observacion,
+    )
+    return _resolver_resultado_revision(resultado)
+
+
+def listar_observaciones_plan_controller(plan_id):
+    obtener_plan_admin_controller(plan_id)
+    return obtener_observaciones_plan(plan_id)
+
+
+def marcar_observacion_vista_controller(plan_id, observacion_id):
+    resultado = confirmar_observacion_vista(plan_id, observacion_id)
+    if resultado is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Observacion no encontrada para este plan",
+        )
+    return resultado
+
+
+def obtener_notificaciones_planeadores_controller(current_user, limit=8):
+    return obtener_notificaciones_planeadores(current_user, limit=limit)
+
+
+def eliminar_imagen_plan_admin_controller(plan_id, slot, reiniciar_revision=False):
+    path = eliminar_imagen_plan_admin(
+        plan_id,
+        slot,
+        reiniciar_revision=reiniciar_revision,
+    )
     if path is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan de clases no encontrado")
 

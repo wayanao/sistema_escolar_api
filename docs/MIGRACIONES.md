@@ -1,6 +1,6 @@
 # Migraciones
 
-Ultima revision documental: 2026-07-16.
+Ultima revision documental: 2026-07-22.
 
 ## Carpeta de migraciones
 
@@ -37,6 +37,9 @@ Archivos actuales:
 - `20260715_reparar_asignacion_academica_invalida.sql`
 - `20260716_pagos_adelantados.sql`
 - `20260716_pagos_aplicaciones_parciales.sql`
+- `20260722_plan_de_clases_integridad.sql`
+- `20260722_plan_de_clases_notificaciones.sql`
+- `20260722_plan_de_clases_revision.sql`
 - `README.md`
 
 Migraciones globales `public`:
@@ -74,6 +77,66 @@ Comportamiento actual:
 - al aplicar, ejecuta `SET search_path TO <schema>, public`;
 - ejecuta SQL;
 - registra migracion en `public.schema_migrations`.
+
+## Integridad previa del plan de clases
+
+Antes de aplicar `20260722_plan_de_clases_integridad.sql` se debe ejecutar:
+
+```powershell
+.\venv\Scripts\python.exe scripts\auditar_plan_de_clases_integridad.py
+```
+
+La auditoria es de solo lectura y revisa todos los tenants registrados, ademas
+del schema definido por `DEFAULT_TENANT_SCHEMA`. Reporta:
+
+- planes sin `asignacion_id` o sin `fecha`;
+- grupos duplicados por `asignacion_id + fecha`.
+
+La migracion no elimina ni fusiona informacion. Si encuentra alguno de esos
+casos, falla y revierte la transaccion del tenant para exigir revision manual.
+Cuando la auditoria queda limpia, la migracion establece ambas columnas como
+obligatorias y crea el indice unico
+`uq_plan_de_clases_asignacion_fecha`.
+
+Orden obligatorio de despliegue:
+
+1. Ejecutar la auditoria de solo lectura.
+2. Resolver manualmente cualquier inconsistencia respaldando la informacion.
+3. Aplicar la migracion con `apply_migration.py`.
+4. Desplegar el repositorio que usa `ON CONFLICT (asignacion_id, fecha)`.
+
+Estado productivo al 2026-07-22:
+
+- auditoria previa correcta en los 4 schemas operativos;
+- migracion aplicada y registrada en los 4 schemas;
+- auditoria posterior correcta y segunda simulacion marcada como `OMITIDA
+  (ya aplicada)` para todos los destinos.
+
+La migracion `20260722_plan_de_clases_revision.sql` depende de la integridad
+anterior. Agrega estados y versiones al plan, y crea la tabla historica
+`plan_de_clases_observaciones`. No elimina ni reemplaza contenido existente;
+los planes previos se inicializan como `pendiente`, version `1`, usando su
+ultima fecha disponible como fecha de envio.
+
+Estado productivo al 2026-07-22:
+
+- aplicada y registrada en los 4 schemas operativos;
+- verificada con `scripts/auditar_plan_de_clases_revision.py` mediante una
+  conexion de solo lectura;
+- columnas, tabla historica y planes inicializados sin inconsistencias.
+
+La migracion `20260722_plan_de_clases_notificaciones.sql` depende del flujo de
+revision anterior y crea `plan_de_clases_notificaciones_admin`, con unicidad
+por plan y version e indice parcial para pendientes. No inserta eventos para
+planes historicos; el primer evento se crea con el siguiente guardado del
+profesor.
+
+Estado productivo al 2026-07-22:
+
+- aplicada y registrada en los 4 schemas operativos;
+- auditoria estructural correcta en los 4 schemas;
+- segunda simulacion marcada como `OMITIDA (ya aplicada)` para todos los
+  destinos.
 
 ## Historial de migraciones
 

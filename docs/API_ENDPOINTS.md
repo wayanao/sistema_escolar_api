@@ -274,13 +274,63 @@ dimension. Los textos se normalizan antes de crear o actualizar el registro.
 - `GET /plan-de-clases/{asignacion_id}`
 - `DELETE /plan-de-clases/{plan_id}/imagen`
 - `GET /admin/plan-de-clases`
+- `GET /admin/plan-de-clases/{plan_id}`
+- `PATCH /admin/plan-de-clases/{plan_id}/revision`
+- `POST /admin/plan-de-clases/{plan_id}/observaciones`
+- `GET /plan-de-clases/{plan_id}/observaciones`
+- `PATCH /plan-de-clases/{plan_id}/observaciones/{observacion_id}/vista`
+- `GET /notificaciones/planeadores`
 - `DELETE /admin/plan-de-clases/{plan_id}/imagen`
 
 Notas:
 
-- `POST /plan-de-clases` exige `asignacion_id`, `periodo` y `fecha`.
+- `POST /plan-de-clases` exige `asignacion_id`, `periodo` y `fecha`. Acepta
+  `version_esperada`: el frontend envía `0` al crear o la `version_revision`
+  cargada al actualizar.
+- Si el plan cambió desde que el profesor lo abrió, `POST /plan-de-clases`
+  responde `409` con `detail.mensaje` y `detail.version_actual`, sin modificar
+  el registro. Los archivos nuevos recibidos en esa solicitud se eliminan.
+- Omitir `version_esperada` conserva compatibilidad temporal con consumidores
+  anteriores, aunque los clientes interactivos deben enviarla para quedar
+  protegidos contra sobrescrituras.
+- `GET /plan-de-clases/{asignacion_id}` acepta `fecha` para consultar un día
+  exacto. Sin `fecha`, admite paginación opcional con `limit` entre 1 y 50 y
+  `offset` mayor o igual que cero; si se omite `limit`, conserva la lista
+  completa por compatibilidad.
 - Las cajas de texto (`unidad`, `proposito`, `clase`, `estandar`, `dba`, `competencias`, `actividad_casa` y `tema`) son opcionales, aceptan texto largo y se guardan como texto vacio si no se envian.
 - Las imagenes `imagen1` e `imagen2` tambien son opcionales.
+- Los planes retornan `estado_revision`, `version_revision`, fechas de
+  seguimiento y contadores de observaciones.
+- `GET /admin/plan-de-clases` acepta el filtro opcional `estado_revision`:
+  `pendiente`, `visto`, `con_observaciones` o `revisado`. Para la bandeja
+  consolidada, `pendiente` agrupa también el estado interno `visto` y
+  `revisado` agrupa también `con_observaciones`; los dos valores internos se
+  conservan por compatibilidad.
+- Marcar un plan como visto o revisado requiere `{ "estado", "version" }`.
+  Cuando `estado` es `revisado`, admite además `comentario` opcional de hasta
+  3000 caracteres. Si se envía, el comentario y la aprobación se guardan en la
+  misma transacción y generan la notificación del profesor.
+- Crear una observacion requiere `{ "observacion", "version" }`; el texto se
+  normaliza y admite hasta 3000 caracteres.
+- Si la version enviada por administracion ya cambio, el backend responde
+  `409` con `version_actual` y no guarda la accion.
+- Un nuevo guardado del profesor aumenta `version_revision` y normalmente
+  devuelve el plan a `pendiente`, sin eliminar el historial de observaciones.
+  Si la versión estaba en `con_observaciones`, la corrección conserva ese
+  estado interno y no genera un nuevo pendiente ni otra notificación para
+  administración. Si ya estaba en `revisado`, también conserva ese estado
+  tenga o no observaciones y no vuelve a la bandeja pendiente.
+- Solo el profesor propietario puede confirmar la lectura de una observacion;
+  administracion conserva acceso de lectura al historial completo.
+- `GET /notificaciones/planeadores` admite `limit` entre 1 y 20 (8 por
+  defecto). Para administracion retorna un elemento por profesor con
+  `profesor_id`, `profesor`, `cantidad` y `creada_at`; `total_no_leidas` cuenta
+  todas las planeaciones pendientes y `total_profesores` los docentes
+  involucrados. Para profesor retorna sus observaciones administrativas aun no
+  leidas.
+- Abrir o revisar el detalle administrativo marca como leidos los eventos del
+  plan hasta esa version. Para el profesor, una observacion solo deja de estar
+  pendiente cuando confirma su lectura mediante el endpoint `vista`.
 
 ## Planeador anual
 

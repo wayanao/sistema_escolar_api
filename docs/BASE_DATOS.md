@@ -142,6 +142,44 @@ Nota sobre `asignaciones`:
 - Si una materia tiene varios horarios activos en el mismo curso, todos esos
   horarios deben compartir el mismo `orden_boletin`.
 
+Nota sobre `plan_de_clases`:
+
+- Cada asignacion admite un solo plan por fecha.
+- La migracion `20260722_plan_de_clases_integridad.sql` exige
+  `asignacion_id` y `fecha`, y crea un indice unico sobre ambas columnas.
+- El guardado usa un `INSERT ... ON CONFLICT DO UPDATE` atomico; actualizar un
+  plan conserva las imagenes existentes cuando no se envian archivos nuevos.
+- Cuando el cliente informa `version_esperada`, el guardado bloquea y compara
+  la versión dentro de la misma transacción. La condición adicional del
+  `ON CONFLICT` cubre también dos creaciones simultáneas para la misma
+  asignación y fecha.
+- La migracion se detiene ante datos incompletos o duplicados y no realiza
+  limpiezas automaticas.
+- `20260722_plan_de_clases_revision.sql` agrega a cada plan el estado de
+  revision, una version incremental y las fechas de envio, primera vista y
+  revision administrativa.
+- Los estados permitidos son `pendiente`, `visto`, `con_observaciones` y
+  `revisado`.
+- `plan_de_clases_observaciones` conserva cada observacion, el administrador,
+  la version exacta del plan y la fecha en que el profesor la vio.
+- `con_observaciones` se conserva como estado técnico para identificar una
+  corrección solicitada. Al guardar esa corrección aumenta la versión, pero no
+  se crea otra fila en `plan_de_clases_notificaciones_admin` ni se devuelve el
+  plan a pendiente.
+- Un plan en `revisado` conserva su estado al ser editado por el profesor,
+  tenga o no filas históricas en `plan_de_clases_observaciones`; aumenta la
+  versión sin crear otra notificación administrativa.
+- Las observaciones son historicas: una nueva version del plan no las elimina.
+- Las llaves foraneas eliminan observaciones junto con su plan y conservan la
+  observacion si un usuario administrador deja de existir.
+- `plan_de_clases_notificaciones_admin` registra una fila por `plan_id` y
+  `plan_version` enviada despues de habilitar las notificaciones. `leida_at`
+  se completa al abrir, observar o revisar esa version desde administracion.
+- La migracion de notificaciones no crea eventos retroactivos para planes
+  historicos. Las notificaciones del profesor se derivan directamente de
+  `plan_de_clases_observaciones.vista_por_profesor_at`, por lo que no duplican
+  el historial ni requieren otra tabla.
+
 ## Cursos y cobros
 
 Estado actual:

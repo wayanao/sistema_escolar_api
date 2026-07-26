@@ -1,10 +1,223 @@
 # Cambios Backend
 
-Ultima revision documental: 2026-07-21.
+Ultima revision documental: 2026-07-25.
 
 ## Proposito
 
 Bitacora de cambios documentales y tecnicos observables del backend.
+
+## 2026-07-25 - Control de versión en el guardado del profesor
+
+- `POST /plan-de-clases` acepta `version_esperada` en el multipart: `0` indica
+  que el profesor abrió una fecha sin plan y un valor mayor que cero identifica
+  la `version_revision` que cargó antes de editar.
+- La versión se comprueba con bloqueo de fila dentro de la misma transacción
+  del `UPSERT`. Si otra pestaña o dispositivo guardó primero, no se modifica el
+  plan y se responde `409` con `version_actual`.
+- La condición del `ON CONFLICT` también protege dos creaciones simultáneas
+  para la misma asignación y fecha, incluso cuando ambas consultas iniciales
+  todavía observaban la fecha vacía.
+- Los clientes antiguos pueden omitir temporalmente `version_esperada` para
+  mantener compatibilidad; el frontend del profesor ya lo envía siempre.
+- Si el guardado es rechazado o falla después de subir imágenes nuevas, esos
+  archivos se eliminan para no dejar evidencias huérfanas.
+- El mensaje de éxito de planes ya revisados aclara que los cambios se
+  guardaron conservando la revisión.
+- No se agregaron columnas, tablas ni migraciones.
+
+Verificación:
+
+- Ruff correcto en rutas, controlador, servicio, repositorio, esquema y
+  pruebas modificadas.
+- 26 pruebas enfocadas de integridad y revisión correctas.
+
+## 2026-07-24 - Ediciones de planes revisados no reabren la bandeja
+
+- Cuando una planeación ya está en `revisado`, un nuevo guardado del profesor
+  mantiene ese estado tenga o no observaciones administrativas.
+- La misma regla se aplica si el profesor elimina una evidencia de imagen de
+  esa planeación.
+- La edición aumenta `version_revision`, conserva las fechas y responsables de
+  seguimiento, pero no crea otra notificación administrativa ni devuelve el
+  plan a la bandeja `pendiente`.
+- Las correcciones en estado técnico `con_observaciones` mantienen el
+  comportamiento existente.
+- Solo los planes que administración todavía no ha revisado continúan en
+  `pendiente` cuando el profesor los modifica.
+- No se agregaron estados, tablas ni migraciones.
+
+Verificación:
+
+- Ruff correcto en el repositorio y las pruebas modificadas.
+- 22 pruebas enfocadas de integridad y revisión correctas.
+
+## 2026-07-24 - Paginación opcional del historial de planeaciones
+
+- `GET /plan-de-clases/{asignacion_id}` acepta `limit` entre 1 y 50 y `offset`
+  mayor o igual que cero cuando se consulta el historial.
+- El límite y el desplazamiento se aplican en la base de datos después del
+  orden descendente por fecha y creación.
+- Omitir `limit` conserva la respuesta completa anterior para mantener
+  compatibilidad con otros consumidores.
+- La consulta exacta mediante `fecha` conserva su comportamiento y no aplica
+  paginación.
+- No se agregaron tablas ni migraciones.
+
+Verificación:
+
+- Ruff correcto en rutas, controlador, servicio, repositorio y prueba
+  modificados.
+- 20 pruebas enfocadas de integridad y revisión correctas.
+
+## 2026-07-24 - Notificaciones administrativas resumidas por profesor
+
+- `GET /notificaciones/planeadores` agrupa para administración todos los envíos
+  pendientes de cada profesor directamente en la consulta.
+- Cada elemento administrativo devuelve `profesor_id`, nombre, cantidad total
+  de planeaciones pendientes y fecha del envío más reciente.
+- `total_no_leidas` conserva el número total de planeaciones y
+  `total_profesores` informa cuántos docentes tienen envíos pendientes.
+- El perfil profesor conserva sin cambios sus notificaciones individuales de
+  comentarios administrativos.
+- No se agregaron tablas ni migraciones.
+
+Verificación:
+
+- 19 pruebas enfocadas de integridad, revisión y notificaciones correctas.
+
+## 2026-07-23 - Revisión administrativa consolidada
+
+- El listado administrativo agrupa los estados internos en dos decisiones
+  visibles: `pendiente` incluye registros antiguos en `visto`, mientras
+  `revisado` incluye también `con_observaciones`.
+- Una planeación a la que administración solicitó ajustes conserva
+  internamente `con_observaciones` cuando el profesor guarda la corrección.
+- Esa corrección aumenta `version_revision` y conserva el historial, pero no
+  crea otra notificación administrativa ni vuelve a la bandeja pendiente.
+- El mismo criterio se aplica cuando el profesor elimina una evidencia como
+  parte de la corrección.
+- Los demás guardados continúan pasando a `pendiente` y generan la notificación
+  administrativa habitual.
+- No se agregaron estados, tablas ni migraciones.
+
+Verificación:
+
+- 19 pruebas enfocadas de integridad y revisión correctas.
+- Suite completa: 179 de 182 pruebas correctas. Las 3 restantes siguen siendo
+  los casos de Super Admin dependientes de la fecha fija `2026-07-01`.
+
+## 2026-07-22 - Aprobación con comentario opcional
+
+- `PATCH /admin/plan-de-clases/{plan_id}/revision` acepta `comentario` cuando
+  la decisión es `revisado`.
+- El comentario se normaliza, admite hasta 3000 caracteres y no se acepta para
+  la apertura simple con estado `visto`.
+- Cuando existe comentario, el historial y el estado `revisado` se guardan en
+  una sola transacción protegida por la versión del plan.
+- El profesor recibe el comentario mediante el flujo existente de
+  notificaciones, sin agregar tablas ni aplicar otra migración.
+
+Verificación:
+
+- 16 pruebas enfocadas de integridad, revisión, comentarios y notificaciones
+  correctas.
+- Suite completa: 176 de 179 pruebas correctas. Las 3 restantes siguen siendo
+  los casos de Super Admin dependientes de la fecha fija `2026-07-01`.
+
+## 2026-07-22 - Notificaciones de planeadores por rol
+
+Tercera subcapa del seguimiento administrativo. Agrega eventos persistentes
+para administracion y reutiliza la lectura historica de observaciones para el
+profesor.
+
+- Cada guardado o nueva version del profesor crea un evento administrativo
+  unico por `plan_id + plan_version`.
+- Abrir, observar o revisar una version marca sus eventos administrativos
+  pendientes como leidos dentro de la misma transaccion.
+- El profesor recibe solamente observaciones propias cuyo
+  `vista_por_profesor_at` sigue vacio; abrir el historial confirma la lectura.
+- `GET /notificaciones/planeadores` entrega el contador total y hasta 20
+  elementos recientes, adaptados al rol autenticado.
+- `20260722_plan_de_clases_notificaciones.sql` crea la tabla de eventos sin
+  poblar planes historicos y fue aplicada en los 4 schemas operativos.
+- Los scripts de auditoria ahora abren una transaccion explicita de solo
+  lectura y la revierten al finalizar, evitando que el modo de lectura quede
+  adherido a conexiones reutilizadas por el proxy.
+
+Verificacion:
+
+- 14 pruebas enfocadas de integridad, revision y notificaciones correctas.
+- Suite completa: 174 de 177 pruebas correctas. Las 3 restantes son los casos
+  ya documentados de Super Admin dependientes de la fecha fija `2026-07-01`.
+- `scripts/auditar_plan_de_clases_revision.py` confirma columnas, historial,
+  tabla de eventos y estados validos en los 4 schemas.
+- La simulacion posterior confirma la migracion como ya aplicada en todos los
+  destinos.
+
+## 2026-07-22 - Seguimiento versionado del plan de clases
+
+Segunda subcapa del flujo de seguimiento administrativo. Prepara el contrato
+que usaran las vistas y notificaciones, sin cambiar aun el frontend.
+
+- Cada plan expone `estado_revision`, `version_revision`, fechas de seguimiento
+  y contadores de observaciones.
+- Los estados persistidos son `pendiente`, `visto`, `con_observaciones` y
+  `revisado`.
+- Administracion puede consultar un plan por id, marcar la version como vista
+  o revisada y registrar observaciones historicas.
+- Toda accion administrativa incluye la version leida. Si el profesor guardo
+  cambios entretanto, se devuelve `409` y no se aplica una revision obsoleta.
+- Un nuevo guardado o la eliminacion de una evidencia por el profesor aumenta
+  la version y devuelve el plan a `pendiente`.
+- El profesor propietario puede consultar las observaciones y confirmar su
+  lectura; ese dato servira para las notificaciones de la siguiente capa.
+- `20260722_plan_de_clases_revision.sql` agrega las columnas de seguimiento y
+  la tabla `plan_de_clases_observaciones` sin borrar planes existentes.
+
+Verificacion:
+
+- 25 pruebas enfocadas de integridad, revision y permisos correctas.
+- Suite completa: 171 de 174 pruebas correctas. Las 3 restantes son los casos
+  ya documentados de Super Admin dependientes de la fecha fija `2026-07-01`.
+- La migracion se aplico y registro correctamente en los 4 schemas operativos.
+- `scripts/auditar_plan_de_clases_revision.py` confirmo en modo de solo lectura
+  que la estructura y los datos inicializados no tienen inconsistencias.
+
+## 2026-07-22 - Integridad atomica del plan de clases
+
+Primera subcapa del nuevo flujo de seguimiento administrativo. No agrega aun
+estados de revision, observaciones ni notificaciones.
+
+- `guardar_plan_de_clases` reemplaza la secuencia `UPDATE` seguido de `INSERT`
+  por un unico `INSERT ... ON CONFLICT DO UPDATE`.
+- El contrato HTTP y el identificador retornado se conservan.
+- Si no llegan imagenes nuevas, el upsert mantiene las evidencias existentes.
+- `20260722_plan_de_clases_integridad.sql` valida datos incompletos y grupos
+  duplicados antes de exigir `asignacion_id`, `fecha` y su unicidad.
+- La migracion no borra ni fusiona registros; falla de forma transaccional si
+  se requiere intervencion manual.
+- `scripts/auditar_plan_de_clases_integridad.py` permite revisar todos los
+  tenants y el schema plantilla mediante una conexion de solo lectura.
+
+Orden de despliegue:
+
+1. Auditoria de integridad.
+2. Migracion por tenant.
+3. Despliegue del nuevo repositorio.
+
+Verificacion:
+
+- 4 pruebas nuevas de upsert, conservacion de evidencias, seguridad de la
+  migracion y auditoria de solo lectura.
+- 18 pruebas enfocadas de integridad y permisos correctas.
+- Suite completa: 164 de 167 pruebas correctas. Las 3 restantes pertenecen a
+  `test_super_admin.py` y usan `2026-07-01` como fecha futura fija; al ejecutar
+  la suite el 2026-07-22, el estado calculado es `suspendido`. Ese modulo no se
+  modifico en esta subcapa para mantener el alcance aislado.
+- La auditoria productiva de solo lectura finalizo sin inconsistencias en los
+  4 schemas operativos.
+- La migracion se aplico correctamente en los 4 schemas el 2026-07-22 y la
+  verificacion posterior confirmo su registro e integridad.
 
 ## 2026-07-21 - Sesion ampliada a cuatro horas
 

@@ -563,6 +563,7 @@ Router prefix: `/boletines`
 - `POST /boletines/guardar`
 - `GET /boletines/referencia/{asignacion_id}/{periodo}`
 - `GET /boletines/admin/generar/{estudiante_id}/{periodo}`
+- `GET /boletines/admin/reporte-parcial/{estudiante_id}/{periodo}`
 
 Notas:
 
@@ -572,6 +573,10 @@ Notas:
   respaldo el promedio numerico de `notas_detalle` para ese estudiante,
   asignacion y periodo.
 - El promedio de respaldo solo considera notas numericas mayores que `0`.
+- `GET /boletines/admin/reporte-parcial/{estudiante_id}/{periodo}` devuelve una
+  fotografia en tiempo real de `notas_detalle`, incluyendo `descripcion`, nota
+  o valoracion y el promedio numerico vigente por materia. No depende de que el
+  profesor haya guardado el boletin para administracion.
 
 ## Branding
 

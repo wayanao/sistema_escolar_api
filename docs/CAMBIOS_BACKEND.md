@@ -6,6 +6,29 @@ Ultima revision documental: 2026-07-25.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
+## 2026-08-03 - Reporte académico parcial desde la planilla vigente
+
+- Se agregó `GET /boletines/admin/reporte-parcial/{estudiante_id}/{periodo}`
+  bajo la misma protección de administrador activo de los certificados.
+- El endpoint consulta directamente `notas_detalle`; no usa ni prioriza
+  `boletin_cabecera`, por lo que refleja cambios de la planilla incluso después
+  de un envío anterior del boletín.
+- Cada detalle conserva `descripcion`, nota, tipo de evaluación y valoración.
+  La definitiva informativa se calcula únicamente con notas numéricas mayores
+  que cero.
+- No se modificó `/boletines/admin/generar`: el certificado y boletín oficial
+  conservan su contrato anterior.
+- No se agregaron tablas ni migraciones.
+
+Verificación:
+
+- 3 pruebas nuevas del controlador y la ruta correctas.
+- Ruff correcto en controlador, ruta y pruebas.
+- Suite completa fuera del sandbox: 189 pruebas correctas y 3 fallos
+  preexistentes de Super Admin, cuyas fechas fijas de junio/julio de 2026 se
+  evalúan como suspendidas frente a la fecha actual. No corresponden a
+  boletines ni a este cambio.
+
 ## 2026-07-25 - Control de versión en el guardado del profesor
 
 - `POST /plan-de-clases` acepta `version_esperada` en el multipart: `0` indica

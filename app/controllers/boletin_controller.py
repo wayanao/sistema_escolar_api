@@ -348,3 +348,110 @@ def obtener_boletin_admin_controller(estudiante_id: int, periodo: int):
     finally:
         conn.close()
 
+
+def obtener_reporte_parcial_admin_controller(estudiante_id: int, periodo: int):
+    """Construye una fotografía de la planilla vigente, sin usar el boletín enviado."""
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        cur.execute('''
+            SELECT
+                e.nombre AS estudiante_nombre,
+                e.apellido AS estudiante_apellido,
+                c.nombre AS curso_nombre
+            FROM estudiantes e
+            LEFT JOIN cursos c ON c.id = e.curso_id
+            WHERE e.id = %s
+        ''', (estudiante_id,))
+        est_info = cur.fetchone()
+        if not est_info:
+            return None
+
+        cur.execute('''
+            WITH asignaciones_academicas AS (
+                SELECT DISTINCT ON (COALESCE(a.asignacion_academica_id, a.id))
+                    COALESCE(a.asignacion_academica_id, a.id) AS id,
+                    a.curso_id,
+                    a.materia_id,
+                    a.profesor_id,
+                    COALESCE(a.orden_boletin, 100) AS orden_boletin
+                FROM asignaciones a
+                WHERE a.activo = TRUE
+                ORDER BY
+                    COALESCE(a.asignacion_academica_id, a.id),
+                    COALESCE(a.orden_boletin, 100),
+                    a.id
+            )
+            SELECT
+                asig.id AS asignacion_id,
+                m.id AS materia_id,
+                m.nombre AS materia,
+                p.nombre AS profesor_nombre,
+                p.apellido AS profesor_apellido,
+                asig.orden_boletin,
+                nd.id AS nota_detalle_id,
+                nd.descripcion,
+                nd.nota,
+                COALESCE(nd.tipo_evaluacion, 'numerica') AS tipo_evaluacion,
+                nd.valoracion
+            FROM estudiantes e
+            JOIN asignaciones_academicas asig ON asig.curso_id = e.curso_id
+            JOIN materias m ON m.id = asig.materia_id
+            JOIN profesor p ON p.id = asig.profesor_id
+            LEFT JOIN notas_detalle nd
+                ON nd.estudiante_id = e.id
+                AND nd.asignacion_id = asig.id
+                AND nd.periodo = %s
+            WHERE e.id = %s
+            ORDER BY asig.orden_boletin, m.nombre, nd.id
+        ''', (periodo, estudiante_id))
+
+        materias = {}
+        notas_numericas = {}
+        for row in cur.fetchall():
+            asignacion_id = row['asignacion_id']
+            if asignacion_id not in materias:
+                materias[asignacion_id] = {
+                    'asignacion_id': asignacion_id,
+                    'materia_id': row['materia_id'],
+                    'materia': row['materia'],
+                    'profesor_nombre': row['profesor_nombre'],
+                    'profesor_apellido': row['profesor_apellido'],
+                    'definitiva': None,
+                    'orden_boletin': row['orden_boletin'],
+                    'detalles': [],
+                }
+                notas_numericas[asignacion_id] = []
+
+            if row['nota_detalle_id'] is None:
+                continue
+
+            tipo_evaluacion = row['tipo_evaluacion'] or 'numerica'
+            nota = float(row['nota']) if row['nota'] is not None else None
+            materias[asignacion_id]['detalles'].append({
+                'descripcion': row['descripcion'] or '',
+                'nota': nota,
+                'periodo': periodo,
+                'tipo_evaluacion': tipo_evaluacion,
+                'valoracion': row['valoracion'],
+            })
+            if tipo_evaluacion != 'desarrollo' and nota is not None and nota > 0:
+                notas_numericas[asignacion_id].append(nota)
+
+        for asignacion_id, materia in materias.items():
+            valores = notas_numericas[asignacion_id]
+            if valores:
+                materia['definitiva'] = sum(valores) / len(valores)
+
+        return {
+            'estudiante_id': estudiante_id,
+            'estudiante_nombre': est_info['estudiante_nombre'],
+            'estudiante_apellido': est_info['estudiante_apellido'],
+            'curso': est_info['curso_nombre'],
+            'periodo': periodo,
+            'materias': list(materias.values()),
+        }
+    finally:
+        cur.close()
+        conn.close()
+

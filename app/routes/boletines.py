@@ -9,6 +9,7 @@ from app.controllers.boletin_controller import (
     guardar_boletin_controller,
     obtener_boletin_admin_controller,
     obtener_boletin_para_profesor_controller,
+    obtener_reporte_parcial_admin_controller,
 )
 
 logger = logging.getLogger(__name__)
@@ -65,3 +66,21 @@ def generar_boletin_admin(
     except Exception as e:
         logger.exception("Error generando boletin admin")
         raise HTTPException(status_code=500, detail="No se pudo generar el boletin") from e
+
+
+@router.get("/admin/reporte-parcial/{estudiante_id}/{periodo}")
+def generar_reporte_parcial_admin(
+    estudiante_id: int,
+    periodo: int,
+    _admin: dict = Depends(get_current_active_admin),
+):
+    try:
+        resultado = obtener_reporte_parcial_admin_controller(estudiante_id, periodo)
+        if not resultado:
+            raise HTTPException(status_code=404, detail="Estudiante no encontrado")
+        return resultado
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Error generando reporte parcial admin")
+        raise HTTPException(status_code=500, detail="No se pudo generar el reporte parcial") from e

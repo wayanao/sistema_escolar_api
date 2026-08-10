@@ -4,13 +4,15 @@
 
 ## Control
 
-- Estado: Activa; subcapas 0.0 a 0.3 cerradas localmente.
+- Estado: Cerrada localmente; verificación remota de CI pendiente.
 - Commit base: `b8c7653445a50bc1e230a19e0ca8bb088c47cb69`.
-- Rama observada al documentar: `main`, alineada con `origin/main`.
+- Rama observada al cerrar localmente: `main`, cuatro commits por delante de
+  `origin/main` y sin commits de `origin/main` por integrar.
 - Rama de trabajo acordada por el usuario: `main`.
-- Commit observado al ejecutar 0.3:
-  `a3d53664548a6a80a00220cd58e96debb49d9a89`.
-- Primera subcapa pendiente: 0.4, cierre documental y validación completa.
+- Commit observado al ejecutar 0.4:
+  `3c23f249b7748879cf09abbddf3edef89ef4aa69`.
+- Primera subcapa pendiente: ninguna.
+- Siguiente capa: 1, en espera de autorización explícita; no está activa.
 - Código de producto modificado: Ninguno.
 
 ## Objetivo
@@ -197,9 +199,10 @@ evidencia mínima, sin leer controladores no necesarios.
 | 0.1 | Tres pruebas temporales convertidas en deterministas | Cerrada |
 | 0.2 | Comando global local de verificación | Cerrada |
 | 0.3 | CI ejecutando la misma compuerta | Cerrada localmente; ejecución remota pendiente |
-| 0.4 | Cierre documental y validación completa | Pendiente |
+| 0.4 | Cierre documental y validación completa | Cerrada localmente |
 
-Solo se ejecuta una subcapa por turno salvo orden explícita del usuario.
+No queda otra subcapa de la capa 0. La capa 1 no se inicia ni se crea por
+anticipado sin orden explícita del usuario.
 
 ## Subcapa 0.0: trabajo exacto
 
@@ -321,6 +324,32 @@ La ejecución dentro de GitHub queda pendiente hasta que el usuario haga commit
 y push. Esta limitación es operativa, no se suplió con deploy, acceso remoto ni
 sincronización automática.
 
+## Subcapa 0.4: resultado
+
+La compuerta global final se ejecutó el 2026-08-10 desde el árbol limpio que
+tenía `HEAD` en `3c23f249b7748879cf09abbddf3edef89ef4aa69`:
+
+| Comprobación | Resultado |
+|---|---|
+| `.\venv\Scripts\python.exe scripts\verify.py` | Exit 0 en 3.4 s |
+| Suite completa | 192 pruebas correctas, 5 warnings conocidos, 1.15 s |
+| Ruff global sin caché | `All checks passed!` |
+| `pip check` | `No broken requirements found.` |
+
+La auditoría completa desde el commit base hasta `HEAD` confirmó cinco commits
+posteriores, todos explicados en esta bitácora. El diff abarca ocho archivos:
+cinco documentos de continuidad, las tres pruebas temporales de
+`tests/test_super_admin.py`, `scripts/verify.py` y el workflow
+`.github/workflows/backend-quality.yml`. No contiene archivos bajo `app/`,
+requirements o lockfiles, migraciones ni SQL. `git diff --check` terminó con
+exit 0.
+
+No se modificaron rutas, payloads, status codes, permisos, tenant, ownership,
+SQL observable, transacciones ni comportamiento de producto. La capa queda
+cerrada localmente. La única evidencia pendiente es la primera ejecución del
+workflow desde un checkout limpio en GitHub, que requiere el commit y push que
+controla el usuario.
+
 ## Criterios para cerrar toda la capa 0
 
 - La suite completa termina correctamente sin depender de la fecha actual.
@@ -329,7 +358,12 @@ sincronización automática.
 - No se cambió ningún contrato HTTP ni comportamiento funcional.
 - El diff pertenece exclusivamente a calidad, CI y documentación.
 - Se documentaron decisiones, riesgos y rollback.
-- El usuario autorizó activar la capa 1.
+- La capa 1 permanece en espera hasta que el usuario autorice activarla de
+  forma explícita.
+
+Los criterios comprobables localmente están satisfechos. La configuración del
+workflow confirma que usará la misma compuerta desde un checkout limpio; su
+primera evidencia operativa permanece pendiente de publicación.
 
 ## Decisiones vigentes
 
@@ -351,6 +385,7 @@ sincronización automática.
   normalizaciones hasta que una capa posterior los caracterice con pruebas.
 - La ausencia de prueba dedicada se registra como hueco de caracterización, no
   como autorización para ampliar las subcapas siguientes.
+- El cierre local de la capa 0 no activa implícitamente la capa 1.
 
 ## Riesgos
 
@@ -373,6 +408,57 @@ sincronización automática.
   pendiente, no evidencia sustituida por la validación local.
 - Las referencias oficiales `@v6` reciben actualizaciones dentro del major; un
   pin por SHA sería un endurecimiento futuro y no se mezcló con esta subcapa.
+- `actions/checkout` conserva credenciales por defecto durante el job. El token
+  está limitado a `contents: read` y el workflow no recibe secretos; evaluar
+  `persist-credentials: false` sería un endurecimiento posterior, no un cambio
+  autorizado para este cierre.
+
+## Staging y publicación aplicables
+
+La capa 0 no cambia la aplicación ni la base de datos, por lo que no requiere
+deploy a staging, migraciones ni acceso a producción. Su staging aplicable es
+el checkout limpio del runner de GitHub Actions:
+
+1. Antes de publicar, revisar que ninguna automatización externa asociada a
+   `main` convierta un push documental/de calidad en un deploy de producción.
+2. El usuario crea el commit y decide si hace push; este programa no lo hace.
+3. El evento `push` o `pull_request` debe iniciar el workflow `Backend quality`.
+4. La capa conserva el estado «cerrada localmente; CI remota pendiente» hasta
+   registrar el resultado de ese run.
+
+## Rollback
+
+- Si el cambio todavía no se ha publicado, el usuario puede revisar o retirar
+  únicamente los archivos del cierre desde su editor; no se usa `reset`,
+  rebase ni force-push.
+- Si el workflow causa un problema después de publicarse, identificar los SHA
+  exactos y crear commits `git revert` en orden inverso, incluyendo primero el
+  commit documental de cierre si corresponde y después
+  `3c23f249b7748879cf09abbddf3edef89ef4aa69` para retirar el workflow.
+- Un rollback total de la capa revierte primero el futuro commit documental de
+  cierre y después, en orden inverso, los cinco commits ya existentes
+  posteriores al base, sin revertir
+  `b8c7653445a50bc1e230a19e0ca8bb088c47cb69`. Esto elimina la compuerta y
+  reintroduce las tres pruebas sensibles al reloj, por lo que solo debe hacerse
+  tras revisar el diff y volver a ejecutar la verificación aplicable.
+- El usuario conserva el control de cualquier commit y publicación de rollback.
+
+## Verificación manual pendiente
+
+Después de un push autorizado por el usuario:
+
+1. Abrir GitHub Actions y seleccionar `Backend quality`.
+2. Confirmar el SHA y el evento exactos del run, el job `verify`, el runner
+   Ubuntu 24.04 y que no se usaron secretos ni una base externa.
+3. Revisar en los logs la instalación y la única invocación a
+   `python scripts/verify.py`; deben aparecer 192 pruebas correctas, Ruff
+   correcto, `pip check` correcto y exit 0.
+4. Registrar en esta bitácora URL o identificador del run, SHA, evento y
+   resultado. Si falla, no activar la capa 1 ni ampliar el alcance: documentar
+   el fallo y decidir su tratamiento por separado.
+
+No se requiere smoke test de endpoints, staging de aplicación, migración ni
+verificación manual en producción porque no cambió código de producto.
 
 ## Registro de ejecución
 
@@ -509,12 +595,45 @@ sincronización automática.
   primera ejecución remota y verificación manual, actualizar el índice maestro
   y detenerse sin activar la capa 1.
 
+### 2026-08-10 — subcapa 0.4
+
+- Rama acordada: `main`; árbol limpio antes de documentar el cierre.
+- Commit observado:
+  `3c23f249b7748879cf09abbddf3edef89ef4aa69`.
+- Trazabilidad: existen cinco commits posteriores al base; corresponden a la
+  guía inicial y a los cierres 0.0, 0.1, 0.2 y 0.3, y todos están explicados en
+  esta bitácora. `main` estaba cuatro commits por delante de `origin/main`, sin
+  commits de `origin/main` por integrar ni divergencia no documentada.
+- Compuerta global final: exit 0 en 3.4 s; 192 pruebas correctas con los 5
+  warnings conocidos en 1.15 s, Ruff correcto y dependencias íntegras.
+- Auditoría del diff completo: ocho archivos exclusivamente de documentación,
+  caracterización temporal, compuerta local y CI; ningún archivo de producto,
+  dependencia, migración o SQL.
+- `git diff --check` del rango completo: exit 0.
+- Archivos modificados por 0.4: `docs/modularizacion/README.md` y esta
+  bitácora.
+- Rutas, payloads, status codes, permisos, tenant, ownership, SQL observable,
+  transacciones, dependencias y comportamiento modificados: ninguno.
+- Staging, publicación, rollback y verificación manual: documentados en las
+  secciones anteriores; no se ejecutó deploy, migración, acceso a producción,
+  commit ni push.
+- Riesgo pendiente: la primera resolución de dependencias y ejecución Linux en
+  GitHub solo podrá comprobarse después de una publicación autorizada.
+- Decisión: cerrar localmente 0.4 y toda la capa 0, manteniendo la capa 1 en
+  espera.
+- Siguiente acción exacta: el usuario revisa y, si está conforme, crea el commit
+  local del cierre. Si decide hacer push, verifica y registra el run remoto de
+  `Backend quality`. Solo ante una orden explícita posterior se crea la
+  bitácora de la capa 1 desde `PLANTILLA_CAPA.md`, usando entonces el `HEAD`
+  vigente como base.
+
 ## Entrega al próximo chat
 
 - Leer primero `docs/modularizacion/README.md` completo.
 - Leer después este archivo completo.
-- Capa activa: 0.
-- Primera subcapa pendiente: 0.4.
-- Siguiente acción exacta: cerrar documentalmente la capa 0 con la compuerta
-  global, revisión completa, staging/rollback/verificación manual e índice
-  maestro; no activar la capa 1 sin orden del usuario.
+- Capa activa: ninguna.
+- Capa 0: cerrada localmente; primera ejecución remota de CI pendiente.
+- Primera subcapa pendiente: ninguna.
+- Siguiente capa: 1, en espera; no crearla ni activarla sin orden del usuario.
+- Siguiente acción exacta: revisar y crear el commit local del cierre. Si el
+  usuario decide publicar, verificar el run remoto y registrar su evidencia.

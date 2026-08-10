@@ -34,7 +34,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 
 | Orden | Capa | Resultado principal | Estado | Bitácora |
 |---:|---|---|---|---|
-| 0 | Línea base y calidad | Pruebas deterministas, compuerta global y CI | Activa | [00_LINEA_BASE_CALIDAD.md](./00_LINEA_BASE_CALIDAD.md) |
+| 0 | Línea base y calidad | Pruebas deterministas, compuerta global y CI | Cerrada localmente; CI remota pendiente | [00_LINEA_BASE_CALIDAD.md](./00_LINEA_BASE_CALIDAD.md) |
 | 1 | Fundación de base de datos | Conexiones, transacciones, timeouts y pool definidos | En espera | Se crea al activarla |
 | 2 | Concurrencia | DB síncrona fuera del event loop preservando `ContextVar` | En espera | Se crea al activarla |
 | 3 | Migraciones y tenants | Todos los tenants versionados, runner bloqueado y alta reproducible | En espera | Se crea al activarla |
@@ -47,6 +47,10 @@ No se crea por anticipado un documento por cada dominio. Cuando una capa se
 cierre y el usuario ordene continuar, se crea su sucesora desde
 `PLANTILLA_CAPA.md`, se registra el commit base vigente y se actualiza esta
 tabla.
+
+Actualmente no hay una capa activa. La capa 1 permanece en espera y no debe
+inferirse como activa: solo se creará su bitácora cuando el usuario lo ordene
+explícitamente.
 
 ## Alcance de cada capa
 
@@ -113,9 +117,14 @@ parte del contrato de seguridad.
 Un chat nuevo debe leer completamente y en este orden:
 
 1. `docs/modularizacion/README.md`;
-2. la bitácora marcada como `Activa` en la tabla;
+2. la bitácora marcada como `Activa` en la tabla o, si no existe una, la
+   bitácora cerrada más reciente que conserve verificaciones pendientes;
 3. las instrucciones locales del repositorio, si existen;
 4. únicamente los archivos fuente y pruebas relacionados con la subcapa activa.
+
+Si no hay una capa marcada como `Activa`, el asistente puede completar o
+registrar las verificaciones pendientes de la última capa cerrada, pero no debe
+iniciar una capa nueva sin orden expresa del usuario.
 
 No necesita leer todo `docs/`, `CAMBIOS_BACKEND.md` ni bitácoras cerradas, salvo
 que el documento activo señale una sección concreta.
@@ -171,9 +180,26 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
 - Capa activa: 0, línea base y calidad.
 - Código de producto modificado por esta guía: ninguno.
 
+## Estado actual
+
+- Repositorio: `sistema_escolar_api`.
+- Rama acordada: `main`.
+- Capa 0 cerrada localmente el 2026-08-10.
+- Commit validado antes de documentar el cierre:
+  `3c23f249b7748879cf09abbddf3edef89ef4aa69`.
+- Compuerta global final: 192 pruebas correctas, Ruff correcto y
+  `pip check` correcto.
+- Ejecución remota de GitHub Actions: pendiente del commit y push controlados
+  por el usuario.
+- Capa activa: ninguna.
+- Siguiente capa: 1, fundación de base de datos, en espera de autorización
+  explícita.
+- Código de producto modificado durante la capa 0: ninguno.
+
 ## Archivos de continuidad
 
-- [00_LINEA_BASE_CALIDAD.md](./00_LINEA_BASE_CALIDAD.md): bitácora activa.
+- [00_LINEA_BASE_CALIDAD.md](./00_LINEA_BASE_CALIDAD.md): bitácora cerrada de
+  la capa 0; conserva pendiente la primera verificación remota de CI.
 - [PROMPT_CONTINUACION.md](./PROMPT_CONTINUACION.md): texto para iniciar o
   continuar en otro chat.
 - [PLANTILLA_CAPA.md](./PLANTILLA_CAPA.md): estructura de la siguiente bitácora.

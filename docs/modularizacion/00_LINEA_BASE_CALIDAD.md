@@ -4,13 +4,13 @@
 
 ## Control
 
-- Estado: Activa; subcapas 0.0, 0.1 y 0.2 cerradas.
+- Estado: Activa; subcapas 0.0 a 0.3 cerradas localmente.
 - Commit base: `b8c7653445a50bc1e230a19e0ca8bb088c47cb69`.
 - Rama observada al documentar: `main`, alineada con `origin/main`.
 - Rama de trabajo acordada por el usuario: `main`.
-- Commit observado al ejecutar 0.2:
-  `eb911ed94a28e7a6bde70db9b7cea9144c13e9e5`.
-- Primera subcapa pendiente: 0.3, CI ejecutando la misma compuerta.
+- Commit observado al ejecutar 0.3:
+  `a3d53664548a6a80a00220cd58e96debb49d9a89`.
+- Primera subcapa pendiente: 0.4, cierre documental y validación completa.
 - Código de producto modificado: Ninguno.
 
 ## Objetivo
@@ -196,7 +196,7 @@ evidencia mínima, sin leer controladores no necesarios.
 | 0.0 | Inventario reproducible de comandos, fallos y contratos | Cerrada |
 | 0.1 | Tres pruebas temporales convertidas en deterministas | Cerrada |
 | 0.2 | Comando global local de verificación | Cerrada |
-| 0.3 | CI ejecutando la misma compuerta | Pendiente |
+| 0.3 | CI ejecutando la misma compuerta | Cerrada localmente; ejecución remota pendiente |
 | 0.4 | Cierre documental y validación completa | Pendiente |
 
 Solo se ejecuta una subcapa por turno salvo orden explícita del usuario.
@@ -282,6 +282,45 @@ deja de mostrar las verificaciones posteriores.
 No se creó ni modificó configuración de CI. 0.3 deberá invocar este mismo script
 en vez de copiar sus tres comandos dentro del workflow.
 
+## Subcapa 0.3: resultado
+
+Se agregó `.github/workflows/backend-quality.yml` para GitHub Actions con este
+contrato:
+
+- triggers `push` y `pull_request`, sin filtros que omitan cambios;
+- permiso mínimo `contents: read`;
+- un job `verify` sobre `ubuntu-24.04`, con timeout de 10 minutos;
+- [actions/checkout](https://github.com/actions/checkout) `@v6` y
+  [actions/setup-python](https://github.com/actions/setup-python) `@v6`;
+- Python `3.14`, igual al minor validado localmente;
+- instalación desde `requirements.txt` sin caché ni actualización implícita de
+  pip;
+- un único paso de calidad: `python scripts/verify.py`.
+
+El job define `ENVIRONMENT=test` y valores CI ficticios, no secretos, para
+`SECRET_KEY` y `DATABASE_URL`, las dos variables obligatorias de
+`app/config.py`. No levanta PostgreSQL: el pool es lazy y la suite actual es
+hermética; cualquier acceso DB inesperado deberá fallar de forma visible. Los
+valores por defecto de un checkout sin `.env` se comprobaron construyendo
+`Settings(_env_file=None)` con esas tres variables.
+
+La selección de acciones v6, permisos de lectura y runner estable se contrastó
+con la documentación oficial vigente de GitHub. No se habilitó caché porque
+`requirements.txt` usa rangos mínimos y 0.3 no autoriza fijar dependencias ni
+agregar otro estado mutable.
+
+Verificaciones locales del 2026-08-10:
+
+| Comprobación | Resultado |
+|---|---|
+| Parseo con `yaml.BaseLoader` y aserciones de triggers, permisos, runner, acciones, Python, env y pasos | Correcto |
+| `Settings(_env_file=None)` con el entorno CI | Correcto; defaults locales y storage `local` |
+| `.\venv\Scripts\python.exe scripts\verify.py` | Exit 0 en 3.4 s; 192 pruebas, Ruff y `pip check` correctos |
+
+La ejecución dentro de GitHub queda pendiente hasta que el usuario haga commit
+y push. Esta limitación es operativa, no se suplió con deploy, acceso remoto ni
+sincronización automática.
+
 ## Criterios para cerrar toda la capa 0
 
 - La suite completa termina correctamente sin depender de la fecha actual.
@@ -300,6 +339,10 @@ en vez de copiar sus tres comandos dentro del workflow.
   evitar dos definiciones divergentes.
 - La compuerta ejecuta las tres verificaciones aun si una falla y devuelve el
   primer código no cero observado.
+- CI usa permisos `contents: read`, variables ficticias sin secretos, no inicia
+  PostgreSQL y no duplica los comandos de la compuerta.
+- CI no usa caché mientras las dependencias continúen expresadas como rangos
+  mínimos sin lockfile.
 - Instalar o fijar dependencias no se mezclará automáticamente con esta capa;
   cualquier cambio deberá justificarse por reproducibilidad.
 - La capa 0 no se utilizará para comenzar la modularización de dominios.
@@ -314,16 +357,22 @@ en vez de copiar sus tres comandos dentro del workflow.
 - Que una prueba aparentemente temporal revele en realidad un defecto de
   negocio. En ese caso se detiene y se solicita decisión.
 - Diferencias de Windows/Linux en temporales o paths de uploads.
-- Que CI necesite secretos o PostgreSQL no disponibles; deberá separarse una
-  suite hermética de cualquier integración externa.
+- Si una prueba futura requiere PostgreSQL real, el job hermético fallará y se
+  deberá decidir explícitamente si se agrega un servicio; no se usarán secretos
+  ni bases externas para ocultarlo.
 - Un cambio futuro en la compuerta podría ocultar fallos o depender del estado
   local; la comprobación de propagación de 0.2 queda como evidencia mínima.
 - Python, pytest y Ruff están acotados con mínimos en `requirements.txt`, no
   fijados a las versiones observadas; un entorno limpio puede resolver otras
-  versiones y deberá comprobarse en 0.3.
+  versiones. La primera ejecución remota deberá confirmar esa resolución.
 - Permanecen cinco warnings de terceros/schemas y varias familias HTTP sin
-  prueba dedicada. Son deuda conocida fuera de 0.2 y no deben mezclarse con CI
-  en 0.3.
+  prueba dedicada. Son deuda conocida fuera de 0.3 y no se corregirán durante
+  el cierre 0.4.
+- El workflow aún no puede observarse en GitHub porque el usuario conserva el
+  control de commit y push. La primera ejecución remota es verificación manual
+  pendiente, no evidencia sustituida por la validación local.
+- Las referencias oficiales `@v6` reciben actualizaciones dentro del major; un
+  pin por SHA sería un endurecimiento futuro y no se mezcló con esta subcapa.
 
 ## Registro de ejecución
 
@@ -425,11 +474,47 @@ en vez de copiar sus tres comandos dentro del workflow.
   dependencias y ejecutar `python scripts/verify.py`; verificar el workflow y
   detenerse sin iniciar el cierre 0.4.
 
+### 2026-08-10 — subcapa 0.3
+
+- Rama acordada: `main`; árbol limpio antes de editar.
+- Commit observado:
+  `a3d53664548a6a80a00220cd58e96debb49d9a89`.
+- Trazabilidad: los cuatro commits posteriores al base corresponden a la guía
+  y a los cierres 0.0, 0.1 y 0.2. `main` estaba tres commits por delante de
+  `origin/main`, sin divergencia ni push nuevo.
+- Archivos modificados: `.github/workflows/backend-quality.yml` y esta
+  bitácora.
+- Workflow: `push` y `pull_request`, Ubuntu 24.04, Python 3.14, timeout de 10
+  minutos y permiso `contents: read`.
+- Acciones: `actions/checkout@v6` y `actions/setup-python@v6`, verificadas contra
+  sus fuentes oficiales vigentes.
+- Entorno limpio: `Settings(_env_file=None)` aceptó solo los valores CI y
+  conservó `STORAGE_PROVIDER=local`; no se agregó servicio de base de datos.
+- Validación YAML/estructura: correcta para triggers, permisos, runner, timeout,
+  variables, acciones, versión Python y comandos.
+- Compuerta compartida local: exit 0; 192 pruebas, Ruff y `pip check` correctos,
+  en 3.4 s.
+- Código de producto, contratos, SQL, transacciones, permisos, tenant,
+  ownership y dependencias modificados: ninguno.
+- `git diff --check`: exit 0 para el archivo versionado; el workflow nuevo no
+  contiene whitespace final y fue parseado correctamente.
+- Alcance final del diff: únicamente `.github/workflows/backend-quality.yml` y
+  esta bitácora, ambos pertenecientes a 0.3.
+- Ejecución GitHub: pendiente del commit y push controlados por el usuario.
+- Decisión: CI prepara el entorno y llama una sola vez a
+  `python scripts/verify.py`; no replica pytest/Ruff/pip ni usa secretos reales.
+- Subcapa cerrada localmente: 0.3, CI con la misma compuerta.
+- Siguiente acción exacta: en 0.4, ejecutar la compuerta global final, revisar
+  dependencias y diff completo de la capa, documentar staging, rollback,
+  primera ejecución remota y verificación manual, actualizar el índice maestro
+  y detenerse sin activar la capa 1.
+
 ## Entrega al próximo chat
 
 - Leer primero `docs/modularizacion/README.md` completo.
 - Leer después este archivo completo.
 - Capa activa: 0.
-- Primera subcapa pendiente: 0.3.
-- Siguiente acción exacta: agregar CI que instale el entorno e invoque
-  `python scripts/verify.py`; detenerse sin iniciar el cierre 0.4.
+- Primera subcapa pendiente: 0.4.
+- Siguiente acción exacta: cerrar documentalmente la capa 0 con la compuerta
+  global, revisión completa, staging/rollback/verificación manual e índice
+  maestro; no activar la capa 1 sin orden del usuario.

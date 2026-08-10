@@ -4,13 +4,13 @@
 
 ## Control
 
-- Estado: Activa; subcapa 0.0 cerrada documentalmente.
+- Estado: Activa; subcapas 0.0 y 0.1 cerradas.
 - Commit base: `b8c7653445a50bc1e230a19e0ca8bb088c47cb69`.
 - Rama observada al documentar: `main`, alineada con `origin/main`.
 - Rama de trabajo acordada por el usuario: `main`.
-- Commit observado al ejecutar 0.0:
-  `a991ee205a3e6454f77edb7919d0c95e8080dc9a`.
-- Primera subcapa pendiente: 0.1, pruebas temporales deterministas.
+- Commit observado al ejecutar 0.1:
+  `d5d9f80424c2c2683e45941f6583e0367ac54295`.
+- Primera subcapa pendiente: 0.2, comando global local de verificación.
 - Código de producto modificado: Ninguno.
 
 ## Objetivo
@@ -194,7 +194,7 @@ evidencia mínima, sin leer controladores no necesarios.
 | Subcapa | Resultado | Estado |
 |---:|---|---|
 | 0.0 | Inventario reproducible de comandos, fallos y contratos | Cerrada |
-| 0.1 | Tres pruebas temporales convertidas en deterministas | Pendiente |
+| 0.1 | Tres pruebas temporales convertidas en deterministas | Cerrada |
 | 0.2 | Comando global local de verificación | Pendiente |
 | 0.3 | CI ejecutando la misma compuerta | Pendiente |
 | 0.4 | Cierre documental y validación completa | Pendiente |
@@ -225,6 +225,32 @@ Trabajo ejecutado y cerrado en esta entrega:
 - No hay cambios en código de producto ni en comportamiento.
 - Pruebas específicas aplicables y `git diff --check` están registrados.
 
+## Subcapa 0.1: resultado
+
+Las tres pruebas de `tests/test_super_admin.py` usan ahora la fixture
+`fixed_tenant_status_today`. La fixture conserva la implementación real de
+`calculate_effective_tenant_status` y solo proporciona explícitamente
+`today = date(2026, 6, 15)` cuando el controlador la invoca. Esa fecha está
+después del inicio del tenant y antes de `fecha_proximo_pago`, por lo que la
+intención original de las tres pruebas ya no depende del calendario del host.
+
+No se cambiaron las fechas de negocio, las aserciones, el controlador ni
+`app/core/tenant_status.py`. La fixture tiene exactamente tres consumidores y
+se aplica solo a los casos previamente identificados.
+
+Resultados observados el 2026-08-10:
+
+| Comprobación | Resultado |
+|---|---|
+| Tres nodos temporales con `-p no:cacheprovider` | 3 pasaron en 0.40 s |
+| `.\venv\Scripts\python.exe -m pytest -q` | 192 pasaron, 5 warnings conocidos, 1.09 s |
+| `.\venv\Scripts\python.exe -m ruff check --no-cache app tests scripts apply_migration.py` | `All checks passed!` |
+| `.\venv\Scripts\python.exe -m pip check` | `No broken requirements found.` |
+
+La suite completa se ejecutó con temporales normales fuera del sandbox para no
+reintroducir los seis `PermissionError` ambientales de uploads ya caracterizados
+en 0.0.
+
 ## Criterios para cerrar toda la capa 0
 
 - La suite completa termina correctamente sin depender de la fecha actual.
@@ -237,8 +263,8 @@ Trabajo ejecutado y cerrado en esta entrega:
 
 ## Decisiones vigentes
 
-- Las tres pruebas se arreglarán mediante control explícito del reloj o datos
-  relativos; no se relajarán aserciones para ocultar el fallo.
+- Las tres pruebas controlan explícitamente el reloj mediante una fixture local
+  que reutiliza la implementación real; no se relajaron aserciones.
 - La compuerta local y CI deben llamar las mismas verificaciones, evitando dos
   definiciones divergentes.
 - Instalar o fijar dependencias no se mezclará automáticamente con esta capa;
@@ -248,7 +274,7 @@ Trabajo ejecutado y cerrado en esta entrega:
   heredado del router/controlador; no se agregan `response_model` ni
   normalizaciones hasta que una capa posterior los caracterice con pruebas.
 - La ausencia de prueba dedicada se registra como hueco de caracterización, no
-  como autorización para ampliar 0.1.
+  como autorización para ampliar las subcapas siguientes.
 
 ## Riesgos
 
@@ -263,8 +289,8 @@ Trabajo ejecutado y cerrado en esta entrega:
   fijados a las versiones observadas; un entorno limpio puede resolver otras
   versiones y deberá comprobarse en 0.3.
 - Permanecen cinco warnings de terceros/schemas y varias familias HTTP sin
-  prueba dedicada. Son deuda conocida fuera del alcance de 0.0 y no deben
-  mezclarse con la corrección temporal de 0.1.
+  prueba dedicada. Son deuda conocida fuera de 0.1 y no deben mezclarse con el
+  comando global de 0.2.
 
 ## Registro de ejecución
 
@@ -304,11 +330,43 @@ Trabajo ejecutado y cerrado en esta entrega:
   estado efectivo; ejecutar primero esos tres nodos y después la suite, Ruff,
   `pip check` y `git diff --check`. No iniciar 0.2 en ese turno.
 
+### 2026-08-10 — subcapa 0.1
+
+- Rama acordada: `main`; árbol limpio antes de editar.
+- Commit observado:
+  `d5d9f80424c2c2683e45941f6583e0367ac54295`.
+- Trazabilidad: los dos commits posteriores al base corresponden a la creación
+  documental del programa y al cierre documentado de 0.0. `main` estaba un
+  commit por delante de `origin/main`, sin divergencia remota ni push nuevo.
+- Archivos modificados: `tests/test_super_admin.py` y esta bitácora.
+- Implementación: fixture `fixed_tenant_status_today`, consumida solo por los
+  tres nodos temporales, que pasa `date(2026, 6, 15)` al parámetro `today` de la
+  función real.
+- Contratos, código de producto, SQL, transacciones, permisos, tenant y
+  ownership modificados: ninguno.
+- Pruebas específicas: 3 pasaron en 0.40 s.
+- Suite completa: 192 pasaron y permanecen los 5 warnings conocidos, en 1.09 s.
+- Ruff global sin caché: correcto.
+- `pip check`: correcto.
+- `git diff --check`: exit 0, sin errores de whitespace; Git conserva el aviso
+  conocido de normalización LF a CRLF en Windows.
+- Alcance final del diff: únicamente `tests/test_super_admin.py` y esta
+  bitácora, ambos pertenecientes a 0.1.
+- Decisión: fijar el reloj en el límite de la prueba y conservar tanto los datos
+  históricos como todas las aserciones originales.
+- Riesgo residual: la fixture intercepta el símbolo importado por el controlador;
+  si cambia esa integración, la prueba fallará de forma visible en vez de
+  ocultar el cambio.
+- Subcapa cerrada: 0.1, pruebas temporales deterministas.
+- Siguiente acción exacta: en 0.2, crear un único comando local que ejecute la
+  suite, Ruff y `pip check` con propagación fiel del código de salida; documentar
+  su uso y detenerse sin crear CI ni iniciar 0.3.
+
 ## Entrega al próximo chat
 
 - Leer primero `docs/modularizacion/README.md` completo.
 - Leer después este archivo completo.
 - Capa activa: 0.
-- Primera subcapa pendiente: 0.1.
-- Siguiente acción exacta: volver deterministas solo las tres pruebas temporales
-  identificadas, verificar la suite y detenerse sin iniciar 0.2.
+- Primera subcapa pendiente: 0.2.
+- Siguiente acción exacta: crear y documentar una sola compuerta local que
+  ejecute pytest, Ruff y `pip check`; detenerse sin iniciar CI (0.3).

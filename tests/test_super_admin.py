@@ -53,6 +53,25 @@ class FakeConnection:
         self.closed = True
 
 
+@pytest.fixture
+def fixed_tenant_status_today(monkeypatch):
+    calculate_status = super_admin_controller.calculate_effective_tenant_status
+
+    def calculate_status_at_fixed_date(estado, fecha_proximo_pago=None, dias_gracia=0):
+        return calculate_status(
+            estado,
+            fecha_proximo_pago,
+            dias_gracia,
+            today=date(2026, 6, 15),
+        )
+
+    monkeypatch.setattr(
+        super_admin_controller,
+        "calculate_effective_tenant_status",
+        calculate_status_at_fixed_date,
+    )
+
+
 def test_login_controller_uses_super_admin_flow(monkeypatch):
     def fake_authenticate(email, password, verify_password):
         assert email == "owner@app.com"
@@ -95,7 +114,7 @@ async def test_get_current_super_admin_rejects_tenant_admin_token(monkeypatch):
     assert exc.value.status_code == 401
 
 
-def test_listar_tenants_controller_reads_public_colegios(monkeypatch):
+def test_listar_tenants_controller_reads_public_colegios(monkeypatch, fixed_tenant_status_today):
     cursor = FakeCursor(
         rows=[
             (
@@ -209,7 +228,7 @@ def test_crear_tenant_controller_rejects_payment_before_start():
     assert exc.value.status_code == 422
 
 
-def test_actualizar_estado_tenant_controller_validates_status(monkeypatch):
+def test_actualizar_estado_tenant_controller_validates_status(monkeypatch, fixed_tenant_status_today):
     cursor = FakeCursor(
         rows=[
             (1, "Colegio Demo", "demo", "tenant_demo", "activo", date(2026, 6, 1), date(2026, 7, 1), 5),
@@ -233,7 +252,10 @@ def test_actualizar_estado_tenant_controller_validates_status(monkeypatch):
     assert conn.committed is True
 
 
-def test_actualizar_estado_tenant_controller_same_status_does_not_audit(monkeypatch):
+def test_actualizar_estado_tenant_controller_same_status_does_not_audit(
+    monkeypatch,
+    fixed_tenant_status_today,
+):
     cursor = FakeCursor(rows=[(1, "Colegio Demo", "demo", "tenant_demo", "activo", date(2026, 6, 1), date(2026, 7, 1), 5)])
     conn = FakeConnection(cursor)
     monkeypatch.setattr(super_admin_controller, "get_connection", lambda: conn)

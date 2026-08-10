@@ -4,13 +4,13 @@
 
 ## Control
 
-- Estado: Activa; subcapas 0.0 y 0.1 cerradas.
+- Estado: Activa; subcapas 0.0, 0.1 y 0.2 cerradas.
 - Commit base: `b8c7653445a50bc1e230a19e0ca8bb088c47cb69`.
 - Rama observada al documentar: `main`, alineada con `origin/main`.
 - Rama de trabajo acordada por el usuario: `main`.
-- Commit observado al ejecutar 0.1:
-  `d5d9f80424c2c2683e45941f6583e0367ac54295`.
-- Primera subcapa pendiente: 0.2, comando global local de verificación.
+- Commit observado al ejecutar 0.2:
+  `eb911ed94a28e7a6bde70db9b7cea9144c13e9e5`.
+- Primera subcapa pendiente: 0.3, CI ejecutando la misma compuerta.
 - Código de producto modificado: Ninguno.
 
 ## Objetivo
@@ -195,7 +195,7 @@ evidencia mínima, sin leer controladores no necesarios.
 |---:|---|---|
 | 0.0 | Inventario reproducible de comandos, fallos y contratos | Cerrada |
 | 0.1 | Tres pruebas temporales convertidas en deterministas | Cerrada |
-| 0.2 | Comando global local de verificación | Pendiente |
+| 0.2 | Comando global local de verificación | Cerrada |
 | 0.3 | CI ejecutando la misma compuerta | Pendiente |
 | 0.4 | Cierre documental y validación completa | Pendiente |
 
@@ -251,6 +251,37 @@ La suite completa se ejecutó con temporales normales fuera del sandbox para no
 reintroducir los seis `PermissionError` ambientales de uploads ya caracterizados
 en 0.0.
 
+## Subcapa 0.2: resultado
+
+La compuerta local única es:
+
+```powershell
+.\venv\Scripts\python.exe scripts\verify.py
+```
+
+`scripts/verify.py` usa `sys.executable`, fija como directorio de ejecución la
+raíz real del repositorio y no usa shell ni dependencias nuevas. Ejecuta siempre
+las tres etapas para mostrar todos los resultados y devuelve el primer código de
+salida distinto de cero:
+
+1. `python -m pytest -q`;
+2. `python -m ruff check --no-cache app tests scripts apply_migration.py`;
+3. `python -m pip check`.
+
+Ejecución real del 2026-08-10: exit 0 en 3.1 s; pytest terminó con 192 pruebas
+correctas y los 5 warnings conocidos en 1.05 s, Ruff indicó
+`All checks passed!` y `pip check` indicó `No broken requirements found.` La
+ejecución se hizo fuera del sandbox únicamente para permitir los temporales
+normales de pytest.
+
+La propagación se comprobó sin modificar archivos, sustituyendo temporalmente
+`subprocess.run` con retornos `0`, `7` y `2`: se ejecutaron las tres etapas y
+`main()` devolvió `7`. Por tanto, la compuerta no convierte un fallo en éxito ni
+deja de mostrar las verificaciones posteriores.
+
+No se creó ni modificó configuración de CI. 0.3 deberá invocar este mismo script
+en vez de copiar sus tres comandos dentro del workflow.
+
 ## Criterios para cerrar toda la capa 0
 
 - La suite completa termina correctamente sin depender de la fecha actual.
@@ -265,8 +296,10 @@ en 0.0.
 
 - Las tres pruebas controlan explícitamente el reloj mediante una fixture local
   que reutiliza la implementación real; no se relajaron aserciones.
-- La compuerta local y CI deben llamar las mismas verificaciones, evitando dos
-  definiciones divergentes.
+- La compuerta local es `scripts/verify.py`; CI debe invocarla directamente para
+  evitar dos definiciones divergentes.
+- La compuerta ejecuta las tres verificaciones aun si una falla y devuelve el
+  primer código no cero observado.
 - Instalar o fijar dependencias no se mezclará automáticamente con esta capa;
   cualquier cambio deberá justificarse por reproducibilidad.
 - La capa 0 no se utilizará para comenzar la modularización de dominios.
@@ -283,14 +316,14 @@ en 0.0.
 - Diferencias de Windows/Linux en temporales o paths de uploads.
 - Que CI necesite secretos o PostgreSQL no disponibles; deberá separarse una
   suite hermética de cualquier integración externa.
-- Convertir el comando global en un script que oculte fallos o dependa del
-  estado local.
+- Un cambio futuro en la compuerta podría ocultar fallos o depender del estado
+  local; la comprobación de propagación de 0.2 queda como evidencia mínima.
 - Python, pytest y Ruff están acotados con mínimos en `requirements.txt`, no
   fijados a las versiones observadas; un entorno limpio puede resolver otras
   versiones y deberá comprobarse en 0.3.
 - Permanecen cinco warnings de terceros/schemas y varias familias HTTP sin
-  prueba dedicada. Son deuda conocida fuera de 0.1 y no deben mezclarse con el
-  comando global de 0.2.
+  prueba dedicada. Son deuda conocida fuera de 0.2 y no deben mezclarse con CI
+  en 0.3.
 
 ## Registro de ejecución
 
@@ -362,11 +395,41 @@ en 0.0.
   suite, Ruff y `pip check` con propagación fiel del código de salida; documentar
   su uso y detenerse sin crear CI ni iniciar 0.3.
 
+### 2026-08-10 — subcapa 0.2
+
+- Rama acordada: `main`; árbol limpio antes de editar.
+- Commit observado:
+  `eb911ed94a28e7a6bde70db9b7cea9144c13e9e5`.
+- Trazabilidad: los tres commits posteriores al base corresponden a la guía
+  inicial, el cierre de 0.0 y el cierre de 0.1. `main` estaba dos commits por
+  delante de `origin/main`, sin divergencia ni push nuevo.
+- Archivos modificados: `scripts/verify.py` y esta bitácora.
+- Comando agregado: `.\venv\Scripts\python.exe scripts\verify.py`.
+- Resultado real: exit 0; 192 pruebas correctas, Ruff correcto y dependencias
+  íntegras, en 3.1 s.
+- Verificación específica de error: retornos simulados `0`, `7`, `2`; se
+  ejecutaron tres subprocess y la compuerta devolvió `7`.
+- Diseño: usa el intérprete invocante, comandos estáticos sin shell, raíz
+  resuelta desde `__file__` y primer código de fallo preservado.
+- Dependencias, configuración de pytest/Ruff y CI modificadas: ninguna.
+- Código de producto, contratos, SQL, transacciones, permisos, tenant y
+  ownership modificados: ninguno.
+- `git diff --check`: exit 0 para el archivo versionado; el script nuevo no
+  contiene whitespace final y fue incluido por Ruff en la compuerta exitosa.
+- Alcance final del diff: únicamente `scripts/verify.py` y esta bitácora, ambos
+  pertenecientes a 0.2.
+- Decisión: mantener una sola definición ejecutable y reservar el workflow para
+  0.3, donde solo deberá preparar Python/dependencias e invocar el script.
+- Subcapa cerrada: 0.2, comando global local de verificación.
+- Siguiente acción exacta: en 0.3, agregar CI para checkout limpio, instalar las
+  dependencias y ejecutar `python scripts/verify.py`; verificar el workflow y
+  detenerse sin iniciar el cierre 0.4.
+
 ## Entrega al próximo chat
 
 - Leer primero `docs/modularizacion/README.md` completo.
 - Leer después este archivo completo.
 - Capa activa: 0.
-- Primera subcapa pendiente: 0.2.
-- Siguiente acción exacta: crear y documentar una sola compuerta local que
-  ejecute pytest, Ruff y `pip check`; detenerse sin iniciar CI (0.3).
+- Primera subcapa pendiente: 0.3.
+- Siguiente acción exacta: agregar CI que instale el entorno e invoque
+  `python scripts/verify.py`; detenerse sin iniciar el cierre 0.4.

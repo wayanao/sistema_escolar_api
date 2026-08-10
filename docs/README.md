@@ -18,6 +18,8 @@ Indice operativo para mantener control del backend SaaS escolar.
 - `MIGRACIONES.md`: runner `apply_migration.py`, migraciones publicas/tenant e historial.
 - `ESCALABILIDAD.md`: lineamientos para crecer sin romper contratos actuales.
 - `PLAN_EJECUCION_BACKEND.md`: orden sugerido para trabajo futuro.
+- `modularizacion/README.md`: plan activo por capas y continuidad entre chats
+  para la evolución segura del backend.
 
 ## Estado actual resumido
 

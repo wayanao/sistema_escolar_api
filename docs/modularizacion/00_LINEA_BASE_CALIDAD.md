@@ -6,11 +6,16 @@
 
 - Estado: Cerrada localmente; verificación remota de CI pendiente.
 - Commit base: `b8c7653445a50bc1e230a19e0ca8bb088c47cb69`.
-- Rama observada al cerrar localmente: `main`, cuatro commits por delante de
-  `origin/main` y sin commits de `origin/main` por integrar.
+- Rama observada al ejecutar 0.4, antes del commit de cierre: `main`, cuatro
+  commits por delante de `origin/main` y sin commits de `origin/main` por
+  integrar.
 - Rama de trabajo acordada por el usuario: `main`.
 - Commit observado al ejecutar 0.4:
   `3c23f249b7748879cf09abbddf3edef89ef4aa69`.
+- Commit local de cierre observado antes de corregir el prompt de continuidad:
+  `95b4c8878fafeb43c54b27a834db6009cf5ca095`.
+- Estado al iniciar la corrección: árbol limpio; `main` cinco commits por
+  delante de `origin/main` y sin commits remotos por integrar.
 - Primera subcapa pendiente: ninguna.
 - Siguiente capa: 1, en espera de autorización explícita; no está activa.
 - Código de producto modificado: Ninguno.
@@ -421,7 +426,9 @@ el checkout limpio del runner de GitHub Actions:
 
 1. Antes de publicar, revisar que ninguna automatización externa asociada a
    `main` convierta un push documental/de calidad en un deploy de producción.
-2. El usuario crea el commit y decide si hace push; este programa no lo hace.
+2. El usuario conserva el control de los commits locales y decide si hace push;
+   el cierre está en `95b4c8878fafeb43c54b27a834db6009cf5ca095` y este
+   programa no publica cambios.
 3. El evento `push` o `pull_request` debe iniciar el workflow `Backend quality`.
 4. La capa conserva el estado «cerrada localmente; CI remota pendiente» hasta
    registrar el resultado de ese run.
@@ -432,12 +439,13 @@ el checkout limpio del runner de GitHub Actions:
   únicamente los archivos del cierre desde su editor; no se usa `reset`,
   rebase ni force-push.
 - Si el workflow causa un problema después de publicarse, identificar los SHA
-  exactos y crear commits `git revert` en orden inverso, incluyendo primero el
-  commit documental de cierre si corresponde y después
+  exactos y crear commits `git revert` en orden inverso, incluyendo primero
+  cualquier corrección documental posterior, después el cierre
+  `95b4c8878fafeb43c54b27a834db6009cf5ca095` y finalmente
   `3c23f249b7748879cf09abbddf3edef89ef4aa69` para retirar el workflow.
-- Un rollback total de la capa revierte primero el futuro commit documental de
-  cierre y después, en orden inverso, los cinco commits ya existentes
-  posteriores al base, sin revertir
+- Un rollback total de la capa revierte primero cualquier corrección posterior,
+  luego el cierre `95b4c8878fafeb43c54b27a834db6009cf5ca095` y después,
+  en orden inverso, los cinco commits que lo preceden desde el base, sin revertir
   `b8c7653445a50bc1e230a19e0ca8bb088c47cb69`. Esto elimina la compuerta y
   reintroduce las tres pruebas sensibles al reloj, por lo que solo debe hacerse
   tras revisar el diff y volver a ejecutar la verificación aplicable.
@@ -610,8 +618,9 @@ verificación manual en producción porque no cambió código de producto.
   caracterización temporal, compuerta local y CI; ningún archivo de producto,
   dependencia, migración o SQL.
 - `git diff --check` del rango completo: exit 0.
-- Archivos modificados por 0.4: `docs/modularizacion/README.md` y esta
-  bitácora.
+- Archivos modificados por el cierre original 0.4:
+  `docs/modularizacion/README.md` y esta bitácora. La corrección documental
+  posterior se registra por separado a continuación.
 - Rutas, payloads, status codes, permisos, tenant, ownership, SQL observable,
   transacciones, dependencias y comportamiento modificados: ninguno.
 - Staging, publicación, rollback y verificación manual: documentados en las
@@ -627,13 +636,56 @@ verificación manual en producción porque no cambió código de producto.
   bitácora de la capa 1 desde `PLANTILLA_CAPA.md`, usando entonces el `HEAD`
   vigente como base.
 
+### 2026-08-10 — corrección de continuidad posterior a 0.4
+
+- Rama acordada: `main`; árbol limpio antes de editar.
+- Commit observado:
+  `95b4c8878fafeb43c54b27a834db6009cf5ca095`.
+- Trazabilidad: el commit contiene únicamente el índice maestro y esta bitácora
+  con el cierre 0.4 previamente revisado. Es el sexto commit posterior al base,
+  `main` estaba cinco commits por delante de `origin/main` y no había commits
+  remotos por integrar.
+- Problema corregido: el prompt reutilizable todavía presuponía que siempre
+  existía una bitácora activa y no explicaba qué hacer entre capas ni cuando el
+  LLM carecía de acceso al repositorio.
+- Archivos modificados: `docs/modularizacion/PROMPT_CONTINUACION.md` y esta
+  bitácora.
+- Decisión: una instrucción genérica como «continúa» no autoriza la activación
+  de una capa; la activación requiere una orden explícita y se detiene antes de
+  implementar la primera subcapa, salvo autorización inequívoca adicional.
+- Acceso: el bloque copiable exige distinguir el mismo checkout local, acceso
+  exclusivo a GitHub y archivos adjuntos; no permite afirmar un `git status`
+  local ni activar una capa desde una vista remota incompleta.
+- Verificación pendiente: antes de activar la siguiente capa, el LLM debe pedir
+  una decisión explícita entre completar la evidencia pendiente o continuar
+  localmente conservándola como riesgo registrado.
+- Portabilidad: un LLM en esta misma carpeta puede continuar desde commits
+  locales sin push; un LLM que solo consulte GitHub requiere publicación y uno
+  sin acceso al repositorio debe solicitar los archivos en vez de inferirlos.
+- Código de producto, pruebas, workflow, dependencias, contratos, SQL,
+  transacciones, permisos, tenant y ownership modificados: ninguno.
+- La capa 0 permanece cerrada localmente, la verificación remota de CI sigue
+  pendiente y la capa 1 continúa en espera.
+- Verificaciones: los cuatro documentos referenciados existen; el prompt tiene
+  un único bloque de texto correctamente cerrado; `git diff --check` terminó
+  con exit 0 y el diff contiene únicamente el prompt y esta bitácora.
+- Compuerta global: no se repitió porque la corrección modifica solo Markdown;
+  permanece vigente la ejecución final de 0.4 con 192 pruebas, Ruff y
+  `pip check` correctos.
+- Siguiente acción exacta: revisar y crear un commit local de la corrección si
+  el usuario está conforme; no hacer push ni activar la capa 1.
+
 ## Entrega al próximo chat
 
 - Leer primero `docs/modularizacion/README.md` completo.
 - Leer después este archivo completo.
+- Usar `docs/modularizacion/PROMPT_CONTINUACION.md` como prompt portable.
 - Capa activa: ninguna.
 - Capa 0: cerrada localmente; primera ejecución remota de CI pendiente.
 - Primera subcapa pendiente: ninguna.
 - Siguiente capa: 1, en espera; no crearla ni activarla sin orden del usuario.
-- Siguiente acción exacta: revisar y crear el commit local del cierre. Si el
-  usuario decide publicar, verificar el run remoto y registrar su evidencia.
+- Último commit local observado:
+  `95b4c8878fafeb43c54b27a834db6009cf5ca095`.
+- Siguiente acción exacta: revisar y crear un commit local de la corrección del
+  prompt. Si el usuario decide publicar posteriormente, verificar el run remoto
+  y registrar su evidencia; no activar la capa 1 por inferencia.

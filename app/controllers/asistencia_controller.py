@@ -1,4 +1,4 @@
-from app.database import get_connection
+from app.database import get_connection, get_cursor
 from app.services.asignacion_academica import resolver_asignacion_academica_id_cursor
 
 def guardar_asistencia_controller(data):
@@ -41,26 +41,25 @@ def guardar_asistencia_controller(data):
 
 def obtener_historial_asistencia(asignacion_id, periodo=1):
 
-    conn = get_connection()
-    cursor = conn.cursor()
-    asignacion_id = resolver_asignacion_academica_id_cursor(cursor, asignacion_id)
+    with get_cursor() as cursor:
+        asignacion_id = resolver_asignacion_academica_id_cursor(cursor, asignacion_id)
 
-    cursor.execute("""
-        SELECT
-            e.id,
-            e.nombre,
-            e.apellido,
-            a.fecha,
-            a.estado
-        FROM estudiantes e
+        cursor.execute("""
+            SELECT
+                e.id,
+                e.nombre,
+                e.apellido,
+                a.fecha,
+                a.estado
+            FROM estudiantes e
 
-        JOIN asistencia a ON a.estudiante_id = e.id
+            JOIN asistencia a ON a.estudiante_id = e.id
 
-        WHERE a.asignacion_id = %s AND a.periodo = %s
-        ORDER BY e.apellido ASC, e.nombre ASC, a.fecha ASC
-    """, (asignacion_id, periodo))
+            WHERE a.asignacion_id = %s AND a.periodo = %s
+            ORDER BY e.apellido ASC, e.nombre ASC, a.fecha ASC
+        """, (asignacion_id, periodo))
 
-    rows = cursor.fetchall()
+        rows = cursor.fetchall()
 
     resultado = {}
 
@@ -81,8 +80,5 @@ def obtener_historial_asistencia(asignacion_id, periodo=1):
                 "fecha": str(r[3]),
                 "estado": r[4]
             })
-
-    cursor.close()
-    conn.close()
 
     return list(resultado.values())

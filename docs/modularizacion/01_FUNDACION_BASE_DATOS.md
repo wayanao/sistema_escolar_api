@@ -8,16 +8,16 @@
 - Commit base: `6754e4aad59c1e428ea97d31fe8e96fdbba7694d`.
 - Rama acordada: `main`.
 - Estado al activar: árbol limpio; `main` sincronizada con `origin/main`.
-- Primera subcapa pendiente: **1.4g**, siguiente tanda de migración.
+- Primera subcapa pendiente: **1.4h**, siguiente tanda de migración.
 - Código de producto modificado hasta ahora: servicios de validación (1.2), tres
   funciones del planeador anual (1.3), cuatro del controlador de usuarios (1.4),
   seis del de asignaciones (1.4b), cuatro del de branding (1.4c), cuatro del de
-  dashboard (1.4d), tres del de inventario (1.4e) y una del de profesores (1.4f).
-  Sin cambio de comportamiento observable, salvo las dos fugas deterministas
-  corregidas y la confirmación de transacciones de solo lectura, documentadas en
-  su subcapa.
-- Progreso de la capa: **21 sitios** sin cierre garantizado, de 50 iniciales.
-  **Cero fugas deterministas**; los 21 restantes requieren una excepción.
+  dashboard (1.4d), tres del de inventario (1.4e), una del de profesores (1.4f) y
+  una del de asistencia (1.4g). Sin cambio de comportamiento observable, salvo
+  las dos fugas deterministas corregidas y la confirmación de transacciones de
+  solo lectura, documentadas en su subcapa.
+- Progreso de la capa: **20 sitios** sin cierre garantizado, de 50 iniciales.
+  **Cero fugas deterministas**; los 20 restantes requieren una excepción.
 - Autorización: orden explícita del usuario el 2026-08-11, después de cerrar la
   capa 0 con la CI remota verificada.
 
@@ -100,7 +100,8 @@ commit base antes de inventariar nada.
 | 1.4d | Sexta tanda: dashboard, 4 sitios, todos de solo lectura | **Cerrada** |
 | 1.4e | Séptima tanda: inventario, 3 sitios, primer archivo con aritmética de dinero | **Cerrada** |
 | 1.4f | Octava tanda: profesores, 1 sitio | **Cerrada** |
-| 1.4g | Tandas restantes hasta agotar los 21 sitios pendientes | Pendiente |
+| 1.4g | Novena tanda: asistencia, 1 sitio | **Cerrada** |
+| 1.4h | Tandas restantes hasta agotar los 20 sitios pendientes | Pendiente |
 | 1.5 | Timeouts y manejo del pool definidos con evidencia medida | Pendiente |
 | 1.6 | Cierre: compuerta global, staging, rollback y verificación manual | Pendiente |
 
@@ -1026,6 +1027,69 @@ el código original.
 | `pip check` | `No broken requirements found.` |
 | `git diff --check` | Exit 0 |
 
+## Subcapa 1.4g: resultado
+
+`app/controllers/asistencia_controller.py`, **1 sitio de 2**.
+
+| Función | Estado |
+|---|---|
+| `guardar_asistencia_controller` | **No tocada.** Ya protegida con `try/except/finally`; es el reemplazo parcial transaccional con `rollback` que el inventario de contratos de 0.0 registró como efecto a preservar |
+| `obtener_historial_asistencia` | Migrada a `get_cursor()` |
+
+Sin diferencias de comportamiento: la función migrada es de solo lectura y no
+confirmaba.
+
+### Detalles de la transformación
+
+- **La agrupación se movió fuera del bloque.** La función construye un
+  diccionario por estudiante a partir de las filas ya traídas; hacerlo después de
+  cerrar es cálculo puro sobre memoria, sin diferencia observable, y libera la
+  conexión antes.
+- **Las líneas en blanco dentro del literal SQL se conservaron vacías.** El
+  `SELECT` tiene saltos sueltos entre el `FROM` y el `JOIN`; al reindentar había
+  que dejarlas sin sangría, porque `git diff --check` rechaza líneas nuevas con
+  espacios finales y la compuerta lo ejecuta.
+
+### Comportamiento conservado que no era evidente
+
+La función solo añade una entrada al historial cuando la fila trae fecha. Un
+estudiante cuya fila tiene `fecha` nula **aparece igualmente en la respuesta, con
+el historial vacío**. Es anterior a la migración; se fijó en pruebas tal cual, sin
+cambiarlo.
+
+También se fijó que el `periodo` toma el valor 1 por defecto y que la agrupación
+reúne varias fechas del mismo estudiante en una sola entrada.
+
+### Caracterización
+
+`tests/test_asistencia_historial.py`, 5 pruebas. Las existentes en
+`test_asistencia_validaciones.py` cubren el guardado transaccional, que no se
+tocó.
+
+Verificación contra la versión anterior recuperada con `git show HEAD:`: SQL,
+parámetros, resolución de la asignación, agrupación y respuesta coinciden, **sin
+divergencias**.
+
+### Efecto medido sobre el inventario
+
+| Métrica | Tras 1.4f | Tras 1.4g |
+|---|---:|---:|
+| Llamadas a `get_connection()` en `app/` | 117 | 116 |
+| Protegidas con `try/finally` | 94 | 94 |
+| **Sin cierre garantizado** | **21** | **20** |
+| Fugas deterministas | 0 | 0 |
+
+### Verificación
+
+| Comprobación | Resultado |
+|---|---|
+| Pruebas específicas | 5 pasaron en 0,16 s |
+| Compuerta global | Exit 0 |
+| Suite completa | **257** pasaron, 5 warnings conocidos, 1,22 s |
+| Ruff | `All checks passed!` |
+| `pip check` | `No broken requirements found.` |
+| `git diff --check` | Exit 0 |
+
 ## Criterios de cierre de la subcapa 1.0
 
 - La línea base está reproducida desde el commit base con resultados reales.
@@ -1575,16 +1639,57 @@ el código original.
   `plantilla_controller.py` con 7 sitios, `notas_controller.py` con 5 y
   `asistencia_controller.py` con 1. Acordar con el usuario cuál tomar.
 
+### 2026-08-11 — subcapa 1.4g
+
+- Rama acordada: `main`; árbol **limpio** antes de editar, con 1.4f ya
+  commiteada.
+- Commit observado: `4d0e434`, diez commits por delante de `origin/main` conforme
+  a la cadencia local acordada.
+- Archivo elegido por el usuario: `app/controllers/asistencia_controller.py`.
+- Archivos modificados: ese controlador.
+- Archivo creado: `tests/test_asistencia_historial.py`.
+- Sitios migrados: 1 de 2. `guardar_asistencia_controller` no se tocó: ya estaba
+  protegida y es el reemplazo parcial transaccional con `rollback` que el
+  inventario de contratos de 0.0 registró como efecto a preservar.
+- Contratos HTTP, rutas, payloads, status codes, permisos, tenant, ownership y
+  dependencias modificados: ninguno.
+- SQL: idéntico. Las líneas en blanco sueltas dentro del literal se conservaron
+  vacías y sin sangría, obligatorio porque `git diff --check` rechaza espacios
+  finales.
+- Semántica transaccional: la función es de solo lectura y no confirmaba. Migrada
+  a `get_cursor()` sin `commit`. **Sin diferencias de comportamiento.**
+- La agrupación por estudiante se movió fuera del bloque: es cálculo puro sobre
+  filas ya traídas, sin diferencia observable, y libera la conexión antes.
+- Comportamiento conservado y fijado en pruebas: un estudiante cuya fila trae
+  `fecha` nula aparece igual en la respuesta con el historial vacío; el `periodo`
+  vale 1 por defecto; varias fechas del mismo estudiante se agrupan en una sola
+  entrada.
+- Caracterización previa: SQL, parámetros, resolución de asignación, agrupación y
+  respuesta verificados contra la versión anterior, sin divergencias.
+- Pruebas específicas: 5 pasaron en 0,16 s.
+- Compuerta global: exit 0; 257 pruebas correctas con los 5 warnings conocidos en
+  1,22 s, Ruff correcto y dependencias íntegras.
+- Efecto medido: sitios sin cierre garantizado de **21 a 20**; llamadas a
+  `get_connection()` en `app/` de 117 a 116. Fugas deterministas: 0.
+- `git diff --check`: exit 0.
+- Alcance final del diff: el controlador, su archivo de pruebas nuevo y esta
+  bitácora.
+- Riesgo residual: quedan 20 sitios, todos de fuga condicional.
+- Siguiente acción exacta: continuar con **1.4h**. Quedan pocos archivos sin
+  tocar: `plantilla_controller.py` con 7 sitios y `notas_controller.py` con 5 son
+  los grandes; después vienen los reservados `pagos`, `ventas` y `estudiantes`.
+  Acordar con el usuario cuál tomar.
+
 ## Entrega al próximo chat
 
 - Capa activa: **1, fundación de base de datos**.
-- Última subcapa terminada: **1.4f**, octava tanda: el único sitio desprotegido
-  de `profesor_controller.py`.
-- Primera subcapa pendiente: **1.4g**, siguiente tanda de migración.
-- Progreso: **21 de 50** sitios desprotegidos siguen pendientes, **todos de fuga
+- Última subcapa terminada: **1.4g**, novena tanda: el único sitio desprotegido
+  de `asistencia_controller.py`.
+- Primera subcapa pendiente: **1.4h**, siguiente tanda de migración.
+- Progreso: **20 de 50** sitios desprotegidos siguen pendientes, **todos de fuga
   condicional**: ninguno pierde la conexión sin que antes ocurra una excepción.
-- Candidatos siguientes por volumen: `plantilla_controller.py` con 7 sitios,
-  `notas_controller.py` con 5 y `asistencia_controller.py` con 1. `pagos`,
+- Candidatos siguientes: `plantilla_controller.py` con 7 sitios y
+  `notas_controller.py` con 5 son los grandes que quedan sin tocar. `pagos`,
   `ventas` y `estudiantes` quedan para el final.
 - Deuda conocida anotada en 1.4f: dos funciones homónimas
   `obtener_clases_profesor_controller`, en `asignacion_controller` y en

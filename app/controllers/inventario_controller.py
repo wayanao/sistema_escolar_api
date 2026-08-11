@@ -1,4 +1,4 @@
-from app.database import get_connection
+from app.database import get_connection, get_cursor
 
 ESTADOS_INVENTARIO = {"activo", "inactivo"}
 ESTADO_INVENTARIO_DEFAULT = "activo"
@@ -37,23 +37,19 @@ def _formatear_producto(row):
     }
 
 def obtener_inventario_controller(estado=ESTADO_INVENTARIO_DEFAULT):
-    conn = get_connection()
-    cursor = conn.cursor()
-
     filtros = []
     params = []
     _agregar_filtro_estado(filtros, params, estado)
     where_sql = f"WHERE {' AND '.join(filtros)}" if filtros else ""
 
-    cursor.execute("""
-        SELECT id, nombre, costo, precio_venta, stock_actual, COALESCE(LOWER(estado), 'activo') AS estado
-        FROM inventario
-        {where_sql}
-        ORDER BY nombre
-    """.format(where_sql=where_sql), params)
-    resultado = cursor.fetchall()
-    cursor.close()
-    conn.close()
+    with get_cursor() as cursor:
+        cursor.execute("""
+            SELECT id, nombre, costo, precio_venta, stock_actual, COALESCE(LOWER(estado), 'activo') AS estado
+            FROM inventario
+            {where_sql}
+            ORDER BY nombre
+        """.format(where_sql=where_sql), params)
+        resultado = cursor.fetchall()
 
     return [_formatear_producto(row) for row in resultado]
 
@@ -109,45 +105,37 @@ def obtener_inventario_paginado_controller(
         conn.close()
 
 def crear_inventario_controller(producto):
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        INSERT INTO inventario (nombre, costo, precio_venta, stock_actual, estado)
-        VALUES (%s, %s, %s, %s, %s)
-        RETURNING id
-    """, (
-        producto.nombre,
-        producto.costo,
-        producto.precio_venta,
-        producto.stock_actual,
-        _normalizar_estado(producto.estado),
-    ))
-    
-    nuevo_id = cursor.fetchone()[0]
-    conn.commit()
-    cursor.close()
-    conn.close()
+    with get_cursor(commit=True) as cursor:
+        cursor.execute("""
+            INSERT INTO inventario (nombre, costo, precio_venta, stock_actual, estado)
+            VALUES (%s, %s, %s, %s, %s)
+            RETURNING id
+        """, (
+            producto.nombre,
+            producto.costo,
+            producto.precio_venta,
+            producto.stock_actual,
+            _normalizar_estado(producto.estado),
+        ))
+
+        nuevo_id = cursor.fetchone()[0]
+
     return nuevo_id
 
 def actualizar_inventario_controller(item_id, producto):
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        UPDATE inventario 
-        SET nombre = %s, costo = %s, precio_venta = %s, stock_actual = %s, estado = %s
-        WHERE id = %s
-    """, (
-        producto.nombre,
-        producto.costo,
-        producto.precio_venta,
-        producto.stock_actual,
-        _normalizar_estado(producto.estado),
-        item_id,
-    ))
-    
-    conn.commit()
-    cursor.close()
-    conn.close()
+    with get_cursor(commit=True) as cursor:
+        cursor.execute("""
+            UPDATE inventario
+            SET nombre = %s, costo = %s, precio_venta = %s, stock_actual = %s, estado = %s
+            WHERE id = %s
+        """, (
+            producto.nombre,
+            producto.costo,
+            producto.precio_venta,
+            producto.stock_actual,
+            _normalizar_estado(producto.estado),
+            item_id,
+        ))
 
 def eliminar_inventario_controller(item_id):
     return {

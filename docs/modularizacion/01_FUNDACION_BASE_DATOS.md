@@ -8,15 +8,15 @@
 - Commit base: `6754e4aad59c1e428ea97d31fe8e96fdbba7694d`.
 - Rama acordada: `main`.
 - Estado al activar: árbol limpio; `main` sincronizada con `origin/main`.
-- Primera subcapa pendiente: **1.4e**, siguiente tanda de migración.
+- Primera subcapa pendiente: **1.4f**, siguiente tanda de migración.
 - Código de producto modificado hasta ahora: servicios de validación (1.2), tres
   funciones del planeador anual (1.3), cuatro del controlador de usuarios (1.4),
-  seis del de asignaciones (1.4b), cuatro del de branding (1.4c) y cuatro del de
-  dashboard (1.4d). Sin cambio de comportamiento observable, salvo las dos fugas
-  deterministas corregidas y la confirmación de transacciones de solo lectura,
-  documentadas en su subcapa.
-- Progreso de la capa: **25 sitios** sin cierre garantizado, de 50 iniciales.
-  **Cero fugas deterministas**; los 25 restantes requieren una excepción.
+  seis del de asignaciones (1.4b), cuatro del de branding (1.4c), cuatro del de
+  dashboard (1.4d) y tres del de inventario (1.4e). Sin cambio de comportamiento
+  observable, salvo las dos fugas deterministas corregidas y la confirmación de
+  transacciones de solo lectura, documentadas en su subcapa.
+- Progreso de la capa: **22 sitios** sin cierre garantizado, de 50 iniciales.
+  **Cero fugas deterministas**; los 22 restantes requieren una excepción.
 - Autorización: orden explícita del usuario el 2026-08-11, después de cerrar la
   capa 0 con la CI remota verificada.
 
@@ -97,7 +97,8 @@ commit base antes de inventariar nada.
 | 1.4b | Cuarta tanda: asignaciones, 6 sitios, elimina la última fuga determinista | **Cerrada** |
 | 1.4c | Quinta tanda: branding, 4 sitios, primer archivo que abandona `get_connection` | **Cerrada** |
 | 1.4d | Sexta tanda: dashboard, 4 sitios, todos de solo lectura | **Cerrada** |
-| 1.4e | Tandas restantes hasta agotar los 25 sitios pendientes | Pendiente |
+| 1.4e | Séptima tanda: inventario, 3 sitios, primer archivo con aritmética de dinero | **Cerrada** |
+| 1.4f | Tandas restantes hasta agotar los 22 sitios pendientes | Pendiente |
 | 1.5 | Timeouts y manejo del pool definidos con evidencia medida | Pendiente |
 | 1.6 | Cierre: compuerta global, staging, rollback y verificación manual | Pendiente |
 
@@ -882,6 +883,86 @@ La mitad del trabajo de migración está hecha: de los 50 sitios iniciales queda
 | `pip check` | `No broken requirements found.` |
 | `git diff --check` | Exit 0 |
 
+## Subcapa 1.4e: resultado
+
+`app/controllers/inventario_controller.py`, **3 sitios de 5**. Los otros 2 ya
+tenían `try/finally`, por lo que el import conserva `get_connection`.
+
+| Función | Operación | Destino |
+|---|---|---|
+| `obtener_inventario_controller` | `SELECT` con `WHERE` dinámico | `get_cursor()` |
+| `crear_inventario_controller` | `INSERT` + `commit` | `get_cursor(commit=True)` |
+| `actualizar_inventario_controller` | `UPDATE` + `commit` | `get_cursor(commit=True)` |
+
+Es el primer archivo migrado que calcula dinero. No toca ventas ni saldos —el
+stock se descuenta en `venta_controller`, que sigue reservado para el final—,
+pero sí produce las cifras de costo, precio, utilidad y margen que el frontend
+muestra al administrador.
+
+### Aritmética fijada en pruebas
+
+`_formatear_producto` no se tocó, pero al no tener prueba previa se caracterizó
+junto con la migración, porque un cambio ahí sería visible como dinero incorrecto:
+
+| Entrada | Resultado fijado |
+|---|---|
+| costo 1000, precio 1500, stock 4 | `utilidad_unitaria` 500,0; `utilidad_total_proyectada` 2000,0; `margen_utilidad` 33,33 |
+| costo 0, precio 0, stock 1 | `margen_utilidad` 0, sin división por cero |
+
+El segundo caso es una guarda real del código —`if precio > 0 else 0`— que ahora
+queda protegida.
+
+### Filtro de estado
+
+`obtener_inventario_controller` arma el `WHERE` en tres variantes, todas
+cubiertas:
+
+| `estado` recibido | Comportamiento |
+|---|---|
+| Ausente, por defecto `activo` | Agrega el filtro con `activo` |
+| `"todos"` | **No agrega `WHERE`** |
+| Valor desconocido, p. ej. `descatalogado` | Normaliza a `activo` |
+
+La normalización también se conserva en el `INSERT` y el `UPDATE`: un estado
+inválido se guarda como `activo`.
+
+### Caracterización
+
+`tests/test_inventario_controlador.py`, 8 pruebas. Las existentes en
+`test_inventario_pagination.py` cubren la función paginada, que está protegida y
+no se migró.
+
+Verificación contra la versión anterior recuperada con `git show HEAD:`: SQL,
+parámetros, normalización de estado, aritmética de utilidad y semántica de
+`commit` coinciden en las tres funciones, **sin divergencias**.
+
+### Nota sobre el SQL
+
+Se eliminaron espacios finales de línea que el código anterior arrastraba en
+`UPDATE inventario ` y en dos líneas en blanco con sangría. Obligatorio: la
+compuerta ejecuta `git diff --check`, que rechaza líneas nuevas con espacios
+finales. Tablas, columnas, condiciones y parámetros son idénticos.
+
+### Efecto medido sobre el inventario
+
+| Métrica | Tras 1.4d | Tras 1.4e |
+|---|---:|---:|
+| Llamadas a `get_connection()` en `app/` | 121 | 118 |
+| Protegidas con `try/finally` | 94 | 94 |
+| **Sin cierre garantizado** | **25** | **22** |
+| Fugas deterministas | 0 | 0 |
+
+### Verificación
+
+| Comprobación | Resultado |
+|---|---|
+| Pruebas específicas | 8 pasaron en 0,16 s |
+| Compuerta global | Exit 0 |
+| Suite completa | **249** pasaron, 5 warnings conocidos |
+| Ruff | `All checks passed!` |
+| `pip check` | `No broken requirements found.` |
+| `git diff --check` | Exit 0 |
+
 ## Criterios de cierre de la subcapa 1.0
 
 - La línea base está reproducida desde el commit base con resultados reales.
@@ -1346,17 +1427,60 @@ La mitad del trabajo de migración está hecha: de los 50 sitios iniciales queda
   `plantilla_controller.py` con 7 sitios, `notas_controller.py` con 5 e
   `inventario_controller.py` con 3. Acordar con el usuario cuál tomar.
 
+### 2026-08-11 — subcapa 1.4e
+
+- Rama acordada: `main`; árbol **limpio** antes de editar, con 1.4d ya
+  commiteada.
+- Commit observado: `0a271c0`, ocho commits por delante de `origin/main` conforme
+  a la cadencia local acordada.
+- Archivo elegido por el usuario: `app/controllers/inventario_controller.py`.
+- Archivos modificados: ese controlador.
+- Archivo creado: `tests/test_inventario_controlador.py`.
+- Sitios migrados: 3 de 5. Los otros 2 ya estaban protegidos; el import conserva
+  `get_connection`.
+- Contratos HTTP, rutas, payloads, status codes, permisos, tenant, ownership y
+  dependencias modificados: ninguno.
+- SQL: idéntico en tablas, columnas, condiciones y parámetros. Además de la
+  indentación, se eliminaron espacios finales de línea heredados en
+  `UPDATE inventario ` y en dos líneas en blanco con sangría, obligatorio porque
+  `git diff --check` los rechaza.
+- Semántica transaccional: preservada. `crear` y `actualizar` confirman;
+  `obtener` no.
+- Primer archivo migrado con aritmética de dinero. No toca ventas ni saldos —el
+  descuento de stock vive en `venta_controller`, reservado para el final—, pero
+  produce las cifras de utilidad y margen que ve el administrador.
+- `_formatear_producto` no se modificó, pero se caracterizó al no tener prueba
+  previa: utilidad unitaria, utilidad total proyectada, margen redondeado a dos
+  decimales, y la guarda que evita dividir por cero cuando el precio es 0.
+- Filtro de estado fijado en sus tres variantes: por defecto `activo`, `"todos"`
+  sin `WHERE`, y valor desconocido normalizado a `activo`. La misma normalización
+  se conserva en `INSERT` y `UPDATE`.
+- Caracterización previa: SQL, parámetros, normalización, aritmética y `commit`
+  verificados contra la versión anterior en las tres funciones, sin divergencias.
+- Pruebas específicas: 8 pasaron en 0,16 s.
+- Compuerta global: exit 0; 249 pruebas correctas con los 5 warnings conocidos,
+  Ruff correcto y dependencias íntegras.
+- Efecto medido: sitios sin cierre garantizado de **25 a 22**; llamadas a
+  `get_connection()` en `app/` de 121 a 118. Fugas deterministas: 0.
+- `git diff --check`: exit 0.
+- Alcance final del diff: el controlador, su archivo de pruebas nuevo y esta
+  bitácora.
+- Riesgo residual: quedan 22 sitios, todos de fuga condicional. `pagos`,
+  `ventas` y `estudiantes` siguen reservados para el final.
+- Siguiente acción exacta: continuar con **1.4f**. Candidatos por volumen son
+  `plantilla_controller.py` con 7 sitios, `notas_controller.py` con 5 y
+  `profesor_controller.py` con 1. Acordar con el usuario cuál tomar.
+
 ## Entrega al próximo chat
 
 - Capa activa: **1, fundación de base de datos**.
-- Última subcapa terminada: **1.4d**, sexta tanda: las 4 funciones de solo
-  lectura de `dashboard_controller.py`, sin ninguna diferencia de comportamiento.
-- Primera subcapa pendiente: **1.4e**, siguiente tanda de migración.
-- Progreso: **25 de 50** sitios desprotegidos siguen pendientes, **todos de fuga
+- Última subcapa terminada: **1.4e**, séptima tanda: las 3 funciones de
+  `inventario_controller.py`, primer archivo migrado con aritmética de dinero.
+- Primera subcapa pendiente: **1.4f**, siguiente tanda de migración.
+- Progreso: **22 de 50** sitios desprotegidos siguen pendientes, **todos de fuga
   condicional**: ninguno pierde la conexión sin que antes ocurra una excepción.
-  La migración pasó de la mitad.
 - Candidatos siguientes por volumen: `plantilla_controller.py` con 7 sitios,
-  `notas_controller.py` con 5 e `inventario_controller.py` con 3. `pagos`,
+  `notas_controller.py` con 5 y `profesor_controller.py` con 1. `pagos`,
   `ventas` y `estudiantes` quedan para el final.
 - Orden vigente: primero completar la migración, después los timeouts. Reordenado
   por instrucción explícita del usuario el 2026-08-11.

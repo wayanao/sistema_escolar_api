@@ -19,6 +19,19 @@ class Settings(BaseSettings):
     DATABASE_URL: str
     DB_POOL_MIN_CONNECTIONS: int = 1
     DB_POOL_MAX_CONNECTIONS: int = 10
+
+    # Timeouts de base de datos. En todos, 0 significa "no fijar nada" y deja el
+    # valor por defecto del servidor; no lo desactiva.
+    #
+    # connect_timeout va en segundos porque es de libpq y se resuelve en el
+    # cliente. Los otros tres van en milisegundos porque son parametros de
+    # PostgreSQL, y se aplican por transaccion con set_config(..., TRUE), nunca
+    # en el paquete de arranque: un endpoint agrupado como el -pooler de Neon
+    # rechaza la conexion entera si recibe parametros que no sabe rastrear.
+    DB_CONNECT_TIMEOUT_SECONDS: int = 10
+    DB_STATEMENT_TIMEOUT_MS: int = 30000
+    DB_LOCK_TIMEOUT_MS: int = 10000
+    DB_IDLE_IN_TRANSACTION_TIMEOUT_MS: int = 60000
     DEFAULT_TENANT_SCHEMA: str = "tenant_colegio_1"
 
     FRONTEND_URL: str = "http://localhost:5173"

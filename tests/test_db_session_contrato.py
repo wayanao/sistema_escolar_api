@@ -105,7 +105,12 @@ def test_get_connection_prepara_la_conexion_y_la_retiene(pool_falso, tenant_fija
     assert pool_falso.devueltas == []
     assert conexion.autocommit is False
     assert len(conexion.cursores) == 1
-    assert len(conexion.cursores[0].ejecutados) == 1
+    # Preparar una conexion son dos sentencias, en este orden: primero el
+    # search_path del tenant, despues los timeouts de la transaccion. Los
+    # timeouts se anadieron en 1.5 y no pueden ir en el paquete de arranque.
+    ejecutados = conexion.cursores[0].ejecutados
+    assert len(ejecutados) == 2
+    assert str(ejecutados[1]).startswith("SELECT set_config")
     assert conexion.cursores[0].cerrado is True
 
 

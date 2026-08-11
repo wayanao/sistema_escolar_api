@@ -35,7 +35,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | Orden | Capa | Resultado principal | Estado | Bitácora |
 |---:|---|---|---|---|
 | 0 | Línea base y calidad | Pruebas deterministas, compuerta global y CI | **Cerrada**; CI verificada en remoto | [00_LINEA_BASE_CALIDAD.md](./00_LINEA_BASE_CALIDAD.md) |
-| 1 | Fundación de base de datos | Conexiones, transacciones, timeouts y pool definidos | **Activa** | [01_FUNDACION_BASE_DATOS.md](./01_FUNDACION_BASE_DATOS.md) |
+| 1 | Fundación de base de datos | Conexiones, transacciones, timeouts y pool definidos | **Cerrada**; calibración de `statement_timeout` pendiente y aceptada | [01_FUNDACION_BASE_DATOS.md](./01_FUNDACION_BASE_DATOS.md) |
 | 2 | Concurrencia | DB síncrona fuera del event loop preservando `ContextVar` | En espera | Se crea al activarla |
 | 3 | Migraciones y tenants | Todos los tenants versionados, runner bloqueado y alta reproducible | En espera | Se crea al activarla |
 | 4 | Reportes financieros | Dominio modular, N+1 eliminado y consultas medidas | En espera | Se crea al activarla |
@@ -48,10 +48,9 @@ cierre y el usuario ordene continuar, se crea su sucesora desde
 `PLANTILLA_CAPA.md`, se registra el commit base vigente y se actualiza esta
 tabla.
 
-La capa activa es la **1, fundación de base de datos**, autorizada de forma
-explícita por el usuario el 2026-08-11. Su primera subcapa pendiente es la 1.0 y
-todavía no se ha inspeccionado ni modificado código. La capa 2 permanece en
-espera y no debe inferirse como activa.
+Actualmente no hay una capa activa. Las capas 0 y 1 están cerradas. La capa 2
+permanece en espera y no debe inferirse como activa: solo se creará su bitácora
+cuando el usuario lo ordene explícitamente.
 
 ## Alcance de cada capa
 
@@ -195,19 +194,34 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   porque la instalación limpia resolvió `ruff>=0.5.0` a una versión mayor con
   otro conjunto de reglas por defecto. Se corrigió con el tope
   `ruff>=0.5.0,<0.16` y el run sobre `b20dcbe` terminó **correctamente**.
-- Capa activa: **1, fundación de base de datos**, activada el 2026-08-11.
-- Commit base de la capa 1: `6754e4aad59c1e428ea97d31fe8e96fdbba7694d`, `HEAD`
-  limpio y sincronizado con `origin/main` al activarla.
-- Primera subcapa pendiente: 1.0, inventario de conexiones y decisión sobre cómo
-  verificar cambios con una suite hermética.
+- Capa 1 **cerrada** el 2026-08-11. Commit base:
+  `6754e4aad59c1e428ea97d31fe8e96fdbba7694d`; 17 commits, todos explicados en su
+  bitácora.
+- Resultado de la capa 1: las 50 aperturas de conexión sin cierre garantizado
+  llegaron a **0**, incluidas 2 que fugaban en un camino normal; ninguna ruta
+  abre conexiones; hay 4 timeouts donde antes no existía ninguno; la suite pasó
+  de 192 a **334** pruebas.
+- Los timeouts se aplican con `set_config(..., TRUE)` por transacción, no en el
+  paquete de arranque: el endpoint `-pooler` de Neon es PgBouncer y rechaza la
+  conexión entera si recibe parámetros que no sabe rastrear. Verificado contra la
+  base real.
+- **Verificación operativa pendiente y aceptada** de la capa 1: calibrar
+  `DB_STATEMENT_TIMEOUT_MS` contra la duración real de las consultas pesadas. El
+  usuario la aceptó para no bloquear el cierre; el valor puede ajustarse por
+  entorno sin desplegar código. No debe marcarse como cumplida.
+- Capa activa: ninguna.
 - Siguiente capa: 2, concurrencia, en espera de autorización explícita.
 - Código de producto modificado durante la capa 0: ninguno.
-- Código de producto modificado en la capa 1 hasta ahora: ninguno.
+- Código de producto modificado durante la capa 1: el ciclo de vida de las
+  conexiones en 20 archivos de `app/`, más los timeouts. Sin cambios en rutas,
+  payloads, status codes, permisos, tenant, ownership ni SQL observable.
 
 ## Archivos de continuidad
 
-- [01_FUNDACION_BASE_DATOS.md](./01_FUNDACION_BASE_DATOS.md): bitácora **activa**
-  de la capa 1; define la subcapa 1.0 y el riesgo de la suite hermética.
+- [01_FUNDACION_BASE_DATOS.md](./01_FUNDACION_BASE_DATOS.md): bitácora cerrada de
+  la capa 1; conserva pendiente la calibración de `statement_timeout` y registra
+  la lección de que un cambio en el pool no se verifica solo con pruebas
+  herméticas.
 - [00_LINEA_BASE_CALIDAD.md](./00_LINEA_BASE_CALIDAD.md): bitácora cerrada de
   la capa 0, sin verificaciones pendientes; conserva la compuerta, la CI y el
   inventario de contratos que la capa 1 debe preservar.

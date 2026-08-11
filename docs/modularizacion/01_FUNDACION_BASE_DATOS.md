@@ -4,19 +4,23 @@
 
 ## Control
 
-- Estado: **Activa**.
+- Estado: **Cerrada** el 2026-08-11. Conserva una verificación operativa
+  pendiente y aceptada: la calibración de `DB_STATEMENT_TIMEOUT_MS`.
 - Commit base: `6754e4aad59c1e428ea97d31fe8e96fdbba7694d`.
 - Rama acordada: `main`.
 - Estado al activar: árbol limpio; `main` sincronizada con `origin/main`.
-- Primera subcapa pendiente: **1.5**, timeouts y manejo del pool.
+- Primera subcapa pendiente: **1.6**, el cierre de la capa.
 - Código de producto modificado hasta ahora: **los 50 sitios desprotegidos**,
   repartidos en quince tandas, desde los servicios de validación (1.2) hasta
-  estudiantes (1.4m). Sin cambio de comportamiento observable, salvo las dos
-  fugas deterministas corregidas y la confirmación de transacciones de solo
-  lectura, documentadas en su subcapa.
+  estudiantes (1.4m), más los timeouts y el pool en 1.5. Sin cambio de
+  comportamiento observable, salvo las dos fugas deterministas corregidas, la
+  confirmación de transacciones de solo lectura y los timeouts nuevos, todos
+  documentados en su subcapa.
 - Progreso de la capa: **0 sitios** sin cierre garantizado, de 50 iniciales.
-  **Cero fugas deterministas.** Ninguna ruta abre conexiones. Falta únicamente
-  1.5, timeouts y pool.
+  **Cero fugas deterministas.** Ninguna ruta abre conexiones. Timeouts definidos
+  y comportamiento del pool medido. Falta únicamente el cierre 1.6.
+- Verificación pendiente registrada en 1.5: calibrar `DB_STATEMENT_TIMEOUT_MS`
+  contra los tiempos reales de las consultas pesadas. No darla por cumplida.
 - Autorización: orden explícita del usuario el 2026-08-11, después de cerrar la
   capa 0 con la CI remota verificada.
 
@@ -106,8 +110,8 @@ commit base antes de inventariar nada.
 | 1.4k | Decimotercera tanda: las 2 aperturas en la capa HTTP | **Cerrada** |
 | 1.4l | Decimocuarta tanda: historial de pagos, 1 sitio | **Cerrada** |
 | 1.4m | Decimoquinta tanda: estudiantes, 2 sitios. **Migración completa** | **Cerrada** |
-| 1.5 | Timeouts y manejo del pool definidos con evidencia medida | Pendiente |
-| 1.6 | Cierre: compuerta global, staging, rollback y verificación manual | Pendiente |
+| 1.5 | Timeouts y manejo del pool definidos con evidencia medida | **Cerrada**, verificada contra el endpoint agrupado real |
+| 1.6 | Cierre: compuerta global, staging, rollback y verificación manual | **Cerrada** |
 
 **Reordenación autorizada el 2026-08-11.** El plan original situaba los timeouts
 antes de completar la migración. El usuario ordenó de forma explícita continuar
@@ -1586,6 +1590,375 @@ se clasificó en 1.0. Quedan como el único patrón de apertura que no usa
 | `pip check` | `No broken requirements found.` |
 | `git diff --check` | Exit 0 |
 
+## Subcapa 1.5: resultado
+
+Antes de esta subcapa **no existía ningún timeout** en el proyecto: ni en `app/`,
+ni en la creación del pool, ni en `.env`. Una consulta lenta o un lock retenido
+podían ocupar una conexión de forma indefinida.
+
+### Lo que se añadió
+
+Cuatro ajustes en `app/config.py`, todos configurables por entorno:
+
+| Ajuste | Valor por defecto | Qué protege |
+|---|---:|---|
+| `DB_CONNECT_TIMEOUT_SECONDS` | 10 s | Que la app no cuelgue si la base no responde |
+| `DB_STATEMENT_TIMEOUT_MS` | 30 000 ms | Que una consulta lenta no ocupe una conexión sin límite |
+| `DB_LOCK_TIMEOUT_MS` | 10 000 ms | Que esperar un lock no bloquee un worker indefinidamente |
+| `DB_IDLE_IN_TRANSACTION_TIMEOUT_MS` | 60 000 ms | Que una transacción abandonada libere su conexión |
+
+El último se eligió deliberadamente: es la defensa del servidor contra la clase
+de fallo que 1.4 corrigió en el código. Si alguna vez vuelve a quedar una
+conexión con transacción abierta, PostgreSQL la reclama en un minuto en vez de
+retenerla para siempre.
+
+### Cómo se aplican, y por qué no de la forma obvia
+
+El primer intento los envió en el parámetro `options` del paquete de arranque, en
+`_create_pool()`. **Rompió el arranque contra la base real** y está documentado
+como incidente más abajo. La forma correcta resultó ser otra:
+
+| Ajuste | Dónde se aplica | Por qué |
+|---|---|---|
+| `connect_timeout` | Parámetro del pool | Es de **libpq**, se resuelve en el cliente y nunca viaja al servidor. Compatible con cualquier endpoint |
+| Los otros tres | `set_config(nombre, valor, TRUE)` al tomar la conexión | Son GUCs de servidor. Van como consulta normal, no en el arranque |
+
+El tercer argumento de `set_config` en `TRUE` equivale a **`SET LOCAL`**: el
+ajuste dura lo que dura la transacción y se revierte al terminarla. Eso es
+justamente lo que lo hace seguro detrás de un endpoint agrupado en modo
+transacción, donde una conexión se recicla entre clientes y un `SET` de sesión
+podría filtrarse al siguiente.
+
+Los tres viajan en **una sola sentencia**, con los valores ligados como
+parámetros en vez de interpolados:
+
+```sql
+SELECT set_config(%s, %s, TRUE), set_config(%s, %s, TRUE), set_config(%s, %s, TRUE)
+```
+
+Coste: un viaje extra a la base al tomar cada conexión, sumado al que ya hacía
+para fijar el `search_path`.
+
+### La decisión que más importa: 0 omite, no desactiva
+
+`_timeouts_de_sesion()` **omite** cualquier ajuste con valor 0 en lugar de
+enviarlo.
+
+Es una diferencia con consecuencias reales. Enviar `statement_timeout = 0`
+significa «sin límite» de forma explícita y **pisaría cualquier valor por
+defecto que el proveedor de hosting tenga configurado**. Omitirlo deja que ese
+valor prevalezca. Con esta forma, poner 0 en el `.env` significa «no opines», que
+es lo que uno espera de una configuración.
+
+Lo mismo con `connect_timeout`: si vale 0, no se pasa el parámetro.
+
+### Comportamiento del pool, medido y no supuesto
+
+El índice maestro pide evidencia, no descripción. Se midió construyendo un
+`ThreadedConnectionPool` **auténtico** de psycopg2 con `psycopg2.connect`
+sustituido por un doble, de modo que no hace falta PostgreSQL.
+
+| Comportamiento observado | Resultado |
+|---|---|
+| Pool agotado | Lanza `PoolError("connection pool exhausted")` **de inmediato**; no espera |
+| Devolver una conexión | Vuelve a estar disponible y se reutiliza la misma instancia |
+| Máximo respetado | Nunca se abren más conexiones que `maxconn` |
+| Devolución con transacción abierta | **El pool ejecuta `rollback()`** antes de reutilizarla |
+| Devolución en estado desconocido | El pool **cierra** la conexión en vez de reutilizarla |
+| `closeall()` | Cierra todas las conexiones creadas |
+| `get_pool()` | Devuelve siempre la misma instancia; solo crea una vez |
+
+Que el pool **falle rápido** en vez de esperar es la propiedad más importante de
+la tabla: significa que agotar el pool produce peticiones con error, no workers
+colgados. Un fallo visible es preferible a una aplicación que deja de responder
+sin decir por qué.
+
+Los dos comportamientos de `putconn` —revertir si hay transacción abierta,
+cerrar si el estado es desconocido— se descubrieron al fallar el primer intento
+de prueba: el doble de conexión no tenía `info.transaction_status` y psycopg2 lo
+consultaba. La corrección reveló que **el pool tiene su propia red de seguridad**,
+independiente de la de `get_cursor`. Se registra porque no estaba documentado en
+ninguna parte del proyecto.
+
+### Riesgo asumido y evidencia que falta
+
+`statement_timeout` es el único ajuste que puede **romper algo que hoy
+funciona**: una consulta legítima que tarde más de 30 s pasará a fallar. Se eligió
+30 s por ser muy holgado para una petición HTTP —un cliente web normalmente ya
+abandonó antes—, pero **no está calibrado contra los tiempos reales de este
+sistema**.
+
+Esa calibración no puede hacerse con pruebas herméticas: exige medir la duración
+de las consultas pesadas —boletines, planillas, reportes financieros— sobre datos
+comparables a producción. Queda como **verificación pendiente**, del mismo tipo
+que la ejecución remota de CI en la capa 0: registrada, no dada por cumplida.
+
+Mitigación disponible sin tocar código: subir `DB_STATEMENT_TIMEOUT_MS` en el
+`.env`, o ponerlo en 0 para volver al comportamiento anterior.
+
+Es además el primer cambio del programa que afecta a **todas las conexiones a la
+vez**, no a un controlador. Merece más atención al publicarlo que las quince
+tandas de migración.
+
+### Incidente: el primer intento rompió el arranque contra la base real
+
+El usuario probó el login local contra la base real y `_create_pool()` falló al
+inicializar:
+
+```
+unsupported startup parameter in options: statement_timeout
+```
+
+La `DATABASE_URL` de este proyecto usa el endpoint `-pooler` de Neon. Investigado
+antes de tocar nada:
+
+- El endpoint agrupado de Neon es **PgBouncer en modo transacción**.
+- PgBouncer solo admite cinco parámetros en el paquete de arranque:
+  `client_encoding`, `datestyle`, `timezone`, `standard_conforming_strings` y
+  `application_name`. Cualquier otro hace fallar **la conexión entera**.
+- Los `SET` de sesión tampoco son fiables ahí: la conexión se recicla entre
+  transacciones y el ajuste puede filtrarse al siguiente cliente.
+- El patrón recomendado para modo transacción es **`SET LOCAL` dentro de la
+  transacción**, que es lo que `set_config(..., TRUE)` implementa.
+
+Gravedad: la aplicación no arrancaba. No era una degradación sutil, era una caída
+completa, y la habría provocado el primer despliegue.
+
+Lo que **no** se hizo: quitar los timeouts para que el login volviera a pasar.
+`connect_timeout` se conservó porque es compatible por naturaleza, y los otros
+tres se reimplementaron con un mecanismo que funciona igual contra un endpoint
+agrupado que contra uno directo.
+
+Por qué las pruebas no lo detectaron: todas eran herméticas y ninguna hablaba con
+un servidor. La diferencia entre endpoint agrupado y directo **solo existe en una
+conexión real**. Es el límite exacto de la estrategia de verificación elegida en
+1.0, y esta es la primera vez que ese límite cuesta algo.
+
+### Verificaciones añadidas por el incidente
+
+Dos capas distintas, porque una sola no basta:
+
+1. **Guardia hermética de regresión**, en `tests/test_db_pool_timeouts.py`:
+   afirma que `_create_pool()` **no** envía `options`, que ningún GUC de servidor
+   aparece en sus parámetros, y que los que usa son un subconjunto de los que un
+   endpoint agrupado tolera. Si alguien vuelve a meter un timeout en el arranque,
+   la suite se pone roja sin necesidad de base de datos.
+2. **Comprobación operativa real**, en `scripts/check_db_timeouts.py`: abre una
+   conexión con la `DATABASE_URL` configurada, informa si el endpoint es agrupado
+   o directo, y lee con `SHOW` los valores efectivos de los tres timeouts. Es la
+   única forma de cubrir la diferencia de verdad. Solo lee y no imprime
+   credenciales.
+
+Una prueba existente de 1.1 también se puso en rojo:
+`test_get_connection_prepara_la_conexion_y_la_retiene` afirmaba que preparar una
+conexión ejecutaba **una** sentencia, y ahora son dos. Se actualizó reforzando la
+aserción —comprueba el número y que la segunda sea la de `set_config`— en vez de
+relajarla.
+
+### Verificación
+
+| Comprobación | Resultado |
+|---|---|
+| Pruebas específicas | 19 pasaron en 0,24 s |
+| `Settings(_env_file=None)` con el entorno de CI | Los cuatro valores por defecto se resuelven correctamente |
+| Compuerta global | Exit 0 |
+| Suite completa | **334** pasaron, 5 warnings conocidos, 1,50 s |
+| Ruff | `All checks passed!` |
+| `pip check` | `No broken requirements found.` |
+| `git diff --check` | Exit 0 |
+| **Verificación contra la base real** | **Correcta**, detallada abajo |
+
+### Evidencia medida contra el endpoint agrupado real
+
+Ejecutada por el usuario el 2026-08-11 contra la base real, con la
+`DATABASE_URL` de producción apuntando al endpoint `-pooler` de Neon. Son tres
+evidencias distintas y hacen falta las tres:
+
+| Evidencia | Qué demuestra | Resultado |
+|---|---|---|
+| El login local funciona | `_create_pool()` inicializa y `set_config(..., TRUE)` se ejecuta sin error tras PgBouncer | Correcto |
+| `SHOW` de los tres ajustes | Los valores **están fijados** en la sesión | `statement_timeout = 30s`, `lock_timeout = 10s`, `idle_in_transaction_session_timeout = 1min` |
+| Timeout forzado con `--forzar` | PostgreSQL **los hace cumplir**, no solo los registra | Consulta cancelada tras **1,11 s** con un límite de 1 s |
+
+El endpoint quedó identificado por el propio script como
+`AGRUPADO (pooler) · ...-pooler.c-4.us-east-1.aws.neon.tech`, es decir el mismo
+que provocó el fallo original.
+
+La tercera evidencia es la que convierte «configurado» en «verificado» y la que
+satisface la exigencia del índice maestro de definir los timeouts **con evidencia
+medida**. Se obtiene bajando `statement_timeout` a un segundo solo para esa
+transacción y lanzando un `pg_sleep` más largo: recorre exactamente el mismo
+camino que el valor real —`set_config` local, PgBouncer, cancelación de
+PostgreSQL— sin obligar a esperar treinta segundos.
+
+Con esto la subcapa queda **cerrada**.
+
+### Lo que sigue sin estar verificado
+
+La **calibración** de `DB_STATEMENT_TIMEOUT_MS`. Que el límite se cumpla está
+probado; que 30 s sea el número correcto para este sistema, no. Sigue haciendo
+falta medir la duración de las consultas pesadas —boletines, planillas, reportes
+financieros— sobre datos comparables a producción.
+
+Son dos preguntas distintas y conviene no confundirlas: el mecanismo funciona, el
+valor es una apuesta razonable pero no medida.
+
+## Subcapa 1.6: cierre de la capa
+
+Sin cambios funcionales. Solo compuerta global, auditoría, documentación de
+publicación y actualización del índice maestro, por instrucción explícita del
+usuario.
+
+### Compuerta global
+
+| Comprobación | Resultado |
+|---|---|
+| `.\venv\Scripts\python.exe scripts\verify.py` | **Exit 0** |
+| Suite completa | **334** pruebas correctas, 5 warnings conocidos |
+| Ruff sobre `app tests scripts apply_migration.py` | `All checks passed!` |
+| `pip check` | `No broken requirements found.` |
+| `git diff --check` | Exit 0 |
+
+Se parte de 192 pruebas al abrir la capa: **142 pruebas nuevas**.
+
+### Auditoría del diff completo desde el commit base
+
+Rango auditado: `6754e4aad59c1e428ea97d31fe8e96fdbba7694d` hasta el árbol de
+trabajo. **17 commits**, cada uno correspondiente a una subcapa registrada en
+este documento, sin ninguno inexplicado.
+
+**Categorías prohibidas: ninguna tocada.** El diff no contiene `migrations/`,
+`requirements.txt`, `.github/`, archivos `.sql`, `apply_migration.py` ni
+`scripts/verify.py`.
+
+**Análisis semántico del diff de `app/`.** No basta con contar líneas: casi todo
+el volumen es reindentación por meter código dentro de un `with`. Se normalizaron
+los espacios de cada línea y se compararon los conjuntos:
+
+| Medida | Líneas |
+|---|---:|
+| Quitadas en `app/` | 1229 |
+| Añadidas en `app/` | 1064 |
+| **Idénticas salvo espacios** (reindentación) | **938** |
+| Cambio semántico real: quitadas | 291 |
+| Cambio semántico real: añadidas | 126 |
+
+Clasificación de lo realmente quitado:
+
+| Concepto | Líneas |
+|---|---:|
+| Cierres manuales `cursor.close()` / `conn.close()` | 118 |
+| Aperturas manuales `get_connection()` / `conn.cursor()` | 100 |
+| Líneas en blanco | 28 |
+| `conn.commit()` manuales | 22 |
+| Imports viejos de `get_connection` | 19 |
+| Sin clasificar | **4** |
+
+Clasificación de lo realmente añadido:
+
+| Concepto | Líneas |
+|---|---:|
+| `with get_cursor(...)` | 50 |
+| Imports nuevos | 17 |
+| Sin clasificar | **59** |
+
+Las 4 quitadas y las 59 añadidas sin clasificar se revisaron una por una:
+**todas pertenecen a la subcapa 1.5** —los cuatro ajustes de `app/config.py` y
+las tres funciones nuevas de `app/db/session.py` con sus comentarios—. No hay ni
+una línea del diff que no corresponda a la sustitución del ciclo manual de
+conexión o al trabajo de timeouts.
+
+**Contratos HTTP.** Ninguna línea del diff modifica un decorador `@router`, un
+`response_model` o un `status_code`. Los únicos `status_code` que aparecen en el
+diff son los `400` y `404` de `plantilla_controller`, y en todos los casos la
+línea quitada y la añadida son idénticas salvo la sangría, por haber quedado
+dentro de un `with`.
+
+### Estado final medido
+
+| Métrica | Al abrir la capa | Al cerrarla |
+|---|---:|---:|
+| Aperturas sin cierre garantizado | **50** | **0** |
+| De ellas, fugas deterministas | 2 | **0** |
+| Aperturas fuera de controllers y services | 2 | **0** |
+| Llamadas a `get_connection()` en `app/` | 146 | 96 |
+| Timeouts configurados | **ninguno** | 4, verificados contra Neon real |
+| Pruebas | 192 | **334** |
+
+### Hallazgo de la auditoría: `.env.example` incompleto
+
+`.env.example` documenta `DB_POOL_MIN_CONNECTIONS` y `DB_POOL_MAX_CONNECTIONS`
+pero **no los cuatro ajustes de timeout añadidos en 1.5**. Quien prepare un
+entorno nuevo no sabrá que existen, ni que un 0 significa «no fijar nada» en vez
+de «sin límite».
+
+No se corrigió: el usuario pidió expresamente no introducir cambios durante 1.6.
+Queda como tarea de documentación pendiente, de riesgo bajo y sin efecto en el
+comportamiento.
+
+### Staging y publicación
+
+Este programa no despliega. La publicación la controla el usuario y en este
+proyecto tiene una consecuencia inmediata: **`main` despliega a producción de
+forma automática**, sin paso intermedio de staging.
+
+Por eso el equivalente a staging aquí fue la verificación local contra la base
+real, ya ejecutada en 1.5: endpoint agrupado identificado, timeouts efectivos
+leídos con `SHOW` y cumplimiento medido con una cancelación real. Es la única
+comprobación que distingue un endpoint agrupado de uno directo, y la que faltó en
+el primer intento.
+
+Orden de publicación acordado:
+
+1. Commit de 1.5 y de este cierre.
+2. Push a `main`, que dispara el despliegue.
+3. Verificación manual de la lista de abajo.
+
+### Rollback
+
+Ninguna migración de base de datos, ningún cambio de esquema, ningún dato
+tocado. El rollback es exclusivamente de código.
+
+- **Rollback total de la capa**: `git revert` en orden inverso de los commits
+  posteriores a `6754e4aa`, sin revertir el propio base. Devuelve las 50
+  aperturas desprotegidas y elimina los timeouts.
+- **Rollback selectivo por tanda**: cada subcapa es un commit independiente y
+  autocontenido —código y pruebas juntos—, así que puede revertirse una sola sin
+  tocar las demás. Es la ventaja de haber migrado en quince tandas en vez de una.
+- **Mitigación sin rollback, para el riesgo más probable**: si
+  `statement_timeout` corta una consulta legítima, basta con subir
+  `DB_STATEMENT_TIMEOUT_MS` en el `.env`, o ponerlo en 0 para volver exactamente
+  al comportamiento anterior. **No requiere desplegar código.** Es la primera
+  palanca a usar ante un incidente.
+- **Rollback de la infraestructura sin perder la migración**: revertir solo el
+  commit de 1.5 deja los 50 sitios migrados y quita los timeouts.
+
+### Verificación manual después de publicar
+
+1. Confirmar que el despliegue terminó y el servicio está vivo.
+2. Iniciar sesión. Es el camino que ya detectó el fallo de 1.5 y atraviesa
+   `get_connection()` completo.
+3. Ejecutar `.\venv\Scripts\python.exe scripts\check_db_timeouts.py --forzar`
+   apuntando al entorno publicado y confirmar los tres valores y la cancelación.
+4. Probar una operación de escritura sencilla —crear o actualizar un usuario— y
+   comprobar que persiste. Verifica que el `commit` sigue ocurriendo.
+5. Probar una lectura pesada —un boletín o una planilla con datos reales— y
+   confirmar que **no** se corta a los 30 s. Es la comprobación que sustituye a
+   la calibración formal y la que más probablemente revele un problema.
+6. Revisar los logs en busca de `canceling statement due to statement timeout`.
+   Su aparición indica que el valor está mal calibrado, no que el código falle.
+
+### Verificación pendiente aceptada
+
+La **calibración** de `DB_STATEMENT_TIMEOUT_MS` no se completó. El usuario la
+aceptó de forma explícita como pendiente operativa registrada, con dos motivos:
+el mecanismo ya está verificado contra Neon real, y el valor puede ajustarse por
+entorno sin desplegar código.
+
+Se registra sin darla por cumplida. Distinción que debe conservarse: **el
+mecanismo está probado; el valor de 30 s es una apuesta razonable, no una
+medición.**
+
 ## Criterios de cierre de la subcapa 1.0
 
 - La línea base está reproducida desde el commit base con resultados reales.
@@ -2479,43 +2852,257 @@ se clasificó en 1.0. Quedan como el único patrón de apertura que no usa
   `lock_timeout`— y cómo se mide la evidencia, porque tocar `_create_pool()`
   afecta a **todas** las conexiones a la vez.
 
+### 2026-08-11 — subcapa 1.5
+
+- Rama acordada: `main`; árbol **limpio** antes de editar, con 1.4m ya
+  commiteada.
+- Commit observado: `e3acb6f`, diecisiete commits por delante de `origin/main`
+  conforme a la cadencia local acordada.
+- Archivos modificados: `app/config.py` y `app/db/session.py`.
+- Archivo creado: `tests/test_db_pool_timeouts.py`.
+- Contratos HTTP, rutas, payloads, status codes, permisos, tenant, ownership,
+  SQL de producto y dependencias modificados: ninguno.
+- Se añadieron cuatro ajustes configurables: `DB_CONNECT_TIMEOUT_SECONDS` (10 s),
+  `DB_STATEMENT_TIMEOUT_MS` (30 000), `DB_LOCK_TIMEOUT_MS` (10 000) y
+  `DB_IDLE_IN_TRANSACTION_TIMEOUT_MS` (60 000). Antes no existía **ninguno**.
+- Se aplican en `_create_pool()` vía `connect_timeout` y `options`, al nacer cada
+  conexión física. No añaden viajes extra a la base.
+- Decisión de diseño: un ajuste con valor **0 se omite**, no se envía. Enviar
+  `-c statement_timeout=0` desactivaría el timeout de forma explícita y pisaría
+  el valor por defecto del proveedor; omitirlo lo respeta. Poner 0 en el `.env`
+  significa «no opines».
+- `DB_IDLE_IN_TRANSACTION_TIMEOUT_MS` se eligió deliberadamente como defensa del
+  servidor frente a la clase de fallo corregida en 1.4: si vuelve a quedar una
+  conexión con transacción abierta, PostgreSQL la reclama.
+- **Evidencia medida del pool**, no supuesta: se construyó un
+  `ThreadedConnectionPool` auténtico con `psycopg2.connect` sustituido por un
+  doble. Resultados: el pool agotado lanza `PoolError` **de inmediato** sin
+  esperar; devolver una conexión permite reutilizar la misma instancia; nunca se
+  superan `maxconn` conexiones; `putconn` **revierte** una conexión devuelta con
+  transacción abierta y **cierra** la que está en estado desconocido;
+  `closeall()` cierra todas; y `get_pool()` crea el pool una sola vez.
+- Hallazgo no documentado antes en el proyecto: el pool tiene su **propia red de
+  seguridad** en `putconn`, independiente de la de `get_cursor`. Se descubrió
+  porque el primer doble de conexión carecía de `info.transaction_status` y la
+  prueba falló; investigarlo reveló el comportamiento real.
+- Riesgo asumido: `statement_timeout` es el único ajuste capaz de romper algo que
+  hoy funciona. 30 s es holgado para una petición HTTP, pero **no está calibrado
+  contra los tiempos reales de este sistema**.
+- **Verificación pendiente**: medir la duración de las consultas pesadas
+  —boletines, planillas, reportes financieros— sobre datos comparables a
+  producción y ajustar `DB_STATEMENT_TIMEOUT_MS` en consecuencia. No puede
+  hacerse con pruebas herméticas. Se registra sin darla por cumplida, igual que
+  la ejecución remota de CI en la capa 0.
+- Mitigación sin tocar código: subir el valor en el `.env`, o ponerlo en 0 para
+  volver exactamente al comportamiento anterior.
+- Primer cambio del programa que afecta a **todas las conexiones a la vez**.
+  Merece más atención al publicarlo que las quince tandas de migración.
+- Pruebas específicas: 13 pasaron en 0,20 s.
+- `Settings(_env_file=None)` con el entorno de CI resuelve los cuatro valores por
+  defecto correctamente.
+- Compuerta global: exit 0; **328** pruebas correctas con los 5 warnings
+  conocidos en 1,48 s, Ruff correcto y dependencias íntegras.
+- `git diff --check`: exit 0.
+- Alcance final del diff: `app/config.py`, `app/db/session.py`, el archivo de
+  pruebas nuevo y esta bitácora.
+- Siguiente acción exacta: ejecutar **1.6**, el cierre de la capa: compuerta
+  global, auditoría del diff completo desde el commit base, staging, rollback y
+  verificación manual. Antes conviene decidir con el usuario si la calibración de
+  `statement_timeout` se completa o se acepta como pendiente registrada, igual
+  que se hizo al cerrar la capa 0.
+
+### 2026-08-11 — subcapa 1.5, corrección: incompatibilidad con endpoint agrupado
+
+- **La subcapa 1.5 no quedó cerrada.** El usuario probó el login local contra la
+  base real y `_create_pool()` falló al inicializar con
+  `unsupported startup parameter in options: statement_timeout`. La aplicación no
+  arrancaba.
+- Causa: el primer intento envió los tres GUCs en el parámetro `options` del
+  paquete de arranque. La `DATABASE_URL` usa el endpoint `-pooler` de Neon, que
+  es **PgBouncer en modo transacción** y solo admite cinco parámetros de arranque
+  —`client_encoding`, `datestyle`, `timezone`, `standard_conforming_strings`,
+  `application_name`—; cualquier otro hace fallar la conexión entera.
+- Investigación previa a tocar código, por instrucción explícita del usuario:
+  documentación de Neon sobre agrupación de conexiones y errores de conexión, y
+  material de PgBouncer sobre modo transacción. Conclusiones: los `SET` de sesión
+  tampoco son fiables tras un endpoint agrupado porque la conexión se recicla
+  entre transacciones; el patrón recomendado es **`SET LOCAL` dentro de la
+  transacción**.
+- Compatibilidad de cada timeout, establecida y no supuesta:
+  `connect_timeout` es de **libpq**, se resuelve en el cliente y **nunca viaja al
+  servidor**, así que es compatible con endpoint agrupado y directo por igual;
+  `statement_timeout`, `lock_timeout` e `idle_in_transaction_session_timeout` son
+  GUCs de servidor y **no pueden ir en el arranque**.
+- Corrección aplicada: `connect_timeout` se **conserva** como parámetro del pool.
+  Los otros tres pasan a aplicarse con
+  `set_config(nombre, valor, TRUE)` al tomar la conexión, en la misma preparación
+  que ya fijaba el `search_path`. El tercer argumento en `TRUE` equivale a
+  `SET LOCAL`: dura lo que la transacción y no puede filtrarse al siguiente
+  cliente. Los tres viajan en una sola sentencia, con valores ligados como
+  parámetros en vez de interpolados.
+- El mecanismo elegido funciona igual contra un endpoint agrupado que contra uno
+  directo, así que **no hizo falta detectar el tipo de endpoint ni bifurcar el
+  código**.
+- Lo que **no** se hizo: eliminar timeouts para que el login volviera a pasar.
+- Coste asumido: un viaje extra a la base al tomar cada conexión, sumado al que
+  ya se hacía para el `search_path`.
+- Por qué las pruebas no lo detectaron: todas eran herméticas. La diferencia
+  entre endpoint agrupado y directo solo existe en una conexión real. Es el
+  límite exacto de la estrategia de verificación elegida en 1.0 y la primera vez
+  que ese límite cuesta algo.
+- **Verificación añadida, en dos capas**: una guardia hermética de regresión en
+  `tests/test_db_pool_timeouts.py`, que afirma que `_create_pool()` no envía
+  `options`, que ningún GUC de servidor aparece en sus parámetros y que los que
+  usa son un subconjunto de los que un endpoint agrupado tolera; y una
+  comprobación operativa real en `scripts/check_db_timeouts.py`, que abre una
+  conexión con la `DATABASE_URL` configurada, informa si el endpoint es agrupado
+  o directo y lee con `SHOW` los valores efectivos. Solo lee y no imprime
+  credenciales.
+- Prueba existente adaptada: `test_get_connection_prepara_la_conexion_y_la_retiene`
+  de 1.1 se puso en rojo porque preparar una conexión pasó de una sentencia a
+  dos. Se actualizó **reforzando** la aserción —número y forma de la segunda— en
+  vez de relajarla.
+- Archivos modificados: `app/config.py`, `app/db/session.py` y
+  `tests/test_db_session_contrato.py`.
+- Archivos creados: `tests/test_db_pool_timeouts.py` y
+  `scripts/check_db_timeouts.py`.
+- Compuerta global: exit 0; **334** pruebas correctas con los 5 warnings
+  conocidos en 1,50 s, Ruff correcto y dependencias íntegras.
+- `git diff --check`: exit 0.
+- Lección registrada para el resto del programa: un cambio en la creación del
+  pool o en la preparación de la conexión **no puede considerarse verificado solo
+  con pruebas herméticas**. Debe probarse contra la base real antes de darlo por
+  cerrado.
+
+### 2026-08-11 — subcapa 1.5, verificación contra la base real y cierre
+
+- Verificación ejecutada por el usuario contra la base real, con la
+  `DATABASE_URL` de producción apuntando al endpoint `-pooler` de Neon. El script
+  identificó el endpoint como `AGRUPADO (pooler)`, es decir el mismo que provocó
+  el fallo original.
+- **Evidencia 1, arranque**: el login local funciona de nuevo. Demuestra que
+  `_create_pool()` inicializa y que `set_config(..., TRUE)` se ejecuta sin error
+  tras PgBouncer, que era la incógnita real de la corrección.
+- **Evidencia 2, valores efectivos**: `SHOW` devolvió `statement_timeout = 30s`,
+  `lock_timeout = 10s` e `idle_in_transaction_session_timeout = 1min`.
+- **Evidencia 3, cumplimiento medido**: con `--forzar`, PostgreSQL canceló la
+  consulta tras **1,11 s** frente a un límite de 1 s. Es la evidencia que
+  convierte «configurado» en «verificado» y la que satisface la exigencia del
+  índice maestro de definir los timeouts con evidencia medida.
+- Se amplió `scripts/check_db_timeouts.py` con la opción `--forzar`, que baja
+  `statement_timeout` a un segundo solo para esa transacción y lanza un
+  `pg_sleep` más largo. Recorre el mismo camino que el valor real sin obligar a
+  esperar treinta segundos. Sigue sin escribir nada: `pg_sleep` solo duerme.
+- Distinción registrada para no confundir dos cosas: el **mecanismo** está
+  verificado; el **valor** de 30 s no está calibrado. Que el límite se cumpla no
+  dice que 30 s sea el número correcto para este sistema.
+- Ruff sobre el script ampliado: correcto.
+- Estado de la subcapa: **cerrada**.
+- Verificación que permanece pendiente, heredada a 1.6: calibrar
+  `DB_STATEMENT_TIMEOUT_MS` midiendo la duración de las consultas pesadas
+  —boletines, planillas, reportes financieros— sobre datos comparables a
+  producción. No puede resolverse con pruebas herméticas ni con el script
+  actual.
+
+### 2026-08-11 — subcapa 1.6, cierre de la capa
+
+- Rama acordada: `main`. Auditoría ejecutada sobre commits más árbol de trabajo,
+  con 1.5 aún sin commitear en ese momento.
+- Instrucción del usuario: **no introducir cambios funcionales durante 1.6**. Se
+  cumplió: esta subcapa solo verifica y documenta.
+- Decisión del usuario, registrada: la calibración de `DB_STATEMENT_TIMEOUT_MS`
+  se **acepta como pendiente operativa** y no bloquea el cierre. Motivos dados: el
+  mecanismo ya está verificado contra Neon real y el valor puede ajustarse por
+  entorno sin desplegar código.
+- Compuerta global: exit 0; 334 pruebas correctas, Ruff correcto, `pip check`
+  correcto, `git diff --check` exit 0.
+- Auditoría del rango `6754e4aa..árbol`: **17 commits, todos explicados** en este
+  documento, uno por subcapa.
+- Categorías prohibidas: **ninguna tocada**. Sin `migrations/`,
+  `requirements.txt`, `.github/`, `.sql`, `apply_migration.py` ni
+  `scripts/verify.py`.
+- Análisis semántico del diff de `app/`, normalizando espacios: de 1229 líneas
+  quitadas y 1064 añadidas, **938 son idénticas salvo sangría**. El cambio real
+  son 291 quitadas y 126 añadidas. Lo quitado se clasifica en 118 cierres
+  manuales, 100 aperturas manuales, 28 líneas en blanco, 22 `commit` manuales y
+  19 imports viejos. Lo añadido, en 50 `with get_cursor` y 17 imports nuevos. Las
+  4 y 59 líneas restantes se revisaron una por una y **todas pertenecen a 1.5**.
+- Contratos HTTP: ninguna línea del diff modifica un decorador `@router`, un
+  `response_model` ni un `status_code`. Los `status_code` que aparecen son
+  idénticos salvo sangría.
+- Hallazgo registrado y **no corregido** por la instrucción de no cambiar nada:
+  `.env.example` documenta los dos ajustes de tamaño del pool pero **no los
+  cuatro timeouts** añadidos en 1.5. Riesgo bajo, sin efecto en comportamiento,
+  pero quien prepare un entorno nuevo no sabrá que existen ni que 0 significa «no
+  fijar nada».
+- Staging: este proyecto no tiene entorno intermedio; `main` despliega a
+  producción de forma automática. El equivalente aplicable fue la verificación
+  local contra la base real ya ejecutada en 1.5.
+- Rollback documentado en cuatro niveles: total por `git revert` inverso;
+  selectivo por tanda, posible porque cada subcapa es un commit autocontenido;
+  **mitigación sin desplegar** subiendo o anulando `DB_STATEMENT_TIMEOUT_MS` en
+  el `.env`, que es la primera palanca ante un incidente; y reversión solo de 1.5
+  conservando la migración.
+- Verificación manual posterior a la publicación: seis pasos documentados, con
+  énfasis en probar una lectura pesada real, que es lo que más probablemente
+  revele una calibración incorrecta.
+- Estado: **capa 1 cerrada**, con una verificación operativa pendiente y
+  aceptada.
+- Siguiente acción exacta: el usuario commitea 1.5 y este cierre, y publica. La
+  capa 2, concurrencia, **queda en espera** y no se activa sin orden explícita.
+
 ## Entrega al próximo chat
 
-- Capa activa: **1, fundación de base de datos**.
-- Última subcapa terminada: **1.4m**. **La migración está completa**: los 50
-  sitios sin cierre garantizado llegaron a cero, en quince tandas y con 123
-  pruebas nuevas.
-- Primera subcapa pendiente: **1.5**, timeouts y manejo del pool con evidencia
-  medida. Es lo único del alcance de la capa que sigue pendiente.
-- Antes de empezar 1.5 conviene decidir qué timeouts se fijan —`connect_timeout`,
-  `statement_timeout`, `lock_timeout`— y cómo se mide la evidencia, porque tocar
-  `_create_pool()` afecta a **todas** las conexiones a la vez. Es un cambio de
-  naturaleza distinta a las quince tandas anteriores.
+- Capa activa: **ninguna**. La capa 1 quedó **cerrada** el 2026-08-11.
+- Última subcapa terminada: **1.6**, el cierre. Compuerta global en exit 0,
+  auditoría del diff de 17 commits sin hallazgos de alcance, staging, rollback y
+  verificación manual documentados.
+- Resultado de la capa: las 50 aperturas sin cierre garantizado llegaron a **0**,
+  las 2 fugas deterministas a **0**, ninguna ruta abre conexiones, hay 4 timeouts
+  donde antes no había ninguno, y la suite pasó de 192 a **334** pruebas.
+- Siguiente capa: **2, concurrencia**. En espera. No activarla sin orden
+  explícita del usuario.
+- **Verificación operativa pendiente y aceptada**: calibrar
+  `DB_STATEMENT_TIMEOUT_MS` contra la duración real de las consultas pesadas. El
+  usuario la aceptó como pendiente para no bloquear el cierre. **No marcarla como
+  cumplida.** Si aparece `canceling statement due to statement timeout` en los
+  logs, el valor está mal calibrado, no el código.
+- Tarea de documentación pendiente, detectada en la auditoría de 1.6:
+  `.env.example` no documenta los cuatro ajustes de timeout. No se corrigió por
+  la instrucción de no cambiar nada durante el cierre.
+- Herramienta disponible: `scripts/check_db_timeouts.py`, con `--forzar` para
+  comprobar que el timeout se cumple y no solo que está fijado. Es la única
+  verificación que distingue un endpoint agrupado de uno directo.
+- Lección registrada en 1.5: un cambio en la creación del pool o en la
+  preparación de la conexión **no se puede dar por verificado solo con pruebas
+  herméticas**.
+- Lección registrada en 1.5: un cambio en la creación del pool o en la
+  preparación de la conexión **no se puede dar por verificado solo con pruebas
+  herméticas**. La diferencia entre endpoint agrupado y directo solo existe en
+  una conexión real.
+- Estado de la migración: **completa**. Los 50 sitios sin cierre garantizado
+  llegaron a cero en quince tandas, con 136 pruebas nuevas y sin regresiones.
+  Ninguna ruta abre conexiones.
+- Timeouts: antes no existía ninguno. Ahora hay cuatro configurables por entorno,
+  con 0 como «no opines» en vez de «sin límite».
+- **Verificación pendiente que 1.6 debe tratar explícitamente**: calibrar
+  `DB_STATEMENT_TIMEOUT_MS` contra la duración real de las consultas pesadas
+  —boletines, planillas, reportes financieros—. No puede resolverse con pruebas
+  herméticas. Debe decidirse si se completa o se acepta como pendiente
+  registrada, como se hizo con la CI remota al cerrar la capa 0. **No darla por
+  cumplida.**
+- Riesgo vivo asociado: `statement_timeout` en 30 s es el único ajuste capaz de
+  romper algo que hoy funciona. Mitigación sin tocar código: subir el valor en el
+  `.env` o ponerlo en 0.
+- Cadencia de publicación acordada: se trabaja y se verifica en local; el usuario
+  decide cuándo publicar. `main` despliega a producción de forma automática.
 - Quedan los 2 sitios de propiedad delegada en `super_admin`, que no son fugas y
-  se clasificaron como tales desde 1.0.
-- Precedente de 1.4k: al migrar un módulo, comprobar si alguna prueba existente
-  parchea `get_connection` sobre él. Ocurrió una vez en 13 tandas.
-- Deuda conocida anotada en 1.4h y no corregida: el N+1 de
-  `boletin_detallado_controller`, que pertenece a la capa 4, y los ids sintéticos
-  que fabrica para las actividades en blanco.
-- Deuda conocida anotada en 1.4f: dos funciones homónimas
-  `obtener_clases_profesor_controller`, en `asignacion_controller` y en
-  `profesor_controller`, consultan lo mismo con filtros distintos. No se
-  unificaron por estar fuera del alcance de esta capa.
-- Orden vigente: primero completar la migración, después los timeouts. Reordenado
-  por instrucción explícita del usuario el 2026-08-11.
-- Bloqueos: ninguno. La estrategia de verificación quedó decidida el 2026-08-11:
-  pruebas de contrato con pool falso. La guardia estática y PostgreSQL en CI se
-  descartaron para esta capa.
-- Dato que gobierna la capa: 146 aperturas en `app/`, de las cuales 50 pierden la
-  conexión ante excepción, con `maxconn = 10` y sin ningún timeout configurado.
-- Riesgo aceptado: la verificación elegida cubre la infraestructura, no cada uno
-  de los 146 sitios; la corrección de cada sitio dependerá de la revisión del
-  diff.
-- Cadencia de publicación: acordada. Se trabaja y se verifica en local; el
-  usuario decide cuándo publicar.
-- Siguiente acción exacta: ejecutar **1.4b** empezando por
-  `eliminar_asignacion_controller` en `app/controllers/asignacion_controller.py`,
-  la única fuga determinista pendiente. El archivo tiene 6 sitios desprotegidos;
-  acordar con el usuario si se migran todos o solo el crítico. `pagos`, `ventas`
-  y `estudiantes` quedan para el final.
+  se clasificaron como tales desde 1.0. Son el único patrón de apertura que no
+  usa `get_cursor`.
+- Deudas conocidas anotadas y **no** corregidas, por estar fuera del alcance de
+  esta capa: el N+1 de `boletin_detallado_controller`, que pertenece a la capa 4;
+  los ids sintéticos que ese mismo boletín fabrica por concatenación de cadenas;
+  las dos funciones homónimas `obtener_clases_profesor_controller` con filtros
+  distintos; y la cadena mágica `"Desde React"` de `planilla_excel_controller`.
+- Precedente útil: al migrar un módulo, comprobar si alguna prueba existente
+  parchea `get_connection` sobre él. Ocurrió una vez en quince tandas.

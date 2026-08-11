@@ -38,12 +38,68 @@ class PooledConnection:
             self._closed = True
 
 
-def _create_pool() -> ThreadedConnectionPool:
-    return ThreadedConnectionPool(
-        minconn=settings.DB_POOL_MIN_CONNECTIONS,
-        maxconn=settings.DB_POOL_MAX_CONNECTIONS,
-        dsn=settings.DATABASE_URL,
+def _timeouts_de_sesion() -> tuple[tuple[str, int], ...]:
+    """Timeouts activos. Un valor de 0 se omite en vez de enviarse.
+
+    Enviar 0 desactivaria el timeout de forma explicita y pisaria el valor por
+    defecto del servidor; omitirlo lo respeta.
+    """
+    ajustes = (
+        ("statement_timeout", settings.DB_STATEMENT_TIMEOUT_MS),
+        ("lock_timeout", settings.DB_LOCK_TIMEOUT_MS),
+        ("idle_in_transaction_session_timeout", settings.DB_IDLE_IN_TRANSACTION_TIMEOUT_MS),
     )
+    return tuple((nombre, valor) for nombre, valor in ajustes if valor > 0)
+
+
+def build_timeout_statement() -> tuple[str, tuple[str, ...]] | None:
+    """Sentencia que fija los timeouts para la transaccion en curso.
+
+    Usa set_config(nombre, valor, TRUE). El tercer argumento en TRUE equivale a
+    SET LOCAL: el ajuste dura hasta que la transaccion termina y no puede
+    filtrarse a otro cliente.
+
+    Esto NO puede hacerse con el parametro `options` del arranque. Detras de un
+    endpoint agrupado —el `-pooler` de Neon es PgBouncer en modo transaccion—
+    solo se admiten cinco parametros de arranque, y cualquier otro hace fallar la
+    conexion entera con "unsupported startup parameter in options". set_config
+    viaja como una consulta normal, asi que funciona igual contra un endpoint
+    agrupado que contra uno directo.
+
+    Devuelve None si no hay ningun timeout configurado.
+    """
+    ajustes = _timeouts_de_sesion()
+    if not ajustes:
+        return None
+
+    llamadas = ", ".join(["set_config(%s, %s, TRUE)"] * len(ajustes))
+    parametros: list[str] = []
+    for nombre, valor in ajustes:
+        parametros.extend((nombre, str(valor)))
+
+    return f"SELECT {llamadas}", tuple(parametros)
+
+
+def apply_session_timeouts(cursor) -> None:
+    sentencia = build_timeout_statement()
+    if sentencia is None:
+        return
+    cursor.execute(*sentencia)
+
+
+def _create_pool() -> ThreadedConnectionPool:
+    # Solo parametros que un endpoint agrupado acepta. connect_timeout es de
+    # libpq y se resuelve en el cliente: nunca viaja en el paquete de arranque.
+    parametros = {
+        "minconn": settings.DB_POOL_MIN_CONNECTIONS,
+        "maxconn": settings.DB_POOL_MAX_CONNECTIONS,
+        "dsn": settings.DATABASE_URL,
+    }
+
+    if settings.DB_CONNECT_TIMEOUT_SECONDS > 0:
+        parametros["connect_timeout"] = settings.DB_CONNECT_TIMEOUT_SECONDS
+
+    return ThreadedConnectionPool(**parametros)
 
 
 def get_pool() -> ThreadedConnectionPool:
@@ -62,6 +118,7 @@ def get_connection() -> PooledConnection:
         connection.autocommit = False
         with connection.cursor() as cursor:
             set_tenant_search_path(cursor)
+            apply_session_timeouts(cursor)
     except Exception:
         try:
             connection.rollback()

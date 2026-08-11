@@ -1885,16 +1885,25 @@ dentro de un `with`.
 | Timeouts configurados | **ninguno** | 4, verificados contra Neon real |
 | Pruebas | 192 | **334** |
 
-### Hallazgo de la auditoría: `.env.example` incompleto
+### Hallazgo de la auditoría: `.env.example` incompleto, corregido
 
-`.env.example` documenta `DB_POOL_MIN_CONNECTIONS` y `DB_POOL_MAX_CONNECTIONS`
-pero **no los cuatro ajustes de timeout añadidos en 1.5**. Quien prepare un
-entorno nuevo no sabrá que existen, ni que un 0 significa «no fijar nada» en vez
-de «sin límite».
+La auditoría detectó que `.env.example` documentaba `DB_POOL_MIN_CONNECTIONS` y
+`DB_POOL_MAX_CONNECTIONS` pero **no los cuatro ajustes de timeout añadidos en
+1.5**. Quien preparase un entorno nuevo no sabría que existen, ni que un 0
+significa «no fijar nada» en vez de «sin límite».
 
-No se corrigió: el usuario pidió expresamente no introducir cambios durante 1.6.
-Queda como tarea de documentación pendiente, de riesgo bajo y sin efecto en el
-comportamiento.
+El usuario autorizó corregirlo de forma explícita tras leer el hallazgo. Se
+añadieron los cuatro con sus valores por defecto y dos líneas de comentario que
+explican la semántica del 0 y la diferencia de unidades entre `connect_timeout`,
+en segundos, y los otros tres, en milisegundos. El archivo no tenía ningún
+comentario previo, así que se limitó al mínimo necesario.
+
+Comprobado que los seis ajustes de base de datos del ejemplo coinciden **valor
+por valor** con los defaults declarados en `app/config.py`. Un ejemplo que
+contradiga al código es peor que no tenerlo.
+
+`.env.example` no lo lee la aplicación —`app/config.py` carga `.env`—, así que el
+cambio es estrictamente documental y no altera ningún comportamiento.
 
 ### Staging y publicación
 
@@ -3030,11 +3039,15 @@ medición.**
 - Contratos HTTP: ninguna línea del diff modifica un decorador `@router`, un
   `response_model` ni un `status_code`. Los `status_code` que aparecen son
   idénticos salvo sangría.
-- Hallazgo registrado y **no corregido** por la instrucción de no cambiar nada:
-  `.env.example` documenta los dos ajustes de tamaño del pool pero **no los
-  cuatro timeouts** añadidos en 1.5. Riesgo bajo, sin efecto en comportamiento,
-  pero quien prepare un entorno nuevo no sabrá que existen ni que 0 significa «no
-  fijar nada».
+- Hallazgo de la auditoría: `.env.example` documentaba los dos ajustes de tamaño
+  del pool pero **no los cuatro timeouts** añadidos en 1.5. Se registró primero
+  sin corregir, por la instrucción de no cambiar nada durante el cierre, y el
+  usuario **autorizó la corrección de forma explícita** al leerlo.
+- Corrección aplicada: se añadieron los cuatro ajustes con sus valores por
+  defecto y dos líneas de comentario sobre la semántica del 0 y la diferencia de
+  unidades. Se comprobó que los seis ajustes de base de datos del ejemplo
+  coinciden valor por valor con los defaults de `app/config.py`. El archivo no lo
+  lee la aplicación, así que el cambio es estrictamente documental.
 - Staging: este proyecto no tiene entorno intermedio; `main` despliega a
   producción de forma automática. El equivalente aplicable fue la verificación
   local contra la base real ya ejecutada en 1.5.
@@ -3067,9 +3080,9 @@ medición.**
   usuario la aceptó como pendiente para no bloquear el cierre. **No marcarla como
   cumplida.** Si aparece `canceling statement due to statement timeout` en los
   logs, el valor está mal calibrado, no el código.
-- Tarea de documentación pendiente, detectada en la auditoría de 1.6:
-  `.env.example` no documenta los cuatro ajustes de timeout. No se corrigió por
-  la instrucción de no cambiar nada durante el cierre.
+- Hallazgo de la auditoría de 1.6, ya **corregido** con autorización del usuario:
+  `.env.example` no documentaba los cuatro ajustes de timeout. Ahora los incluye,
+  con sus valores coincidiendo con los defaults de `app/config.py`.
 - Herramienta disponible: `scripts/check_db_timeouts.py`, con `--forzar` para
   comprobar que el timeout se cumple y no solo que está fijado. Es la única
   verificación que distingue un endpoint agrupado de uno directo.

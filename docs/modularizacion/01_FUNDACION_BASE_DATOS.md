@@ -8,16 +8,16 @@
 - Commit base: `6754e4aad59c1e428ea97d31fe8e96fdbba7694d`.
 - Rama acordada: `main`.
 - Estado al activar: árbol limpio; `main` sincronizada con `origin/main`.
-- Primera subcapa pendiente: **1.4h**, siguiente tanda de migración.
+- Primera subcapa pendiente: **1.4i**, siguiente tanda de migración.
 - Código de producto modificado hasta ahora: servicios de validación (1.2), tres
   funciones del planeador anual (1.3), cuatro del controlador de usuarios (1.4),
   seis del de asignaciones (1.4b), cuatro del de branding (1.4c), cuatro del de
-  dashboard (1.4d), tres del de inventario (1.4e), una del de profesores (1.4f) y
-  una del de asistencia (1.4g). Sin cambio de comportamiento observable, salvo
-  las dos fugas deterministas corregidas y la confirmación de transacciones de
-  solo lectura, documentadas en su subcapa.
-- Progreso de la capa: **20 sitios** sin cierre garantizado, de 50 iniciales.
-  **Cero fugas deterministas**; los 20 restantes requieren una excepción.
+  dashboard (1.4d), tres del de inventario (1.4e), una del de profesores (1.4f),
+  una del de asistencia (1.4g) y cinco del de notas (1.4h). Sin cambio de
+  comportamiento observable, salvo las dos fugas deterministas corregidas y la
+  confirmación de transacciones de solo lectura, documentadas en su subcapa.
+- Progreso de la capa: **15 sitios** sin cierre garantizado, de 50 iniciales.
+  **Cero fugas deterministas**; los 15 restantes requieren una excepción.
 - Autorización: orden explícita del usuario el 2026-08-11, después de cerrar la
   capa 0 con la CI remota verificada.
 
@@ -101,7 +101,8 @@ commit base antes de inventariar nada.
 | 1.4e | Séptima tanda: inventario, 3 sitios, primer archivo con aritmética de dinero | **Cerrada** |
 | 1.4f | Octava tanda: profesores, 1 sitio | **Cerrada** |
 | 1.4g | Novena tanda: asistencia, 1 sitio | **Cerrada** |
-| 1.4h | Tandas restantes hasta agotar los 20 sitios pendientes | Pendiente |
+| 1.4h | Décima tanda: notas, 5 sitios, archivo completo | **Cerrada** |
+| 1.4i | Tandas restantes hasta agotar los 15 sitios pendientes | Pendiente |
 | 1.5 | Timeouts y manejo del pool definidos con evidencia medida | Pendiente |
 | 1.6 | Cierre: compuerta global, staging, rollback y verificación manual | Pendiente |
 
@@ -1090,6 +1091,96 @@ divergencias**.
 | `pip check` | `No broken requirements found.` |
 | `git diff --check` | Exit 0 |
 
+## Subcapa 1.4h: resultado
+
+Tanda revisada con especial detalle a petición del usuario.
+`app/controllers/notas_controller.py`, **5 sitios de 5**: el archivo entero
+estaba desprotegido. Segundo archivo del programa que abandona `get_connection`
+por completo.
+
+| Función | Operación | Destino |
+|---|---|---|
+| `crear_nota_controller` | `INSERT` + `commit` | `get_cursor(commit=True)` |
+| `notas_estudiante_controller` | `SELECT` | `get_cursor()` |
+| `boletin_estudiante_controller` | `SELECT` con CTE | `get_cursor()` |
+| `planilla_asignacion_controller` | `SELECT` con CTE y resolver | `get_cursor()` |
+| `boletin_detallado_controller` | `SELECT` + N+1 en bucle | `get_cursor()` |
+
+### Dos imports locales redundantes eliminados
+
+`boletin_estudiante_controller` y `boletin_detallado_controller` repetían
+`from app.database import get_connection` **dentro del cuerpo de la función**,
+además del import del módulo. Al migrar quedaban muertos, así que se retiraron.
+No era opcional: Ruff habría marcado el import sin usar y la compuerta habría
+fallado.
+
+### El patrón N+1 se conserva
+
+`boletin_detallado_controller` consulta las asignaciones del estudiante y después
+ejecuta **una consulta por cada asignación** dentro del bucle. Un boletín de doce
+materias son trece consultas.
+
+Se conservó tal cual y se fijó en una prueba que cuenta las consultas: dos
+asignaciones producen tres llamadas a `execute`. Optimizarlo pertenece a la capa
+4, que es la que autoriza eliminar N+1 mediante consultas agrupadas equivalentes;
+hacerlo aquí sería ampliar el alcance.
+
+La ventaja de migrarlo ahora es que las trece consultas comparten una sola
+conexión gobernada por `get_cursor`, en vez de una conexión que se perdía entera
+si cualquiera de las trece fallaba.
+
+### Comportamientos que no eran evidentes y quedaron fijados
+
+- **`crear_nota_controller` no pide conexión si falla una validación.** Sus tres
+  comprobaciones —asignación, estudiante y pertenencia al curso— devuelven un
+  error antes de abrir nada. Verificado: en ese camino la versión anterior
+  registró **cero conexiones adquiridas**, así que no fugaba.
+- **`boletin_detallado_controller` sí cerraba en su salida temprana.** Cuando el
+  estudiante no tiene asignaciones, la versión anterior cerraba cursor y conexión
+  antes de devolver `[]`. No era una fuga determinista; el barrido de 1.4 ya lo
+  había clasificado bien.
+- **Los ids de las actividades en blanco son sintéticos.** Cuando una materia no
+  tiene notas, el boletín fabrica tres actividades cuyo id se arma concatenando
+  cadenas: materia 5 produce 501, 502 y 503. Puede colisionar con ids reales de
+  `notas_detalle`. Se conserva sin cambios y queda anotado como deuda conocida.
+- **El corte Aprobado/Reprobado está en 3.0 inclusive** y el promedio general no
+  tiene guarda de división por cero, aunque el `return` previo por resultado
+  vacío la hace inalcanzable.
+- **`notas_estudiante_controller` devuelve promedio 0 sin notas**, por su guarda
+  `if cantidad > 0`.
+
+### Caracterización
+
+`tests/test_notas_controlador.py`, 14 pruebas. Ninguna de las cinco funciones
+tenía cobertura: las pruebas existentes de notas cubren permisos en la ruta, no
+estos cálculos.
+
+Verificación contra la versión anterior recuperada con `git show HEAD:`: 12
+comprobaciones sobre SQL, parámetros, promedios, redondeos, corte
+Aprobado/Reprobado, ids sintéticos, conteo de consultas del N+1 y semántica de
+`commit`. Todas coinciden, **sin divergencias**.
+
+### Efecto medido sobre el inventario
+
+| Métrica | Tras 1.4g | Tras 1.4h |
+|---|---:|---:|
+| Llamadas a `get_connection()` en `app/` | 116 | 111 |
+| Protegidas con `try/finally` | 94 | 94 |
+| **Sin cierre garantizado** | **20** | **15** |
+| Fugas deterministas | 0 | 0 |
+
+### Verificación
+
+| Comprobación | Resultado |
+|---|---|
+| Pruebas específicas | 14 pasaron en 0,19 s |
+| Compuerta global | Exit 0 |
+| Suite completa | **271** pasaron, 5 warnings conocidos, 1,15 s |
+| Ruff | `All checks passed!` |
+| `pip check` | `No broken requirements found.` |
+| `git diff --check` | Exit 0 |
+| Volumen del diff en `app/` | 157 inserciones, 186 supresiones, un archivo |
+
 ## Criterios de cierre de la subcapa 1.0
 
 - La línea base está reproducida desde el commit base con resultados reales.
@@ -1680,17 +1771,75 @@ divergencias**.
   los grandes; después vienen los reservados `pagos`, `ventas` y `estudiantes`.
   Acordar con el usuario cuál tomar.
 
+### 2026-08-11 — subcapa 1.4h
+
+- Rama acordada: `main`; árbol **limpio** antes de editar, con 1.4g ya
+  commiteada.
+- Commit observado: `49eb1a7`, once commits por delante de `origin/main` conforme
+  a la cadencia local acordada.
+- Archivo elegido por el usuario: `app/controllers/notas_controller.py`, con
+  revisión detallada solicitada expresamente.
+- Archivos modificados: ese controlador.
+- Archivo creado: `tests/test_notas_controlador.py`.
+- Sitios migrados: 5 de 5. El archivo entero estaba desprotegido; es el segundo
+  del programa que abandona `get_connection` por completo.
+- Contratos HTTP, rutas, payloads, status codes, permisos, tenant, ownership y
+  dependencias modificados: ninguno.
+- SQL: idéntico en tablas, columnas, CTE, joins, condiciones, agrupaciones y
+  orden. Además de la indentación se eliminaron espacios finales de línea
+  heredados en varios literales, obligatorio por `git diff --check`.
+- Semántica transaccional: preservada. Solo `crear_nota_controller` confirma.
+- Se retiraron **dos imports locales redundantes** de `get_connection` dentro de
+  `boletin_estudiante_controller` y `boletin_detallado_controller`. Al migrar
+  quedaban muertos y Ruff habría marcado el import sin usar.
+- **Patrón N+1 conservado**: `boletin_detallado_controller` ejecuta una consulta
+  por asignación dentro del bucle. Optimizarlo pertenece a la capa 4; hacerlo
+  aquí ampliaría el alcance. Se fijó en prueba contando las consultas: dos
+  asignaciones producen tres `execute`. La migración sí mejora su seguridad: las
+  N+1 consultas comparten ahora una conexión gobernada, en vez de perderse entera
+  si cualquiera fallaba.
+- Comportamientos verificados y fijados que no eran evidentes: las tres
+  validaciones de `crear_nota_controller` devuelven error **sin adquirir
+  conexión** —confirmado con cero conexiones en la versión anterior—; la salida
+  temprana de `boletin_detallado_controller` **sí cerraba**, por lo que nunca fue
+  fuga determinista; los ids de las actividades en blanco se fabrican
+  concatenando cadenas y pueden colisionar con ids reales; el corte
+  Aprobado/Reprobado está en 3,0 inclusive; y el promedio es 0 cuando no hay
+  notas.
+- Deuda conocida anotada, no corregida: los ids sintéticos del boletín detallado
+  y el N+1.
+- Caracterización previa: 12 comprobaciones contra la versión anterior sobre SQL,
+  parámetros, promedios, redondeos, corte de aprobación, ids sintéticos, conteo
+  de consultas y `commit`. Todas coinciden, sin divergencias.
+- Pruebas específicas: 14 pasaron en 0,19 s.
+- Compuerta global: exit 0; 271 pruebas correctas con los 5 warnings conocidos en
+  1,15 s, Ruff correcto y dependencias íntegras.
+- Efecto medido: sitios sin cierre garantizado de **20 a 15**; llamadas a
+  `get_connection()` en `app/` de 116 a 111. Fugas deterministas: 0.
+- `git diff --check`: exit 0.
+- Volumen del diff en `app/`: 157 inserciones y 186 supresiones en un archivo.
+- Alcance final del diff: el controlador, su archivo de pruebas nuevo y esta
+  bitácora.
+- Riesgo residual: quedan 15 sitios. `plantilla_controller.py` con 7 es el último
+  archivo grande sin dinero; después solo quedan los reservados `pagos`, `ventas`
+  y `estudiantes`.
+- Siguiente acción exacta: continuar con **1.4i**, previsiblemente
+  `plantilla_controller.py`. Acordar con el usuario.
+
 ## Entrega al próximo chat
 
 - Capa activa: **1, fundación de base de datos**.
-- Última subcapa terminada: **1.4g**, novena tanda: el único sitio desprotegido
-  de `asistencia_controller.py`.
-- Primera subcapa pendiente: **1.4h**, siguiente tanda de migración.
-- Progreso: **20 de 50** sitios desprotegidos siguen pendientes, **todos de fuga
+- Última subcapa terminada: **1.4h**, décima tanda: los 5 sitios de
+  `notas_controller.py`, archivo completo.
+- Primera subcapa pendiente: **1.4i**, siguiente tanda de migración.
+- Progreso: **15 de 50** sitios desprotegidos siguen pendientes, **todos de fuga
   condicional**: ninguno pierde la conexión sin que antes ocurra una excepción.
-- Candidatos siguientes: `plantilla_controller.py` con 7 sitios y
-  `notas_controller.py` con 5 son los grandes que quedan sin tocar. `pagos`,
-  `ventas` y `estudiantes` quedan para el final.
+- Candidato siguiente: `plantilla_controller.py` con 7 sitios, el último archivo
+  grande sin dinero de por medio. Después solo quedan los reservados `pagos`,
+  `ventas` y `estudiantes`.
+- Deuda conocida anotada en 1.4h y no corregida: el N+1 de
+  `boletin_detallado_controller`, que pertenece a la capa 4, y los ids sintéticos
+  que fabrica para las actividades en blanco.
 - Deuda conocida anotada en 1.4f: dos funciones homónimas
   `obtener_clases_profesor_controller`, en `asignacion_controller` y en
   `profesor_controller`, consultan lo mismo con filtros distintos. No se

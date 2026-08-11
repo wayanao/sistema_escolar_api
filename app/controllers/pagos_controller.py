@@ -1,4 +1,4 @@
-from app.database import get_connection
+from app.database import get_connection, get_cursor
 import datetime
 import re
 from zoneinfo import ZoneInfo
@@ -558,30 +558,25 @@ def registrar_pago_controller(pago):
 # 🎯 Historial de pagos por estudiante
 def historial_pagos_controller(estudiante_id):
 
-    conn = get_connection()
-    cursor = conn.cursor()
+    with get_cursor() as cursor:
+        cursor.execute("""
+            SELECT
+                id,
+                estudiante_id,
+                monto,
+                fecha,
+                descripcion,
+                tipo_pago,
+                COALESCE(estado, 'Pagado') AS estado,
+                motivo_anulacion,
+                fecha_anulacion,
+                anulado_por
+            FROM pagos
+            WHERE estudiante_id = %s
+            ORDER BY id DESC
+        """, (estudiante_id,))
 
-    cursor.execute("""
-        SELECT 
-            id, 
-            estudiante_id,
-            monto, 
-            fecha,
-            descripcion,
-            tipo_pago,
-            COALESCE(estado, 'Pagado') AS estado,
-            motivo_anulacion,
-            fecha_anulacion,
-            anulado_por
-        FROM pagos
-        WHERE estudiante_id = %s
-        ORDER BY id DESC
-    """, (estudiante_id,))
-
-    resultado = cursor.fetchall()
-
-    cursor.close()
-    conn.close()
+        resultado = cursor.fetchall()
 
     return [_formatear_pago(row) for row in resultado]
 

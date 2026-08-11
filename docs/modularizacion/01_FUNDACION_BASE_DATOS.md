@@ -8,13 +8,13 @@
 - Commit base: `6754e4aad59c1e428ea97d31fe8e96fdbba7694d`.
 - Rama acordada: `main`.
 - Estado al activar: árbol limpio; `main` sincronizada con `origin/main`.
-- Primera subcapa pendiente: **1.4l**, los 3 sitios reservados.
-- Código de producto modificado hasta ahora: 47 de los 50 sitios desprotegidos,
-  repartidos en trece tandas, desde los servicios de validación (1.2) hasta las
-  dos rutas de la capa HTTP (1.4k). Sin cambio de comportamiento observable,
-  salvo las dos fugas deterministas corregidas y la confirmación de transacciones
-  de solo lectura, documentadas en su subcapa.
-- Progreso de la capa: **3 sitios** sin cierre garantizado, de 50 iniciales.
+- Primera subcapa pendiente: **1.4m**, los 2 últimos sitios.
+- Código de producto modificado hasta ahora: 48 de los 50 sitios desprotegidos,
+  repartidos en catorce tandas, desde los servicios de validación (1.2) hasta el
+  historial de pagos (1.4l). Sin cambio de comportamiento observable, salvo las
+  dos fugas deterministas corregidas y la confirmación de transacciones de solo
+  lectura, documentadas en su subcapa.
+- Progreso de la capa: **2 sitios** sin cierre garantizado, de 50 iniciales.
   **Cero fugas deterministas.** Ninguna ruta abre conexiones.
 - Autorización: orden explícita del usuario el 2026-08-11, después de cerrar la
   capa 0 con la CI remota verificada.
@@ -103,7 +103,8 @@ commit base antes de inventariar nada.
 | 1.4i | Undécima tanda: plantillas, 7 sitios, archivo completo | **Cerrada** |
 | 1.4j | Duodécima tanda: dominio planilla, 3 sitios en 2 archivos | **Cerrada** |
 | 1.4k | Decimotercera tanda: las 2 aperturas en la capa HTTP | **Cerrada** |
-| 1.4l | Cierre de la migración: los 3 sitios reservados | Pendiente |
+| 1.4l | Decimocuarta tanda: historial de pagos, 1 sitio | **Cerrada** |
+| 1.4m | Cierre de la migración: los 2 sitios de estudiantes | Pendiente |
 | 1.5 | Timeouts y manejo del pool definidos con evidencia medida | Pendiente |
 | 1.6 | Cierre: compuerta global, staging, rollback y verificación manual | Pendiente |
 
@@ -1444,6 +1445,73 @@ parámetros, orden de los guards, respuesta y cierre coinciden en ambas rutas.
 | `pip check` | `No broken requirements found.` |
 | `git diff --check` | Exit 0 |
 
+## Subcapa 1.4l: resultado
+
+Primer dominio financiero reservado. `app/controllers/pagos_controller.py`,
+**1 sitio de 7**: los otros seis ya tenían `try/finally`, incluidos los que
+mueven montos, aplican saldos y anulan. El import conserva `get_connection`.
+
+| Función | Operación | Destino |
+|---|---|---|
+| `historial_pagos_controller` | `SELECT` | `get_cursor()` |
+
+Es de solo lectura y no confirmaba, así que **no hay ninguna diferencia de
+comportamiento**. Que el único sitio desprotegido del dominio de pagos fuera una
+consulta —y no una escritura de dinero— es un hallazgo tranquilizador: las rutas
+que tocan saldos ya estaban protegidas antes de este programa.
+
+### El formato del dinero, fijado en pruebas
+
+`_formatear_pago` no se modificó, pero se caracterizó porque produce lo que el
+administrador ve en pantalla y no tenía ninguna prueba:
+
+| Campo | Comportamiento fijado |
+|---|---|
+| `monto` | Se convierte a `float` |
+| `fecha` | `"%d/%m/%Y %I:%M %p"`, p. ej. `03/08/2026 02:30 PM` |
+| `fecha` nula | Cadena vacía, no `None` |
+| `estado` ausente | Se asume `"Pagado"` |
+| `anulado` | Derivado del estado, ignorando mayúsculas y espacios: `"  ANULADO  "` cuenta |
+| `fecha_anulacion` nula | `None`, no cadena vacía |
+
+La asimetría entre `fecha` vacía y `fecha_anulacion` nula es heredada; se
+conserva tal cual.
+
+Los campos de auditoría de anulación —motivo, fecha y responsable— también
+quedaron fijados, por ser el rastro de una operación financiera reversible.
+
+### Caracterización
+
+`tests/test_pagos_historial.py`, 6 pruebas. La función no tenía cobertura real:
+`test_pagos_pagination.py` sustituye el controlador al probar la ruta.
+
+Verificación contra la versión anterior recuperada con `git show HEAD:`: SQL,
+parámetros, monto, formato de fechas, estado por defecto, bandera de anulación y
+campos de auditoría coinciden, **sin divergencias**.
+
+### Efecto medido sobre el inventario
+
+| Métrica | Tras 1.4k | Tras 1.4l |
+|---|---:|---:|
+| Llamadas a `get_connection()` en `app/` | 99 | 98 |
+| Protegidas con `try/finally` | 94 | 94 |
+| **Sin cierre garantizado** | **3** | **2** |
+| Fugas deterministas | 0 | 0 |
+
+Quedan **2 sitios**, ambos en `app/controllers/estudiante_controller.py`:
+`crear_estudiante_controller` y `actualizar_estudiante_controller`.
+
+### Verificación
+
+| Comprobación | Resultado |
+|---|---|
+| Pruebas específicas | 6 pasaron en 0,19 s |
+| Compuerta global | Exit 0 |
+| Suite completa | **310** pasaron, 5 warnings conocidos, 1,40 s |
+| Ruff | `All checks passed!` |
+| `pip check` | `No broken requirements found.` |
+| `git diff --check` | Exit 0 |
+
 ## Criterios de cierre de la subcapa 1.0
 
 - La línea base está reproducida desde el commit base con resultados reales.
@@ -2248,15 +2316,58 @@ parámetros, orden de los guards, respuesta y cierre coinciden en ambas rutas.
   `estudiante_controller` y 1 en `pagos_controller`. Se recomienda tomarlos de
   uno en uno y con revisión detallada. Acordar con el usuario por cuál empezar.
 
+### 2026-08-11 — subcapa 1.4l
+
+- Rama acordada: `main`; árbol **limpio** antes de editar, con 1.4k ya
+  commiteada.
+- Commit observado: `bdaf266`, quince commits por delante de `origin/main`
+  conforme a la cadencia local acordada.
+- Alcance decidido por el asistente con revisión detallada, según la delegación
+  del usuario: `pagos_controller.py`, el más pequeño de los reservados.
+- Archivos modificados: ese controlador.
+- Archivo creado: `tests/test_pagos_historial.py`.
+- Sitios migrados: 1 de 7. Los otros seis ya estaban protegidos; el import
+  conserva `get_connection`.
+- Hallazgo tranquilizador: el único sitio desprotegido del dominio de pagos era
+  una **consulta**, no una escritura. Las rutas que mueven montos, aplican saldos
+  y anulan ya tenían `try/finally` antes de este programa.
+- Contratos HTTP, rutas, payloads, status codes, permisos, tenant, ownership y
+  dependencias modificados: ninguno.
+- SQL: idéntico; solo indentación y eliminación de espacios finales heredados.
+- Semántica transaccional: de solo lectura, no confirmaba ni antes ni ahora.
+  **Sin diferencias de comportamiento.**
+- `_formatear_pago` no se modificó, pero se caracterizó por producir lo que ve el
+  administrador y no tener prueba: `monto` como `float`; `fecha` en
+  `"%d/%m/%Y %I:%M %p"`; `fecha` nula como **cadena vacía** mientras
+  `fecha_anulacion` nula queda como `None`, asimetría heredada que se conserva;
+  `estado` ausente asumido como `"Pagado"`; y la bandera `anulado` derivada del
+  estado ignorando mayúsculas y espacios. También se fijaron los campos de
+  auditoría de anulación, por ser el rastro de una operación reversible.
+- Caracterización previa: 6 comprobaciones contra la versión anterior, extrayendo
+  con AST solo la función migrada y su formateador. Todas coinciden.
+- Pruebas específicas: 6 pasaron en 0,19 s.
+- Compuerta global: exit 0; 310 pruebas correctas con los 5 warnings conocidos en
+  1,40 s, Ruff correcto y dependencias íntegras.
+- Efecto medido: sitios sin cierre garantizado de **3 a 2**; llamadas a
+  `get_connection()` en `app/` de 99 a 98. Fugas deterministas: 0.
+- `git diff --check`: exit 0.
+- Alcance final del diff: el controlador, su archivo de pruebas nuevo y esta
+  bitácora.
+- Siguiente acción exacta: ejecutar **1.4m**, los 2 últimos sitios, ambos en
+  `app/controllers/estudiante_controller.py`: `crear_estudiante_controller` y
+  `actualizar_estudiante_controller`. Con eso se agota la migración y la capa
+  puede pasar a los timeouts y el pool.
+
 ## Entrega al próximo chat
 
 - Capa activa: **1, fundación de base de datos**.
-- Última subcapa terminada: **1.4k**, decimotercera tanda: las 2 aperturas de la
-  capa HTTP. Ninguna ruta abre ya conexiones.
-- Primera subcapa pendiente: **1.4l**, los 3 sitios reservados que cierran la
-  migración: 2 en `estudiante_controller` y 1 en `pagos_controller`.
-- Progreso: **3 de 50** sitios desprotegidos siguen pendientes, todos de fuga
-  condicional. Se recomienda tomarlos de uno en uno y con revisión detallada.
+- Última subcapa terminada: **1.4l**, decimocuarta tanda: el historial de pagos,
+  único sitio desprotegido de ese dominio y de solo lectura.
+- Primera subcapa pendiente: **1.4m**, los 2 últimos sitios, ambos en
+  `estudiante_controller`: `crear_estudiante_controller` y
+  `actualizar_estudiante_controller`.
+- Progreso: **2 de 50** sitios desprotegidos siguen pendientes. Con ellos se
+  agota la migración y la capa puede pasar a los timeouts y el pool.
 - Precedente de 1.4k: al migrar un módulo, comprobar si alguna prueba existente
   parchea `get_connection` sobre él. Ocurrió una vez en 13 tandas.
 - Deuda conocida anotada en 1.4h y no corregida: el N+1 de

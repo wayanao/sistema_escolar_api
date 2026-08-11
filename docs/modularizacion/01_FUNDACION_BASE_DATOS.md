@@ -8,9 +8,11 @@
 - Commit base: `6754e4aad59c1e428ea97d31fe8e96fdbba7694d`.
 - Rama acordada: `main`.
 - Estado al activar: árbol limpio; `main` sincronizada con `origin/main`.
-- Primera subcapa pendiente: **1.2**, primera migración de sitios desprotegidos.
-- Código de producto modificado hasta ahora: **Ninguno**. 1.0 y 1.1 no tocaron
-  `app/`; 1.2 será la primera que sí.
+- Primera subcapa pendiente: **1.3** según el plan, o continuar las tandas de
+  migración si el usuario reordena de forma explícita.
+- Código de producto modificado hasta ahora: los dos servicios de validación
+  migrados en 1.2, sin cambio de comportamiento observable.
+- Progreso de la capa: 46 sitios sin cierre garantizado, de 50 iniciales.
 - Autorización: orden explícita del usuario el 2026-08-11, después de cerrar la
   capa 0 con la CI remota verificada.
 
@@ -85,7 +87,7 @@ commit base antes de inventariar nada.
 |---:|---|---|
 | 1.0 | Inventario de conexiones, cursores y transacciones; decisión sobre cómo verificar | **Cerrada** |
 | 1.1 | Contrato explícito de propiedad de conexión/cursor/commit/rollback | **Cerrada** |
-| 1.2 | Primer consumidor migrado al contrato, con caracterización previa | Pendiente |
+| 1.2 | Primer consumidor migrado al contrato, con caracterización previa | **Cerrada** |
 | 1.3 | Timeouts y manejo del pool definidos con evidencia medida | Pendiente |
 | 1.4 | Migración progresiva del resto de aperturas manuales | Pendiente |
 | 1.5 | Cierre: compuerta global, staging, rollback y verificación manual | Pendiente |
@@ -337,6 +339,102 @@ y no usada— que se corrigió eliminando el enlace. Queda registrado como evide
 de que la compuerta heredada de la capa 0 está cumpliendo su función sobre código
 nuevo.
 
+## Subcapa 1.2: resultado
+
+### Tanda elegida
+
+Los cuatro sitios de servicios, no de controladores:
+
+| Archivo | Funciones migradas |
+|---|---|
+| `app/services/nota_service.py` | `validar_asignacion`, `validar_estudiante`, `validar_estudiante_en_curso` |
+| `app/services/planilla_service.py` | `validar_estudiante_asignacion` |
+
+Criterio de selección: son de **solo lectura**, sin `commit` ni escritura, con
+forma idéntica entre sí, y su diff cabe entero en una pantalla. `pagos`, `ventas`
+y `estudiantes` se dejan deliberadamente para el final, cuando el patrón esté
+rodado.
+
+### Transformación aplicada
+
+Las cuatro funciones tenían exactamente la misma forma desprotegida:
+
+```python
+conn = get_connection()
+cursor = conn.cursor()
+cursor.execute("SELECT ...")
+existe = cursor.fetchone()
+cursor.close()
+conn.close()          # no se ejecuta si execute() lanza
+```
+
+y pasaron al régimen que la infraestructura gobierna:
+
+```python
+with get_cursor() as cursor:
+    cursor.execute("SELECT ...")
+    existe = cursor.fetchone()
+```
+
+No se creó ninguna abstracción nueva. `get_cursor()` ya existía con 15
+consumidores, e incluso el idioma `with get_cursor() as cursor:` ya estaba en uso
+en `app/controllers/estudiante_controller.py:388`. La migración adopta un patrón
+existente del propio repositorio.
+
+Equivalencia de comportamiento: `get_cursor()` sin `commit` no confirma, igual
+que el código anterior, que tampoco confirmaba. Ante excepción revierte y
+**relanza la misma excepción**, así que el llamador observa lo mismo que antes.
+La única diferencia observable es la deseada: la conexión ahora vuelve al pool.
+
+Único cambio en los literales SQL: la indentación, por quedar un nivel más
+adentro. Tablas, columnas, joins, condiciones y parámetros son idénticos. Ambos
+archivos ganaron además el salto de línea final que les faltaba.
+
+### Caracterización
+
+`tests/test_servicios_validacion.py`, 8 pruebas. Las cuatro funciones **no tenían
+ninguna prueba** antes de esta subcapa; se verificó buscando referencias en
+`tests/`.
+
+Fijan lo observable: qué sentencia y qué parámetros se ejecutan, y que el retorno
+es `True` con fila y `False` sin ella.
+
+**Se comprobó que describen también el comportamiento anterior.** Desde el
+directorio temporal de trabajo, sin tocar el repositorio, se recuperó con
+`git show HEAD:` la versión original de ambos servicios, se ejecutó con un doble
+de `get_connection` y se repitieron las 8 aserciones:
+
+| Versión | Resultado |
+|---|---|
+| Código anterior, con `get_connection` | 8 de 8 se cumplen |
+| Código migrado, con `get_cursor` | 8 de 8 se cumplen |
+
+Por eso son pruebas de caracterización y no pruebas escritas a medida de la
+implementación nueva.
+
+### Efecto medido sobre el inventario
+
+| Métrica | Antes de 1.2 | Después de 1.2 |
+|---|---:|---:|
+| Llamadas a `get_connection()` en `app/` | 146 | 142 |
+| Protegidas con `try/finally` | 94 | 94 |
+| **Sin cierre garantizado** | **50** | **46** |
+| Propiedad delegada | 2 | 2 |
+
+Los 4 sitios migrados salen del recuento porque ya no llaman `get_connection()`:
+pasaron al régimen donde la infraestructura garantiza la devolución al pool.
+
+### Verificación
+
+| Comprobación | Resultado |
+|---|---|
+| Pruebas específicas | 8 pasaron en 0,16 s |
+| Compuerta global | Exit 0 |
+| Suite completa | **209** pasaron, 5 warnings conocidos, 1,20 s |
+| Ruff | `All checks passed!` |
+| `pip check` | `No broken requirements found.` |
+| `git diff --check` | Exit 0 |
+
 ## Criterios de cierre de la subcapa 1.0
 
 - La línea base está reproducida desde el commit base con resultados reales.
@@ -513,13 +611,62 @@ nuevo.
   `app/`. Debe acordarse antes el tamaño de la tanda y por qué controlador
   empezar.
 
+### 2026-08-11 — subcapa 1.2
+
+- Rama acordada: `main`; árbol **limpio** antes de editar, con 1.1 ya commiteada.
+- Commit observado: `4bccc84`, dos commits por delante de `origin/main` conforme
+  a la cadencia local acordada.
+- Archivos modificados: `app/services/nota_service.py` y
+  `app/services/planilla_service.py`. **Primera modificación de código de
+  producto del programa completo.**
+- Archivo creado: `tests/test_servicios_validacion.py`.
+- Archivo actualizado: esta bitácora.
+- Sitios migrados: 4, todos de solo lectura, del régimen `get_connection()` sin
+  `finally` al régimen `get_cursor()`.
+- Contratos HTTP, rutas, payloads, status codes, permisos, tenant, ownership,
+  transacciones y dependencias modificados: ninguno.
+- SQL: idéntico en tablas, columnas, joins, condiciones y parámetros. Solo cambió
+  la indentación de los literales al quedar un nivel más adentro.
+- Caracterización previa: las 8 aserciones se verificaron contra la versión
+  original recuperada con `git show HEAD:`, ejecutada con un doble de
+  `get_connection` desde el directorio temporal. Se cumplen en ambas versiones,
+  por lo que la migración preservó el comportamiento observable.
+- Pruebas específicas: 8 pasaron en 0,16 s.
+- Compuerta global: exit 0; 209 pruebas correctas con los 5 warnings conocidos en
+  1,20 s, Ruff correcto y dependencias íntegras.
+- Efecto medido: sitios sin cierre garantizado de **50 a 46**; llamadas a
+  `get_connection()` en `app/` de 146 a 142.
+- `git diff --check`: exit 0.
+- Alcance final del diff: los dos servicios, el archivo de pruebas nuevo y esta
+  bitácora.
+- Decisión: adoptar `get_cursor()` como destino de migración en vez de crear un
+  gestor de contexto nuevo sobre `get_connection()`. Motivo: ya existe, tiene 15
+  consumidores y su idioma ya aparece en `estudiante_controller.py:388`. El
+  programa prohíbe crear abstracciones compartidas sin necesidad demostrada.
+- Decisión: empezar por servicios de solo lectura en vez de un controlador
+  completo, para validar el patrón con el diff más pequeño posible y sin
+  escrituras de por medio.
+- Riesgo residual: quedan 46 sitios. Los de `pagos`, `ventas` y `estudiantes`
+  implican escritura financiera y deben migrarse cuando el patrón esté rodado, en
+  tandas propias y con caracterización específica; su forma no será tan uniforme
+  como la de estos cuatro.
+- Riesgo conocido: no todos los 46 restantes tendrán esta forma trivial. Los que
+  hacen `commit` o abren varios cursores requerirán decidir entre
+  `get_cursor(commit=True)` y conservar `get_connection()` con `try/finally`.
+- Siguiente acción exacta: la bitácora planificó **1.3**, timeouts y pool. El
+  usuario puede reordenar y continuar antes con las tandas de migración, dado que
+  el patrón acaba de validarse y quedan 46 sitios con riesgo activo. Requiere su
+  decisión explícita; no se reordena por inferencia.
+
 ## Entrega al próximo chat
 
 - Capa activa: **1, fundación de base de datos**.
-- Última subcapa terminada: **1.1**, contrato declarado y fijado con 9 pruebas de
-  pool falso. Sin tocar `app/`.
-- Primera subcapa pendiente: **1.2**, primera tanda de migración. Es la primera
-  que modifica código de producto.
+- Última subcapa terminada: **1.2**, primera tanda migrada: los 4 sitios de
+  `nota_service.py` y `planilla_service.py`, con caracterización verificada
+  contra la versión anterior.
+- Primera subcapa pendiente: **1.3**, timeouts y pool, según el plan. Alternativa
+  disponible: continuar con las tandas de migración, si el usuario lo ordena.
+- Progreso: **46 de 50** sitios desprotegidos siguen pendientes.
 - Bloqueos: ninguno. La estrategia de verificación quedó decidida el 2026-08-11:
   pruebas de contrato con pool falso. La guardia estática y PostgreSQL en CI se
   descartaron para esta capa.
@@ -530,8 +677,8 @@ nuevo.
   diff.
 - Cadencia de publicación: acordada. Se trabaja y se verifica en local; el
   usuario decide cuándo publicar.
-- Siguiente acción exacta: ejecutar **1.2**, la primera tanda de migración de
-  sitios desprotegidos al régimen correcto. Antes debe acordarse con el usuario
-  el tamaño de la tanda y por qué controlador empezar, porque es la primera
-  subcapa que modifica `app/` y la revisión del diff es la red de seguridad
-  elegida.
+- Siguiente acción exacta: decidir con el usuario si sigue **1.3** —timeouts y
+  pool, según el plan— o si se continúa con las tandas de migración de los 46
+  sitios restantes. Si se sigue migrando, acordar la tanda antes de empezar;
+  ninguna que toque `pagos`, `ventas` o `estudiantes` hasta que el patrón esté
+  rodado en dominios sin escritura financiera.

@@ -1,4 +1,4 @@
-from app.database import get_connection
+from app.database import get_cursor
 from app.services.asignacion_academica import resolver_asignacion_academica_id_cursor
 from app.services.planilla_service import validar_estudiante_asignacion
 
@@ -10,46 +10,41 @@ def registrar_nota_planilla_controller(data):
     if not validar_estudiante_asignacion(data.estudiante_id, data.asignacion_id):
         return {"error": "El estudiante no pertenece a esta asignación"}
 
-    conn = get_connection()
-    cursor = conn.cursor()
-    asignacion_id = resolver_asignacion_academica_id_cursor(cursor, data.asignacion_id)
-    tipo_evaluacion = getattr(data, "tipo_evaluacion", "numerica") or "numerica"
-    nota = data.nota if tipo_evaluacion == "numerica" else None
-    valoracion = getattr(data, "valoracion", None) if tipo_evaluacion == "desarrollo" else None
+    with get_cursor(commit=True) as cursor:
+        asignacion_id = resolver_asignacion_academica_id_cursor(cursor, data.asignacion_id)
+        tipo_evaluacion = getattr(data, "tipo_evaluacion", "numerica") or "numerica"
+        nota = data.nota if tipo_evaluacion == "numerica" else None
+        valoracion = getattr(data, "valoracion", None) if tipo_evaluacion == "desarrollo" else None
 
-    # 🔥 Evitar duplicados: Primero eliminamos si ya existe la nota para ese tipo, luego insertamos
-    cursor.execute("""
-        DELETE FROM notas_detalle
-        WHERE estudiante_id = %s AND asignacion_id = %s AND periodo = %s AND LOWER(TRIM(descripcion)) = LOWER(TRIM(%s))
-    """, (data.estudiante_id, asignacion_id, data.periodo, data.descripcion))
+        # 🔥 Evitar duplicados: Primero eliminamos si ya existe la nota para ese tipo, luego insertamos
+        cursor.execute("""
+            DELETE FROM notas_detalle
+            WHERE estudiante_id = %s AND asignacion_id = %s AND periodo = %s AND LOWER(TRIM(descripcion)) = LOWER(TRIM(%s))
+        """, (data.estudiante_id, asignacion_id, data.periodo, data.descripcion))
 
-    cursor.execute("""
-        INSERT INTO notas_detalle (
-            estudiante_id,
+        cursor.execute("""
+            INSERT INTO notas_detalle (
+                estudiante_id,
+                asignacion_id,
+                periodo,
+                nota,
+                descripcion,
+                tipo_evaluacion,
+                valoracion
+            )
+            VALUES (%s, %s, %s, %s, TRIM(%s), %s, %s)
+            RETURNING id
+        """, (
+            data.estudiante_id,
             asignacion_id,
-            periodo,
+            data.periodo,
             nota,
-            descripcion,
+            data.descripcion,
             tipo_evaluacion,
             valoracion
-        )
-        VALUES (%s, %s, %s, %s, TRIM(%s), %s, %s)
-        RETURNING id
-    """, (
-        data.estudiante_id,
-        asignacion_id,
-        data.periodo,
-        nota,
-        data.descripcion,
-        tipo_evaluacion,
-        valoracion
-    ))
+        ))
 
-    nota_id = cursor.fetchone()[0]
-
-    conn.commit()
-    cursor.close()
-    conn.close()
+        nota_id = cursor.fetchone()[0]
 
     return {
         "mensaje": "Nota registrada correctamente",
@@ -61,19 +56,13 @@ def registrar_nota_planilla_controller(data):
 
 def eliminar_tipo_controller(asignacion_id, descripcion, periodo: int = 1):
 
-    conn = get_connection()
-    cursor = conn.cursor()
-    asignacion_id = resolver_asignacion_academica_id_cursor(cursor, asignacion_id)
+    with get_cursor(commit=True) as cursor:
+        asignacion_id = resolver_asignacion_academica_id_cursor(cursor, asignacion_id)
 
-    cursor.execute("""
-        DELETE FROM notas_detalle
-        WHERE asignacion_id = %s AND periodo = %s
-        AND LOWER(TRIM(descripcion)) = LOWER(TRIM(%s))
-    """, (asignacion_id, periodo, descripcion))
-
-    conn.commit()
-
-    cursor.close()
-    conn.close()
+        cursor.execute("""
+            DELETE FROM notas_detalle
+            WHERE asignacion_id = %s AND periodo = %s
+            AND LOWER(TRIM(descripcion)) = LOWER(TRIM(%s))
+        """, (asignacion_id, periodo, descripcion))
 
     return {"mensaje": "Tipo eliminado correctamente"}

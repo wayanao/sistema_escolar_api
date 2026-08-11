@@ -1,41 +1,37 @@
-from app.database import get_connection
+from app.database import get_cursor
 from app.services.asignacion_academica import resolver_asignacion_academica_id_cursor
 
 def planilla_excel_controller(asignacion_id, periodo=1):
 
-    conn = get_connection()
-    cursor = conn.cursor()
-    asignacion_id = resolver_asignacion_academica_id_cursor(cursor, asignacion_id)
+    with get_cursor() as cursor:
+        asignacion_id = resolver_asignacion_academica_id_cursor(cursor, asignacion_id)
 
-    cursor.execute("""
-        SELECT 
-            e.id,
-            e.nombre,
-            e.apellido,
-            m.nombre AS materia,
-            nd.descripcion,
-            nd.nota,
-            COALESCE(nd.tipo_evaluacion, 'numerica') AS tipo_evaluacion,
-            nd.valoracion
+        cursor.execute("""
+            SELECT
+                e.id,
+                e.nombre,
+                e.apellido,
+                m.nombre AS materia,
+                nd.descripcion,
+                nd.nota,
+                COALESCE(nd.tipo_evaluacion, 'numerica') AS tipo_evaluacion,
+                nd.valoracion
 
-        FROM asignaciones a
-        JOIN cursos c ON a.curso_id = c.id
-        JOIN materias m ON a.materia_id = m.id
-        JOIN estudiantes e ON e.curso_id = a.curso_id
-        
-        LEFT JOIN notas_detalle nd 
-            ON nd.estudiante_id = e.id 
-            AND nd.asignacion_id = a.id
-            AND nd.periodo = %s
+            FROM asignaciones a
+            JOIN cursos c ON a.curso_id = c.id
+            JOIN materias m ON a.materia_id = m.id
+            JOIN estudiantes e ON e.curso_id = a.curso_id
 
-        WHERE a.id = %s
-          AND COALESCE(LOWER(e.estado), 'activo') = 'activo'
-    """, (periodo, asignacion_id))
+            LEFT JOIN notas_detalle nd
+                ON nd.estudiante_id = e.id
+                AND nd.asignacion_id = a.id
+                AND nd.periodo = %s
 
-    rows = cursor.fetchall()
+            WHERE a.id = %s
+              AND COALESCE(LOWER(e.estado), 'activo') = 'activo'
+        """, (periodo, asignacion_id))
 
-    cursor.close()
-    conn.close()
+        rows = cursor.fetchall()
 
     estudiantes = {}
     columnas = set()

@@ -8,18 +8,17 @@
 - Commit base: `6754e4aad59c1e428ea97d31fe8e96fdbba7694d`.
 - Rama acordada: `main`.
 - Estado al activar: árbol limpio; `main` sincronizada con `origin/main`.
-- Primera subcapa pendiente: **1.4j**, los sitios financieros reservados.
+- Primera subcapa pendiente: **1.4k**, los 5 sitios restantes.
 - Código de producto modificado hasta ahora: servicios de validación (1.2), tres
   funciones del planeador anual (1.3), cuatro del controlador de usuarios (1.4),
   seis del de asignaciones (1.4b), cuatro del de branding (1.4c), cuatro del de
   dashboard (1.4d), tres del de inventario (1.4e), una del de profesores (1.4f),
-  una del de asistencia (1.4g), cinco del de notas (1.4h) y siete del de
-  plantillas (1.4i). Sin cambio de comportamiento observable, salvo las dos fugas
-  deterministas corregidas y la confirmación de transacciones de solo lectura,
-  documentadas en su subcapa.
-- Progreso de la capa: **8 sitios** sin cierre garantizado, de 50 iniciales.
-  **Cero fugas deterministas**; los 8 restantes requieren una excepción y están
-  todos en dominios financieros.
+  una del de asistencia (1.4g), cinco del de notas (1.4h), siete del de
+  plantillas (1.4i) y tres del dominio planilla (1.4j). Sin cambio de
+  comportamiento observable, salvo las dos fugas deterministas corregidas y la
+  confirmación de transacciones de solo lectura, documentadas en su subcapa.
+- Progreso de la capa: **5 sitios** sin cierre garantizado, de 50 iniciales.
+  **Cero fugas deterministas**; los 5 restantes requieren una excepción.
 - Autorización: orden explícita del usuario el 2026-08-11, después de cerrar la
   capa 0 con la CI remota verificada.
 
@@ -105,7 +104,8 @@ commit base antes de inventariar nada.
 | 1.4g | Novena tanda: asistencia, 1 sitio | **Cerrada** |
 | 1.4h | Décima tanda: notas, 5 sitios, archivo completo | **Cerrada** |
 | 1.4i | Undécima tanda: plantillas, 7 sitios, archivo completo | **Cerrada** |
-| 1.4j | Cierre de la migración: los 8 sitios financieros reservados | Pendiente |
+| 1.4j | Duodécima tanda: dominio planilla, 3 sitios en 2 archivos | **Cerrada** |
+| 1.4k | Cierre de la migración: los 5 sitios restantes | Pendiente |
 | 1.5 | Timeouts y manejo del pool definidos con evidencia medida | Pendiente |
 | 1.6 | Cierre: compuerta global, staging, rollback y verificación manual | Pendiente |
 
@@ -1294,6 +1294,91 @@ la cierre.
 | `git diff --check` | Exit 0 |
 | Volumen del diff en `app/` | 129 inserciones, 166 supresiones, un archivo |
 
+## Subcapa 1.4j: resultado
+
+Dominio planilla completo, **3 sitios en 2 archivos**. Ambos archivos abandonan
+`get_connection` por completo.
+
+| Archivo y función | Operación | Destino |
+|---|---|---|
+| `planilla_controller.registrar_nota_planilla_controller` | `DELETE` + `INSERT` + `commit` | `get_cursor(commit=True)` |
+| `planilla_controller.eliminar_tipo_controller` | `DELETE` + `commit` | `get_cursor(commit=True)` |
+| `planilla_excel_controller.planilla_excel_controller` | `SELECT` | `get_cursor()` |
+
+Sin diferencias de comportamiento: los dos que escriben ya confirmaban siempre y
+el de lectura nunca confirmaba.
+
+### El par borrar/insertar debe seguir siendo atómico
+
+`registrar_nota_planilla_controller` evita notas duplicadas borrando primero la
+nota existente con la misma descripción y luego insertando la nueva. Los dos
+`execute` viajan en **una sola transacción**, y así se conservó.
+
+Partirlos en dos bloques `get_cursor` habría abierto una ventana en la que un
+fallo entre el borrado y la inserción deja al estudiante **sin la nota anterior y
+sin la nueva**. Es el mismo criterio aplicado en 1.4b con
+`eliminar_asignacion_controller` y en 1.4i con la activación de plantillas.
+
+### Dos rarezas heredadas que quedaron documentadas
+
+`planilla_excel_controller`, pese al nombre, **no genera ningún Excel**: devuelve
+un diccionario con columnas y datos, y es la ruta quien arma el archivo.
+
+Dentro tiene dos comportamientos que no eran evidentes y ahora están fijados en
+pruebas:
+
+- **Descarta la descripción `"Desde React"`.** Es una cadena mágica heredada: las
+  notas con esa descripción no aparecen como columna ni en el detalle del
+  estudiante.
+- **Devuelve `promedio` como cadena vacía**, no como `0` ni `None`, cuando el
+  estudiante no tiene ninguna nota de tipo numérico. El campo cambia de tipo
+  según los datos, lo que el frontend debe estar tolerando hoy.
+
+Solo se caracterizaron; cambiarlas sería un cambio funcional ajeno al alcance.
+
+También se fijó que las notas de tipo `desarrollo` **no entran en el promedio**, y
+que en ese tipo se guarda `valoracion` y se descarta `nota`.
+
+### Caracterización
+
+`tests/test_planilla_controlador.py`, 10 pruebas. Ninguno de los tres sitios
+tenía cobertura previa.
+
+Verificación contra la versión anterior recuperada con `git show HEAD:`: 10
+comprobaciones sobre SQL, parámetros, el par borrar/insertar, la distinción entre
+evaluación numérica y de desarrollo, el filtro heredado, el promedio como cadena
+vacía, el orden por apellido y la semántica de `commit`. Todas coinciden, **sin
+divergencias**.
+
+### Efecto medido sobre el inventario
+
+| Métrica | Tras 1.4i | Tras 1.4j |
+|---|---:|---:|
+| Llamadas a `get_connection()` en `app/` | 104 | 101 |
+| Protegidas con `try/finally` | 94 | 94 |
+| **Sin cierre garantizado** | **8** | **5** |
+| Fugas deterministas | 0 | 0 |
+
+### Los 5 sitios que quedan
+
+| Archivo | Sitios | Nota |
+|---|---:|---|
+| `app/controllers/estudiante_controller.py` | 2 | Dominio reservado |
+| `app/controllers/pagos_controller.py` | 1 | Dominio reservado, `historial_pagos_controller` |
+| `app/routes/asignaciones.py` | 1 | Apertura en la capa HTTP |
+| `app/routes/observaciones.py` | 1 | Apertura en la capa HTTP |
+
+### Verificación
+
+| Comprobación | Resultado |
+|---|---|
+| Pruebas específicas | 10 pasaron en 0,19 s |
+| Compuerta global | Exit 0 |
+| Suite completa | **300** pasaron, 5 warnings conocidos |
+| Ruff | `All checks passed!` |
+| `pip check` | `No broken requirements found.` |
+| `git diff --check` | Exit 0 |
+
 ## Criterios de cierre de la subcapa 1.0
 
 - La línea base está reproducida desde el commit base con resultados reales.
@@ -1998,21 +2083,67 @@ la cierre.
   recomiendan **de uno en uno y con revisión detallada**. Acordar con el usuario
   por cuál empezar.
 
+### 2026-08-11 — subcapa 1.4j
+
+- Rama acordada: `main`; árbol **limpio** antes de editar, con 1.4i ya
+  commiteada.
+- Commit observado: `a6038c8`, trece commits por delante de `origin/main`
+  conforme a la cadencia local acordada.
+- Alcance decidido por el asistente a petición del usuario, que delegó la
+  elección: dominio planilla completo, agrupando los dos archivos por coherencia
+  de revisión.
+- Archivos modificados: `app/controllers/planilla_controller.py` y
+  `app/controllers/planilla_excel_controller.py`.
+- Archivo creado: `tests/test_planilla_controlador.py`.
+- Sitios migrados: 3 de 3. Ambos archivos abandonan `get_connection` por
+  completo.
+- Contratos HTTP, rutas, payloads, status codes, permisos, tenant, ownership y
+  dependencias modificados: ninguno.
+- SQL: idéntico en tablas, columnas, joins, condiciones y parámetros; solo cambió
+  la indentación y se eliminaron espacios finales heredados.
+- Semántica transaccional: preservada. Los dos que escriben confirmaban siempre y
+  el de lectura nunca lo hacía. **Sin diferencias de comportamiento.**
+- Atomicidad preservada: el par `DELETE` + `INSERT` de
+  `registrar_nota_planilla_controller` viaja en una sola transacción. Partirlo
+  habría permitido perder la nota anterior sin escribir la nueva.
+- La validación de pertenencia del estudiante devuelve error **sin abrir
+  conexión**; verificado con cero conexiones adquiridas en la versión anterior.
+- Rarezas heredadas documentadas, no corregidas: `planilla_excel_controller` no
+  genera ningún Excel pese a su nombre; descarta la descripción mágica
+  `"Desde React"`; y devuelve `promedio` como **cadena vacía** cuando el
+  estudiante no tiene notas numéricas, en vez de `0` o `None`. También se fijó
+  que las notas de tipo `desarrollo` no entran en el promedio y que en ese tipo
+  se guarda `valoracion` descartando `nota`.
+- Caracterización previa: 10 comprobaciones contra la versión anterior. Todas
+  coinciden, sin divergencias.
+- Pruebas específicas: 10 pasaron en 0,19 s.
+- Compuerta global: exit 0; 300 pruebas correctas con los 5 warnings conocidos,
+  Ruff correcto y dependencias íntegras.
+- Efecto medido: sitios sin cierre garantizado de **8 a 5**; llamadas a
+  `get_connection()` en `app/` de 104 a 101. Fugas deterministas: 0.
+- `git diff --check`: exit 0.
+- Alcance final del diff: los dos controladores, el archivo de pruebas nuevo y
+  esta bitácora.
+- Siguiente acción exacta: ejecutar **1.4k** con los 5 sitios restantes: 2 en
+  `estudiante_controller`, 1 en `pagos_controller` y 2 en archivos de rutas. Los
+  de rutas conviene mirarlos juntos por ser el único patrón de apertura en la
+  capa HTTP; los 3 reservados, de uno en uno y con revisión detallada. Acordar
+  con el usuario.
+
 ## Entrega al próximo chat
 
 - Capa activa: **1, fundación de base de datos**.
-- Última subcapa terminada: **1.4i**, undécima tanda: los 7 sitios de
-  `plantilla_controller.py`, archivo completo.
-- Primera subcapa pendiente: **1.4j**, los sitios financieros reservados.
-- Progreso: **8 de 50** sitios desprotegidos siguen pendientes, **todos de fuga
+- Última subcapa terminada: **1.4j**, duodécima tanda: los 3 sitios del dominio
+  planilla, en dos archivos.
+- Primera subcapa pendiente: **1.4k**, los 5 sitios restantes.
+- Progreso: **5 de 50** sitios desprotegidos siguen pendientes, **todos de fuga
   condicional**.
-- Reparto real de esos 8, corregido en 1.4i: 2 en `planilla_controller`, 2 en
-  `estudiante_controller`, 1 en `planilla_excel_controller`, 1 en
-  `pagos_controller` y 2 en archivos de rutas, `asignaciones.py` y
-  `observaciones.py`. **`ventas` ya no tiene ninguno.**
-- Solo 3 de los 8 están en dominios reservados; conviene tomarlos de uno en uno y
-  con revisión detallada. Los 2 de rutas son las únicas aperturas que quedan
-  fuera de controllers y services.
+- Reparto de esos 5: 2 en `estudiante_controller`, 1 en `pagos_controller` y 2 en
+  archivos de rutas, `asignaciones.py` y `observaciones.py`. **`ventas` no tiene
+  ninguno.**
+- Los 2 de rutas son las únicas aperturas fuera de controllers y services;
+  conviene mirarlos juntos. Los 3 reservados, de uno en uno y con revisión
+  detallada.
 - Deuda conocida anotada en 1.4h y no corregida: el N+1 de
   `boletin_detallado_controller`, que pertenece a la capa 4, y los ids sintéticos
   que fabrica para las actividades en blanco.

@@ -8,14 +8,15 @@
 - Commit base: `6754e4aad59c1e428ea97d31fe8e96fdbba7694d`.
 - Rama acordada: `main`.
 - Estado al activar: árbol limpio; `main` sincronizada con `origin/main`.
-- Primera subcapa pendiente: **1.4d**, siguiente tanda de migración.
+- Primera subcapa pendiente: **1.4e**, siguiente tanda de migración.
 - Código de producto modificado hasta ahora: servicios de validación (1.2), tres
   funciones del planeador anual (1.3), cuatro del controlador de usuarios (1.4),
-  seis del de asignaciones (1.4b) y cuatro del de branding (1.4c). Sin cambio de
-  comportamiento observable, salvo las dos fugas deterministas corregidas y la
-  confirmación de transacciones de solo lectura, documentadas en su subcapa.
-- Progreso de la capa: **29 sitios** sin cierre garantizado, de 50 iniciales.
-  **Cero fugas deterministas**; las 29 restantes requieren una excepción.
+  seis del de asignaciones (1.4b), cuatro del de branding (1.4c) y cuatro del de
+  dashboard (1.4d). Sin cambio de comportamiento observable, salvo las dos fugas
+  deterministas corregidas y la confirmación de transacciones de solo lectura,
+  documentadas en su subcapa.
+- Progreso de la capa: **25 sitios** sin cierre garantizado, de 50 iniciales.
+  **Cero fugas deterministas**; los 25 restantes requieren una excepción.
 - Autorización: orden explícita del usuario el 2026-08-11, después de cerrar la
   capa 0 con la CI remota verificada.
 
@@ -95,7 +96,8 @@ commit base antes de inventariar nada.
 | 1.4 | Tercera tanda: usuarios, 4 sitios, incluye la primera fuga determinista | **Cerrada** |
 | 1.4b | Cuarta tanda: asignaciones, 6 sitios, elimina la última fuga determinista | **Cerrada** |
 | 1.4c | Quinta tanda: branding, 4 sitios, primer archivo que abandona `get_connection` | **Cerrada** |
-| 1.4d | Tandas restantes hasta agotar los 29 sitios pendientes | Pendiente |
+| 1.4d | Sexta tanda: dashboard, 4 sitios, todos de solo lectura | **Cerrada** |
+| 1.4e | Tandas restantes hasta agotar los 25 sitios pendientes | Pendiente |
 | 1.5 | Timeouts y manejo del pool definidos con evidencia medida | Pendiente |
 | 1.6 | Cierre: compuerta global, staging, rollback y verificación manual | Pendiente |
 
@@ -812,6 +814,74 @@ La única divergencia es la del commit condicional, descrita arriba y esperada.
 | `pip check` | `No broken requirements found.` |
 | `git diff --check` | Exit 0 |
 
+## Subcapa 1.4d: resultado
+
+`app/controllers/dashboard_controller.py`, **4 sitios de 8**. Los otros 4 ya
+tenían `try/finally`, por lo que el import conserva `get_connection`.
+
+| Función | Operación | Destino |
+|---|---|---|
+| `obtener_inasistencias_profesor_controller` | `SELECT` con CTE y `ROW_NUMBER` | `get_cursor()` |
+| `_obtener_notas_profesor` | `SELECT` con SQL dinámico | `get_cursor()` |
+| `obtener_ranking_rendimiento_controller` | `SELECT` | `get_cursor()` |
+| `obtener_ranking_mejor_rendimiento_controller` | `SELECT` | `get_cursor()` |
+
+Las cuatro son de solo lectura y ninguna confirmaba. Se migraron a `get_cursor()`
+sin `commit`, por lo que esta tanda **no tiene ninguna diferencia de
+comportamiento**, ni siquiera de las inocuas que aparecieron en 1.4b y 1.4c.
+
+### El caso con SQL dinámico
+
+`_obtener_notas_profesor` es la función más delicada migrada hasta ahora en
+cuanto a construcción de consulta: arma el SQL en función de dos ejes.
+
+| Eje | Valores | Efecto |
+|---|---|---|
+| `altas` | `True` / `False` | `HAVING ... >= 3.0` con `ORDER BY promedio DESC`, o `< 3.0` con `ASC` |
+| `asignacion_id` | presente / ausente | Agrega `AND asi.id = %s` y resuelve el id académico, o no |
+
+Son cuatro combinaciones. El resolver `resolver_asignacion_academica_id_cursor`
+se invoca **solo** cuando llega `asignacion_id`, y usa el mismo cursor, por lo
+que la llamada permanece dentro del bloque.
+
+También se fijó el color que la función asigna a cada fila, que no es simétrico:
+`altas` siempre da `green`, mientras que en el caso de notas bajas da `red` si el
+promedio baja de 3.0 y **`yellow` si no**. Ese último caso es alcanzable porque
+el promedio mostrado se trunca por separado del filtro, y no tenía prueba.
+
+### Caracterización
+
+`tests/test_dashboard_controlador.py`, 7 pruebas. Ninguna de las cuatro funciones
+tenía cobertura previa. Cubren las cuatro combinaciones de SQL dinámico, los tres
+colores, el límite `posicion_curso <= 3` de inasistencias y los dos rankings.
+
+Verificación contra la versión anterior recuperada con `git show HEAD:`: SQL,
+parámetros, invocación del resolver, colores y respuesta coinciden en las cuatro
+funciones, **sin ninguna divergencia**.
+
+### Efecto medido sobre el inventario
+
+| Métrica | Tras 1.4c | Tras 1.4d |
+|---|---:|---:|
+| Llamadas a `get_connection()` en `app/` | 125 | 121 |
+| Protegidas con `try/finally` | 94 | 94 |
+| **Sin cierre garantizado** | **29** | **25** |
+| Fugas deterministas | 0 | 0 |
+
+La mitad del trabajo de migración está hecha: de los 50 sitios iniciales quedan
+25.
+
+### Verificación
+
+| Comprobación | Resultado |
+|---|---|
+| Pruebas específicas | 7 pasaron en 0,18 s |
+| Compuerta global | Exit 0 |
+| Suite completa | **241** pasaron, 5 warnings conocidos, 1,29 s |
+| Ruff | `All checks passed!` |
+| `pip check` | `No broken requirements found.` |
+| `git diff --check` | Exit 0 |
+
 ## Criterios de cierre de la subcapa 1.0
 
 - La línea base está reproducida desde el commit base con resultados reales.
@@ -1232,17 +1302,61 @@ La única divergencia es la del commit condicional, descrita arriba y esperada.
   `plantilla_controller.py` con 7 sitios, `notas_controller.py` con 5 y
   `dashboard_controller.py` con 4. Acordar con el usuario cuál tomar.
 
+### 2026-08-11 — subcapa 1.4d
+
+- Rama acordada: `main`; árbol **limpio** antes de editar, con 1.4c ya
+  commiteada.
+- Commit observado: `a3c6038`, siete commits por delante de `origin/main`
+  conforme a la cadencia local acordada.
+- Archivo elegido por el usuario: `app/controllers/dashboard_controller.py`.
+- Archivos modificados: ese controlador.
+- Archivo creado: `tests/test_dashboard_controlador.py`.
+- Sitios migrados: 4 de 8. Los otros 4 ya estaban protegidos; el import conserva
+  `get_connection`.
+- Contratos HTTP, rutas, payloads, status codes, permisos, tenant, ownership y
+  dependencias modificados: ninguno.
+- SQL: idéntico en tablas, columnas, joins, condiciones, agregados, `HAVING`,
+  orden y parámetros; solo cambió la indentación de los literales.
+- Semántica transaccional: las cuatro funciones son de solo lectura y ninguna
+  confirmaba. Se migraron a `get_cursor()` sin `commit`. **Esta tanda no
+  introduce ninguna diferencia de comportamiento**, ni siquiera de las inocuas
+  registradas en 1.4b y 1.4c.
+- Caso destacado: `_obtener_notas_profesor` construye el SQL según dos ejes
+  —notas altas o bajas, y con o sin `asignacion_id`—, lo que da cuatro
+  combinaciones. El resolver del id académico se invoca solo cuando llega
+  `asignacion_id` y usa el mismo cursor, por lo que permanece dentro del bloque.
+- Se fijó además el color asignado a cada fila, que no es simétrico: `altas` da
+  siempre `green`, mientras que en notas bajas da `red` bajo 3.0 y `yellow` si
+  no. Ese último caso es alcanzable y no tenía prueba.
+- Caracterización previa: SQL, parámetros, invocación del resolver, colores y
+  respuesta verificados contra la versión anterior en las cuatro funciones, sin
+  ninguna divergencia.
+- Pruebas específicas: 7 pasaron en 0,18 s.
+- Compuerta global: exit 0; 241 pruebas correctas con los 5 warnings conocidos en
+  1,29 s, Ruff correcto y dependencias íntegras.
+- Efecto medido: sitios sin cierre garantizado de **29 a 25**; llamadas a
+  `get_connection()` en `app/` de 125 a 121. Fugas deterministas: 0.
+- `git diff --check`: exit 0.
+- Alcance final del diff: el controlador, su archivo de pruebas nuevo y esta
+  bitácora.
+- Hito: se superó la mitad de la migración. De los 50 sitios iniciales quedan 25.
+- Riesgo residual: los 25 restantes son todos de fuga condicional. `pagos`,
+  `ventas` y `estudiantes` siguen reservados para el final.
+- Siguiente acción exacta: continuar con **1.4e**. Candidatos por volumen son
+  `plantilla_controller.py` con 7 sitios, `notas_controller.py` con 5 e
+  `inventario_controller.py` con 3. Acordar con el usuario cuál tomar.
+
 ## Entrega al próximo chat
 
 - Capa activa: **1, fundación de base de datos**.
-- Última subcapa terminada: **1.4c**, quinta tanda: las 4 funciones de
-  `branding_controller.py`, primer archivo que abandona `get_connection` por
-  completo.
-- Primera subcapa pendiente: **1.4d**, siguiente tanda de migración.
-- Progreso: **29 de 50** sitios desprotegidos siguen pendientes, **todos de fuga
+- Última subcapa terminada: **1.4d**, sexta tanda: las 4 funciones de solo
+  lectura de `dashboard_controller.py`, sin ninguna diferencia de comportamiento.
+- Primera subcapa pendiente: **1.4e**, siguiente tanda de migración.
+- Progreso: **25 de 50** sitios desprotegidos siguen pendientes, **todos de fuga
   condicional**: ninguno pierde la conexión sin que antes ocurra una excepción.
+  La migración pasó de la mitad.
 - Candidatos siguientes por volumen: `plantilla_controller.py` con 7 sitios,
-  `notas_controller.py` con 5 y `dashboard_controller.py` con 4. `pagos`,
+  `notas_controller.py` con 5 e `inventario_controller.py` con 3. `pagos`,
   `ventas` y `estudiantes` quedan para el final.
 - Orden vigente: primero completar la migración, después los timeouts. Reordenado
   por instrucción explícita del usuario el 2026-08-11.

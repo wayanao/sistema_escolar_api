@@ -1,6 +1,6 @@
 from psycopg2 import IntegrityError, errorcodes
 
-from app.database import get_connection
+from app.database import get_connection, get_cursor
 
 
 ASIGNACION_OTRO_PROFESOR_MENSAJE = (
@@ -512,26 +512,21 @@ def asignar_profesor_controller(asignacion):
 # 🎯 Ver cursos de un profesor
 def cursos_por_profesor_controller(profesor_id):
 
-    conn = get_connection()
-    cursor = conn.cursor()
+    with get_cursor() as cursor:
+        cursor.execute("""
+            SELECT DISTINCT
+                c.id,
+                c.nombre
+            FROM asignaciones a
+            JOIN cursos c ON a.curso_id = c.id
+            JOIN materias m ON a.materia_id = m.id
+            WHERE a.profesor_id = %s
+              AND a.activo = TRUE
+              AND COALESCE(LOWER(c.estado), 'activo') = 'activo'
+              AND COALESCE(LOWER(m.estado), 'activo') = 'activo'
+        """, (profesor_id,))
 
-    cursor.execute("""
-        SELECT DISTINCT
-            c.id,
-            c.nombre
-        FROM asignaciones a
-        JOIN cursos c ON a.curso_id = c.id
-        JOIN materias m ON a.materia_id = m.id
-        WHERE a.profesor_id = %s
-          AND a.activo = TRUE
-          AND COALESCE(LOWER(c.estado), 'activo') = 'activo'
-          AND COALESCE(LOWER(m.estado), 'activo') = 'activo'
-    """, (profesor_id,))
-
-    resultado = cursor.fetchall()
-
-    cursor.close()
-    conn.close()
+        resultado = cursor.fetchall()
 
     data = []
 
@@ -547,28 +542,23 @@ def cursos_por_profesor_controller(profesor_id):
 # 🎯 Ver profesor de un curso
 def profesor_por_curso_controller(curso_id):
 
-    conn = get_connection()
-    cursor = conn.cursor()
+    with get_cursor() as cursor:
+        cursor.execute("""
+            SELECT DISTINCT
+                p.id,
+                p.nombre,
+                p.apellido
+            FROM asignaciones a
+            JOIN profesor p ON a.profesor_id = p.id
+            JOIN cursos c ON a.curso_id = c.id
+            JOIN materias m ON a.materia_id = m.id
+            WHERE a.curso_id = %s
+              AND a.activo = TRUE
+              AND COALESCE(LOWER(c.estado), 'activo') = 'activo'
+              AND COALESCE(LOWER(m.estado), 'activo') = 'activo'
+        """, (curso_id,))
 
-    cursor.execute("""
-        SELECT DISTINCT
-            p.id,
-            p.nombre,
-            p.apellido
-        FROM asignaciones a
-        JOIN profesor p ON a.profesor_id = p.id
-        JOIN cursos c ON a.curso_id = c.id
-        JOIN materias m ON a.materia_id = m.id
-        WHERE a.curso_id = %s
-          AND a.activo = TRUE
-          AND COALESCE(LOWER(c.estado), 'activo') = 'activo'
-          AND COALESCE(LOWER(m.estado), 'activo') = 'activo'
-    """, (curso_id,))
-
-    resultado = cursor.fetchall()
-
-    cursor.close()
-    conn.close()
+        resultado = cursor.fetchall()
 
     data = []
 
@@ -581,44 +571,42 @@ def profesor_por_curso_controller(curso_id):
 
     return data
 def obtener_horarios_admin_controller():
-    conn = get_connection()
-    cursor = conn.cursor()
+    with get_cursor() as cursor:
+        cursor.execute("""
+            SELECT
+                p.nombre || ' ' || p.apellido AS profesor,
+                c.nombre AS curso,
+                m.nombre AS materia,
+                a.dia,
+                a.hora_inicio,
+                a.hora_fin
+            FROM asignaciones a
+            JOIN profesor p ON a.profesor_id = p.id
+            JOIN cursos c ON a.curso_id = c.id
+            JOIN materias m ON a.materia_id = m.id
+            WHERE a.dia IS NOT NULL
+              AND a.hora_inicio IS NOT NULL
+              AND a.hora_fin IS NOT NULL
+              AND a.hora_inicio != ''
+              AND a.hora_fin != ''
+              AND a.activo = TRUE
+              AND COALESCE(LOWER(c.estado), 'activo') = 'activo'
+              AND COALESCE(LOWER(m.estado), 'activo') = 'activo'
+            ORDER BY
+                CASE a.dia
+                    WHEN 'Lunes' THEN 1
+                    WHEN 'Martes' THEN 2
+                    WHEN 'Miércoles' THEN 3
+                    WHEN 'Jueves' THEN 4
+                    WHEN 'Viernes' THEN 5
+                    WHEN 'Sábado' THEN 6
+                    WHEN 'Domingo' THEN 7
+                    ELSE 8
+                END,
+                a.hora_inicio
+        """)
 
-    cursor.execute("""
-        SELECT 
-            p.nombre || ' ' || p.apellido AS profesor,
-            c.nombre AS curso,
-            m.nombre AS materia,
-            a.dia,
-            a.hora_inicio,
-            a.hora_fin
-        FROM asignaciones a
-        JOIN profesor p ON a.profesor_id = p.id
-        JOIN cursos c ON a.curso_id = c.id
-        JOIN materias m ON a.materia_id = m.id
-        WHERE a.dia IS NOT NULL 
-          AND a.hora_inicio IS NOT NULL 
-          AND a.hora_fin IS NOT NULL
-          AND a.hora_inicio != ''
-          AND a.hora_fin != ''
-          AND a.activo = TRUE
-          AND COALESCE(LOWER(c.estado), 'activo') = 'activo'
-          AND COALESCE(LOWER(m.estado), 'activo') = 'activo'
-        ORDER BY 
-            CASE a.dia
-                WHEN 'Lunes' THEN 1
-                WHEN 'Martes' THEN 2
-                WHEN 'Miércoles' THEN 3
-                WHEN 'Jueves' THEN 4
-                WHEN 'Viernes' THEN 5
-                WHEN 'Sábado' THEN 6
-                WHEN 'Domingo' THEN 7
-                ELSE 8
-            END,
-            a.hora_inicio
-    """)
-
-    clases = cursor.fetchall()
+        clases = cursor.fetchall()
 
     resultado = []
     for c in clases:
@@ -631,66 +619,52 @@ def obtener_horarios_admin_controller():
             "hora_fin": c[5]
         })
 
-    cursor.close()
-    conn.close()
-
     return resultado
 
 # 🎯 Eliminar asignación profesor ↔ curso
 def eliminar_asignacion_controller(profesor_id, curso_id):
 
-    conn = get_connection()
-    cursor = conn.cursor()
+    with get_cursor(commit=True) as cursor:
+        cursor.execute("""
+            SELECT id FROM asignaciones
+            WHERE profesor_id = %s AND curso_id = %s AND activo = TRUE
+            ORDER BY id DESC
+            LIMIT 1
+        """, (profesor_id, curso_id))
 
-    cursor.execute("""
-        SELECT id FROM asignaciones
-        WHERE profesor_id = %s AND curso_id = %s AND activo = TRUE
-        ORDER BY id DESC
-        LIMIT 1
-    """, (profesor_id, curso_id))
+        asignacion = cursor.fetchone()
 
-    asignacion = cursor.fetchone()
+        if not asignacion:
+            return {"mensaje": "Asignación no encontrada"}
 
-    if not asignacion:
-        return {"mensaje": "Asignación no encontrada"}
+        asignacion_id = asignacion[0]
 
-    asignacion_id = asignacion[0]
-
-    cursor.execute("""
-        UPDATE asignaciones
-        SET activo = FALSE
-        WHERE id = %s
-    """, (asignacion_id,))
-
-    conn.commit()
-    cursor.close()
-    conn.close()
+        cursor.execute("""
+            UPDATE asignaciones
+            SET activo = FALSE
+            WHERE id = %s
+        """, (asignacion_id,))
 
     return {"mensaje": "Asignación desactivada. El historial académico se conserva."}
 
 def obtener_clases_profesor_controller(profesor_id):
 
-    conn = get_connection()
-    cursor = conn.cursor()
+    with get_cursor() as cursor:
+        cursor.execute("""
+            SELECT
+                a.id,
+                c.nombre,
+                m.nombre
+            FROM asignaciones a
+            JOIN cursos c ON a.curso_id = c.id
+            JOIN materias m ON a.materia_id = m.id
+            WHERE a.profesor_id = %s
+              AND a.activo = TRUE
+              AND COALESCE(LOWER(c.estado), 'activo') = 'activo'
+              AND COALESCE(LOWER(m.estado), 'activo') = 'activo'
+        """, (profesor_id,))
 
-    cursor.execute("""
-        SELECT 
-            a.id,
-            c.nombre,
-            m.nombre
-        FROM asignaciones a
-        JOIN cursos c ON a.curso_id = c.id
-        JOIN materias m ON a.materia_id = m.id
-        WHERE a.profesor_id = %s
-          AND a.activo = TRUE
-          AND COALESCE(LOWER(c.estado), 'activo') = 'activo'
-          AND COALESCE(LOWER(m.estado), 'activo') = 'activo'
-    """, (profesor_id,))
-
-    rows = cursor.fetchall()
-
-    cursor.close()
-    conn.close()
+        rows = cursor.fetchall()
 
     return [
         {
@@ -910,32 +884,27 @@ def editar_asignacion_controller(asignacion_id, asignacion):
         conn.close()
 
 def obtener_todas_asignaciones_controller():
-    conn = get_connection()
-    cursor = conn.cursor()
+    with get_cursor() as cursor:
+        cursor.execute("""
+            SELECT
+                a.id, a.profesor_id, a.curso_id, a.materia_id, a.dia, a.hora_inicio, a.hora_fin,
+                p.nombre || ' ' || p.apellido AS profesor_nombre,
+                c.nombre AS curso_nombre,
+                m.nombre AS materia_nombre,
+                COALESCE(a.asignacion_academica_id, a.id) AS asignacion_academica_id,
+                COALESCE(a.orden_boletin, 100) AS orden_boletin
+            FROM asignaciones a
+            JOIN profesor p ON a.profesor_id = p.id
+            JOIN cursos c ON a.curso_id = c.id
+            JOIN materias m ON a.materia_id = m.id
+            WHERE a.activo = TRUE
+              AND COALESCE(LOWER(c.estado), 'activo') = 'activo'
+              AND COALESCE(LOWER(m.estado), 'activo') = 'activo'
+            ORDER BY a.id DESC
+        """)
 
-    cursor.execute("""
-        SELECT 
-            a.id, a.profesor_id, a.curso_id, a.materia_id, a.dia, a.hora_inicio, a.hora_fin,
-            p.nombre || ' ' || p.apellido AS profesor_nombre,
-            c.nombre AS curso_nombre,
-            m.nombre AS materia_nombre,
-            COALESCE(a.asignacion_academica_id, a.id) AS asignacion_academica_id,
-            COALESCE(a.orden_boletin, 100) AS orden_boletin
-        FROM asignaciones a
-        JOIN profesor p ON a.profesor_id = p.id
-        JOIN cursos c ON a.curso_id = c.id
-        JOIN materias m ON a.materia_id = m.id
-        WHERE a.activo = TRUE
-          AND COALESCE(LOWER(c.estado), 'activo') = 'activo'
-          AND COALESCE(LOWER(m.estado), 'activo') = 'activo'
-        ORDER BY a.id DESC
-    """)
+        rows = cursor.fetchall()
 
-    rows = cursor.fetchall()
-    
-    cursor.close()
-    conn.close()
-    
     resultado = []
     for r in rows:
         resultado.append({

@@ -8,12 +8,13 @@
 - Commit base: `6754e4aad59c1e428ea97d31fe8e96fdbba7694d`.
 - Rama acordada: `main`.
 - Estado al activar: árbol limpio; `main` sincronizada con `origin/main`.
-- Primera subcapa pendiente: **1.4b**, siguiente tanda de migración.
+- Primera subcapa pendiente: **1.4c**, siguiente tanda de migración.
 - Código de producto modificado hasta ahora: servicios de validación (1.2), tres
-  funciones del planeador anual (1.3) y cuatro del controlador de usuarios (1.4).
-  Sin cambio de comportamiento observable, salvo la fuga determinista corregida
-  en 1.4, documentada allí.
-- Progreso de la capa: **39 sitios** sin cierre garantizado, de 50 iniciales.
+  funciones del planeador anual (1.3), cuatro del controlador de usuarios (1.4) y
+  seis del de asignaciones (1.4b). Sin cambio de comportamiento observable, salvo
+  las dos fugas deterministas corregidas, documentadas en su subcapa.
+- Progreso de la capa: **33 sitios** sin cierre garantizado, de 50 iniciales.
+  **Cero fugas deterministas**; las 33 restantes requieren una excepción.
 - Autorización: orden explícita del usuario el 2026-08-11, después de cerrar la
   capa 0 con la CI remota verificada.
 
@@ -91,7 +92,8 @@ commit base antes de inventariar nada.
 | 1.2 | Primera tanda: servicios de validación, 4 sitios | **Cerrada** |
 | 1.3 | Segunda tanda: planeador anual, 3 sitios, estrena escritura | **Cerrada** |
 | 1.4 | Tercera tanda: usuarios, 4 sitios, incluye la primera fuga determinista | **Cerrada** |
-| 1.4b | Tandas restantes hasta agotar los 39 sitios pendientes | Pendiente |
+| 1.4b | Cuarta tanda: asignaciones, 6 sitios, elimina la última fuga determinista | **Cerrada** |
+| 1.4c | Tandas restantes hasta agotar los 33 sitios pendientes | Pendiente |
 | 1.5 | Timeouts y manejo del pool definidos con evidencia medida | Pendiente |
 | 1.6 | Cierre: compuerta global, staging, rollback y verificación manual | Pendiente |
 
@@ -615,6 +617,107 @@ parámetros, semántica de `commit` y respuesta coinciden en las cuatro funcione
 | `pip check` | `No broken requirements found.` |
 | `git diff --check` | Exit 0 |
 
+## Subcapa 1.4b: resultado
+
+Tanda revisada con especial detalle a petición del usuario. Se migró el archivo
+completo `app/controllers/asignacion_controller.py`: **6 sitios desprotegidos de
+13**. Los otros 7 ya tenían `try/finally` y se dejaron intactos, por lo que el
+import de `get_connection` se conserva.
+
+| Función | Operación | Destino |
+|---|---|---|
+| `cursos_por_profesor_controller` | `SELECT` | `get_cursor()` |
+| `profesor_por_curso_controller` | `SELECT` | `get_cursor()` |
+| `obtener_horarios_admin_controller` | `SELECT` | `get_cursor()` |
+| `eliminar_asignacion_controller` | `SELECT` + `UPDATE` + `commit` | `get_cursor(commit=True)` |
+| `obtener_clases_profesor_controller` | `SELECT` | `get_cursor()` |
+| `obtener_todas_asignaciones_controller` | `SELECT` | `get_cursor()` |
+
+### Descubrimiento sobre `get_cursor` y el `return` temprano
+
+`eliminar_asignacion_controller` sale por un `return` a mitad del bloque cuando
+la asignación no existe. Antes de migrarla se comprobó **empíricamente**, no por
+intuición, qué hace `get_cursor` en ese caso:
+
+```
+retorno            : salida temprana
+commits ejecutados : 1
+devuelta al pool   : True
+```
+
+Un `return` dentro del `with` invoca `__exit__(None, None, None)`, que en un
+`@contextmanager` reanuda el generador después del `yield`. Por tanto **la línea
+`if commit: connection.commit()` sí se ejecuta**.
+
+Consecuencia registrada: en el camino «no encontrada» la versión migrada emite un
+`COMMIT` sobre una transacción que solo hizo `SELECT`. La versión anterior no
+emitía `COMMIT`, pero tampoco cerraba: abandonaba la conexión **con la
+transacción abierta**. El `COMMIT` sobre una transacción de solo lectura no altera
+ningún dato y sustituye a una fuga, por lo que se acepta y se documenta como
+diferencia intencional.
+
+Se descartó dividir la función en dos bloques `get_cursor` —uno de lectura y otro
+de escritura— porque habría usado dos conexiones y roto la atomicidad entre la
+comprobación y la actualización, abriendo una ventana de carrera. La corrección
+de una fuga no justifica introducir un problema de concurrencia.
+
+### La última fuga determinista
+
+Con esta subcapa desaparece la única fuga en camino normal que quedaba en el
+código:
+
+| Gravedad | Tras 1.4 | Tras 1.4b |
+|---|---:|---:|
+| Fuga condicional, solo ante excepción | 38 | 33 |
+| Fuga **determinista**, en camino normal | **1** | **0** |
+
+Antes, intentar eliminar una asignación inexistente —un doble clic en el botón, o
+reintentar un borrado ya aplicado— perdía una conexión de forma permanente.
+Verificado contra la versión anterior: `adquiridas=1 cerradas=False commit=False`.
+
+### Caracterización
+
+`tests/test_asignaciones_controlador.py`, 7 pruebas. Ninguna de las seis
+funciones tenía cobertura real previa.
+
+Las dos rutas de `eliminar_asignacion_controller` se prueban por separado: la que
+encuentra la asignación debe ejecutar `SELECT` y `UPDATE` y confirmar; la que no
+la encuentra debe ejecutar **solo** el `SELECT` y devolver el mensaje sin tocar
+nada.
+
+Verificación contra la versión anterior recuperada con `git show HEAD:`: SQL,
+parámetros, respuesta y semántica de `commit` coinciden en las seis funciones,
+incluidos los dos caminos de la crítica.
+
+### Nota sobre el SQL
+
+Además de la indentación, en tres literales se eliminaron espacios en blanco al
+final de línea que el código anterior arrastraba —`SELECT `, `ORDER BY `,
+`WHERE a.dia IS NOT NULL `—. No era opcional: `git diff --check` rechaza líneas
+nuevas con espacios finales, y la compuerta lo ejecuta. Tablas, columnas, joins,
+condiciones, orden y parámetros son idénticos.
+
+### Efecto medido sobre el inventario
+
+| Métrica | Tras 1.4 | Tras 1.4b |
+|---|---:|---:|
+| Llamadas a `get_connection()` en `app/` | 135 | 129 |
+| Protegidas con `try/finally` | 94 | 94 |
+| **Sin cierre garantizado** | **39** | **33** |
+| De ellas, deterministas | 1 | **0** |
+
+### Verificación
+
+| Comprobación | Resultado |
+|---|---|
+| Pruebas específicas | 7 pasaron en 0,18 s |
+| Compuerta global | Exit 0 |
+| Suite completa | **226** pasaron, 5 warnings conocidos, 1,18 s |
+| Ruff | `All checks passed!` |
+| `pip check` | `No broken requirements found.` |
+| `git diff --check` | Exit 0 |
+| Volumen del diff en `app/` | 117 inserciones, 148 supresiones, un archivo |
+
 ## Criterios de cierre de la subcapa 1.0
 
 - La línea base está reproducida desde el commit base con resultados reales.
@@ -936,17 +1039,66 @@ parámetros, semántica de `commit` y respuesta coinciden en las cuatro funcione
   desprotegidos en total; decidir con el usuario si se migran todos o solo el
   crítico.
 
+### 2026-08-11 — subcapa 1.4b
+
+- Rama acordada: `main`; árbol **limpio** antes de editar, con 1.4 ya commiteada.
+- Commit observado: `2f4f848`, cinco commits por delante de `origin/main`
+  conforme a la cadencia local acordada.
+- Alcance decidido por el usuario: archivo completo y con revisión detallada.
+- Archivos modificados: `app/controllers/asignacion_controller.py`.
+- Archivo creado: `tests/test_asignaciones_controlador.py`.
+- Sitios migrados: 6 de los 13 del archivo. Los 7 restantes ya estaban protegidos
+  con `try/finally` y no se tocaron; el import de `get_connection` se conserva.
+- Contratos HTTP, rutas, payloads, status codes, permisos, tenant, ownership y
+  dependencias modificados: ninguno.
+- Comprobación previa al cambio: se verificó de forma empírica que un `return`
+  dentro de un `with get_cursor(commit=True)` **sí ejecuta el `commit`**, porque
+  `@contextmanager` reanuda el generador tras el `yield`. El resultado gobernó el
+  diseño de la migración de `eliminar_asignacion_controller`.
+- **Diferencia intencional**: en el camino «asignación no encontrada» la versión
+  migrada emite un `COMMIT` sobre una transacción de solo lectura. La anterior no
+  confirmaba, pero abandonaba la conexión con la transacción abierta. Se acepta:
+  no altera datos y sustituye una fuga permanente.
+- Alternativa descartada: partir la función en dos bloques `get_cursor`, uno de
+  lectura y otro de escritura. Habría usado dos conexiones y roto la atomicidad
+  entre la comprobación y la actualización, introduciendo una ventana de carrera.
+- SQL: idéntico en tablas, columnas, joins, condiciones, orden y parámetros.
+  Además de la indentación, se eliminaron espacios finales de línea en tres
+  literales, obligatorio porque `git diff --check` los rechaza y la compuerta lo
+  ejecuta.
+- Caracterización previa: SQL, parámetros, respuesta y `commit` verificados
+  contra la versión anterior en las seis funciones, con los dos caminos de
+  `eliminar_asignacion_controller` comprobados por separado.
+- Evidencia de la fuga previa: en el camino «no encontrada», el código original
+  registró `adquiridas=1 cerradas=False commit=False`.
+- Pruebas específicas: 7 pasaron en 0,18 s.
+- Compuerta global: exit 0; 226 pruebas correctas con los 5 warnings conocidos en
+  1,18 s, Ruff correcto y dependencias íntegras.
+- Efecto medido: sitios sin cierre garantizado de **39 a 33**; llamadas a
+  `get_connection()` en `app/` de 135 a 129. **Fugas deterministas: de 1 a 0.**
+- `git diff --check`: exit 0.
+- Volumen del diff en `app/`: 117 inserciones y 148 supresiones en un solo
+  archivo.
+- Alcance final del diff: el controlador, su archivo de pruebas nuevo y esta
+  bitácora.
+- Riesgo residual: quedan 33 sitios, todos de fuga condicional. `pagos`,
+  `ventas` y `estudiantes` siguen reservados para el final.
+- Siguiente acción exacta: continuar con **1.4c**. Candidatos por volumen son
+  `plantilla_controller.py` con 7 sitios, `notas_controller.py` con 5 y
+  `branding_controller.py` con 4. Acordar con el usuario cuál tomar.
+
 ## Entrega al próximo chat
 
 - Capa activa: **1, fundación de base de datos**.
-- Última subcapa terminada: **1.4**, tercera tanda: las 4 funciones desprotegidas
-  de `usuario_controller.py`, incluida la corrección de la primera fuga
-  determinista encontrada.
-- Primera subcapa pendiente: **1.4b**, siguiente tanda de migración.
-- Progreso: **39 de 50** sitios desprotegidos siguen pendientes; de ellos, 38
-  fugan solo ante excepción y **1 fuga en camino normal**.
-- Prioridad siguiente: `app/controllers/asignacion_controller.py:642`,
-  `eliminar_asignacion_controller`, la única fuga determinista que queda.
+- Última subcapa terminada: **1.4b**, cuarta tanda: las 6 funciones desprotegidas
+  de `asignacion_controller.py`, con la que desaparece la última fuga
+  determinista del código.
+- Primera subcapa pendiente: **1.4c**, siguiente tanda de migración.
+- Progreso: **33 de 50** sitios desprotegidos siguen pendientes, **todos de fuga
+  condicional**: ninguno pierde la conexión sin que antes ocurra una excepción.
+- Candidatos siguientes por volumen: `plantilla_controller.py` con 7 sitios,
+  `notas_controller.py` con 5 y `branding_controller.py` con 4. `pagos`,
+  `ventas` y `estudiantes` quedan para el final.
 - Orden vigente: primero completar la migración, después los timeouts. Reordenado
   por instrucción explícita del usuario el 2026-08-11.
 - Bloqueos: ninguno. La estrategia de verificación quedó decidida el 2026-08-11:

@@ -34,7 +34,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 
 | Orden | Capa | Resultado principal | Estado | Bitácora |
 |---:|---|---|---|---|
-| 0 | Línea base y calidad | Pruebas deterministas, compuerta global y CI | Cerrada localmente; CI remota pendiente | [00_LINEA_BASE_CALIDAD.md](./00_LINEA_BASE_CALIDAD.md) |
+| 0 | Línea base y calidad | Pruebas deterministas, compuerta global y CI | Cerrada localmente; CI remota falló por deriva de Ruff, corregida y sin reverificar | [00_LINEA_BASE_CALIDAD.md](./00_LINEA_BASE_CALIDAD.md) |
 | 1 | Fundación de base de datos | Conexiones, transacciones, timeouts y pool definidos | En espera | Se crea al activarla |
 | 2 | Concurrencia | DB síncrona fuera del event loop preservando `ContextVar` | En espera | Se crea al activarla |
 | 3 | Migraciones y tenants | Todos los tenants versionados, runner bloqueado y alta reproducible | En espera | Se crea al activarla |
@@ -189,12 +189,14 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   `3c23f249b7748879cf09abbddf3edef89ef4aa69`.
 - Compuerta global final: 192 pruebas correctas, Ruff correcto y
   `pip check` correcto.
-- Ejecución remota de GitHub Actions: pendiente del commit y push controlados
-  por el usuario. Comprobado el 2026-08-11 que `origin/main` todavía no contiene
-  el workflow ni la compuerta, por lo que nunca se ha ejecutado.
+- Ejecución remota de GitHub Actions: ejecutada por primera vez el 2026-08-11
+  sobre `23bce41`. **Falló**: `pytest` y `pip check` en exit 0, pero Ruff
+  reportó 460 errores porque la instalación limpia resolvió `ruff>=0.5.0` a una
+  versión mayor con otro conjunto de reglas por defecto. Corregido con el tope
+  `ruff>=0.5.0,<0.16`; falta reverificar en remoto.
 - Capa activa: ninguna.
 - Decisión del usuario del 2026-08-11: completar primero esa verificación
-  remota. La capa 1 no se activa hasta registrar la evidencia del run.
+  remota. La capa 1 no se activa hasta que un run termine en verde.
 - Siguiente capa: 1, fundación de base de datos, en espera de autorización
   explícita.
 - Código de producto modificado durante la capa 0: ninguno.

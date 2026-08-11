@@ -4,7 +4,8 @@
 
 ## Control
 
-- Estado: Cerrada localmente; verificación remota de CI pendiente.
+- Estado: Cerrada localmente; el primer run remoto falló por deriva de versión
+  de Ruff. Corregido en `requirements.txt` y pendiente de reverificación remota.
 - Commit base: `b8c7653445a50bc1e230a19e0ca8bb088c47cb69`.
 - Rama observada al ejecutar 0.4, antes del commit de cierre: `main`, cuatro
   commits por delante de `origin/main` y sin commits de `origin/main` por
@@ -457,6 +458,13 @@ el checkout limpio del runner de GitHub Actions:
 
 ## Verificación manual pendiente
 
+Ejecutada por primera vez el 2026-08-11 sobre
+`23bce41a8cb00de94fcaa78a3825b37c0c1269b6`: el run #1 de `Backend quality`
+terminó en fallo por la etapa de Ruff, con `pytest` y `pip check` en exit 0. La
+evidencia completa y la corrección aplicada están en el registro de ejecución
+del 2026-08-11. **La verificación sigue pendiente** hasta que un run posterior
+termine en verde con el tope de Ruff ya publicado.
+
 Después de un push autorizado por el usuario:
 
 1. Abrir GitHub Actions y seleccionar `Backend quality`.
@@ -721,22 +729,108 @@ verificación manual en producción porque no cambió código de producto.
   los registra aquí y en el índice maestro. Solo después, y con orden explícita,
   se crea la bitácora de la capa 1 desde `PLANTILLA_CAPA.md`.
 
+### 2026-08-11 — primera ejecución remota de CI: fallo y corrección
+
+Publicación autorizada por el usuario. `main` local y `origin/main` quedaron
+sincronizados en `23bce41a8cb00de94fcaa78a3825b37c0c1269b6`, árbol limpio. Con
+ese push se publicaron por primera vez el workflow y la compuerta.
+
+**Evidencia del run remoto**, aportada por el usuario desde la interfaz de
+GitHub y su proveedor de hosting:
+
+| Dato | Valor observado |
+|---|---|
+| Workflow | `Backend quality`, run #1 |
+| Evento | `push` |
+| SHA | `23bce41a8cb00de94fcaa78a3825b37c0c1269b6` |
+| Job | `verify`, runner Ubuntu 24.04 |
+| Duración | 29 s |
+| Conclusión | **Fallo**, exit 1 |
+| Etapa `pytest` | **exit 0**; 192 pruebas pasaron, 5 warnings, 1,25 s |
+| Etapa `ruff` | **exit 1**; 460 errores, 283 autocorregibles; reglas `BLE001` y familia `DTZ` entre otras |
+| Etapa `pip check` | **exit 0**; sin requisitos incumplidos |
+| Deploy del proveedor sobre el mismo SHA | Correcto; servicio vivo a las 05:42 |
+
+La compuerta se comportó como se diseñó en 0.2: ejecutó las tres etapas pese al
+fallo intermedio y devolvió el primer código distinto de cero.
+
+**Diagnóstico.** La causa es deriva de versión del linter, no un defecto del
+producto ni de las pruebas:
+
+- El repositorio no contiene configuración de Ruff — no existen `pyproject.toml`,
+  `ruff.toml`, `.ruff.toml`, `setup.cfg` ni `tox.ini` —, por lo que local y CI
+  usan el conjunto de reglas *por defecto* de la versión instalada.
+- Con Ruff 0.15.12 el comando exacto de la compuerta devuelve `All checks
+  passed!` y exit 0; se reejecutó para confirmarlo.
+- `BLE001` y la familia `DTZ` no pertenecen al default histórico (`E4`, `E7`,
+  `E9`, `F`). Que aparezcan 460 hallazgos implica que la instalación limpia
+  resolvió `ruff>=0.5.0` a una versión mayor con un default más amplio.
+
+Se descartó explícitamente la ausencia de `.env` en CI: `app/config.py` solo
+exige `SECRET_KEY` y `DATABASE_URL`, ambas provistas por el workflow, y el resto
+de campos tiene valor por defecto.
+
+**Corrección aplicada**, autorizada por el usuario como tratamiento separado del
+fallo: una línea de `requirements.txt`, de `ruff>=0.5.0` a `ruff>=0.5.0,<0.16`.
+El tope excluye la línea que rompió, resuelva CI a `0.16`, `1.x` o posterior, y
+admite la 0.15.12 ya validada. Es el cambio que esta bitácora había dejado
+contemplado al registrar que fijar dependencias requeriría justificarse por
+reproducibilidad; ahora la justificación es empírica.
+
+**Alternativa rechazada.** Se descartó ejecutar `ruff check --fix tests/`, es
+decir aplicar las 283 correcciones automáticas, por cuatro motivos: no ataca la
+causa y el siguiente Ruff volvería a romper CI; modifica la red de pruebas de
+caracterización justo antes de que la capa 1 dependa de ella; sustituir
+`except Exception` por `except HTTPException` cambia la semántica de la prueba,
+que pasaría de afirmar sobre la excepción a propagar un error ante cualquier
+otra; y 460 hallazgos de estilo exceden el alcance de la capa 0.
+
+**Evidencia positiva obtenida**, que era el objetivo de la verificación:
+
+- La suite es portable: 192 de 192 en Linux, con un pytest resuelto desde cero y
+  más reciente que el local. El trabajo de 0.1 queda validado fuera de Windows.
+- `pip check` correcto en instalación limpia y despliegue de producción vivo con
+  esa misma resolución fresca.
+- Por eso **no** se acota `pytest`: no falló, y acotarlo sería corregir un asunto
+  que la evidencia no señala.
+
+- Archivos modificados: `requirements.txt`, `docs/modularizacion/README.md` y
+  esta bitácora.
+- Código de producto, rutas, payloads, status codes, permisos, tenant,
+  ownership, SQL, transacciones, pruebas y workflow modificados: ninguno.
+- Compuerta global local tras el cambio: exit 0; 192 pruebas correctas con los 5
+  warnings conocidos en 1,85 s, Ruff `All checks passed!` y `pip check`
+  correcto. Se confirmó además que la versión instalada satisface la nueva
+  restricción.
+- `git diff --check`: exit 0.
+- Riesgo residual: el tope `<0.16` congela la línea 0.15 del linter. Subir de
+  major exigirá revisar el nuevo default o declarar la selección de reglas de
+  forma explícita; queda como endurecimiento futuro, no mezclado con esta
+  corrección.
+- Siguiente acción exacta: el usuario hace commit y push de esta corrección, lo
+  que dispara un nuevo run de `Backend quality` y un nuevo deploy. Verificar que
+  el run termine en verde y registrar aquí su identificador y resultado. Solo
+  entonces la capa 0 queda cerrada por completo. La capa 1 sigue sin activarse.
+
 ## Entrega al próximo chat
 
 - Leer primero `docs/modularizacion/README.md` completo.
 - Leer después este archivo completo.
 - Usar `docs/modularizacion/PROMPT_CONTINUACION.md` como prompt portable.
 - Capa activa: ninguna.
-- Capa 0: cerrada localmente; primera ejecución remota de CI pendiente.
+- Capa 0: cerrada localmente. El run #1 de CI falló por deriva de versión de
+  Ruff; la corrección está aplicada en el árbol y falta reverificarla en remoto.
 - Primera subcapa pendiente: ninguna.
 - Siguiente capa: 1, en espera; no crearla ni activarla sin orden del usuario.
-- Último commit local observado:
-  `596fb3ed8abcf3293ef3bc6add96421ee4977188`.
+- Último commit publicado:
+  `23bce41a8cb00de94fcaa78a3825b37c0c1269b6`, sincronizado con `origin/main`.
+- Cambio sin publicar en el árbol: el tope `ruff>=0.5.0,<0.16` en
+  `requirements.txt` más esta documentación.
 - Decisión vigente del usuario (2026-08-11): completar la verificación remota de
   CI antes de activar la capa 1. No tratar esa verificación como cumplida ni
   sustituirla por la validación local.
-- Siguiente acción exacta: el usuario publica `main` y verifica el run de
-  `Backend quality`; el asistente registra URL o identificador del run, SHA,
-  evento y resultado en «Verificación manual pendiente» y en el índice maestro.
-  Si el run falla, documentar el fallo y no activar la capa 1 ni ampliar el
-  alcance.
+- Siguiente acción exacta: el usuario hace commit y push de la corrección; eso
+  dispara un nuevo run de `Backend quality` y un nuevo deploy. Registrar el
+  identificador y el resultado del run. Si termina en verde, la capa 0 queda
+  cerrada por completo y recién entonces cabe preguntar por la capa 1. Si vuelve
+  a fallar, documentar y no ampliar el alcance.

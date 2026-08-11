@@ -8,17 +8,14 @@
 - Commit base: `6754e4aad59c1e428ea97d31fe8e96fdbba7694d`.
 - Rama acordada: `main`.
 - Estado al activar: árbol limpio; `main` sincronizada con `origin/main`.
-- Primera subcapa pendiente: **1.4k**, los 5 sitios restantes.
-- Código de producto modificado hasta ahora: servicios de validación (1.2), tres
-  funciones del planeador anual (1.3), cuatro del controlador de usuarios (1.4),
-  seis del de asignaciones (1.4b), cuatro del de branding (1.4c), cuatro del de
-  dashboard (1.4d), tres del de inventario (1.4e), una del de profesores (1.4f),
-  una del de asistencia (1.4g), cinco del de notas (1.4h), siete del de
-  plantillas (1.4i) y tres del dominio planilla (1.4j). Sin cambio de
-  comportamiento observable, salvo las dos fugas deterministas corregidas y la
-  confirmación de transacciones de solo lectura, documentadas en su subcapa.
-- Progreso de la capa: **5 sitios** sin cierre garantizado, de 50 iniciales.
-  **Cero fugas deterministas**; los 5 restantes requieren una excepción.
+- Primera subcapa pendiente: **1.4l**, los 3 sitios reservados.
+- Código de producto modificado hasta ahora: 47 de los 50 sitios desprotegidos,
+  repartidos en trece tandas, desde los servicios de validación (1.2) hasta las
+  dos rutas de la capa HTTP (1.4k). Sin cambio de comportamiento observable,
+  salvo las dos fugas deterministas corregidas y la confirmación de transacciones
+  de solo lectura, documentadas en su subcapa.
+- Progreso de la capa: **3 sitios** sin cierre garantizado, de 50 iniciales.
+  **Cero fugas deterministas.** Ninguna ruta abre conexiones.
 - Autorización: orden explícita del usuario el 2026-08-11, después de cerrar la
   capa 0 con la CI remota verificada.
 
@@ -105,7 +102,8 @@ commit base antes de inventariar nada.
 | 1.4h | Décima tanda: notas, 5 sitios, archivo completo | **Cerrada** |
 | 1.4i | Undécima tanda: plantillas, 7 sitios, archivo completo | **Cerrada** |
 | 1.4j | Duodécima tanda: dominio planilla, 3 sitios en 2 archivos | **Cerrada** |
-| 1.4k | Cierre de la migración: los 5 sitios restantes | Pendiente |
+| 1.4k | Decimotercera tanda: las 2 aperturas en la capa HTTP | **Cerrada** |
+| 1.4l | Cierre de la migración: los 3 sitios reservados | Pendiente |
 | 1.5 | Timeouts y manejo del pool definidos con evidencia medida | Pendiente |
 | 1.6 | Cierre: compuerta global, staging, rollback y verificación manual | Pendiente |
 
@@ -1379,6 +1377,73 @@ divergencias**.
 | `pip check` | `No broken requirements found.` |
 | `git diff --check` | Exit 0 |
 
+## Subcapa 1.4k: resultado
+
+Las **2 aperturas que vivían en la capa HTTP**, únicas de su tipo en todo el
+código. Con esta tanda, **ninguna ruta abre conexiones**: todas las aperturas
+restantes están en controllers.
+
+| Archivo y función | Operación | Destino |
+|---|---|---|
+| `app/routes/asignaciones.py`, `obtener_clases_profesor` | `SELECT` | `get_cursor()` |
+| `app/routes/observaciones.py`, `obtener_observacion` | `SELECT` + resolver | `get_cursor()` |
+
+En `observaciones.py` había además un **import local** de `get_connection` dentro
+de la función; se sustituyó por el import del módulo, como ya se hizo en 1.4h.
+
+### Una prueba existente se puso en rojo
+
+Al migrar `obtener_clases_profesor`, la prueba
+`test_mis_clases_incluye_jornada_del_curso` de
+`tests/test_asignaciones_pagination.py` falló: parcheaba
+`asignaciones.get_connection`, un símbolo que dejó de existir en el módulo.
+
+Es exactamente el comportamiento deseado de la red de seguridad: el cambio de
+régimen quedó visible de inmediato en vez de pasar inadvertido.
+
+Se adaptó **solo el mecanismo de sustitución**, cambiando el doble de conexión
+por un doble de `get_cursor`. Las aserciones de la prueba se conservaron palabra
+por palabra: la forma completa de la respuesta y la presencia de `c.jornada` en
+la consulta. `FakeConnection`, que quedaba sin uso, se retiró.
+
+Queda como precedente: al migrar un módulo, hay que comprobar si alguna prueba
+existente parchea `get_connection` sobre él.
+
+### Caracterización
+
+`tests/test_observaciones_ruta.py`, 4 pruebas. La ruta de observaciones no tenía
+cobertura: las pruebas existentes cubren las validaciones del controlador, no
+esta consulta.
+
+Se fija que **los guards de permiso se ejecutan antes de tocar la base** —y que
+si uno rechaza, no se abre cursor ni se ejecuta consulta— y que la ruta devuelve
+`None` cuando no hay observación guardada, en vez de un `404` o un diccionario
+vacío. Ese `None` es el contrato que el frontend está consumiendo hoy.
+
+Verificación contra la versión anterior recuperada con `git show HEAD:`: SQL,
+parámetros, orden de los guards, respuesta y cierre coinciden en ambas rutas.
+
+### Efecto medido sobre el inventario
+
+| Métrica | Tras 1.4j | Tras 1.4k |
+|---|---:|---:|
+| Llamadas a `get_connection()` en `app/` | 101 | 99 |
+| Protegidas con `try/finally` | 94 | 94 |
+| **Sin cierre garantizado** | **5** | **3** |
+| Aperturas fuera de controllers y services | 2 | **0** |
+| Fugas deterministas | 0 | 0 |
+
+### Verificación
+
+| Comprobación | Resultado |
+|---|---|
+| Pruebas específicas | 7 pasaron, incluida la existente adaptada |
+| Compuerta global | Exit 0 |
+| Suite completa | **304** pasaron, 5 warnings conocidos, 1,56 s |
+| Ruff | `All checks passed!` |
+| `pip check` | `No broken requirements found.` |
+| `git diff --check` | Exit 0 |
+
 ## Criterios de cierre de la subcapa 1.0
 
 - La línea base está reproducida desde el commit base con resultados reales.
@@ -2130,20 +2195,70 @@ divergencias**.
   capa HTTP; los 3 reservados, de uno en uno y con revisión detallada. Acordar
   con el usuario.
 
+### 2026-08-11 — subcapa 1.4k
+
+- Rama acordada: `main`; árbol **limpio** antes de editar, con 1.4j ya
+  commiteada.
+- Commit observado: `f68f16a`, catorce commits por delante de `origin/main`
+  conforme a la cadencia local acordada.
+- Alcance decidido por el asistente, con el usuario delegando la elección: las 2
+  aperturas de la capa HTTP, por ser el único patrón de su tipo.
+- Archivos modificados: `app/routes/asignaciones.py`,
+  `app/routes/observaciones.py` y `tests/test_asignaciones_pagination.py`.
+- Archivo creado: `tests/test_observaciones_ruta.py`.
+- Sitios migrados: 2 de 2. **Ninguna ruta abre ya conexiones**; todas las
+  aperturas restantes están en controllers.
+- En `observaciones.py` se sustituyó un **import local** de `get_connection`
+  dentro de la función por el import del módulo, como en 1.4h.
+- Contratos HTTP, rutas, payloads, status codes, permisos, tenant, ownership y
+  dependencias modificados: ninguno.
+- SQL: idéntico; solo cambió la indentación y se eliminaron espacios finales
+  heredados.
+- Semántica transaccional: ambas son de solo lectura y no confirmaban. Migradas a
+  `get_cursor()` sin `commit`. **Sin diferencias de comportamiento.**
+- **Incidencia relevante**: la prueba existente
+  `test_mis_clases_incluye_jornada_del_curso` se puso en rojo porque parcheaba
+  `asignaciones.get_connection`, símbolo que dejó de existir en el módulo. Es el
+  comportamiento deseado de la red: el cambio de régimen se hizo visible en el
+  acto. Se adaptó **solo el mecanismo de sustitución** —doble de `get_cursor` en
+  lugar de doble de conexión— y se conservaron las aserciones palabra por
+  palabra. `FakeConnection`, ya sin uso, se retiró.
+- Precedente registrado: al migrar un módulo hay que comprobar si alguna prueba
+  existente parchea `get_connection` sobre él. Es la primera vez que ocurre en 13
+  tandas.
+- Caracterización: 4 pruebas nuevas para la ruta de observaciones, que no tenía
+  cobertura. Fijan que los guards de permiso corren **antes** de tocar la base, y
+  que la ruta devuelve `None` cuando no hay observación, no un `404` ni un
+  diccionario vacío.
+- Caracterización previa: SQL, parámetros, orden de guards, respuesta y cierre
+  verificados contra la versión anterior en ambas rutas.
+- Incidencia de utillaje: el primer intento del script de verificación falló al
+  intentar recortar los imports del módulo de rutas por líneas, rompiendo un
+  import multilínea. Se corrigió extrayendo la función con AST. El código migrado
+  no estuvo en duda.
+- Compuerta global: exit 0; 304 pruebas correctas con los 5 warnings conocidos en
+  1,56 s, Ruff correcto y dependencias íntegras.
+- Efecto medido: sitios sin cierre garantizado de **5 a 3**; llamadas a
+  `get_connection()` en `app/` de 101 a 99. Aperturas fuera de controllers y
+  services: de 2 a **0**. Fugas deterministas: 0.
+- `git diff --check`: exit 0.
+- Alcance final del diff: las dos rutas, la prueba existente adaptada, el archivo
+  de pruebas nuevo y esta bitácora.
+- Siguiente acción exacta: ejecutar **1.4l**, los 3 sitios reservados: 2 en
+  `estudiante_controller` y 1 en `pagos_controller`. Se recomienda tomarlos de
+  uno en uno y con revisión detallada. Acordar con el usuario por cuál empezar.
+
 ## Entrega al próximo chat
 
 - Capa activa: **1, fundación de base de datos**.
-- Última subcapa terminada: **1.4j**, duodécima tanda: los 3 sitios del dominio
-  planilla, en dos archivos.
-- Primera subcapa pendiente: **1.4k**, los 5 sitios restantes.
-- Progreso: **5 de 50** sitios desprotegidos siguen pendientes, **todos de fuga
-  condicional**.
-- Reparto de esos 5: 2 en `estudiante_controller`, 1 en `pagos_controller` y 2 en
-  archivos de rutas, `asignaciones.py` y `observaciones.py`. **`ventas` no tiene
-  ninguno.**
-- Los 2 de rutas son las únicas aperturas fuera de controllers y services;
-  conviene mirarlos juntos. Los 3 reservados, de uno en uno y con revisión
-  detallada.
+- Última subcapa terminada: **1.4k**, decimotercera tanda: las 2 aperturas de la
+  capa HTTP. Ninguna ruta abre ya conexiones.
+- Primera subcapa pendiente: **1.4l**, los 3 sitios reservados que cierran la
+  migración: 2 en `estudiante_controller` y 1 en `pagos_controller`.
+- Progreso: **3 de 50** sitios desprotegidos siguen pendientes, todos de fuga
+  condicional. Se recomienda tomarlos de uno en uno y con revisión detallada.
+- Precedente de 1.4k: al migrar un módulo, comprobar si alguna prueba existente
+  parchea `get_connection` sobre él. Ocurrió una vez en 13 tandas.
 - Deuda conocida anotada en 1.4h y no corregida: el N+1 de
   `boletin_detallado_controller`, que pertenece a la capa 4, y los ids sintéticos
   que fabrica para las actividades en blanco.

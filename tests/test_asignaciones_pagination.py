@@ -1,3 +1,5 @@
+from contextlib import contextmanager
+
 from app.routes import asignaciones
 
 
@@ -16,23 +18,16 @@ class FakeCursor:
         pass
 
 
-class FakeConnection:
-    def __init__(self, cursor):
-        self.cursor_obj = cursor
-
-    def cursor(self):
-        return self.cursor_obj
-
-    def close(self):
-        pass
-
-
 def test_mis_clases_incluye_jornada_del_curso(monkeypatch):
     cursor = FakeCursor([
         (11, 12, "Matemáticas", "Sexto A", 4, "Tarde", "Lunes", "13:00", "14:00"),
     ])
-    conn = FakeConnection(cursor)
-    monkeypatch.setattr(asignaciones, "get_connection", lambda: conn)
+
+    @contextmanager
+    def fake_get_cursor(commit=False, cursor_factory=None):
+        yield cursor
+
+    monkeypatch.setattr(asignaciones, "get_cursor", fake_get_cursor)
     monkeypatch.setattr(asignaciones, "require_profesor_scope", lambda *args, **kwargs: None)
 
     response = asignaciones.obtener_clases_profesor(

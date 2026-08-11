@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from app.core.permissions import require_profesor_scope
 from app.dependencies import get_current_active_admin, get_current_user
 from app.schemas.asignacion import AsignacionCreate, AsignacionEdit, OrdenBoletinUpdate
-from app.database import get_connection
+from app.database import get_cursor
 
 from app.controllers.asignacion_controller import (
     AsignacionDuplicadaError,
@@ -169,54 +169,52 @@ def obtener_clases_profesor(
 ):
     require_profesor_scope(profesor_id, current_user, detail="No tienes permisos para consultar clases de otro profesor")
 
-    conn = get_connection()
-    cursor = conn.cursor()
+    with get_cursor() as cursor:
+        cursor.execute("""
+            SELECT
+                CASE
+                    WHEN base.id IS NOT NULL
+                     AND base.profesor_id = a.profesor_id
+                     AND base.curso_id = a.curso_id
+                     AND base.materia_id = a.materia_id
+                        THEN base.id
+                    ELSE a.id
+                END AS asignacion_id,
+                a.id AS horario_id,
+                m.nombre AS materia,
+                c.nombre AS curso,
+                c.id AS curso_id,
+                c.jornada,
+                a.dia,
+                a.hora_inicio,
+                a.hora_fin
 
-    cursor.execute("""
-        SELECT 
-            CASE
-                WHEN base.id IS NOT NULL
-                 AND base.profesor_id = a.profesor_id
-                 AND base.curso_id = a.curso_id
-                 AND base.materia_id = a.materia_id
-                    THEN base.id
-                ELSE a.id
-            END AS asignacion_id,
-            a.id AS horario_id,
-            m.nombre AS materia,
-            c.nombre AS curso,
-            c.id AS curso_id,
-            c.jornada,
-            a.dia,
-            a.hora_inicio,
-            a.hora_fin
+            FROM asignaciones a
+            JOIN materias m ON a.materia_id = m.id
+            JOIN cursos c ON a.curso_id = c.id
+            LEFT JOIN asignaciones base ON base.id = a.asignacion_academica_id
 
-        FROM asignaciones a
-        JOIN materias m ON a.materia_id = m.id
-        JOIN cursos c ON a.curso_id = c.id
-        LEFT JOIN asignaciones base ON base.id = a.asignacion_academica_id
+            WHERE a.profesor_id = %s
+              AND a.activo = TRUE
+              AND COALESCE(LOWER(c.estado), 'activo') = 'activo'
+              AND COALESCE(LOWER(m.estado), 'activo') = 'activo'
+            ORDER BY
+                c.nombre,
+                m.nombre,
+                CASE a.dia
+                    WHEN 'Lunes' THEN 1
+                    WHEN 'Martes' THEN 2
+                    WHEN 'Miércoles' THEN 3
+                    WHEN 'Jueves' THEN 4
+                    WHEN 'Viernes' THEN 5
+                    WHEN 'Sábado' THEN 6
+                    WHEN 'Domingo' THEN 7
+                    ELSE 8
+                END,
+                a.hora_inicio
+        """, (profesor_id,))
 
-        WHERE a.profesor_id = %s
-          AND a.activo = TRUE
-          AND COALESCE(LOWER(c.estado), 'activo') = 'activo'
-          AND COALESCE(LOWER(m.estado), 'activo') = 'activo'
-        ORDER BY
-            c.nombre,
-            m.nombre,
-            CASE a.dia
-                WHEN 'Lunes' THEN 1
-                WHEN 'Martes' THEN 2
-                WHEN 'Miércoles' THEN 3
-                WHEN 'Jueves' THEN 4
-                WHEN 'Viernes' THEN 5
-                WHEN 'Sábado' THEN 6
-                WHEN 'Domingo' THEN 7
-                ELSE 8
-            END,
-            a.hora_inicio
-    """, (profesor_id,))
-
-    clases = cursor.fetchall()
+        clases = cursor.fetchall()
 
     resultado = []
     for c in clases:
@@ -231,9 +229,6 @@ def obtener_clases_profesor(
             "hora_inicio": c[7],
             "hora_fin": c[8]
         })
-
-    cursor.close()
-    conn.close()
 
     return resultado
 

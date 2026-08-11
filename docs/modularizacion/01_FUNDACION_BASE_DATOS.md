@@ -8,9 +8,9 @@
 - Commit base: `6754e4aad59c1e428ea97d31fe8e96fdbba7694d`.
 - Rama acordada: `main`.
 - Estado al activar: árbol limpio; `main` sincronizada con `origin/main`.
-- Primera subcapa pendiente: **1.1**, desbloqueada. La estrategia de verificación
-  ya está decidida: pruebas de contrato con pool falso.
-- Código de producto modificado hasta ahora: Ninguno.
+- Primera subcapa pendiente: **1.2**, primera migración de sitios desprotegidos.
+- Código de producto modificado hasta ahora: **Ninguno**. 1.0 y 1.1 no tocaron
+  `app/`; 1.2 será la primera que sí.
 - Autorización: orden explícita del usuario el 2026-08-11, después de cerrar la
   capa 0 con la CI remota verificada.
 
@@ -84,7 +84,7 @@ commit base antes de inventariar nada.
 | Subcapa | Resultado | Estado |
 |---:|---|---|
 | 1.0 | Inventario de conexiones, cursores y transacciones; decisión sobre cómo verificar | **Cerrada** |
-| 1.1 | Contrato explícito de propiedad de conexión/cursor/commit/rollback | Pendiente |
+| 1.1 | Contrato explícito de propiedad de conexión/cursor/commit/rollback | **Cerrada** |
 | 1.2 | Primer consumidor migrado al contrato, con caracterización previa | Pendiente |
 | 1.3 | Timeouts y manejo del pool definidos con evidencia medida | Pendiente |
 | 1.4 | Migración progresiva del resto de aperturas manuales | Pendiente |
@@ -253,6 +253,90 @@ sitios desprotegidos, la corrección de cada sitio se apoyará en revisión del 
 y en las pruebas existentes, no en una guardia automática. Un sitio nuevo escrito
 mal en el futuro tampoco fallará solo. Queda como riesgo aceptado y reevaluable.
 
+## Subcapa 1.1: resultado
+
+### El contrato, declarado
+
+`app/db/session.py` ofrece dos puntos de entrada con **propiedad opuesta**. Esta
+es la distinción que gobierna toda la capa y que 1.2 en adelante debe respetar.
+
+**A. `get_cursor(commit=False, cursor_factory=None)` — la infraestructura posee
+el ciclo.**
+
+- Abre la conexión y el cursor.
+- Confirma **solo** si se le pasa `commit=True`.
+- Ante excepción revierte y relanza, conservando la excepción original.
+- Siempre, en `finally`, cierra el cursor y devuelve la conexión al pool.
+- El llamador **no debe** hacer `commit`, `rollback` ni `close`.
+
+**B. `get_connection()` — el llamador posee el ciclo.**
+
+- Devuelve una `PooledConnection` ya preparada, con `autocommit = False` y el
+  `search_path` del tenant aplicado.
+- Si la preparación falla, la conexión **ya volvió al pool** antes de relanzar;
+  el llamador no debe intentar devolverla.
+- A partir de ese punto el llamador **debe** garantizar `close()` en un
+  `finally`. Nada más lo hace por él.
+- `close()` no cierra la conexión: hace `rollback` y la devuelve al pool. Es
+  idempotente, así que llamarlo dos veces no la devuelve dos veces.
+- Como `close()` revierte, **omitir `commit()` descarta los cambios en silencio**.
+- `real_close()` cierra de verdad y **no** devuelve la conexión al pool.
+
+El riesgo inventariado en 1.0 es exactamente el incumplimiento del punto B por
+parte de 50 llamadores: obtienen la propiedad y no la protegen con `finally`.
+
+### Pruebas agregadas
+
+`tests/test_db_session_contrato.py`, 9 pruebas con pool falso. No requieren
+PostgreSQL ni tocan CI. Fijan cada punto del contrato anterior, incluida la
+garantía central: **la conexión vuelve al pool aunque el bloque protegido lance
+una excepción.**
+
+Los dobles son tres clases locales —`CursorFalso`, `ConexionFalsa`,
+`PoolFalso`— que llevan la cuenta de `getconn`, `putconn`, `commit`, `rollback`
+y cierres. El pool se inyecta con `monkeypatch.setattr(session, "_pool", ...)`,
+que lo restaura al terminar; el `ContextVar` del tenant se fija y se libera con
+su token para no filtrar estado a otras pruebas.
+
+### Comprobación de que las pruebas no son vacuas
+
+Una prueba que pasa no demuestra nada si también pasaría con el código roto. Se
+ejecutó una comprobación de mutación desde el directorio temporal de trabajo, sin
+modificar el repositorio: se reprodujo la aserción crítica contra una variante de
+`get_cursor` **sin `finally`**.
+
+| Variante | Conexiones devueltas al pool | Aserción |
+|---|---:|---|
+| `get_cursor` real | 1 | Pasa |
+| `get_cursor` sin `finally` | 0 | **Falla** |
+
+La prueba distingue el contrato correcto del roto. Es la misma clase de evidencia
+que 0.2 registró al simular códigos de salida de la compuerta.
+
+### Alcance real: no se tocó código de producto
+
+1.1 resultó ser **caracterización pura**. El contrato ya existía en el código;
+lo que faltaba era declararlo y fijarlo con pruebas. `app/` no se modificó en
+absoluto, así que esta subcapa no puede alterar el comportamiento en producción.
+
+La primera subcapa que realmente modifique `app/` será 1.2.
+
+### Verificación
+
+| Comprobación | Resultado |
+|---|---|
+| Pruebas específicas | 9 pasaron en 0,18 s |
+| Compuerta global | Exit 0 |
+| Suite completa | **201** pasaron, 5 warnings conocidos, 1,19 s |
+| Ruff | `All checks passed!` |
+| `pip check` | `No broken requirements found.` |
+| `git diff --check` | Exit 0 |
+
+Ruff detectó en la primera pasada un `F841` real —una variable `cursor` enlazada
+y no usada— que se corrigió eliminando el enlace. Queda registrado como evidencia
+de que la compuerta heredada de la capa 0 está cumpliendo su función sobre código
+nuevo.
+
 ## Criterios de cierre de la subcapa 1.0
 
 - La línea base está reproducida desde el commit base con resultados reales.
@@ -387,11 +471,55 @@ mal en el futuro tampoco fallará solo. Queda como riesgo aceptado y reevaluable
   explícito de propiedad de conexión, cursor, `commit` y `rollback`, y agrega las
   pruebas que lo protejan, sin migrar todavía los 50 sitios.
 
+### 2026-08-11 — subcapa 1.1
+
+- Rama acordada: `main`; árbol **limpio** antes de editar, con la activación y
+  1.0 ya commiteadas.
+- Commit observado: `08e617b`, un commit por delante de `origin/main` conforme a
+  la cadencia local acordada.
+- Archivo creado: `tests/test_db_session_contrato.py`.
+- Archivo modificado: esta bitácora.
+- **Código de producto modificado: ninguno.** La subcapa resultó ser
+  caracterización pura: el contrato ya estaba implementado y solo faltaba
+  declararlo y fijarlo. `app/` no aparece en el diff.
+- Contratos HTTP, rutas, payloads, status codes, permisos, tenant, ownership,
+  SQL, transacciones y dependencias modificados: ninguno.
+- Implementación: 9 pruebas con pool falso que fijan los dos regímenes de
+  propiedad, la idempotencia de `close()`, la diferencia entre `close()` y
+  `real_close()`, y la garantía de devolución al pool ante excepción.
+- Aislamiento de estado: el pool se inyecta con `monkeypatch`, que lo restaura; el
+  `ContextVar` del tenant se libera con su token en un `finally`.
+- Comprobación de mutación: contra un `get_cursor` sin `finally`, la aserción
+  crítica falla —0 conexiones devueltas frente a 1—. Las pruebas no son vacuas.
+- Pruebas específicas: 9 pasaron en 0,18 s.
+- Compuerta global: exit 0; 201 pruebas correctas con los 5 warnings conocidos en
+  1,19 s, Ruff correcto y dependencias íntegras.
+- Incidencia menor: Ruff marcó un `F841` legítimo en la primera pasada, una
+  variable `cursor` enlazada y no usada. Se corrigió quitando el enlace y la
+  compuerta volvió a verde. Evidencia de que la compuerta de la capa 0 protege
+  también el código nuevo.
+- `git diff --check`: exit 0.
+- Alcance final del diff: únicamente el archivo de pruebas nuevo y esta bitácora.
+- Decisión: declarar el contrato tal como existe hoy en lugar de rediseñarlo. Se
+  descartó introducir un gestor de contexto nuevo sobre `get_connection()` porque
+  el destino de migración ya existe —`get_cursor()`, con 15 consumidores reales—
+  y el programa prohíbe crear abstracciones sin necesidad demostrada.
+- Riesgo residual: las pruebas cubren la infraestructura, no los 146 llamadores.
+  La corrección de cada sitio migrado en 1.2 dependerá de la revisión del diff,
+  conforme a la estrategia de verificación elegida por el usuario.
+- Siguiente acción exacta: ejecutar **1.2**, migrando una tanda pequeña y
+  revisable de los 50 sitios desprotegidos al régimen correcto, con la suite
+  existente como red de comportamiento. Es la primera subcapa que modifica
+  `app/`. Debe acordarse antes el tamaño de la tanda y por qué controlador
+  empezar.
+
 ## Entrega al próximo chat
 
 - Capa activa: **1, fundación de base de datos**.
-- Última subcapa terminada: **1.0**, inventario cerrado sin tocar código.
-- Primera subcapa pendiente: **1.1**, contrato explícito de propiedad.
+- Última subcapa terminada: **1.1**, contrato declarado y fijado con 9 pruebas de
+  pool falso. Sin tocar `app/`.
+- Primera subcapa pendiente: **1.2**, primera tanda de migración. Es la primera
+  que modifica código de producto.
 - Bloqueos: ninguno. La estrategia de verificación quedó decidida el 2026-08-11:
   pruebas de contrato con pool falso. La guardia estática y PostgreSQL en CI se
   descartaron para esta capa.
@@ -402,8 +530,8 @@ mal en el futuro tampoco fallará solo. Queda como riesgo aceptado y reevaluable
   diff.
 - Cadencia de publicación: acordada. Se trabaja y se verifica en local; el
   usuario decide cuándo publicar.
-- Siguiente acción exacta: ejecutar **1.1** —definir el contrato explícito de
-  propiedad de conexión, cursor, `commit` y `rollback`, y agregar las pruebas de
-  contrato con pool falso que lo protejan— sin migrar todavía ninguno de los 50
-  sitios desprotegidos. Es la primera subcapa que toca `app/`, por lo que debe
-  iniciarse desde un árbol limpio para que su diff quede aislado.
+- Siguiente acción exacta: ejecutar **1.2**, la primera tanda de migración de
+  sitios desprotegidos al régimen correcto. Antes debe acordarse con el usuario
+  el tamaño de la tanda y por qué controlador empezar, porque es la primera
+  subcapa que modifica `app/` y la revisión del diff es la red de seguridad
+  elegida.

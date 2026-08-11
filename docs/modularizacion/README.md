@@ -1,6 +1,6 @@
 # Guía maestra de evolución segura del backend
 
-Última revisión: 2026-08-10.
+Última revisión: 2026-08-11.
 
 ## Propósito
 
@@ -190,8 +190,11 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
 - Compuerta global final: 192 pruebas correctas, Ruff correcto y
   `pip check` correcto.
 - Ejecución remota de GitHub Actions: pendiente del commit y push controlados
-  por el usuario.
+  por el usuario. Comprobado el 2026-08-11 que `origin/main` todavía no contiene
+  el workflow ni la compuerta, por lo que nunca se ha ejecutado.
 - Capa activa: ninguna.
+- Decisión del usuario del 2026-08-11: completar primero esa verificación
+  remota. La capa 1 no se activa hasta registrar la evidencia del run.
 - Siguiente capa: 1, fundación de base de datos, en espera de autorización
   explícita.
 - Código de producto modificado durante la capa 0: ninguno.

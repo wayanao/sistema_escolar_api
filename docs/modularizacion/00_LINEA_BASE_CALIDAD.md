@@ -1,6 +1,6 @@
 # Capa 0: línea base y calidad
 
-Última revisión: 2026-08-10.
+Última revisión: 2026-08-11.
 
 ## Control
 
@@ -16,6 +16,10 @@
   `95b4c8878fafeb43c54b27a834db6009cf5ca095`.
 - Estado al iniciar la corrección: árbol limpio; `main` cinco commits por
   delante de `origin/main` y sin commits remotos por integrar.
+- Commit local observado el 2026-08-11, ya con la corrección del prompt
+  confirmada: `596fb3ed8abcf3293ef3bc6add96421ee4977188`.
+- Decisión vigente del usuario (2026-08-11): completar primero la verificación
+  remota de CI; la capa 1 no se activa hasta registrar la evidencia del run.
 - Primera subcapa pendiente: ninguna.
 - Siguiente capa: 1, en espera de autorización explícita; no está activa.
 - Código de producto modificado: Ninguno.
@@ -675,6 +679,48 @@ verificación manual en producción porque no cambió código de producto.
 - Siguiente acción exacta: revisar y crear un commit local de la corrección si
   el usuario está conforme; no hacer push ni activar la capa 1.
 
+### 2026-08-11 — decisión sobre la verificación remota pendiente
+
+- Modo de acceso del asistente: mismo checkout local; Git validado directamente.
+- Rama acordada: `main`; `git status --short` vacío, árbol limpio antes de
+  editar.
+- Commit observado:
+  `596fb3ed8abcf3293ef3bc6add96421ee4977188`.
+- Trazabilidad: siete commits posteriores al base, todos explicados en esta
+  bitácora. El último, `596fb3e`, es exactamente la corrección del prompt que la
+  entrada anterior dejó como siguiente acción; su diff contiene solo
+  `docs/modularizacion/PROMPT_CONTINUACION.md` y esta bitácora. `main` está seis
+  commits por delante de `origin/main`, que permanece en
+  `a991ee205a3e6454f77edb7919d0c95e8080dc9a`, sin commits remotos por integrar
+  ni divergencia no documentada.
+- Comprobación directa de la publicación:
+  `git ls-tree -r --name-only origin/main -- .github scripts/verify.py` devolvió
+  vacío. Ni el workflow ni la compuerta existen en el remoto, por lo que
+  `Backend quality` no se ha ejecutado nunca en GitHub. No se presenta ninguna
+  ejecución como verificada.
+- Decisión del usuario: completar primero la verificación remota de CI en vez de
+  continuar localmente aceptando el pendiente. La capa 1 sigue en espera y no se
+  activa hasta registrar la evidencia del run.
+- Riesgo que esta decisión elimina: `requirements.txt` expresa mínimos sin
+  lockfile y la validación local fue en Windows con Python 3.14.3, pytest 9.0.3 y
+  Ruff 0.15.12; un checkout limpio en Ubuntu 24.04 puede resolver otras
+  versiones. Completar el run antes de avanzar impide construir la capa 1 sobre
+  una compuerta cuya reproducibilidad real todavía no se observó.
+- Riesgo que permanece: el push lo controla el usuario; hasta que exista, la
+  capa 0 conserva el estado «cerrada localmente; CI remota pendiente».
+- Archivos modificados por esta entrada: `docs/modularizacion/README.md` y esta
+  bitácora.
+- Código de producto, pruebas, workflow, compuerta, dependencias, contratos,
+  SQL, transacciones, permisos, tenant y ownership modificados: ninguno.
+- Compuerta global: no se repitió porque el cambio es solo Markdown; permanece
+  vigente la ejecución final de 0.4 con 192 pruebas, Ruff y `pip check`
+  correctos.
+- Siguiente acción exacta: el usuario hace commit de esta entrada y push de
+  `main` a `origin`, ejecuta los cuatro pasos de «Verificación manual pendiente»
+  y devuelve URL o identificador del run, SHA, evento y resultado. El asistente
+  los registra aquí y en el índice maestro. Solo después, y con orden explícita,
+  se crea la bitácora de la capa 1 desde `PLANTILLA_CAPA.md`.
+
 ## Entrega al próximo chat
 
 - Leer primero `docs/modularizacion/README.md` completo.
@@ -685,7 +731,12 @@ verificación manual en producción porque no cambió código de producto.
 - Primera subcapa pendiente: ninguna.
 - Siguiente capa: 1, en espera; no crearla ni activarla sin orden del usuario.
 - Último commit local observado:
-  `95b4c8878fafeb43c54b27a834db6009cf5ca095`.
-- Siguiente acción exacta: revisar y crear un commit local de la corrección del
-  prompt. Si el usuario decide publicar posteriormente, verificar el run remoto
-  y registrar su evidencia; no activar la capa 1 por inferencia.
+  `596fb3ed8abcf3293ef3bc6add96421ee4977188`.
+- Decisión vigente del usuario (2026-08-11): completar la verificación remota de
+  CI antes de activar la capa 1. No tratar esa verificación como cumplida ni
+  sustituirla por la validación local.
+- Siguiente acción exacta: el usuario publica `main` y verifica el run de
+  `Backend quality`; el asistente registra URL o identificador del run, SHA,
+  evento y resultado en «Verificación manual pendiente» y en el índice maestro.
+  Si el run falla, documentar el fallo y no activar la capa 1 ni ampliar el
+  alcance.

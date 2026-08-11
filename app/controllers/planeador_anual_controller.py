@@ -1,45 +1,40 @@
-from app.database import get_connection
+from app.database import get_connection, get_cursor
 from app.schemas.planeador_anual import PlaneadorAnualCreate, PlaneadorAnualUpdate
 from app.services.asignacion_academica import resolver_asignacion_academica_id_cursor
 from typing import List
 
 def crear_planeador_anual_controller(planeador: PlaneadorAnualCreate):
-    conn = get_connection()
-    cursor = conn.cursor()
-    asignacion_id = resolver_asignacion_academica_id_cursor(cursor, planeador.asignacion_id)
-    cursor.execute("""
-        INSERT INTO planeador_anual (asignacion_id, periodo, slot, unidad_tematica, estandar_competencia, contenido, actividades_recursos, fecha)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-        RETURNING id
-    """, (
-        asignacion_id,
-        planeador.periodo,
-        planeador.slot,
-        planeador.unidad_tematica,
-        planeador.estandar_competencia,
-        planeador.contenido,
-        planeador.actividades_recursos,
-        planeador.fecha
-    ))
-    planeador_id = cursor.fetchone()[0]
-    conn.commit()
-    cursor.close()
-    conn.close()
+    with get_cursor(commit=True) as cursor:
+        asignacion_id = resolver_asignacion_academica_id_cursor(cursor, planeador.asignacion_id)
+        cursor.execute("""
+            INSERT INTO planeador_anual (asignacion_id, periodo, slot, unidad_tematica, estandar_competencia, contenido, actividades_recursos, fecha)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
+        """, (
+            asignacion_id,
+            planeador.periodo,
+            planeador.slot,
+            planeador.unidad_tematica,
+            planeador.estandar_competencia,
+            planeador.contenido,
+            planeador.actividades_recursos,
+            planeador.fecha
+        ))
+        planeador_id = cursor.fetchone()[0]
+
     return planeador_id
 
 def obtener_planeadores_anual_controller(asignacion_id: int, periodo: int) -> List[dict]:
-    conn = get_connection()
-    cursor = conn.cursor()
-    asignacion_id = resolver_asignacion_academica_id_cursor(cursor, asignacion_id)
-    cursor.execute("""
-        SELECT id, asignacion_id, periodo, slot, unidad_tematica, estandar_competencia, contenido, actividades_recursos, fecha
-        FROM planeador_anual
-        WHERE asignacion_id = %s AND periodo = %s
-        ORDER BY slot
-    """, (asignacion_id, periodo))
-    rows = cursor.fetchall()
-    cursor.close()
-    conn.close()
+    with get_cursor() as cursor:
+        asignacion_id = resolver_asignacion_academica_id_cursor(cursor, asignacion_id)
+        cursor.execute("""
+            SELECT id, asignacion_id, periodo, slot, unidad_tematica, estandar_competencia, contenido, actividades_recursos, fecha
+            FROM planeador_anual
+            WHERE asignacion_id = %s AND periodo = %s
+            ORDER BY slot
+        """, (asignacion_id, periodo))
+        rows = cursor.fetchall()
+
     return [
         {
             "id": row[0],
@@ -56,23 +51,19 @@ def obtener_planeadores_anual_controller(asignacion_id: int, periodo: int) -> Li
     ]
 
 def actualizar_planeador_anual_controller(planeador_id: int, planeador: PlaneadorAnualUpdate):
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        UPDATE planeador_anual
-        SET unidad_tematica = %s, estandar_competencia = %s, contenido = %s, actividades_recursos = %s, fecha = %s
-        WHERE id = %s
-    """, (
-        planeador.unidad_tematica,
-        planeador.estandar_competencia,
-        planeador.contenido,
-        planeador.actividades_recursos,
-        planeador.fecha,
-        planeador_id
-    ))
-    conn.commit()
-    cursor.close()
-    conn.close()
+    with get_cursor(commit=True) as cursor:
+        cursor.execute("""
+            UPDATE planeador_anual
+            SET unidad_tematica = %s, estandar_competencia = %s, contenido = %s, actividades_recursos = %s, fecha = %s
+            WHERE id = %s
+        """, (
+            planeador.unidad_tematica,
+            planeador.estandar_competencia,
+            planeador.contenido,
+            planeador.actividades_recursos,
+            planeador.fecha,
+            planeador_id
+        ))
 
 def bulk_actualizar_planeadores_controller(asignacion_id: int, periodo: int, planeadores: List[PlaneadorAnualUpdate]):
     conn = get_connection()

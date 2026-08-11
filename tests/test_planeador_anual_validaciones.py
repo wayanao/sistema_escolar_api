@@ -1,4 +1,6 @@
+from contextlib import contextmanager
 from datetime import date
+from types import SimpleNamespace
 
 import pytest
 from pydantic import ValidationError
@@ -93,3 +95,115 @@ def test_bulk_elimina_filas_vacias_y_conserva_slot_de_filas_diligenciadas(monkey
     assert conn.rolled_back is False
     assert cursor.closed is True
     assert conn.closed is True
+
+
+# Caracterizacion de las tres funciones migradas a get_cursor en la subcapa 1.3.
+# La asercion sobre `commit` es la que importa: si se perdiera, get_cursor
+# revertiria al cerrar y los datos se descartarian en silencio.
+
+
+class CursorMigrado:
+    def __init__(self, fila=None, filas=None):
+        self.fila = fila
+        self.filas = filas or []
+        self.calls = []
+
+    def execute(self, query, params=None):
+        self.calls.append((query, params))
+
+    def fetchone(self):
+        return self.fila
+
+    def fetchall(self):
+        return self.filas
+
+
+@pytest.fixture
+def cursor_migrado(monkeypatch):
+    def instalar(fila=None, filas=None):
+        cursor = CursorMigrado(fila=fila, filas=filas)
+        commits = []
+
+        @contextmanager
+        def fake_get_cursor(commit=False, cursor_factory=None):
+            commits.append(commit)
+            yield cursor
+
+        monkeypatch.setattr(planeador_anual_controller, "get_cursor", fake_get_cursor)
+        monkeypatch.setattr(
+            planeador_anual_controller,
+            "resolver_asignacion_academica_id_cursor",
+            lambda _cursor, _asignacion_id: 77,
+        )
+        return cursor, commits
+
+    return instalar
+
+
+def test_crear_planeador_inserta_confirmando_y_devuelve_el_id(cursor_migrado):
+    cursor, commits = cursor_migrado(fila=(501,))
+    planeador = SimpleNamespace(
+        asignacion_id=10,
+        periodo=2,
+        slot=1,
+        unidad_tematica="Números enteros",
+        estandar_competencia="Comprende",
+        contenido="Suma y resta",
+        actividades_recursos="Guía",
+        fecha=date(2026, 8, 15),
+    )
+
+    assert planeador_anual_controller.crear_planeador_anual_controller(planeador) == 501
+
+    query, params = cursor.calls[0]
+    assert "INSERT INTO planeador_anual" in query
+    assert "RETURNING id" in query
+    assert params[0] == 77
+    assert params[1:] == (
+        2,
+        1,
+        "Números enteros",
+        "Comprende",
+        "Suma y resta",
+        "Guía",
+        date(2026, 8, 15),
+    )
+    assert commits == [True]
+
+
+def test_obtener_planeadores_consulta_sin_confirmar(cursor_migrado):
+    fila = (1, 77, 2, 3, "Unidad", "Estandar", "Contenido", "Recursos", date(2026, 8, 15))
+    cursor, commits = cursor_migrado(filas=[fila])
+
+    resultado = planeador_anual_controller.obtener_planeadores_anual_controller(10, 2)
+
+    query, params = cursor.calls[0]
+    assert "FROM planeador_anual" in query
+    assert "ORDER BY slot" in query
+    assert params == (77, 2)
+    assert commits == [False]
+    assert resultado == [
+        {
+            "id": 1,
+            "asignacion_id": 77,
+            "periodo": 2,
+            "slot": 3,
+            "unidad_tematica": "Unidad",
+            "estandar_competencia": "Estandar",
+            "contenido": "Contenido",
+            "actividades_recursos": "Recursos",
+            "fecha": date(2026, 8, 15),
+        }
+    ]
+
+
+def test_actualizar_planeador_actualiza_confirmando(cursor_migrado):
+    cursor, commits = cursor_migrado()
+    planeador = PlaneadorAnualUpdate(contenido="Fracciones", fecha="2026-08-15")
+
+    planeador_anual_controller.actualizar_planeador_anual_controller(42, planeador)
+
+    query, params = cursor.calls[0]
+    assert "UPDATE planeador_anual" in query
+    assert params == ("", "", "Fracciones", "", date(2026, 8, 15), 42)
+    assert commits == [True]

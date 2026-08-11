@@ -8,11 +8,11 @@
 - Commit base: `6754e4aad59c1e428ea97d31fe8e96fdbba7694d`.
 - Rama acordada: `main`.
 - Estado al activar: árbol limpio; `main` sincronizada con `origin/main`.
-- Primera subcapa pendiente: **1.3** según el plan, o continuar las tandas de
-  migración si el usuario reordena de forma explícita.
-- Código de producto modificado hasta ahora: los dos servicios de validación
-  migrados en 1.2, sin cambio de comportamiento observable.
-- Progreso de la capa: 46 sitios sin cierre garantizado, de 50 iniciales.
+- Primera subcapa pendiente: **1.4**, siguiente tanda de migración.
+- Código de producto modificado hasta ahora: los servicios de validación (1.2) y
+  tres funciones del planeador anual (1.3), sin cambio de comportamiento
+  observable en ninguna.
+- Progreso de la capa: **43 sitios** sin cierre garantizado, de 50 iniciales.
 - Autorización: orden explícita del usuario el 2026-08-11, después de cerrar la
   capa 0 con la CI remota verificada.
 
@@ -87,10 +87,18 @@ commit base antes de inventariar nada.
 |---:|---|---|
 | 1.0 | Inventario de conexiones, cursores y transacciones; decisión sobre cómo verificar | **Cerrada** |
 | 1.1 | Contrato explícito de propiedad de conexión/cursor/commit/rollback | **Cerrada** |
-| 1.2 | Primer consumidor migrado al contrato, con caracterización previa | **Cerrada** |
-| 1.3 | Timeouts y manejo del pool definidos con evidencia medida | Pendiente |
-| 1.4 | Migración progresiva del resto de aperturas manuales | Pendiente |
-| 1.5 | Cierre: compuerta global, staging, rollback y verificación manual | Pendiente |
+| 1.2 | Primera tanda: servicios de validación, 4 sitios | **Cerrada** |
+| 1.3 | Segunda tanda: planeador anual, 3 sitios, estrena escritura | **Cerrada** |
+| 1.4 | Tandas restantes hasta agotar los 43 sitios pendientes | Pendiente |
+| 1.5 | Timeouts y manejo del pool definidos con evidencia medida | Pendiente |
+| 1.6 | Cierre: compuerta global, staging, rollback y verificación manual | Pendiente |
+
+**Reordenación autorizada el 2026-08-11.** El plan original situaba los timeouts
+antes de completar la migración. El usuario ordenó de forma explícita continuar
+migrando primero. Motivo registrado: el patrón de migración quedó validado en
+1.2, el riesgo de fuga está medido y activo en los sitios restantes, y modificar
+la creación del pool afecta a todas las conexiones a la vez, por lo que conviene
+hacerlo con menos deuda encima.
 
 **Este desglose es provisional a partir de 1.1.** Se definió desde el alcance
 aprobado en el índice maestro, sin inspeccionar el código de conexiones, porque
@@ -435,6 +443,78 @@ pasaron al régimen donde la infraestructura garantiza la devolución al pool.
 | `pip check` | `No broken requirements found.` |
 | `git diff --check` | Exit 0 |
 
+## Subcapa 1.3: resultado
+
+### Tanda elegida
+
+`app/controllers/planeador_anual_controller.py`. El archivo tiene 4 llamadas a
+`get_connection()`, pero **solo 3 están desprotegidas**:
+
+| Función | Operación | Acción |
+|---|---|---|
+| `crear_planeador_anual_controller` | `INSERT` + `commit` | Migrada a `get_cursor(commit=True)` |
+| `obtener_planeadores_anual_controller` | `SELECT` | Migrada a `get_cursor()` |
+| `actualizar_planeador_anual_controller` | `UPDATE` + `commit` | Migrada a `get_cursor(commit=True)` |
+| `bulk_actualizar_planeadores_controller` | `INSERT`/`DELETE` en lote | **No tocada**: ya tiene `try/except/finally` con `rollback` |
+
+La cuarta pertenece a los 94 sitios correctos y se dejó intacta. Su prueba
+existente parchea `get_connection` en el módulo, por lo que el import de
+`get_connection` se conserva junto al nuevo de `get_cursor`, con la misma forma
+que ya usa `estudiante_controller.py`.
+
+### Primera migración de escritura
+
+1.2 solo tenía `SELECT`. Esta tanda estrena el camino con `commit`, donde el
+error es más caro: si la migración perdiera el `commit`, `get_cursor` revertiría
+al cerrar y **los datos se descartarían en silencio**, sin excepción ni error
+visible.
+
+Por eso la caracterización de esta subcapa no se conforma con el valor de
+retorno: afirma explícitamente qué valor de `commit` recibe `get_cursor` en cada
+función —`True`, `False`, `True`— además del SQL y los parámetros.
+
+### Caracterización
+
+Tres pruebas nuevas en `tests/test_planeador_anual_validaciones.py`, que ya era
+el hogar de las pruebas de este controlador. No se creó un archivo aparte para
+no fragmentar la cobertura del dominio.
+
+**Verificación contra la versión anterior.** Igual que en 1.2, se recuperó el
+controlador original con `git show HEAD:` y se repitieron las aserciones con un
+doble de `get_connection`:
+
+| Función | Código anterior | Código migrado |
+|---|---|---|
+| `crear` | id 501, `commit` sí | id 501, `commit=True` |
+| `obtener` | 1 fila, `commit` no | 1 fila, `commit=False` |
+| `actualizar` | `commit` sí | `commit=True` |
+
+La primera ejecución de esa comprobación marcó dos discrepancias. Investigadas,
+resultaron ser un defecto del propio script de verificación —no neutralizaba el
+import de `resolver_asignacion_academica_id_cursor`, así que el resolver real
+insertaba su consulta antes de la esperada—, no de la migración. Se corrigió el
+script y las tres funciones quedaron en verde. Se registra porque demuestra que
+la comprobación discrimina de verdad en lugar de aprobar por defecto.
+
+### Efecto medido sobre el inventario
+
+| Métrica | Tras 1.2 | Tras 1.3 |
+|---|---:|---:|
+| Llamadas a `get_connection()` en `app/` | 142 | 139 |
+| Protegidas con `try/finally` | 94 | 94 |
+| **Sin cierre garantizado** | **46** | **43** |
+
+### Verificación
+
+| Comprobación | Resultado |
+|---|---|
+| Pruebas del archivo | 8 pasaron en 0,20 s, 5 previas más 3 nuevas |
+| Compuerta global | Exit 0 |
+| Suite completa | **212** pasaron, 5 warnings conocidos, 1,07 s |
+| Ruff | `All checks passed!` |
+| `pip check` | `No broken requirements found.` |
+| `git diff --check` | Exit 0 |
+
 ## Criterios de cierre de la subcapa 1.0
 
 - La línea base está reproducida desde el commit base con resultados reales.
@@ -658,15 +738,61 @@ pasaron al régimen donde la infraestructura garantiza la devolución al pool.
   el patrón acaba de validarse y quedan 46 sitios con riesgo activo. Requiere su
   decisión explícita; no se reordena por inferencia.
 
+### 2026-08-11 — subcapa 1.3
+
+- Rama acordada: `main`; árbol **limpio** antes de editar, con 1.2 ya commiteada.
+- Commit observado: `076c497`, tres commits por delante de `origin/main` conforme
+  a la cadencia local acordada.
+- Reordenación: el usuario ordenó de forma explícita continuar migrando antes de
+  abordar los timeouts. La tabla de subcapas se renumeró en consecuencia y la
+  decisión quedó registrada allí.
+- Archivos modificados: `app/controllers/planeador_anual_controller.py` y
+  `tests/test_planeador_anual_validaciones.py`.
+- Sitios migrados: 3 de los 4 del archivo. `bulk_actualizar_planeadores_controller`
+  se dejó intacta por estar ya protegida con `try/except/finally`.
+- Contratos HTTP, rutas, payloads, status codes, permisos, tenant, ownership y
+  dependencias modificados: ninguno.
+- SQL: idéntico en tablas, columnas, condiciones y parámetros; solo cambió la
+  indentación de los literales al quedar un nivel más adentro.
+- Semántica transaccional: preservada y verificada explícitamente. `crear` y
+  `actualizar` confirman; `obtener` no. Es la garantía crítica de esta tanda,
+  porque perder un `commit` descartaría datos sin error visible.
+- Import: se conserva `get_connection` junto a `get_cursor` porque la función no
+  migrada y su prueba existente lo siguen usando.
+- Caracterización previa: las tres aserciones se verificaron contra el
+  controlador original recuperado con `git show HEAD:`. Se cumplen en ambas
+  versiones.
+- Incidencia de utillaje: la primera pasada de esa comprobación marcó dos
+  discrepancias que resultaron ser un defecto del script de verificación, que no
+  neutralizaba el import del resolver de asignación académica. Corregido el
+  script, las tres funciones quedaron en verde. El código migrado nunca estuvo en
+  duda, pero se registra como evidencia de que la comprobación discrimina.
+- Pruebas del archivo: 8 pasaron en 0,20 s.
+- Compuerta global: exit 0; 212 pruebas correctas con los 5 warnings conocidos en
+  1,07 s, Ruff correcto y dependencias íntegras.
+- Efecto medido: sitios sin cierre garantizado de **46 a 43**; llamadas a
+  `get_connection()` en `app/` de 142 a 139.
+- `git diff --check`: exit 0.
+- Alcance final del diff: el controlador y su archivo de pruebas.
+- Decisión: migrar solo las funciones desprotegidas y no uniformar la que ya
+  cumple el contrato. Motivo: el alcance de la capa es garantizar el cierre, no
+  homogeneizar estilo, y tocarla habría ampliado el diff sin reducir riesgo.
+- Riesgo residual: quedan 43 sitios. Los de `pagos`, `ventas` y `estudiantes`
+  siguen reservados para el final.
+- Siguiente acción exacta: continuar con **1.4**, la siguiente tanda de
+  migración. Acordar antes con el usuario qué archivo tomar; candidatos sin
+  escritura financiera son `plantilla_controller.py` con 7 sitios,
+  `usuario_controller.py` con 4 y `branding_controller.py` con 4.
+
 ## Entrega al próximo chat
 
 - Capa activa: **1, fundación de base de datos**.
-- Última subcapa terminada: **1.2**, primera tanda migrada: los 4 sitios de
-  `nota_service.py` y `planilla_service.py`, con caracterización verificada
-  contra la versión anterior.
-- Primera subcapa pendiente: **1.3**, timeouts y pool, según el plan. Alternativa
-  disponible: continuar con las tandas de migración, si el usuario lo ordena.
-- Progreso: **46 de 50** sitios desprotegidos siguen pendientes.
+- Última subcapa terminada: **1.3**, segunda tanda: las 3 funciones desprotegidas
+  de `planeador_anual_controller.py`, primera migración con escritura y `commit`.
+- Primera subcapa pendiente: **1.4**, siguiente tanda de migración.
+- Progreso: **43 de 50** sitios desprotegidos siguen pendientes.
+- Orden vigente: primero completar la migración, después los timeouts. Reordenado
+  por instrucción explícita del usuario el 2026-08-11.
 - Bloqueos: ninguno. La estrategia de verificación quedó decidida el 2026-08-11:
   pruebas de contrato con pool falso. La guardia estática y PostgreSQL en CI se
   descartaron para esta capa.
@@ -677,8 +803,8 @@ pasaron al régimen donde la infraestructura garantiza la devolución al pool.
   diff.
 - Cadencia de publicación: acordada. Se trabaja y se verifica en local; el
   usuario decide cuándo publicar.
-- Siguiente acción exacta: decidir con el usuario si sigue **1.3** —timeouts y
-  pool, según el plan— o si se continúa con las tandas de migración de los 46
-  sitios restantes. Si se sigue migrando, acordar la tanda antes de empezar;
-  ninguna que toque `pagos`, `ventas` o `estudiantes` hasta que el patrón esté
-  rodado en dominios sin escritura financiera.
+- Siguiente acción exacta: ejecutar **1.4**, la siguiente tanda de migración.
+  Acordar antes qué archivo tomar; candidatos sin escritura financiera son
+  `plantilla_controller.py` con 7 sitios, `usuario_controller.py` con 4 y
+  `branding_controller.py` con 4. `pagos`, `ventas` y `estudiantes` quedan para
+  el final.

@@ -8,16 +8,18 @@
 - Commit base: `6754e4aad59c1e428ea97d31fe8e96fdbba7694d`.
 - Rama acordada: `main`.
 - Estado al activar: árbol limpio; `main` sincronizada con `origin/main`.
-- Primera subcapa pendiente: **1.4i**, siguiente tanda de migración.
+- Primera subcapa pendiente: **1.4j**, los sitios financieros reservados.
 - Código de producto modificado hasta ahora: servicios de validación (1.2), tres
   funciones del planeador anual (1.3), cuatro del controlador de usuarios (1.4),
   seis del de asignaciones (1.4b), cuatro del de branding (1.4c), cuatro del de
   dashboard (1.4d), tres del de inventario (1.4e), una del de profesores (1.4f),
-  una del de asistencia (1.4g) y cinco del de notas (1.4h). Sin cambio de
-  comportamiento observable, salvo las dos fugas deterministas corregidas y la
-  confirmación de transacciones de solo lectura, documentadas en su subcapa.
-- Progreso de la capa: **15 sitios** sin cierre garantizado, de 50 iniciales.
-  **Cero fugas deterministas**; los 15 restantes requieren una excepción.
+  una del de asistencia (1.4g), cinco del de notas (1.4h) y siete del de
+  plantillas (1.4i). Sin cambio de comportamiento observable, salvo las dos fugas
+  deterministas corregidas y la confirmación de transacciones de solo lectura,
+  documentadas en su subcapa.
+- Progreso de la capa: **8 sitios** sin cierre garantizado, de 50 iniciales.
+  **Cero fugas deterministas**; los 8 restantes requieren una excepción y están
+  todos en dominios financieros.
 - Autorización: orden explícita del usuario el 2026-08-11, después de cerrar la
   capa 0 con la CI remota verificada.
 
@@ -102,7 +104,8 @@ commit base antes de inventariar nada.
 | 1.4f | Octava tanda: profesores, 1 sitio | **Cerrada** |
 | 1.4g | Novena tanda: asistencia, 1 sitio | **Cerrada** |
 | 1.4h | Décima tanda: notas, 5 sitios, archivo completo | **Cerrada** |
-| 1.4i | Tandas restantes hasta agotar los 15 sitios pendientes | Pendiente |
+| 1.4i | Undécima tanda: plantillas, 7 sitios, archivo completo | **Cerrada** |
+| 1.4j | Cierre de la migración: los 8 sitios financieros reservados | Pendiente |
 | 1.5 | Timeouts y manejo del pool definidos con evidencia medida | Pendiente |
 | 1.6 | Cierre: compuerta global, staging, rollback y verificación manual | Pendiente |
 
@@ -1181,6 +1184,116 @@ Aprobado/Reprobado, ids sintéticos, conteo de consultas del N+1 y semántica de
 | `git diff --check` | Exit 0 |
 | Volumen del diff en `app/` | 157 inserciones, 186 supresiones, un archivo |
 
+## Subcapa 1.4i: resultado
+
+`app/controllers/plantilla_controller.py`, **7 sitios de 7**: el archivo entero.
+Tercer archivo del programa que abandona `get_connection` por completo.
+
+| Función | Operación | Destino |
+|---|---|---|
+| `listar_plantillas_controller` | `SELECT` con o sin filtro | `get_cursor()` |
+| `obtener_plantilla_activa_controller` | `SELECT` + fallback | `get_cursor()` |
+| `crear_plantilla_controller` | `INSERT` + `commit` | `get_cursor(commit=True)` |
+| `actualizar_plantilla_controller` | `SELECT` + `UPDATE` + `commit` | `get_cursor(commit=True)` |
+| `activar_plantilla_controller` | `SELECT` + dos `UPDATE` + `commit` | `get_cursor(commit=True)` |
+| `duplicar_plantilla_controller` | `SELECT` + `INSERT` + `commit` | `get_cursor(commit=True)` |
+| `eliminar_plantilla_controller` | `SELECT` + `DELETE` + `commit` | `get_cursor(commit=True)` |
+
+### Un archivo que ya estaba bien escrito
+
+A diferencia de tandas anteriores, este autor **cerraba explícitamente antes de
+cada salida temprana**: los `raise HTTPException` de 404 y 400 van precedidos de
+`cursor.close()` y `conn.close()` en los siete casos. Por eso el barrido de fugas
+deterministas de 1.4 no marcó este archivo.
+
+Se verificó contra la versión anterior: en el camino de tipo inválido de
+`listar_plantillas_controller`, el código original registró **1 conexión
+adquirida y cerrada**. No fugaba.
+
+Lo que aporta la migración aquí no es tapar una fuga existente, sino garantizar
+el cierre cuando un `execute` lance: ese camino sí quedaba descubierto, y además
+elimina 14 líneas de cierre manual repetido.
+
+### La única diferencia de comportamiento
+
+`actualizar_plantilla_controller` tiene un camino «Sin cambios»: si la petición no
+trae ni nombre ni configuración, devuelve ese mensaje sin ejecutar el `UPDATE`.
+La versión anterior no confirmaba ahí; la migrada sí, porque el bloque se abre con
+`commit=True` y sale de forma normal.
+
+Es una transacción que solo ejecutó un `SELECT`, así que el `COMMIT` no altera
+ningún dato y sustituye al `ROLLBACK` implícito de `PooledConnection.close()`. Es
+la misma situación ya registrada en 1.4b y 1.4c.
+
+### Comportamientos fijados en pruebas
+
+- **Fallback de plantilla activa**: si no hay ninguna marcada activa para el tipo,
+  cae a la primera predefinida; si tampoco existe, `404`.
+- **Atomicidad de la activación**: los dos `UPDATE` —desactivar las demás del tipo
+  y activar esta— viajan en la **misma transacción**. Partirlos habría permitido
+  dejar el tipo sin ninguna plantilla activa.
+- **Las plantillas predefinidas están protegidas**: `400` al editarlas y `400` al
+  eliminarlas, con el mensaje que invita a duplicar.
+- **Al duplicar sin nombre** se genera `"<origen> (copia)"`.
+- **Las plantillas nuevas nacen inactivas y no predefinidas**, con
+  `VALUES (%s, %s, FALSE, FALSE, %s)`.
+- Los tipos inválidos responden `400` **sin consultar la base**, salvo en
+  `listar_plantillas_controller`, donde la validación ocurre ya dentro del bloque.
+  Se conservó esa asimetría; moverla sería un cambio ajeno al alcance.
+
+### Caracterización
+
+`tests/test_plantillas_controlador.py`, 19 pruebas. Ninguna de las siete
+funciones tenía cobertura previa.
+
+Verificación contra la versión anterior recuperada con `git show HEAD:`: 18
+comprobaciones sobre SQL, parámetros, códigos de estado, fallback, atomicidad,
+nombre por defecto y `commit`. Todas coinciden salvo la diferencia del camino
+«Sin cambios», que estaba prevista.
+
+### Efecto medido sobre el inventario
+
+| Métrica | Tras 1.4h | Tras 1.4i |
+|---|---:|---:|
+| Llamadas a `get_connection()` en `app/` | 111 | 104 |
+| Protegidas con `try/finally` | 94 | 94 |
+| **Sin cierre garantizado** | **15** | **8** |
+| Fugas deterministas | 0 | 0 |
+
+### Reparto real de los 8 sitios restantes
+
+Al localizarlos se corrigió una expectativa equivocada: **no todos pertenecen a
+dominios financieros**, y `ventas` ya no tiene ninguno.
+
+| Archivo | Sitios | Dominio |
+|---|---:|---|
+| `app/controllers/planilla_controller.py` | 2 | Académico |
+| `app/controllers/estudiante_controller.py` | 2 | Reservado |
+| `app/controllers/planilla_excel_controller.py` | 1 | Académico, genera Excel |
+| `app/routes/asignaciones.py` | 1 | Académico, apertura en una ruta |
+| `app/routes/observaciones.py` | 1 | Académico, apertura en una ruta |
+| `app/controllers/pagos_controller.py` | 1 | Reservado, `historial_pagos_controller` |
+
+Solo **3 de los 8** están en dominios reservados. Los otros 5 son académicos, y
+dos de ellos son las únicas aperturas que quedan **fuera de controllers y
+services**: están en archivos de rutas.
+
+Siguen aparte los 2 sitios de propiedad delegada en `super_admin`, que desde 1.0
+no cuentan como desprotegidos: abren y devuelven la conexión para que el llamador
+la cierre.
+
+### Verificación
+
+| Comprobación | Resultado |
+|---|---|
+| Pruebas específicas | 19 pasaron en 0,37 s |
+| Compuerta global | Exit 0 |
+| Suite completa | **290** pasaron, 5 warnings conocidos, 1,23 s |
+| Ruff | `All checks passed!` |
+| `pip check` | `No broken requirements found.` |
+| `git diff --check` | Exit 0 |
+| Volumen del diff en `app/` | 129 inserciones, 166 supresiones, un archivo |
+
 ## Criterios de cierre de la subcapa 1.0
 
 - La línea base está reproducida desde el commit base con resultados reales.
@@ -1826,17 +1939,80 @@ Aprobado/Reprobado, ids sintéticos, conteo de consultas del N+1 y semántica de
 - Siguiente acción exacta: continuar con **1.4i**, previsiblemente
   `plantilla_controller.py`. Acordar con el usuario.
 
+### 2026-08-11 — subcapa 1.4i
+
+- Rama acordada: `main`; árbol **limpio** antes de editar, con 1.4h ya
+  commiteada.
+- Commit observado: `4ea0723`, doce commits por delante de `origin/main` conforme
+  a la cadencia local acordada.
+- Archivo elegido por el usuario: `app/controllers/plantilla_controller.py`.
+- Archivos modificados: ese controlador.
+- Archivo creado: `tests/test_plantillas_controlador.py`.
+- Sitios migrados: 7 de 7. Tercer archivo del programa que abandona
+  `get_connection` por completo.
+- Contratos HTTP, rutas, payloads, status codes, permisos, tenant, ownership y
+  dependencias modificados: ninguno. Los `400` y `404` se conservan idénticos,
+  incluidos sus mensajes.
+- SQL: idéntico en tablas, columnas, condiciones, orden y parámetros; solo cambió
+  la indentación.
+- Semántica transaccional: preservada salvo el camino «Sin cambios» de
+  `actualizar_plantilla_controller`, que ahora confirma una transacción de solo
+  lectura donde antes revertía al cerrar. Misma situación registrada en 1.4b y
+  1.4c; no altera datos.
+- Observación relevante: este archivo **ya cerraba explícitamente antes de cada
+  salida temprana**, en los siete casos. Verificado contra la versión anterior:
+  el camino de tipo inválido registró 1 conexión adquirida y cerrada. No fugaba;
+  por eso el barrido de 1.4 no lo marcó. La migración cubre el hueco que sí tenía
+  —una excepción durante `execute`— y elimina 14 líneas de cierre manual.
+- Se conservó una asimetría existente: `obtener_plantilla_activa_controller` y
+  `crear_plantilla_controller` validan el tipo **antes** de abrir conexión,
+  mientras `listar_plantillas_controller` lo valida ya dentro del bloque.
+  Uniformarlo sería un cambio ajeno al alcance.
+- Atomicidad preservada: los dos `UPDATE` de `activar_plantilla_controller`
+  viajan en la misma transacción. Partirlos habría permitido dejar un tipo sin
+  ninguna plantilla activa.
+- Caracterización previa: 18 comprobaciones contra la versión anterior sobre SQL,
+  parámetros, códigos de estado, fallback a predefinida, atomicidad, nombre por
+  defecto al duplicar y `commit`. Todas coinciden salvo la diferencia prevista.
+- Pruebas específicas: 19 pasaron en 0,37 s.
+- Compuerta global: exit 0; 290 pruebas correctas con los 5 warnings conocidos en
+  1,23 s, Ruff correcto y dependencias íntegras.
+- Efecto medido: sitios sin cierre garantizado de **15 a 8**; llamadas a
+  `get_connection()` en `app/` de 111 a 104. Fugas deterministas: 0.
+- `git diff --check`: exit 0.
+- Volumen del diff en `app/`: 129 inserciones y 166 supresiones en un archivo.
+- Alcance final del diff: el controlador, su archivo de pruebas nuevo y esta
+  bitácora.
+- **Corrección de una expectativa previa**: se venía anotando que los sitios
+  restantes serían todos financieros. Al localizarlos resultó falso. De los 8,
+  solo 3 están en dominios reservados —2 en `estudiante_controller` y 1 en
+  `pagos_controller`— y `ventas` **ya no tiene ninguno**. Los otros 5 son
+  académicos: 2 en `planilla_controller`, 1 en `planilla_excel_controller` y 2 en
+  archivos de rutas, `asignaciones.py` y `observaciones.py`.
+- Dato nuevo: esos 2 de rutas son las únicas aperturas que quedan fuera de
+  controllers y services. Conviene mirarlos aparte, porque una apertura en la
+  capa HTTP es un patrón distinto al de los demás.
+- Siguiente acción exacta: ejecutar **1.4j**. Los candidatos académicos
+  —`planilla_controller` con 2, `planilla_excel_controller` con 1 y las 2 rutas—
+  pueden tomarse antes que los reservados. Los 3 de `estudiantes` y `pagos` se
+  recomiendan **de uno en uno y con revisión detallada**. Acordar con el usuario
+  por cuál empezar.
+
 ## Entrega al próximo chat
 
 - Capa activa: **1, fundación de base de datos**.
-- Última subcapa terminada: **1.4h**, décima tanda: los 5 sitios de
-  `notas_controller.py`, archivo completo.
-- Primera subcapa pendiente: **1.4i**, siguiente tanda de migración.
-- Progreso: **15 de 50** sitios desprotegidos siguen pendientes, **todos de fuga
-  condicional**: ninguno pierde la conexión sin que antes ocurra una excepción.
-- Candidato siguiente: `plantilla_controller.py` con 7 sitios, el último archivo
-  grande sin dinero de por medio. Después solo quedan los reservados `pagos`,
-  `ventas` y `estudiantes`.
+- Última subcapa terminada: **1.4i**, undécima tanda: los 7 sitios de
+  `plantilla_controller.py`, archivo completo.
+- Primera subcapa pendiente: **1.4j**, los sitios financieros reservados.
+- Progreso: **8 de 50** sitios desprotegidos siguen pendientes, **todos de fuga
+  condicional**.
+- Reparto real de esos 8, corregido en 1.4i: 2 en `planilla_controller`, 2 en
+  `estudiante_controller`, 1 en `planilla_excel_controller`, 1 en
+  `pagos_controller` y 2 en archivos de rutas, `asignaciones.py` y
+  `observaciones.py`. **`ventas` ya no tiene ninguno.**
+- Solo 3 de los 8 están en dominios reservados; conviene tomarlos de uno en uno y
+  con revisión detallada. Los 2 de rutas son las únicas aperturas que quedan
+  fuera de controllers y services.
 - Deuda conocida anotada en 1.4h y no corregida: el N+1 de
   `boletin_detallado_controller`, que pertenece a la capa 4, y los ids sintéticos
   que fabrica para las actividades en blanco.

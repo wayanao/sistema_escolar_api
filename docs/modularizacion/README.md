@@ -34,7 +34,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 
 | Orden | Capa | Resultado principal | Estado | Bitácora |
 |---:|---|---|---|---|
-| 0 | Línea base y calidad | Pruebas deterministas, compuerta global y CI | Cerrada localmente; CI remota falló por deriva de Ruff, corregida y sin reverificar | [00_LINEA_BASE_CALIDAD.md](./00_LINEA_BASE_CALIDAD.md) |
+| 0 | Línea base y calidad | Pruebas deterministas, compuerta global y CI | **Cerrada**; CI verificada en remoto | [00_LINEA_BASE_CALIDAD.md](./00_LINEA_BASE_CALIDAD.md) |
 | 1 | Fundación de base de datos | Conexiones, transacciones, timeouts y pool definidos | En espera | Se crea al activarla |
 | 2 | Concurrencia | DB síncrona fuera del event loop preservando `ContextVar` | En espera | Se crea al activarla |
 | 3 | Migraciones y tenants | Todos los tenants versionados, runner bloqueado y alta reproducible | En espera | Se crea al activarla |
@@ -184,19 +184,17 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
 
 - Repositorio: `sistema_escolar_api`.
 - Rama acordada: `main`.
-- Capa 0 cerrada localmente el 2026-08-10.
-- Commit validado antes de documentar el cierre:
-  `3c23f249b7748879cf09abbddf3edef89ef4aa69`.
-- Compuerta global final: 192 pruebas correctas, Ruff correcto y
-  `pip check` correcto.
-- Ejecución remota de GitHub Actions: ejecutada por primera vez el 2026-08-11
-  sobre `23bce41`. **Falló**: `pytest` y `pip check` en exit 0, pero Ruff
-  reportó 460 errores porque la instalación limpia resolvió `ruff>=0.5.0` a una
-  versión mayor con otro conjunto de reglas por defecto. Corregido con el tope
-  `ruff>=0.5.0,<0.16`; falta reverificar en remoto.
+- Capa 0 **cerrada** el 2026-08-11, sin verificaciones pendientes.
+- Compuerta global: 192 pruebas correctas, Ruff correcto y `pip check` correcto,
+  tanto en local como en un checkout limpio de GitHub Actions.
+- Último commit publicado y verificado en remoto:
+  `b20dcbe43a64c25e2ece7a7a99782983e2626160`.
+- Ejecución remota de GitHub Actions: el primer run, sobre `23bce41`, **falló**.
+  `pytest` y `pip check` terminaron en exit 0, pero Ruff reportó 460 errores
+  porque la instalación limpia resolvió `ruff>=0.5.0` a una versión mayor con
+  otro conjunto de reglas por defecto. Se corrigió con el tope
+  `ruff>=0.5.0,<0.16` y el run sobre `b20dcbe` terminó **correctamente**.
 - Capa activa: ninguna.
-- Decisión del usuario del 2026-08-11: completar primero esa verificación
-  remota. La capa 1 no se activa hasta que un run termine en verde.
 - Siguiente capa: 1, fundación de base de datos, en espera de autorización
   explícita.
 - Código de producto modificado durante la capa 0: ninguno.

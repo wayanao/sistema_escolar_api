@@ -4,8 +4,9 @@
 
 ## Control
 
-- Estado: Cerrada localmente; el primer run remoto falló por deriva de versión
-  de Ruff. Corregido en `requirements.txt` y pendiente de reverificación remota.
+- Estado: **Cerrada**. La compuerta se verificó en remoto desde un checkout
+  limpio el 2026-08-11, tras corregir la deriva de versión de Ruff que hizo
+  fallar el primer run.
 - Commit base: `b8c7653445a50bc1e230a19e0ca8bb088c47cb69`.
 - Rama observada al ejecutar 0.4, antes del commit de cierre: `main`, cuatro
   commits por delante de `origin/main` y sin commits de `origin/main` por
@@ -371,9 +372,11 @@ controla el usuario.
 - La capa 1 permanece en espera hasta que el usuario autorice activarla de
   forma explícita.
 
-Los criterios comprobables localmente están satisfechos. La configuración del
-workflow confirma que usará la misma compuerta desde un checkout limpio; su
-primera evidencia operativa permanece pendiente de publicación.
+**Todos los criterios están satisfechos.** La compuerta se ejecutó desde un
+checkout limpio en GitHub Actions el 2026-08-11 y terminó correctamente sobre
+`b20dcbe43a64c25e2ece7a7a99782983e2626160`. El primer intento falló por deriva de
+versión de Ruff; la causa quedó diagnosticada, corregida con un tope en
+`requirements.txt` y documentada junto con la alternativa rechazada.
 
 ## Decisiones vigentes
 
@@ -456,16 +459,17 @@ el checkout limpio del runner de GitHub Actions:
   tras revisar el diff y volver a ejecutar la verificación aplicable.
 - El usuario conserva el control de cualquier commit y publicación de rollback.
 
-## Verificación manual pendiente
+## Verificación manual: cumplida
 
-Ejecutada por primera vez el 2026-08-11 sobre
-`23bce41a8cb00de94fcaa78a3825b37c0c1269b6`: el run #1 de `Backend quality`
-terminó en fallo por la etapa de Ruff, con `pytest` y `pip check` en exit 0. La
-evidencia completa y la corrección aplicada están en el registro de ejecución
-del 2026-08-11. **La verificación sigue pendiente** hasta que un run posterior
-termine en verde con el tope de Ruff ya publicado.
+**Completada el 2026-08-11.** El run #1 sobre
+`23bce41a8cb00de94fcaa78a3825b37c0c1269b6` falló en la etapa de Ruff, con
+`pytest` y `pip check` en exit 0. Tras acotar la versión del linter, el run sobre
+`b20dcbe43a64c25e2ece7a7a99782983e2626160` terminó **correctamente** con el job
+`verify` en 26 s. La evidencia completa de ambos está en el registro de
+ejecución. La capa 0 ya no conserva verificaciones pendientes.
 
-Después de un push autorizado por el usuario:
+El procedimiento queda documentado para futuras capas. Después de un push
+autorizado por el usuario:
 
 1. Abrir GitHub Actions y seleccionar `Backend quality`.
 2. Confirmar el SHA y el evento exactos del run, el job `verify`, el runner
@@ -812,25 +816,63 @@ otra; y 460 hallazgos de estilo exceden el alcance de la capa 0.
   el run termine en verde y registrar aquí su identificador y resultado. Solo
   entonces la capa 0 queda cerrada por completo. La capa 1 sigue sin activarse.
 
+### 2026-08-11 — reverificación remota en verde: capa 0 cerrada
+
+La corrección se publicó en `b20dcbe43a64c25e2ece7a7a99782983e2626160`. El
+checkout local confirma `main` y `origin/main` sincronizados en ese commit, árbol
+limpio, y que `requirements.txt` en el remoto ya contiene `ruff>=0.5.0,<0.16`.
+
+| Dato | Valor observado |
+|---|---|
+| Workflow | `backend-quality.yml`, evento `push` |
+| Job | `verify` |
+| Duración | 26 s, frente a los 29 s del run fallido |
+| Conclusión | **Correcta** |
+
+Precisión sobre la evidencia: la captura aportada por el usuario muestra el job
+`verify` en verde para `backend-quality.yml` sobre `push`, pero no incluía el SHA
+en el encuadre. La correspondencia con `b20dcbe` no es ambigua porque es el único
+commit publicado después del run fallido, `origin/main` está en él y el tope de
+Ruff ya figura en el remoto. Queda anotado por transparencia.
+
+Con esto la compuerta compartida se ejecuta correctamente desde un checkout
+limpio en Linux, que era la única evidencia que faltaba. La capa 0 pasa de
+«cerrada localmente» a **cerrada**.
+
+- Rama acordada: `main`; árbol limpio y sincronizado con el remoto.
+- Archivos modificados por esta entrada: `docs/modularizacion/README.md` y esta
+  bitácora.
+- Código de producto, pruebas, workflow, dependencias, contratos, SQL,
+  transacciones, permisos, tenant y ownership modificados: ninguno.
+- Compuerta global: no se repitió localmente porque esta entrada es solo
+  Markdown; permanece vigente el exit 0 registrado tras la corrección de Ruff, y
+  ahora además la ejecución remota en verde.
+- Decisión: cerrar la capa 0 por completo. La capa 1 sigue **en espera** y
+  requiere orden explícita del usuario; el cierre no la activa por inferencia.
+- Siguiente acción exacta: el usuario hace commit y push de esta entrada
+  documental si está conforme. Para abrir la capa 1 deberá autorizarla de forma
+  explícita; entonces se creará su bitácora desde `PLANTILLA_CAPA.md` tomando el
+  `HEAD` limpio vigente como commit base, se actualizará el índice maestro y se
+  detendrá sin implementar la subcapa 1.0 en ese mismo turno.
+
 ## Entrega al próximo chat
 
 - Leer primero `docs/modularizacion/README.md` completo.
 - Leer después este archivo completo.
 - Usar `docs/modularizacion/PROMPT_CONTINUACION.md` como prompt portable.
 - Capa activa: ninguna.
-- Capa 0: cerrada localmente. El run #1 de CI falló por deriva de versión de
-  Ruff; la corrección está aplicada en el árbol y falta reverificarla en remoto.
+- Capa 0: **cerrada**, sin verificaciones pendientes. CI verificada en remoto.
 - Primera subcapa pendiente: ninguna.
 - Siguiente capa: 1, en espera; no crearla ni activarla sin orden del usuario.
 - Último commit publicado:
-  `23bce41a8cb00de94fcaa78a3825b37c0c1269b6`, sincronizado con `origin/main`.
-- Cambio sin publicar en el árbol: el tope `ruff>=0.5.0,<0.16` en
-  `requirements.txt` más esta documentación.
-- Decisión vigente del usuario (2026-08-11): completar la verificación remota de
-  CI antes de activar la capa 1. No tratar esa verificación como cumplida ni
-  sustituirla por la validación local.
-- Siguiente acción exacta: el usuario hace commit y push de la corrección; eso
-  dispara un nuevo run de `Backend quality` y un nuevo deploy. Registrar el
-  identificador y el resultado del run. Si termina en verde, la capa 0 queda
-  cerrada por completo y recién entonces cabe preguntar por la capa 1. Si vuelve
-  a fallar, documentar y no ampliar el alcance.
+  `b20dcbe43a64c25e2ece7a7a99782983e2626160`, sincronizado con `origin/main`.
+- Lección operativa registrada: `requirements.txt` expresa mínimos sin lockfile,
+  así que una instalación limpia puede resolver versiones distintas a las del
+  `venv` local. Ruff ya está acotado; `pytest` y el resto siguen sin tope y
+  podrían derivar igual. Si una capa futura falla en CI sin cambios de producto,
+  revisar primero la resolución de dependencias antes de tocar código.
+- Siguiente acción exacta: el usuario hace commit y push de la entrada
+  documental del cierre si está conforme. Para abrir la capa 1 se requiere orden
+  explícita; entonces se crea su bitácora desde `PLANTILLA_CAPA.md` con el `HEAD`
+  limpio vigente como commit base, se actualiza el índice maestro y se detiene
+  sin implementar la subcapa 1.0 en ese turno.

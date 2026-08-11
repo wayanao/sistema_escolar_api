@@ -8,15 +8,16 @@
 - Commit base: `6754e4aad59c1e428ea97d31fe8e96fdbba7694d`.
 - Rama acordada: `main`.
 - Estado al activar: árbol limpio; `main` sincronizada con `origin/main`.
-- Primera subcapa pendiente: **1.4f**, siguiente tanda de migración.
+- Primera subcapa pendiente: **1.4g**, siguiente tanda de migración.
 - Código de producto modificado hasta ahora: servicios de validación (1.2), tres
   funciones del planeador anual (1.3), cuatro del controlador de usuarios (1.4),
   seis del de asignaciones (1.4b), cuatro del de branding (1.4c), cuatro del de
-  dashboard (1.4d) y tres del de inventario (1.4e). Sin cambio de comportamiento
-  observable, salvo las dos fugas deterministas corregidas y la confirmación de
-  transacciones de solo lectura, documentadas en su subcapa.
-- Progreso de la capa: **22 sitios** sin cierre garantizado, de 50 iniciales.
-  **Cero fugas deterministas**; los 22 restantes requieren una excepción.
+  dashboard (1.4d), tres del de inventario (1.4e) y una del de profesores (1.4f).
+  Sin cambio de comportamiento observable, salvo las dos fugas deterministas
+  corregidas y la confirmación de transacciones de solo lectura, documentadas en
+  su subcapa.
+- Progreso de la capa: **21 sitios** sin cierre garantizado, de 50 iniciales.
+  **Cero fugas deterministas**; los 21 restantes requieren una excepción.
 - Autorización: orden explícita del usuario el 2026-08-11, después de cerrar la
   capa 0 con la CI remota verificada.
 
@@ -98,7 +99,8 @@ commit base antes de inventariar nada.
 | 1.4c | Quinta tanda: branding, 4 sitios, primer archivo que abandona `get_connection` | **Cerrada** |
 | 1.4d | Sexta tanda: dashboard, 4 sitios, todos de solo lectura | **Cerrada** |
 | 1.4e | Séptima tanda: inventario, 3 sitios, primer archivo con aritmética de dinero | **Cerrada** |
-| 1.4f | Tandas restantes hasta agotar los 22 sitios pendientes | Pendiente |
+| 1.4f | Octava tanda: profesores, 1 sitio | **Cerrada** |
+| 1.4g | Tandas restantes hasta agotar los 21 sitios pendientes | Pendiente |
 | 1.5 | Timeouts y manejo del pool definidos con evidencia medida | Pendiente |
 | 1.6 | Cierre: compuerta global, staging, rollback y verificación manual | Pendiente |
 
@@ -963,6 +965,67 @@ finales. Tablas, columnas, condiciones y parámetros son idénticos.
 | `pip check` | `No broken requirements found.` |
 | `git diff --check` | Exit 0 |
 
+## Subcapa 1.4f: resultado
+
+`app/controllers/profesor_controller.py`, **1 sitio de 6**. Los otros 5 ya
+tenían `try/finally`, por lo que el import conserva `get_connection`.
+
+| Función | Operación | Destino |
+|---|---|---|
+| `obtener_clases_profesor_controller` | `SELECT` | `get_cursor()` |
+
+Tanda pequeña y sin ninguna diferencia de comportamiento: la función es de solo
+lectura y no confirmaba.
+
+### Una homonimia que conviene no confundir
+
+Existe otra función llamada `obtener_clases_profesor_controller` en
+`asignacion_controller.py`, migrada en 1.4b. Consultan lo mismo, pero **no son
+equivalentes**:
+
+| Versión | Filtros |
+|---|---|
+| `asignacion_controller` | `a.activo = TRUE` y estado activo de curso y materia |
+| `profesor_controller` | **Ninguno** |
+
+La de este archivo devuelve también asignaciones desactivadas y de cursos o
+materias inactivos. La diferencia es anterior a la migración y se conservó tal
+cual: corregirla sería un cambio funcional ajeno al alcance de la capa.
+
+Se agregó una prueba que afirma explícitamente que esta consulta **no** filtra,
+para que la ausencia quede registrada como comportamiento observado y no se
+confunda con un descuido de la migración. Queda anotado como deuda conocida para
+quien decida más adelante si las dos funciones deben unificarse.
+
+### Caracterización
+
+`tests/test_profesores_controlador.py`, 3 pruebas: la forma de la respuesta, la
+ausencia de filtros y el caso sin asignaciones.
+
+Verificación contra la versión anterior recuperada con `git show HEAD:`: SQL,
+parámetros y respuesta coinciden, y la ausencia de filtros se confirmó también en
+el código original.
+
+### Efecto medido sobre el inventario
+
+| Métrica | Tras 1.4e | Tras 1.4f |
+|---|---:|---:|
+| Llamadas a `get_connection()` en `app/` | 118 | 117 |
+| Protegidas con `try/finally` | 94 | 94 |
+| **Sin cierre garantizado** | **22** | **21** |
+| Fugas deterministas | 0 | 0 |
+
+### Verificación
+
+| Comprobación | Resultado |
+|---|---|
+| Pruebas específicas | 3 pasaron en 0,22 s |
+| Compuerta global | Exit 0 |
+| Suite completa | **252** pasaron, 5 warnings conocidos, 1,32 s |
+| Ruff | `All checks passed!` |
+| `pip check` | `No broken requirements found.` |
+| `git diff --check` | Exit 0 |
+
 ## Criterios de cierre de la subcapa 1.0
 
 - La línea base está reproducida desde el commit base con resultados reales.
@@ -1471,17 +1534,62 @@ finales. Tablas, columnas, condiciones y parámetros son idénticos.
   `plantilla_controller.py` con 7 sitios, `notas_controller.py` con 5 y
   `profesor_controller.py` con 1. Acordar con el usuario cuál tomar.
 
+### 2026-08-11 — subcapa 1.4f
+
+- Rama acordada: `main`; árbol **limpio** antes de editar, con 1.4e ya
+  commiteada.
+- Commit observado: `0df3d1e`, nueve commits por delante de `origin/main`
+  conforme a la cadencia local acordada.
+- Archivo elegido por el usuario: `app/controllers/profesor_controller.py`.
+- Archivos modificados: ese controlador.
+- Archivo creado: `tests/test_profesores_controlador.py`.
+- Sitios migrados: 1 de 6. Los otros 5 ya estaban protegidos; el import conserva
+  `get_connection`.
+- Contratos HTTP, rutas, payloads, status codes, permisos, tenant, ownership y
+  dependencias modificados: ninguno.
+- SQL: idéntico; además de la indentación se eliminó un espacio final de línea
+  heredado en `SELECT `.
+- Semántica transaccional: la función es de solo lectura y no confirmaba. Migrada
+  a `get_cursor()` sin `commit`. **Sin diferencias de comportamiento.**
+- Observación registrada, no corregida: existe una función homónima en
+  `asignacion_controller.py`, migrada en 1.4b, que consulta lo mismo pero filtra
+  por `a.activo = TRUE` y por estado activo de curso y materia. La de
+  `profesor_controller` no filtra nada y devuelve también asignaciones
+  desactivadas. La divergencia es anterior a la migración; unificarlas sería un
+  cambio funcional ajeno al alcance de esta capa. Se añadió una prueba que fija
+  explícitamente la ausencia de filtros para que quede como comportamiento
+  observado y no se confunda con un descuido.
+- Caracterización previa: SQL, parámetros, respuesta y ausencia de filtros
+  verificados contra la versión anterior, sin divergencias.
+- Pruebas específicas: 3 pasaron en 0,22 s.
+- Compuerta global: exit 0; 252 pruebas correctas con los 5 warnings conocidos en
+  1,32 s, Ruff correcto y dependencias íntegras.
+- Efecto medido: sitios sin cierre garantizado de **22 a 21**; llamadas a
+  `get_connection()` en `app/` de 118 a 117. Fugas deterministas: 0.
+- `git diff --check`: exit 0.
+- Alcance final del diff: el controlador, su archivo de pruebas nuevo y esta
+  bitácora.
+- Riesgo residual: quedan 21 sitios, todos de fuga condicional. `pagos`,
+  `ventas` y `estudiantes` siguen reservados para el final.
+- Siguiente acción exacta: continuar con **1.4g**. Candidatos por volumen son
+  `plantilla_controller.py` con 7 sitios, `notas_controller.py` con 5 y
+  `asistencia_controller.py` con 1. Acordar con el usuario cuál tomar.
+
 ## Entrega al próximo chat
 
 - Capa activa: **1, fundación de base de datos**.
-- Última subcapa terminada: **1.4e**, séptima tanda: las 3 funciones de
-  `inventario_controller.py`, primer archivo migrado con aritmética de dinero.
-- Primera subcapa pendiente: **1.4f**, siguiente tanda de migración.
-- Progreso: **22 de 50** sitios desprotegidos siguen pendientes, **todos de fuga
+- Última subcapa terminada: **1.4f**, octava tanda: el único sitio desprotegido
+  de `profesor_controller.py`.
+- Primera subcapa pendiente: **1.4g**, siguiente tanda de migración.
+- Progreso: **21 de 50** sitios desprotegidos siguen pendientes, **todos de fuga
   condicional**: ninguno pierde la conexión sin que antes ocurra una excepción.
 - Candidatos siguientes por volumen: `plantilla_controller.py` con 7 sitios,
-  `notas_controller.py` con 5 y `profesor_controller.py` con 1. `pagos`,
+  `notas_controller.py` con 5 y `asistencia_controller.py` con 1. `pagos`,
   `ventas` y `estudiantes` quedan para el final.
+- Deuda conocida anotada en 1.4f: dos funciones homónimas
+  `obtener_clases_profesor_controller`, en `asignacion_controller` y en
+  `profesor_controller`, consultan lo mismo con filtros distintos. No se
+  unificaron por estar fuera del alcance de esta capa.
 - Orden vigente: primero completar la migración, después los timeouts. Reordenado
   por instrucción explícita del usuario el 2026-08-11.
 - Bloqueos: ninguno. La estrategia de verificación quedó decidida el 2026-08-11:

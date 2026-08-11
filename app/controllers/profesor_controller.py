@@ -1,4 +1,4 @@
-from app.database import get_connection
+from app.database import get_connection, get_cursor
 from app.security import get_password_hash
 from psycopg2 import IntegrityError
 
@@ -248,24 +248,19 @@ def obtener_profesores_paginado_controller(limit=50, offset=0, busqueda=None, es
 
 def obtener_clases_profesor_controller(profesor_id):
 
-    conn = get_connection()
-    cursor = conn.cursor()
+    with get_cursor() as cursor:
+        cursor.execute("""
+            SELECT
+                a.id,
+                c.nombre AS curso,
+                m.nombre AS materia
+            FROM asignaciones a
+            JOIN cursos c ON c.id = a.curso_id
+            JOIN materias m ON m.id = a.materia_id
+            WHERE a.profesor_id = %s
+        """, (profesor_id,))
 
-    cursor.execute("""
-        SELECT 
-            a.id,
-            c.nombre AS curso,
-            m.nombre AS materia
-        FROM asignaciones a
-        JOIN cursos c ON c.id = a.curso_id
-        JOIN materias m ON m.id = a.materia_id
-        WHERE a.profesor_id = %s
-    """, (profesor_id,))
-
-    rows = cursor.fetchall()
-
-    cursor.close()
-    conn.close()
+        rows = cursor.fetchall()
 
     return [
         {

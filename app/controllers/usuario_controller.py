@@ -1,34 +1,25 @@
-from app.database import get_connection
+from app.database import get_connection, get_cursor
 from app.schemas.usuario import UsuarioCreate, UsuarioUpdate
 from app.security import get_password_hash
 
 def crear_usuario_controller(usuario: UsuarioCreate):
-    conn = get_connection()
-    cursor = conn.cursor()
-    hashed_password = get_password_hash(usuario.password)
+    with get_cursor(commit=True) as cursor:
+        hashed_password = get_password_hash(usuario.password)
 
-    cursor.execute("""
-        INSERT INTO usuarios (nombre, email, password, rol)
-        VALUES (%s, %s, %s, %s)
-        RETURNING id
-    """, (usuario.nombre, usuario.email, hashed_password, usuario.rol))
+        cursor.execute("""
+            INSERT INTO usuarios (nombre, email, password, rol)
+            VALUES (%s, %s, %s, %s)
+            RETURNING id
+        """, (usuario.nombre, usuario.email, hashed_password, usuario.rol))
 
-    user_id = cursor.fetchone()[0]
-    conn.commit()
-    cursor.close()
-    conn.close()
+        user_id = cursor.fetchone()[0]
 
     return {"id": user_id, "mensaje": "Usuario creado exitosamente"}
 
 def obtener_usuarios_controller():
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    cursor.execute("SELECT id, nombre, email, rol FROM usuarios")
-    usuarios = cursor.fetchall()
-
-    cursor.close()
-    conn.close()
+    with get_cursor() as cursor:
+        cursor.execute("SELECT id, nombre, email, rol FROM usuarios")
+        usuarios = cursor.fetchall()
 
     return [{"id": u[0], "nombre": u[1], "email": u[2], "rol": u[3]} for u in usuarios]
 
@@ -74,9 +65,6 @@ def obtener_usuarios_paginado_controller(limit=50, offset=0, busqueda=None, rol=
         conn.close()
 
 def actualizar_usuario_controller(user_id: int, usuario: UsuarioUpdate):
-    conn = get_connection()
-    cursor = conn.cursor()
-
     updates = []
     values = []
 
@@ -99,20 +87,13 @@ def actualizar_usuario_controller(user_id: int, usuario: UsuarioUpdate):
     query = f"UPDATE usuarios SET {', '.join(updates)} WHERE id = %s"
     values.append(user_id)
 
-    cursor.execute(query, values)
-    conn.commit()
-    cursor.close()
-    conn.close()
+    with get_cursor(commit=True) as cursor:
+        cursor.execute(query, values)
 
     return {"mensaje": "Usuario actualizado exitosamente"}
 
 def eliminar_usuario_controller(user_id: int):
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    cursor.execute("DELETE FROM usuarios WHERE id = %s", (user_id,))
-    conn.commit()
-    cursor.close()
-    conn.close()
+    with get_cursor(commit=True) as cursor:
+        cursor.execute("DELETE FROM usuarios WHERE id = %s", (user_id,))
 
     return {"mensaje": "Usuario eliminado exitosamente"}

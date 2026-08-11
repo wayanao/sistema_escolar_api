@@ -8,14 +8,15 @@
 - Commit base: `6754e4aad59c1e428ea97d31fe8e96fdbba7694d`.
 - Rama acordada: `main`.
 - Estado al activar: árbol limpio; `main` sincronizada con `origin/main`.
-- Primera subcapa pendiente: **1.4m**, los 2 últimos sitios.
-- Código de producto modificado hasta ahora: 48 de los 50 sitios desprotegidos,
-  repartidos en catorce tandas, desde los servicios de validación (1.2) hasta el
-  historial de pagos (1.4l). Sin cambio de comportamiento observable, salvo las
-  dos fugas deterministas corregidas y la confirmación de transacciones de solo
+- Primera subcapa pendiente: **1.5**, timeouts y manejo del pool.
+- Código de producto modificado hasta ahora: **los 50 sitios desprotegidos**,
+  repartidos en quince tandas, desde los servicios de validación (1.2) hasta
+  estudiantes (1.4m). Sin cambio de comportamiento observable, salvo las dos
+  fugas deterministas corregidas y la confirmación de transacciones de solo
   lectura, documentadas en su subcapa.
-- Progreso de la capa: **2 sitios** sin cierre garantizado, de 50 iniciales.
-  **Cero fugas deterministas.** Ninguna ruta abre conexiones.
+- Progreso de la capa: **0 sitios** sin cierre garantizado, de 50 iniciales.
+  **Cero fugas deterministas.** Ninguna ruta abre conexiones. Falta únicamente
+  1.5, timeouts y pool.
 - Autorización: orden explícita del usuario el 2026-08-11, después de cerrar la
   capa 0 con la CI remota verificada.
 
@@ -104,7 +105,7 @@ commit base antes de inventariar nada.
 | 1.4j | Duodécima tanda: dominio planilla, 3 sitios en 2 archivos | **Cerrada** |
 | 1.4k | Decimotercera tanda: las 2 aperturas en la capa HTTP | **Cerrada** |
 | 1.4l | Decimocuarta tanda: historial de pagos, 1 sitio | **Cerrada** |
-| 1.4m | Cierre de la migración: los 2 sitios de estudiantes | Pendiente |
+| 1.4m | Decimoquinta tanda: estudiantes, 2 sitios. **Migración completa** | **Cerrada** |
 | 1.5 | Timeouts y manejo del pool definidos con evidencia medida | Pendiente |
 | 1.6 | Cierre: compuerta global, staging, rollback y verificación manual | Pendiente |
 
@@ -1512,6 +1513,79 @@ Quedan **2 sitios**, ambos en `app/controllers/estudiante_controller.py`:
 | `pip check` | `No broken requirements found.` |
 | `git diff --check` | Exit 0 |
 
+## Subcapa 1.4m: resultado — migración completa
+
+Los **2 últimos sitios**, ambos en `app/controllers/estudiante_controller.py`.
+Con ellos, el recuento de aperturas sin cierre garantizado llega a **cero**.
+
+| Función | Operación | Destino |
+|---|---|---|
+| `crear_estudiante_controller` | `INSERT` de 35 columnas + `commit` | `get_cursor(commit=True)` |
+| `actualizar_estudiante_controller` | `UPDATE` de 35 columnas + `commit` | `get_cursor(commit=True)` |
+
+Sin diferencias de comportamiento: ambas confirmaban siempre y siguen haciéndolo,
+incluido el camino en que la actualización no encuentra al estudiante.
+
+### El riesgo real de estas dos: el orden de 35 parámetros
+
+Ninguna de las dos valida nada por posición. Un desplazamiento silencioso en la
+lista guardaría el teléfono del padre en el campo de la madre **sin lanzar ningún
+error** y sin que ninguna prueba anterior lo notara.
+
+Por eso la caracterización no comprueba solo que el SQL contenga `INSERT`: cada
+campo lleva **su propio nombre como valor**, y la prueba afirma que la tupla de
+parámetros es exactamente la lista de los 34 campos en orden, más el estado, más
+el id en la actualización.
+
+### La regla de estado al actualizar
+
+La consulta usa `estado = COALESCE(%s, estado, 'activo')`. El controlador envía
+`None` cuando la petición no trae estado, y ese `None` hace que **se conserve el
+estado ya guardado** en vez de sobrescribirlo. No es evidente leyendo solo el
+Python; quedó fijado en prueba junto con el fragmento de SQL que lo implementa.
+
+Al crear, en cambio, el estado siempre se normaliza: `"  ACTIVO  "` se guarda
+como `activo`.
+
+### Caracterización
+
+`tests/test_estudiantes_controlador.py`, 5 pruebas. Ninguna de las dos funciones
+tenía cobertura: `test_estudiantes_pagination.py` cubre el listado paginado, que
+ya estaba protegido.
+
+Verificación contra la versión anterior recuperada con `git show HEAD:`: SQL,
+orden completo de los parámetros, normalización de estado, regla `COALESCE`,
+respuestas y `commit` coinciden, **sin divergencias**.
+
+### Estado final del inventario
+
+| Métrica | Al abrir la capa | Ahora |
+|---|---:|---:|
+| Llamadas a `get_connection()` en `app/` | 146 | **96** |
+| Protegidas con `try/finally` | 94 | 94 |
+| **Sin cierre garantizado** | **50** | **0** |
+| De ellas, deterministas | 2 | **0** |
+| Propiedad delegada | 2 | 2 |
+| Aperturas fuera de controllers y services | 2 | 0 |
+| Pruebas de la suite | 192 | **315** |
+
+Los 2 sitios de propiedad delegada —`_public_connection` en
+`super_admin_controller` y `_with_public_connection` en `core/super_admin`— no
+son fugas: abren y devuelven la conexión para que el llamador la cierre, tal como
+se clasificó en 1.0. Quedan como el único patrón de apertura que no usa
+`get_cursor`.
+
+### Verificación
+
+| Comprobación | Resultado |
+|---|---|
+| Pruebas específicas | 5 pasaron en 0,19 s |
+| Compuerta global | Exit 0 |
+| Suite completa | **315** pasaron, 5 warnings conocidos |
+| Ruff | `All checks passed!` |
+| `pip check` | `No broken requirements found.` |
+| `git diff --check` | Exit 0 |
+
 ## Criterios de cierre de la subcapa 1.0
 
 - La línea base está reproducida desde el commit base con resultados reales.
@@ -2358,16 +2432,67 @@ Quedan **2 sitios**, ambos en `app/controllers/estudiante_controller.py`:
   `actualizar_estudiante_controller`. Con eso se agota la migración y la capa
   puede pasar a los timeouts y el pool.
 
+### 2026-08-11 — subcapa 1.4m, migración completa
+
+- Rama acordada: `main`; árbol **limpio** antes de editar, con 1.4l ya
+  commiteada.
+- Commit observado: `e9536e3`, dieciséis commits por delante de `origin/main`
+  conforme a la cadencia local acordada.
+- Alcance: los 2 últimos sitios, con revisión detallada solicitada por el
+  usuario.
+- Archivos modificados: `app/controllers/estudiante_controller.py`.
+- Archivo creado: `tests/test_estudiantes_controlador.py`.
+- Sitios migrados: 2. **El recuento de aperturas sin cierre garantizado llega a
+  cero.**
+- Contratos HTTP, rutas, payloads, status codes, permisos, tenant, ownership y
+  dependencias modificados: ninguno.
+- SQL: idéntico en columnas, orden de parámetros y `COALESCE`; solo cambió la
+  indentación y se eliminaron espacios finales heredados.
+- Semántica transaccional: ambas confirmaban siempre y siguen haciéndolo,
+  incluido el camino en que la actualización no encuentra al estudiante. **Sin
+  diferencias de comportamiento.**
+- Riesgo específico atendido: las dos escriben 35 columnas posicionalmente. Un
+  desplazamiento silencioso guardaría un dato en el campo equivocado sin error.
+  La caracterización usa el nombre de cada campo como su propio valor y afirma la
+  tupla completa en orden.
+- Regla fijada: `estado = COALESCE(%s, estado, 'activo')` hace que enviar `None`
+  **conserve** el estado guardado en vez de sobrescribirlo. Al crear, en cambio,
+  el estado siempre se normaliza.
+- Caracterización previa: 5 comprobaciones contra la versión anterior,
+  extrayendo con AST solo las dos funciones. Todas coinciden.
+- Pruebas específicas: 5 pasaron en 0,19 s.
+- Compuerta global: exit 0; **315** pruebas correctas con los 5 warnings
+  conocidos, Ruff correcto y dependencias íntegras.
+- Efecto medido: sitios sin cierre garantizado de **2 a 0**; llamadas a
+  `get_connection()` en `app/` de 98 a 96.
+- `git diff --check`: exit 0.
+- Alcance final del diff: el controlador, su archivo de pruebas nuevo y esta
+  bitácora.
+- **Cierre de la migración**: quince tandas, 50 sitios migrados, 123 pruebas
+  nuevas, ninguna regresión y la compuerta en verde en cada paso. Quedan los 2
+  sitios de propiedad delegada de `super_admin`, que no son fugas y se
+  clasificaron como tales desde 1.0.
+- Siguiente acción exacta: ejecutar **1.5**, timeouts y manejo del pool con
+  evidencia medida. Es la parte que el usuario reordenó al final en 1.3 y la
+  única del alcance de la capa que sigue pendiente. Antes de empezar conviene
+  decidir qué timeouts se fijan —`connect_timeout`, `statement_timeout`,
+  `lock_timeout`— y cómo se mide la evidencia, porque tocar `_create_pool()`
+  afecta a **todas** las conexiones a la vez.
+
 ## Entrega al próximo chat
 
 - Capa activa: **1, fundación de base de datos**.
-- Última subcapa terminada: **1.4l**, decimocuarta tanda: el historial de pagos,
-  único sitio desprotegido de ese dominio y de solo lectura.
-- Primera subcapa pendiente: **1.4m**, los 2 últimos sitios, ambos en
-  `estudiante_controller`: `crear_estudiante_controller` y
-  `actualizar_estudiante_controller`.
-- Progreso: **2 de 50** sitios desprotegidos siguen pendientes. Con ellos se
-  agota la migración y la capa puede pasar a los timeouts y el pool.
+- Última subcapa terminada: **1.4m**. **La migración está completa**: los 50
+  sitios sin cierre garantizado llegaron a cero, en quince tandas y con 123
+  pruebas nuevas.
+- Primera subcapa pendiente: **1.5**, timeouts y manejo del pool con evidencia
+  medida. Es lo único del alcance de la capa que sigue pendiente.
+- Antes de empezar 1.5 conviene decidir qué timeouts se fijan —`connect_timeout`,
+  `statement_timeout`, `lock_timeout`— y cómo se mide la evidencia, porque tocar
+  `_create_pool()` afecta a **todas** las conexiones a la vez. Es un cambio de
+  naturaleza distinta a las quince tandas anteriores.
+- Quedan los 2 sitios de propiedad delegada en `super_admin`, que no son fugas y
+  se clasificaron como tales desde 1.0.
 - Precedente de 1.4k: al migrar un módulo, comprobar si alguna prueba existente
   parchea `get_connection` sobre él. Ocurrió una vez en 13 tandas.
 - Deuda conocida anotada en 1.4h y no corregida: el N+1 de

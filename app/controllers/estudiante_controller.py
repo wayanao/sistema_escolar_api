@@ -28,13 +28,12 @@ def _build_estado_filter(estado):
 # 🎯 Crear estudiante
 def crear_estudiante_controller(est):
 
-    conn = get_connection()
-    cursor = conn.cursor()
-    estado = normalizar_estado_estudiante(getattr(est, "estado", None))
+    with get_cursor(commit=True) as cursor:
+        estado = normalizar_estado_estudiante(getattr(est, "estado", None))
 
-    cursor.execute("""
-        INSERT INTO estudiantes 
-        (
+        cursor.execute("""
+            INSERT INTO estudiantes
+            (
             nombre, 
             apellido,
             documento_identidad,
@@ -70,52 +69,48 @@ def crear_estudiante_controller(est):
             documento_madre,
             condicion_diagnostico,
             estado
-        )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        RETURNING id
-    """, (
-        est.nombre,
-        est.apellido,
-        est.documento_identidad,
-        est.fecha_nacimiento,
-        est.curso_id,
-        est.descuento_matricula,
-        est.descuento_mensualidad,
-        est.datos_medicos,
-        est.telefono,
-        est.email,
-        est.direccion,
-        est.nombre_padre,
-        est.telefono_padre,
-        est.nombre_madre,
-        est.telefono_madre,
-        est.contacto_emergencia,
-        est.tipo_documento,
-        est.lugar_expedicion,
-        est.eps,
-        est.estrato,
-        est.jornada,
-        est.colegio_anterior,
-        est.anio_cursado_anterior,
-        est.pre_escolar_anterior,
-        est.ebp_anterior,
-        est.motivo_retiro_anterior,
-        est.paz_salvo_anterior,
-        est.ocupacion_padre,
-        est.tipo_documento_padre,
-        est.documento_padre,
-        est.ocupacion_madre,
-        est.tipo_documento_madre,
-        est.documento_madre,
-        est.condicion_diagnostico,
-        estado
-    ))
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
+        """, (
+            est.nombre,
+            est.apellido,
+            est.documento_identidad,
+            est.fecha_nacimiento,
+            est.curso_id,
+            est.descuento_matricula,
+            est.descuento_mensualidad,
+            est.datos_medicos,
+            est.telefono,
+            est.email,
+            est.direccion,
+            est.nombre_padre,
+            est.telefono_padre,
+            est.nombre_madre,
+            est.telefono_madre,
+            est.contacto_emergencia,
+            est.tipo_documento,
+            est.lugar_expedicion,
+            est.eps,
+            est.estrato,
+            est.jornada,
+            est.colegio_anterior,
+            est.anio_cursado_anterior,
+            est.pre_escolar_anterior,
+            est.ebp_anterior,
+            est.motivo_retiro_anterior,
+            est.paz_salvo_anterior,
+            est.ocupacion_padre,
+            est.tipo_documento_padre,
+            est.documento_padre,
+            est.ocupacion_madre,
+            est.tipo_documento_madre,
+            est.documento_madre,
+            est.condicion_diagnostico,
+            estado
+        ))
 
-    estudiante_id = cursor.fetchone()[0]
-
-    conn.commit()
-    cursor.close()
-    conn.close()
+        estudiante_id = cursor.fetchone()[0]
 
     return {
     "mensaje": "Estudiante creado correctamente",
@@ -231,17 +226,16 @@ def obtener_estudiantes_paginado_controller(limit=50, offset=0, busqueda=None, e
 
 
 def actualizar_estudiante_controller(est_id, est):
-    conn = get_connection()
-    cursor = conn.cursor()
-    estado = (
-        normalizar_estado_estudiante(est.estado)
-        if getattr(est, "estado", None) is not None
-        else None
-    )
+    with get_cursor(commit=True) as cursor:
+        estado = (
+            normalizar_estado_estudiante(est.estado)
+            if getattr(est, "estado", None) is not None
+            else None
+        )
 
-    cursor.execute("""
-        UPDATE estudiantes 
-        SET nombre = %s, 
+        cursor.execute("""
+            UPDATE estudiantes
+            SET nombre = %s,
             apellido = %s,
             documento_identidad = %s,
             fecha_nacimiento = %s,
@@ -275,52 +269,49 @@ def actualizar_estudiante_controller(est_id, est):
             tipo_documento_madre = %s,
             documento_madre = %s,
             condicion_diagnostico = %s,
-            estado = COALESCE(%s, estado, 'activo')
-        WHERE id = %s
-        RETURNING id
-    """, (
-        est.nombre,
-        est.apellido,
-        est.documento_identidad,
-        est.fecha_nacimiento,
-        est.curso_id,
-        est.descuento_matricula,
-        est.descuento_mensualidad,
-        est.datos_medicos,
-        est.telefono,
-        est.email,
-        est.direccion,
-        est.nombre_padre,
-        est.telefono_padre,
-        est.nombre_madre,
-        est.telefono_madre,
-        est.contacto_emergencia,
-        est.tipo_documento,
-        est.lugar_expedicion,
-        est.eps,
-        est.estrato,
-        est.jornada,
-        est.colegio_anterior,
-        est.anio_cursado_anterior,
-        est.pre_escolar_anterior,
-        est.ebp_anterior,
-        est.motivo_retiro_anterior,
-        est.paz_salvo_anterior,
-        est.ocupacion_padre,
-        est.tipo_documento_padre,
-        est.documento_padre,
-        est.ocupacion_madre,
-        est.tipo_documento_madre,
-        est.documento_madre,
-        est.condicion_diagnostico,
-        estado,
-        est_id
-    ))
+                estado = COALESCE(%s, estado, 'activo')
+            WHERE id = %s
+            RETURNING id
+        """, (
+            est.nombre,
+            est.apellido,
+            est.documento_identidad,
+            est.fecha_nacimiento,
+            est.curso_id,
+            est.descuento_matricula,
+            est.descuento_mensualidad,
+            est.datos_medicos,
+            est.telefono,
+            est.email,
+            est.direccion,
+            est.nombre_padre,
+            est.telefono_padre,
+            est.nombre_madre,
+            est.telefono_madre,
+            est.contacto_emergencia,
+            est.tipo_documento,
+            est.lugar_expedicion,
+            est.eps,
+            est.estrato,
+            est.jornada,
+            est.colegio_anterior,
+            est.anio_cursado_anterior,
+            est.pre_escolar_anterior,
+            est.ebp_anterior,
+            est.motivo_retiro_anterior,
+            est.paz_salvo_anterior,
+            est.ocupacion_padre,
+            est.tipo_documento_padre,
+            est.documento_padre,
+            est.ocupacion_madre,
+            est.tipo_documento_madre,
+            est.documento_madre,
+            est.condicion_diagnostico,
+            estado,
+            est_id
+        ))
 
-    resultado = cursor.fetchone()
-    conn.commit()
-    cursor.close()
-    conn.close()
+        resultado = cursor.fetchone()
 
     if resultado:
         return {"mensaje": "Estudiante actualizado correctamente", "id": resultado[0]}

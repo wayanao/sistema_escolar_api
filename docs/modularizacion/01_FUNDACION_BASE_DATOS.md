@@ -8,13 +8,14 @@
 - Commit base: `6754e4aad59c1e428ea97d31fe8e96fdbba7694d`.
 - Rama acordada: `main`.
 - Estado al activar: árbol limpio; `main` sincronizada con `origin/main`.
-- Primera subcapa pendiente: **1.4c**, siguiente tanda de migración.
+- Primera subcapa pendiente: **1.4d**, siguiente tanda de migración.
 - Código de producto modificado hasta ahora: servicios de validación (1.2), tres
-  funciones del planeador anual (1.3), cuatro del controlador de usuarios (1.4) y
-  seis del de asignaciones (1.4b). Sin cambio de comportamiento observable, salvo
-  las dos fugas deterministas corregidas, documentadas en su subcapa.
-- Progreso de la capa: **33 sitios** sin cierre garantizado, de 50 iniciales.
-  **Cero fugas deterministas**; las 33 restantes requieren una excepción.
+  funciones del planeador anual (1.3), cuatro del controlador de usuarios (1.4),
+  seis del de asignaciones (1.4b) y cuatro del de branding (1.4c). Sin cambio de
+  comportamiento observable, salvo las dos fugas deterministas corregidas y la
+  confirmación de transacciones de solo lectura, documentadas en su subcapa.
+- Progreso de la capa: **29 sitios** sin cierre garantizado, de 50 iniciales.
+  **Cero fugas deterministas**; las 29 restantes requieren una excepción.
 - Autorización: orden explícita del usuario el 2026-08-11, después de cerrar la
   capa 0 con la CI remota verificada.
 
@@ -93,7 +94,8 @@ commit base antes de inventariar nada.
 | 1.3 | Segunda tanda: planeador anual, 3 sitios, estrena escritura | **Cerrada** |
 | 1.4 | Tercera tanda: usuarios, 4 sitios, incluye la primera fuga determinista | **Cerrada** |
 | 1.4b | Cuarta tanda: asignaciones, 6 sitios, elimina la última fuga determinista | **Cerrada** |
-| 1.4c | Tandas restantes hasta agotar los 33 sitios pendientes | Pendiente |
+| 1.4c | Quinta tanda: branding, 4 sitios, primer archivo que abandona `get_connection` | **Cerrada** |
+| 1.4d | Tandas restantes hasta agotar los 29 sitios pendientes | Pendiente |
 | 1.5 | Timeouts y manejo del pool definidos con evidencia medida | Pendiente |
 | 1.6 | Cierre: compuerta global, staging, rollback y verificación manual | Pendiente |
 
@@ -718,6 +720,98 @@ condiciones, orden y parámetros son idénticos.
 | `git diff --check` | Exit 0 |
 | Volumen del diff en `app/` | 117 inserciones, 148 supresiones, un archivo |
 
+## Subcapa 1.4c: resultado
+
+`app/controllers/branding_controller.py`, sus **4 sitios**, que eran todas sus
+aperturas. Es el primer archivo del programa que deja de usar `get_connection`
+por completo: el import quedó reducido a `get_cursor`.
+
+| Función | Operación | Destino |
+|---|---|---|
+| `obtener_branding_controller` | `SELECT`, e `INSERT` si no hay fila | `get_cursor(commit=True)` |
+| `actualizar_branding_controller` | `UPDATE` + `commit` | `get_cursor(commit=True)` |
+| `subir_logo_controller` | `SELECT` + `UPDATE` + `commit`, con archivo | `get_cursor(commit=True)` |
+| `eliminar_logo_controller` | `SELECT` + `UPDATE` + `commit`, con archivo | `get_cursor(commit=True)` |
+
+### El commit condicional
+
+`obtener_branding_controller` es un caso que no se había presentado: **confirmaba
+solo a veces**. Lee la fila de branding y, si no existe, la crea con un `INSERT`
+y entonces confirma. En el camino de lectura no confirmaba nada.
+
+`get_cursor(commit=True)` confirma siempre. La diferencia quedó medida contra la
+versión anterior:
+
+| Camino | Código anterior | Código migrado |
+|---|---|---|
+| La fila existe, solo lectura | `commit=False` | `commit=True` |
+| La fila no existe, la crea | `commit=True` | `commit=True` |
+
+En el camino de lectura la versión anterior terminaba la transacción con el
+`ROLLBACK` que `PooledConnection.close()` ejecuta siempre; la migrada la termina
+con `COMMIT`. Sobre una transacción que solo hizo `SELECT` ambas son
+equivalentes: no hay nada que confirmar ni que revertir. **Ningún dato cambia de
+comportamiento**, y el camino de creación —el único que escribe— conserva su
+confirmación.
+
+Se descartó conservar `get_connection()` con `try/finally` para replicar el
+condicional al pie de la letra. Habría sido válido según el contrato, pero añade
+una tercera forma de escribir lo mismo sin corregir ningún riesgo real.
+
+### El orden del borrado de archivos
+
+`subir_logo_controller` y `eliminar_logo_controller` mezclan base de datos con
+almacenamiento: tras actualizar la columna, borran el archivo anterior. Ese orden
+importa y se conservó estrictamente: **el borrado ocurre después de cerrar el
+bloque de base de datos**, no dentro.
+
+Si se borrara dentro, un fallo entre el borrado y la confirmación dejaría el
+archivo eliminado y la fila apuntando a él. Ambas pruebas lo fijan comprobando la
+secuencia exacta de eventos:
+
+```
+['sql', 'sql', 'cierre_bloque', 'delete_file']
+```
+
+`eliminar_logo_controller` llama a `delete_file` incluso cuando no había logo
+previo, es decir con `None`. Se conservó tal cual: cambiarlo habría sido corregir
+un asunto ajeno a esta capa.
+
+### Caracterización
+
+`tests/test_branding_controlador.py`, 8 pruebas. Cubren los dos caminos de
+`obtener_branding_controller`, los valores por defecto de color y
+`configuracion_extra`, la doble conexión de `actualizar_branding_controller`
+—escribe y después relee—, el rechazo de `slot` inválido con `400`, y el orden de
+borrado en las dos funciones de logo.
+
+`subir_logo_controller` es `async`; la prueba lo ejecuta con `asyncio.run`, sin
+añadir `pytest-asyncio` ni ninguna dependencia.
+
+Verificación contra la versión anterior recuperada con `git show HEAD:`:
+respuesta, SQL, parámetros y orden de borrado coinciden en las cuatro funciones.
+La única divergencia es la del commit condicional, descrita arriba y esperada.
+
+### Efecto medido sobre el inventario
+
+| Métrica | Tras 1.4b | Tras 1.4c |
+|---|---:|---:|
+| Llamadas a `get_connection()` en `app/` | 129 | 125 |
+| Protegidas con `try/finally` | 94 | 94 |
+| **Sin cierre garantizado** | **33** | **29** |
+| Fugas deterministas | 0 | 0 |
+
+### Verificación
+
+| Comprobación | Resultado |
+|---|---|
+| Pruebas específicas | 8 pasaron en 0,35 s |
+| Compuerta global | Exit 0 |
+| Suite completa | **234** pasaron, 5 warnings conocidos, 1,15 s |
+| Ruff | `All checks passed!` |
+| `pip check` | `No broken requirements found.` |
+| `git diff --check` | Exit 0 |
+
 ## Criterios de cierre de la subcapa 1.0
 
 - La línea base está reproducida desde el commit base con resultados reales.
@@ -1087,17 +1181,68 @@ condiciones, orden y parámetros son idénticos.
   `plantilla_controller.py` con 7 sitios, `notas_controller.py` con 5 y
   `branding_controller.py` con 4. Acordar con el usuario cuál tomar.
 
+### 2026-08-11 — subcapa 1.4c
+
+- Rama acordada: `main`; árbol **limpio** antes de editar, con 1.4b ya
+  commiteada.
+- Commit observado: `b92f16d`, seis commits por delante de `origin/main` conforme
+  a la cadencia local acordada.
+- Archivo elegido por el usuario: `app/controllers/branding_controller.py`.
+- Archivos modificados: ese controlador.
+- Archivo creado: `tests/test_branding_controlador.py`.
+- Sitios migrados: 4 de 4. Es el primer archivo que abandona `get_connection`
+  por completo; el import quedó reducido a `get_cursor`.
+- Contratos HTTP, rutas, payloads, status codes, permisos, tenant, ownership y
+  dependencias modificados: ninguno.
+- SQL: idéntico en tablas, columnas, condiciones y parámetros; solo cambió la
+  indentación de los literales.
+- Caso nuevo: `obtener_branding_controller` confirmaba de forma **condicional**,
+  solo cuando tenía que crear la fila de branding. `get_cursor(commit=True)`
+  confirma siempre.
+- **Diferencia intencional**: en el camino de lectura la versión anterior
+  terminaba la transacción con el `ROLLBACK` implícito de
+  `PooledConnection.close()`; la migrada la termina con `COMMIT`. Sobre una
+  transacción que solo ejecutó `SELECT` son equivalentes. El camino de creación,
+  el único que escribe, conserva su confirmación. Medido contra la versión
+  anterior: lectura `commit=False → True`, creación `commit=True → True`.
+- Alternativa descartada: conservar `get_connection()` con `try/finally` para
+  replicar el condicional literalmente. Es válido según el contrato, pero añade
+  una tercera forma de escribir lo mismo sin reducir ningún riesgo.
+- Orden de efectos preservado: en `subir_logo_controller` y
+  `eliminar_logo_controller`, el borrado del archivo anterior ocurre **después**
+  de cerrar el bloque de base de datos. Fijado en pruebas con la secuencia exacta
+  `['sql', 'sql', 'cierre_bloque', 'delete_file']`.
+- Se conservó sin tocar que `eliminar_logo_controller` invoque `delete_file` aun
+  cuando no había logo previo. Corregirlo sería un asunto ajeno a esta capa.
+- `subir_logo_controller` es `async`; su prueba usa `asyncio.run` y no se añadió
+  `pytest-asyncio` ni ninguna dependencia.
+- Caracterización previa: respuesta, SQL, parámetros y orden de borrado
+  verificados contra la versión anterior en las cuatro funciones.
+- Pruebas específicas: 8 pasaron en 0,35 s.
+- Compuerta global: exit 0; 234 pruebas correctas con los 5 warnings conocidos en
+  1,15 s, Ruff correcto y dependencias íntegras.
+- Efecto medido: sitios sin cierre garantizado de **33 a 29**; llamadas a
+  `get_connection()` en `app/` de 129 a 125. Fugas deterministas: 0.
+- `git diff --check`: exit 0.
+- Alcance final del diff: el controlador, su archivo de pruebas nuevo y esta
+  bitácora.
+- Riesgo residual: quedan 29 sitios, todos de fuga condicional. `pagos`,
+  `ventas` y `estudiantes` siguen reservados para el final.
+- Siguiente acción exacta: continuar con **1.4d**. Candidatos por volumen son
+  `plantilla_controller.py` con 7 sitios, `notas_controller.py` con 5 y
+  `dashboard_controller.py` con 4. Acordar con el usuario cuál tomar.
+
 ## Entrega al próximo chat
 
 - Capa activa: **1, fundación de base de datos**.
-- Última subcapa terminada: **1.4b**, cuarta tanda: las 6 funciones desprotegidas
-  de `asignacion_controller.py`, con la que desaparece la última fuga
-  determinista del código.
-- Primera subcapa pendiente: **1.4c**, siguiente tanda de migración.
-- Progreso: **33 de 50** sitios desprotegidos siguen pendientes, **todos de fuga
+- Última subcapa terminada: **1.4c**, quinta tanda: las 4 funciones de
+  `branding_controller.py`, primer archivo que abandona `get_connection` por
+  completo.
+- Primera subcapa pendiente: **1.4d**, siguiente tanda de migración.
+- Progreso: **29 de 50** sitios desprotegidos siguen pendientes, **todos de fuga
   condicional**: ninguno pierde la conexión sin que antes ocurra una excepción.
 - Candidatos siguientes por volumen: `plantilla_controller.py` con 7 sitios,
-  `notas_controller.py` con 5 y `branding_controller.py` con 4. `pagos`,
+  `notas_controller.py` con 5 y `dashboard_controller.py` con 4. `pagos`,
   `ventas` y `estudiantes` quedan para el final.
 - Orden vigente: primero completar la migración, después los timeouts. Reordenado
   por instrucción explícita del usuario el 2026-08-11.

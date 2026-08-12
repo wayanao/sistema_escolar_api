@@ -38,7 +38,7 @@ def obtener_notificaciones_planeadores(
 
 
 @router.post("/plan-de-clases")
-async def crear_plan_de_clases(
+def crear_plan_de_clases(
     asignacion_id: int = Form(...),
     version_esperada: Optional[int] = Form(None),
     periodo: int = Form(1),
@@ -101,7 +101,7 @@ def obtener_planes_por_asignacion(
 
 
 @router.delete("/plan-de-clases/{plan_id}/imagen")
-async def eliminar_imagen_plan_profesor(
+def eliminar_imagen_plan_profesor(
     plan_id: int,
     slot: str = Query(..., pattern="^(imagen1|imagen2)$"),
     current_user: dict = Depends(get_current_user),
@@ -154,7 +154,7 @@ def obtener_plan_admin(plan_id: int):
 
 
 @router.patch("/admin/plan-de-clases/{plan_id}/revision")
-async def actualizar_revision_plan(
+def actualizar_revision_plan(
     plan_id: int,
     data: PlanRevisionUpdate,
     current_user: dict = Depends(get_current_active_admin),
@@ -163,7 +163,7 @@ async def actualizar_revision_plan(
 
 
 @router.post("/admin/plan-de-clases/{plan_id}/observaciones")
-async def crear_observacion_plan(
+def crear_observacion_plan(
     plan_id: int,
     data: PlanObservacionCreate,
     current_user: dict = Depends(get_current_active_admin),
@@ -185,7 +185,7 @@ def listar_observaciones_plan(
 
 
 @router.patch("/plan-de-clases/{plan_id}/observaciones/{observacion_id}/vista")
-async def marcar_observacion_vista(
+def marcar_observacion_vista(
     plan_id: int,
     observacion_id: int,
     current_user: dict = Depends(get_current_user),
@@ -201,7 +201,7 @@ async def marcar_observacion_vista(
 
 
 @router.delete("/admin/plan-de-clases/{plan_id}/imagen", dependencies=[Depends(get_current_active_admin)])
-async def eliminar_imagen_plan_admin(
+def eliminar_imagen_plan_admin(
     plan_id: int,
     slot: str = Query(..., pattern="^(imagen1|imagen2)$"),
 ):

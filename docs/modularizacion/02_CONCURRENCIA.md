@@ -9,16 +9,18 @@
 - Rama acordada: `main`.
 - Estado al activar: árbol limpio; `HEAD` coincidente con la referencia local
   `origin/main`.
-- Primera subcapa pendiente: **2.4**, caso especial de branding.
+- Primera subcapa pendiente: **2.5**, dependencias async y capacidad compartida.
 - Código de producto modificado al activar: **ninguno**.
 - Código de producto modificado hasta ahora: `app/routes/reportes.py`,
-  `app/routes/dashboard.py` y `app/routes/plan_de_clases.py`; veintitrés handlers
-  sin `await` pasaron de `async def` a `def`, sin cambiar sus cuerpos.
-- Progreso: **2.0, 2.1, 2.2, 2.3a y 2.3b cerradas**. Los cinco reportes, siete
-  lecturas de dashboard y once rutas de plan de clases ya ejecutan sus cuerpos
-  síncronos en el threadpool gobernado por FastAPI; queda un único handler async
-  con una frontera bloqueante en su cuerpo: el caso especial de branding. La
-  dependencia común de autenticación continúa bloqueando el event loop y se
+  `app/routes/dashboard.py`, `app/routes/plan_de_clases.py` y
+  `app/controllers/branding_controller.py`; veintitrés handlers sin `await`
+  pasaron de `async def` a `def`, sin cambiar sus cuerpos, y branding conserva
+  su lectura async mientras envía únicamente storage y DB al threadpool.
+- Progreso: **2.0, 2.1, 2.2, 2.3a, 2.3b y 2.4 cerradas**. Los cinco reportes,
+  siete lecturas de dashboard y once rutas de plan de clases ya ejecutan sus
+  cuerpos síncronos en el threadpool gobernado por FastAPI; branding mantiene
+  su handler async, pero ya no ejecuta storage ni PostgreSQL síncronos en el
+  event loop. La dependencia común de autenticación continúa bloqueándolo y se
   mantiene reservada para 2.5.
 - Autorización: orden explícita del usuario el 2026-08-12, después de cerrar la
   capa 1 y commitear su reconciliación documental.
@@ -114,7 +116,7 @@ el commit base antes de inventariar o medir.
 | 2.2 | Segunda tanda: 7 lecturas de dashboard | **Cerrada** |
 | 2.3a | Tercera tanda: 5 lecturas de plan de clases | **Cerrada** |
 | 2.3b | Cuarta tanda: 6 escrituras o efectos de plan de clases | **Cerrada** |
-| 2.4 | Caso especial de branding: lectura async más storage y DB síncronos | **Pendiente** |
+| 2.4 | Caso especial de branding: lectura async más storage y DB síncronos | **Cerrada** |
 | 2.5 | Dependencias async de usuario y super admin; límite compartido derivado y medido | Pendiente |
 | 2.6 | Medición posterior, compuerta global, staging, rollback y cierre | Pendiente |
 
@@ -655,6 +657,57 @@ archivo.
 5. Ejecutar pruebas específicas, Ruff del alcance, compuerta global y
    `git diff --check`; actualizar esta bitácora y detenerse antes de 2.5.
 
+### Subcapa 2.4: resultado
+
+`subir_logo` y `subir_logo_controller` permanecen `async def`. Se conservaron,
+en el mismo orden, las validaciones de slot, MIME y extensión, la lectura
+`await archivo.read()` y la comprobación posterior del límite de 2 MiB. Solo el
+tramo que empezaba después de esa comprobación se extrajo a
+`_guardar_logo_leido`, helper privado y síncrono del mismo controller, y se
+espera con `starlette.concurrency.run_in_threadpool`.
+
+El helper obtiene `tenant_schema_var` dentro del worker. Por tanto, el mismo
+contexto copiado gobierna la key `branding/<tenant>/...` y el `search_path` que
+aplica `get_cursor`. No se introdujo executor crudo, limitador propio ni opción
+abandonable. La ruta, sus dependencias global y de admin activo, multipart,
+query, payload, status y propagación de excepciones no cambiaron.
+
+Se preservó literalmente el orden observable posterior a la lectura:
+
+1. guardar el archivo nuevo;
+2. formar su URL;
+3. abrir `get_cursor(commit=True)`, leer la URL anterior y actualizar la columna;
+4. salir del bloque, que confirma y libera los recursos;
+5. intentar borrar el archivo anterior solo si existe y es distinto;
+6. devolver el mismo `{"url": ..., "slot": ...}`.
+
+Las pruebas nuevas caracterizan ambos slots, metadata OpenAPI y dependencias,
+validaciones y detalles 400, lectura async, tenant A/B en workers simultáneos,
+orden storage/DB/cleanup, fallos por frontera, ausencia de compensación si DB
+falla y cancelación protegida. Usan dobles y `UploadFile` en memoria: no son una
+petición HTTP end-to-end ni una ejecución contra PostgreSQL o R2 reales.
+
+Resultado verificado:
+
+| Comprobación | Resultado |
+|---|---|
+| Línea base relacionada fuera del sandbox | 17 pasaron, 5 warnings conocidos |
+| Caracterización previa, arnés inicial | 22 pasaron, 2 poscondiciones excluidas |
+| Mismo selector, arnés final | 23 pasaron, 2 poscondiciones excluidas |
+| Específicas finales de branding | 25 pasaron, 1 warning conocido |
+| Específicas ampliadas | 34 pasaron, 5 warnings conocidos |
+| Estabilidad de worker y cancelación | 20 rondas; 40/40 casos correctos |
+| Compuerta global fuera del sandbox | 454 pruebas, 5 warnings conocidos |
+| Ruff | `All checks passed!` |
+| `pip check` | `No broken requirements found.` |
+
+### Siguiente subcapa: 2.5, trabajo exacto
+
+Caracterizar y migrar únicamente la DB síncrona de las dependencias async de
+usuario y super admin, conservando la fijación del tenant en la tarea llamadora,
+y derivar con medición una capacidad de threads segura frente al pool de
+conexiones. No iniciar la medición final ni el cierre 2.6 en el mismo turno.
+
 ## Criterios de cierre de la subcapa 2.0
 
 - Cada frontera relevante entre petición asíncrona y DB síncrona está localizada
@@ -745,6 +798,12 @@ archivo.
   antes del UPSERT y limpia los nuevos best-effort ante error; eliminar confirma
   primero la mutación DB y luego intenta borrar el archivo. Rediseñar esa
   consistencia pertenece a otra decisión funcional, no a concurrencia.
+- Branding conserva su frontera async real: validar y esperar
+  `UploadFile.read()`. Solo bytes y metadatos ya leídos cruzan mediante
+  `run_in_threadpool` a un helper privado local; allí se obtiene el tenant y se
+  ejecutan storage, DB y borrado. Convertir toda la ruta a `def`, pasar el
+  `UploadFile` al worker o crear una abstracción compartida cambiaría una
+  frontera que no necesita rediseño.
 - La lectura de 2.0 se amplió solo a cinco funciones de `tenant_status.py` y
   `super_admin.py` descubiertas como dependencias HTTP opacas. No se leyó el
   resto de esos dominios.
@@ -807,6 +866,17 @@ archivo.
   worker porque la cancelación protegida espera cleanup. Es la semántica elegida
   para no abandonar conexiones o archivos vivos y no una garantía de cancelación
   de la mutación.
+- En branding, el archivo completo se mantiene en memoria antes de comprobar
+  2 MiB y `content_type` sigue siendo metadata del cliente. Storage precede a
+  DB: si falla la transacción, el objeto nuevo puede quedar huérfano; si falta
+  la fila de branding, el UPDATE puede no referenciarlo; cargas concurrentes al
+  mismo slot tampoco se serializan. El borrado anterior continúa best-effort.
+  Son riesgos preexistentes conservados por 2.4, no correcciones omitidas del
+  offload.
+- Después de 2.4 ya no queda storage o DB síncrona sin offload en los cuerpos
+  async inventariados. Los 137 handlers que atraviesan autenticación async
+  siguen expuestos al bloqueo común hasta 2.5; 2.4 no se presenta como solución
+  completa de la request.
 
 ## Registro de ejecución
 
@@ -1125,24 +1195,108 @@ archivo.
 - Siguiente acción exacta: ejecutar **2.4**, caracterizando y migrando solo el
   tramo síncrono de storage y DB de branding y deteniéndose antes de 2.5.
 
+### 2026-08-12 — subcapa 2.4
+
+- Modo de acceso: mismo checkout local; rama `main` y árbol limpio antes de
+  editar.
+- Commit observado: `d82c78fda482d3b5b91575780e0b5747a1ea9a4e`, seis
+  commits locales por delante de `origin/main` y del base de la capa.
+- Continuidad: `b24cb8d` es ancestro; `c6483e4`, `e6301d0`, `d2f7c9d`,
+  `b7d7c57`, `297aac6` y `d82c78f` corresponden respectivamente a activación,
+  2.0, 2.1, 2.2, 2.3a y 2.3b. Sus archivos y resultados están explicados en
+  esta bitácora; no había cambios pendientes ni divergencia antes de iniciar
+  2.4.
+- Código de producto: solo `app/controllers/branding_controller.py`. La ruta y
+  el controller permanecen async; las validaciones, `await archivo.read()` y el
+  límite siguen en la tarea llamadora. Se extrajo únicamente la cola síncrona a
+  `_guardar_logo_leido` y se la espera con
+  `starlette.concurrency.run_in_threadpool`.
+- Contratos conservados: `POST /branding/logo`, multipart, query, dependencias
+  de usuario y admin activo, tenant, ambos slots y columnas, payload, status y
+  detalles, SQL, parámetros, `commit`/`rollback`, orden storage/DB/borrado y
+  propagación de errores.
+- Fuera del cambio: `app/routes/branding.py`, storage compartido,
+  autenticación, super admin, pool, limitador, configuración, dependencias y
+  2.5. No se usó executor crudo ni cancelación abandonable.
+- Pruebas: se creó `tests/test_branding_upload_boundary.py`; se conservaron
+  `tests/test_branding_controlador.py`, `tests/test_uploads_permissions.py` y el
+  contrato concurrente tenant/cancelación de 2.1.
+- Archivos modificados: `app/controllers/branding_controller.py`,
+  `tests/test_branding_upload_boundary.py` y esta bitácora.
+- Comandos ejecutados:
+  - línea base relacionada, dentro y fuera del sandbox:
+    `.\venv\Scripts\python.exe -m pytest -p no:cacheprovider -q tests/test_branding_controlador.py tests/test_uploads_permissions.py tests/test_tenant_context_concurrency.py`;
+  - caracterización previa al cambio:
+    `.\venv\Scripts\python.exe -m pytest -p no:cacheprovider -q tests/test_branding_upload_boundary.py tests/test_branding_controlador.py -k "not real_workers and not worker_cancellation"`;
+  - específicas finales:
+    `.\venv\Scripts\python.exe -m pytest -p no:cacheprovider -q tests/test_branding_upload_boundary.py tests/test_branding_controlador.py`;
+  - conteo de la caracterización nueva:
+    `.\venv\Scripts\python.exe -m pytest -p no:cacheprovider --collect-only -q tests/test_branding_upload_boundary.py`;
+  - específicas ampliadas, fuera del sandbox:
+    `.\venv\Scripts\python.exe -m pytest -p no:cacheprovider -q tests/test_branding_upload_boundary.py tests/test_branding_controlador.py tests/test_uploads_permissions.py tests/test_tenant_context_concurrency.py`;
+  - estabilidad de las fronteras sensibles:
+    `$testRuns = 1..20; foreach ($testRun in $testRuns) { .\venv\Scripts\python.exe -m pytest -p no:cacheprovider -q tests/test_branding_upload_boundary.py::test_upload_sync_tail_runs_in_real_workers_with_isolated_tenants tests/test_branding_upload_boundary.py::test_upload_worker_cancellation_waits_for_db_and_cleanup; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } }`;
+  - lint del alcance:
+    `.\venv\Scripts\python.exe -m ruff check app/controllers/branding_controller.py tests/test_branding_upload_boundary.py tests/test_branding_controlador.py`;
+  - compuerta global, que también ejecuta Ruff y `pip check`, fuera del sandbox:
+    `.\venv\Scripts\python.exe scripts\verify.py`;
+  - estructura y alcance: AST en memoria con `ast.parse`,
+    `git diff -- app/controllers/branding_controller.py`,
+    `git diff -- app/routes/branding.py`, `git status --short --branch`,
+    `git diff --name-only -- app`, `git diff --check` y
+    `git diff --no-index --check -- NUL tests/test_branding_upload_boundary.py`.
+- Línea base dentro del sandbox: 11 pasaron y seis errores de setup de uploads
+  por el `WinError 5` conocido; repetición fuera: **17 pasaron**, 5 warnings
+  conocidos. La caracterización previa sobre la versión inicial del arnés dio
+  **22 pasadas**, con las dos poscondiciones de worker/cancelación excluidas
+  antes del cambio. Después se añadió el caso del slot secundario; en el árbol
+  final el mismo selector reproduce **23 pasadas y 2 deseleccionadas**.
+- Verificación final: **17 casos nuevos**; junto con los ocho regresores de
+  branding, **25 pasaron**. El conjunto ampliado terminó con **34 pasadas** y 5
+  warnings conocidos. Las dos pruebas de scheduling completaron 20 rondas,
+  **40/40 casos correctos**.
+- Compuerta global fuera del sandbox: **exit 0**, 454 pruebas, 5 warnings
+  conocidos, Ruff correcto y dependencias íntegras.
+- Auditoría estructural: la ruta y el controller continúan
+  `AsyncFunctionDef`; la ruta espera al controller y el controller conserva
+  exactamente dos `await`: la lectura y el único `run_in_threadpool`. El helper
+  es `FunctionDef`, obtiene el tenant dentro del worker y contiene la cola
+  anterior sin cambiar su orden. Bajo `app/` solo cambió el controller
+  autorizado.
+- `git diff --check`: exit 0; solo avisos informativos LF→CRLF para los archivos
+  rastreados modificados. La comprobación `--no-index` del test nuevo terminó en
+  exit 1 porque difiere de `NUL`, como es esperado, sin errores de whitespace.
+- Las pruebas son herméticas con dobles y un `UploadFile` en memoria; no se
+  presentan como HTTP end-to-end ni como commit PostgreSQL o acceso R2 reales.
+- Riesgos residuales: archivo completo antes del límite, storage/DB no atómicos,
+  posible objeto nuevo huérfano, borrado anterior best-effort, carrera entre
+  uploads, cancelación protegida que puede completar tras una desconexión y
+  relación 40 workers/10 conexiones pendiente para 2.5.
+- Estado: **2.4 cerrada**. No se inició 2.5.
+- Siguiente acción exacta: ejecutar **2.5**, caracterizando y migrando solo la
+  DB síncrona de las dependencias async de usuario/super admin y derivando una
+  capacidad segura frente al pool; detenerse antes de 2.6.
+
 ## Entrega al próximo chat
 
 - Capa activa: **2, concurrencia**.
-- Última subcapa terminada: **2.3b**, seis escrituras o efectos de plan de
-  clases.
-- Primera subcapa pendiente: **2.4**, caso especial de branding.
-- Hallazgo central: 137/139 handlers bloquean hoy el event loop durante una
-  dependencia DB async; después de 2.3b, solo branding vuelve a bloquearlo en su
-  cuerpo. Reportes, dashboard y los once endpoints de plan de clases ya no
-  forman parte de ese segundo grupo.
-- Verificación vigente: compuerta en exit 0 con 437 pruebas, Ruff y dependencias
-  correctos; 108 pruebas específicas ampliadas de 2.3b correctas.
-- Bloqueos: ninguno para 2.4. La calibración operativa heredada de
+- Última subcapa terminada: **2.4**, caso especial de branding.
+- Primera subcapa pendiente: **2.5**, dependencias async de usuario/super admin
+  y capacidad compartida derivada con medición.
+- Hallazgo central: 137/139 handlers todavía bloquean el event loop durante una
+  dependencia DB async. Después de 2.4 ya no queda storage o DB síncrona sin
+  offload dentro de los cuerpos async inventariados; reportes, dashboard, plan
+  de clases y branding dejaron de formar ese segundo grupo.
+- Verificación vigente: compuerta en exit 0 con 454 pruebas, Ruff y dependencias
+  correctos; 34 pruebas específicas ampliadas de 2.4 correctas y 40/40 casos de
+  estabilidad del worker/cancelación.
+- Bloqueos: ninguno para 2.5. La calibración operativa heredada de
   `DB_STATEMENT_TIMEOUT_MS` continúa pendiente y no debe marcarse como cumplida.
 - Nota de continuidad: el `README.md` conserva la frase de activación «2.0
   pendiente» porque 2.0 solo podía modificar esta bitácora. La tabla maestra
   sigue siendo correcta —capa 2 activa— y **esta bitácora gobierna la subcapa
-  vigente: 2.4**; no es una segunda capa activa ni una divergencia de Git.
-- Siguiente acción exacta: ejecutar 2.4 con pruebas antes del cambio, migrar solo
-  el tramo síncrono de storage y DB de branding, verificar y detenerse antes de
-  2.5.
+  vigente: 2.5**; no es una segunda capa activa ni una divergencia de Git.
+- Siguiente acción exacta: ejecutar 2.5 con pruebas antes del cambio, conservar
+  la fijación del tenant en la tarea llamadora, migrar solo las consultas sync de
+  autenticación mediante la primitiva estándar, derivar el límite con medición
+  y detenerse antes de 2.6.

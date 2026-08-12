@@ -3,6 +3,7 @@ import uuid
 from pathlib import Path
 
 from fastapi import HTTPException, UploadFile, status
+from starlette.concurrency import run_in_threadpool
 
 from app.database import get_cursor
 from app.globals import tenant_schema_var
@@ -87,6 +88,36 @@ def actualizar_branding_controller(data):
     return obtener_branding_controller()
 
 
+def _guardar_logo_leido(contenido: bytes, content_type: str | None, slot: str, ext: str):
+    schema = tenant_schema_var.get()
+    nombre_archivo = f"logo_{slot}_{uuid.uuid4().hex}{ext}"
+    key = f"branding/{schema}/{nombre_archivo}"
+    save_bytes(key, contenido, content_type)
+
+    nueva_url = storage_url_for_key(key)
+    columna = "logo_principal_url" if slot == "principal" else "logo_secundario_url"
+
+    with get_cursor(commit=True) as cursor:
+        cursor.execute(f"""
+            SELECT {columna} FROM institucion_branding
+            ORDER BY id ASC LIMIT 1
+        """)
+        row = cursor.fetchone()
+        url_anterior = row[0] if row else None
+
+        cursor.execute(f"""
+            UPDATE institucion_branding
+            SET {columna} = %s,
+                actualizado_en = CURRENT_TIMESTAMP
+            WHERE id = (SELECT id FROM institucion_branding ORDER BY id ASC LIMIT 1)
+        """, (nueva_url,))
+
+    if url_anterior and url_anterior != nueva_url:
+        delete_file(url_anterior)
+
+    return {"url": nueva_url, "slot": slot}
+
+
 async def subir_logo_controller(archivo: UploadFile, slot: str):
     if slot not in {"principal", "secundario"}:
         raise HTTPException(
@@ -114,33 +145,13 @@ async def subir_logo_controller(archivo: UploadFile, slot: str):
             detail=f"Archivo demasiado grande (max {MAX_LOGO_BYTES // 1024}KB)"
         )
 
-    schema = tenant_schema_var.get()
-    nombre_archivo = f"logo_{slot}_{uuid.uuid4().hex}{ext}"
-    key = f"branding/{schema}/{nombre_archivo}"
-    save_bytes(key, contenido, archivo.content_type)
-
-    nueva_url = storage_url_for_key(key)
-    columna = "logo_principal_url" if slot == "principal" else "logo_secundario_url"
-
-    with get_cursor(commit=True) as cursor:
-        cursor.execute(f"""
-            SELECT {columna} FROM institucion_branding
-            ORDER BY id ASC LIMIT 1
-        """)
-        row = cursor.fetchone()
-        url_anterior = row[0] if row else None
-
-        cursor.execute(f"""
-            UPDATE institucion_branding
-            SET {columna} = %s,
-                actualizado_en = CURRENT_TIMESTAMP
-            WHERE id = (SELECT id FROM institucion_branding ORDER BY id ASC LIMIT 1)
-        """, (nueva_url,))
-
-    if url_anterior and url_anterior != nueva_url:
-        delete_file(url_anterior)
-
-    return {"url": nueva_url, "slot": slot}
+    return await run_in_threadpool(
+        _guardar_logo_leido,
+        contenido,
+        archivo.content_type,
+        slot,
+        ext,
+    )
 
 
 def eliminar_logo_controller(slot: str):

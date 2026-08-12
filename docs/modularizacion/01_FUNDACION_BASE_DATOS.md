@@ -1,6 +1,6 @@
 # Capa 1: fundación de base de datos
 
-Última revisión: 2026-08-11.
+Última revisión: 2026-08-12.
 
 ## Control
 
@@ -9,7 +9,7 @@
 - Commit base: `6754e4aad59c1e428ea97d31fe8e96fdbba7694d`.
 - Rama acordada: `main`.
 - Estado al activar: árbol limpio; `main` sincronizada con `origin/main`.
-- Primera subcapa pendiente: **1.6**, el cierre de la capa.
+- Subcapas pendientes: **ninguna**. La última fue 1.6 y está cerrada.
 - Código de producto modificado hasta ahora: **los 50 sitios desprotegidos**,
   repartidos en quince tandas, desde los servicios de validación (1.2) hasta
   estudiantes (1.4m), más los timeouts y el pool en 1.5. Sin cambio de
@@ -18,7 +18,11 @@
   documentados en su subcapa.
 - Progreso de la capa: **0 sitios** sin cierre garantizado, de 50 iniciales.
   **Cero fugas deterministas.** Ninguna ruta abre conexiones. Timeouts definidos
-  y comportamiento del pool medido. Falta únicamente el cierre 1.6.
+  y comportamiento del pool medido. El trabajo planificado de la capa está
+  completo.
+- Historial final: 19 commits posteriores al base, todos explicados en esta
+  bitácora. La auditoría de cierre se realizó cuando 17 estaban commiteados y
+  los cambios finales aún permanecían en el árbol de trabajo.
 - Verificación pendiente registrada en 1.5: calibrar `DB_STATEMENT_TIMEOUT_MS`
   contra los tiempos reales de las consultas pesadas. No darla por cumplida.
 - Autorización: orden explícita del usuario el 2026-08-11, después de cerrar la
@@ -1827,6 +1831,11 @@ Rango auditado: `6754e4aad59c1e428ea97d31fe8e96fdbba7694d` hasta el árbol de
 trabajo. **17 commits**, cada uno correspondiente a una subcapa registrada en
 este documento, sin ninguno inexplicado.
 
+El conteo de 17 es el registro histórico de esa auditoría: los cambios finales
+de 1.5 y 1.6 seguían entonces en el árbol de trabajo. Al materializarlos después
+en `17692af` y `ce9446c`, el historial final pasó a 19 commits posteriores al
+base, todos explicados en esta bitácora.
+
 **Categorías prohibidas: ninguna tocada.** El diff no contiene `migrations/`,
 `requirements.txt`, `.github/`, archivos `.sql`, `apply_migration.py` ni
 `scripts/verify.py`.
@@ -3064,22 +3073,46 @@ medición.**
 - Siguiente acción exacta: el usuario commitea 1.5 y este cierre, y publica. La
   capa 2, concurrencia, **queda en espera** y no se activa sin orden explícita.
 
+### 2026-08-12 — reconciliación documental posterior al cierre
+
+- Autorización del usuario: corregir exclusivamente la documentación
+  desactualizada, sin activar la capa 2.
+- Rama acordada: `main`; árbol limpio antes de editar; `HEAD` en `ce9446c`,
+  coincidente con la referencia local `origin/main`.
+- Verificación del historial: 19 commits posteriores al base, todos explicados.
+  Los 17 registrados durante 1.6 eran el conteo correcto antes de materializar
+  los dos commits finales.
+- Correcciones: estado de subcapas pendiente, conteo vigente de commits,
+  crecimiento total de la suite y duplicaciones del bloque de entrega.
+- Registros históricos conservados: la auditoría sigue indicando los 17 commits
+  que existían en ese momento y ahora explica su relación con los 19 finales.
+- La calibración de `DB_STATEMENT_TIMEOUT_MS` continúa pendiente y aceptada; no
+  se marcó como cumplida.
+- Archivos modificados: esta bitácora y `docs/modularizacion/README.md`.
+- Código, pruebas, configuración y capa activa modificados: ninguno.
+- Verificación: `git diff --check` en exit 0; búsqueda de las frases obsoletas
+  sin resultados; diff limitado a los dos archivos documentales. No se ejecutó
+  la suite porque no cambió código, pruebas ni configuración ejecutable.
+
 ## Entrega al próximo chat
 
 - Capa activa: **ninguna**. La capa 1 quedó **cerrada** el 2026-08-11.
 - Última subcapa terminada: **1.6**, el cierre. Compuerta global en exit 0,
-  auditoría del diff de 17 commits sin hallazgos de alcance, staging, rollback y
-  verificación manual documentados.
+  auditoría sin hallazgos de alcance, staging, rollback y verificación manual
+  documentados. En la auditoría había 17 commits y los cambios finales en el
+  árbol; el historial materializado quedó en 19 commits, todos explicados.
 - Resultado de la capa: las 50 aperturas sin cierre garantizado llegaron a **0**,
   las 2 fugas deterministas a **0**, ninguna ruta abre conexiones, hay 4 timeouts
   donde antes no había ninguno, y la suite pasó de 192 a **334** pruebas.
 - Siguiente capa: **2, concurrencia**. En espera. No activarla sin orden
   explícita del usuario.
 - **Verificación operativa pendiente y aceptada**: calibrar
-  `DB_STATEMENT_TIMEOUT_MS` contra la duración real de las consultas pesadas. El
-  usuario la aceptó como pendiente para no bloquear el cierre. **No marcarla como
-  cumplida.** Si aparece `canceling statement due to statement timeout` en los
-  logs, el valor está mal calibrado, no el código.
+  `DB_STATEMENT_TIMEOUT_MS` contra la duración real de las consultas pesadas
+  —boletines, planillas y reportes financieros— sobre datos comparables a
+  producción. No puede resolverse con pruebas herméticas. El usuario la aceptó
+  como pendiente para no bloquear el cierre. **No marcarla como cumplida.** Si
+  aparece `canceling statement due to statement timeout` en los logs, el valor
+  está mal calibrado, no el código.
 - Hallazgo de la auditoría de 1.6, ya **corregido** con autorización del usuario:
   `.env.example` no documentaba los cuatro ajustes de timeout. Ahora los incluye,
   con sus valores coincidiendo con los defaults de `app/config.py`.
@@ -3088,22 +3121,13 @@ medición.**
   verificación que distingue un endpoint agrupado de uno directo.
 - Lección registrada en 1.5: un cambio en la creación del pool o en la
   preparación de la conexión **no se puede dar por verificado solo con pruebas
-  herméticas**.
-- Lección registrada en 1.5: un cambio en la creación del pool o en la
-  preparación de la conexión **no se puede dar por verificado solo con pruebas
   herméticas**. La diferencia entre endpoint agrupado y directo solo existe en
   una conexión real.
 - Estado de la migración: **completa**. Los 50 sitios sin cierre garantizado
-  llegaron a cero en quince tandas, con 136 pruebas nuevas y sin regresiones.
-  Ninguna ruta abre conexiones.
+  llegaron a cero en quince tandas y sin regresiones. Durante la capa, la suite
+  completa creció en **142 pruebas**, de 192 a 334. Ninguna ruta abre conexiones.
 - Timeouts: antes no existía ninguno. Ahora hay cuatro configurables por entorno,
   con 0 como «no opines» en vez de «sin límite».
-- **Verificación pendiente que 1.6 debe tratar explícitamente**: calibrar
-  `DB_STATEMENT_TIMEOUT_MS` contra la duración real de las consultas pesadas
-  —boletines, planillas, reportes financieros—. No puede resolverse con pruebas
-  herméticas. Debe decidirse si se completa o se acepta como pendiente
-  registrada, como se hizo con la CI remota al cerrar la capa 0. **No darla por
-  cumplida.**
 - Riesgo vivo asociado: `statement_timeout` en 30 s es el único ajuste capaz de
   romper algo que hoy funciona. Mitigación sin tocar código: subir el valor en el
   `.env` o ponerlo en 0.

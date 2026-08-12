@@ -1,6 +1,6 @@
 # Guía maestra de evolución segura del backend
 
-Última revisión: 2026-08-11.
+Última revisión: 2026-08-12.
 
 ## Propósito
 
@@ -195,8 +195,9 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   otro conjunto de reglas por defecto. Se corrigió con el tope
   `ruff>=0.5.0,<0.16` y el run sobre `b20dcbe` terminó **correctamente**.
 - Capa 1 **cerrada** el 2026-08-11. Commit base:
-  `6754e4aad59c1e428ea97d31fe8e96fdbba7694d`; 17 commits, todos explicados en su
-  bitácora.
+  `6754e4aad59c1e428ea97d31fe8e96fdbba7694d`; historial final de 19 commits,
+  todos explicados en su bitácora. La auditoría de cierre se ejecutó cuando 17
+  estaban commiteados y los cambios finales aún permanecían en el árbol.
 - Resultado de la capa 1: las 50 aperturas de conexión sin cierre garantizado
   llegaron a **0**, incluidas 2 que fugaban en un camino normal; ninguna ruta
   abre conexiones; hay 4 timeouts donde antes no existía ninguno; la suite pasó

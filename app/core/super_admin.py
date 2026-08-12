@@ -1,6 +1,7 @@
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
+from starlette.concurrency import run_in_threadpool
 
 from app.config import settings
 from app.database import get_connection
@@ -104,7 +105,7 @@ async def get_current_super_admin(
             raise credentials_exception
 
         user_id_int = int(user_id)
-        validate_super_admin(user_id_int)
+        await run_in_threadpool(validate_super_admin, user_id_int)
     except (JWTError, ValueError):
         raise credentials_exception
 

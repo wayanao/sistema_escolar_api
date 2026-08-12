@@ -9,19 +9,22 @@
 - Rama acordada: `main`.
 - Estado al activar: árbol limpio; `HEAD` coincidente con la referencia local
   `origin/main`.
-- Primera subcapa pendiente: **2.5**, dependencias async y capacidad compartida.
+- Primera subcapa pendiente: **2.6**, medición final y cierre de la capa.
 - Código de producto modificado al activar: **ninguno**.
 - Código de producto modificado hasta ahora: `app/routes/reportes.py`,
   `app/routes/dashboard.py`, `app/routes/plan_de_clases.py` y
-  `app/controllers/branding_controller.py`; veintitrés handlers sin `await`
+  `app/controllers/branding_controller.py`, además de `app/dependencies.py`,
+  `app/core/super_admin.py` y `app/main.py`; veintitrés handlers sin `await`
   pasaron de `async def` a `def`, sin cambiar sus cuerpos, y branding conserva
   su lectura async mientras envía únicamente storage y DB al threadpool.
-- Progreso: **2.0, 2.1, 2.2, 2.3a, 2.3b y 2.4 cerradas**. Los cinco reportes,
+- Progreso: **2.0, 2.1, 2.2, 2.3a, 2.3b, 2.4 y 2.5 cerradas**. Los cinco reportes,
   siete lecturas de dashboard y once rutas de plan de clases ya ejecutan sus
   cuerpos síncronos en el threadpool gobernado por FastAPI; branding mantiene
   su handler async, pero ya no ejecuta storage ni PostgreSQL síncronos en el
-  event loop. La dependencia común de autenticación continúa bloqueándolo y se
-  mantiene reservada para 2.5.
+  event loop. Las consultas de las dependencias async de usuario y super admin
+  ya usan el offload estándar; el limitador compartido queda en cinco workers
+  para el pool actual de diez conexiones, conforme al pico medido de dos
+  conexiones retenidas por worker.
 - Autorización: orden explícita del usuario el 2026-08-12, después de cerrar la
   capa 1 y commitear su reconciliación documental.
 
@@ -117,7 +120,7 @@ el commit base antes de inventariar o medir.
 | 2.3a | Tercera tanda: 5 lecturas de plan de clases | **Cerrada** |
 | 2.3b | Cuarta tanda: 6 escrituras o efectos de plan de clases | **Cerrada** |
 | 2.4 | Caso especial de branding: lectura async más storage y DB síncronos | **Cerrada** |
-| 2.5 | Dependencias async de usuario y super admin; límite compartido derivado y medido | Pendiente |
+| 2.5 | Dependencias async de usuario y super admin; límite compartido derivado y medido | **Cerrada** |
 | 2.6 | Medición posterior, compuerta global, staging, rollback y cierre | Pendiente |
 
 El inventario de 2.0 reemplaza el desglose provisional de la activación. Las
@@ -708,6 +711,81 @@ usuario y super admin, conservando la fijación del tenant en la tarea llamadora
 y derivar con medición una capacidad de threads segura frente al pool de
 conexiones. No iniciar la medición final ni el cierre 2.6 en el mismo turno.
 
+### Subcapa 2.5: resultado
+
+`get_current_user` conserva su envoltura async, la prioridad Bearer/cookie y la
+validación JWT. Solo sus dos tramos síncronos de DB cruzan por separado con
+`starlette.concurrency.run_in_threadpool`: primero el estado público del tenant;
+después, tras fijar `tenant_schema_var` en la tarea llamadora, la revalidación
+del usuario dentro del schema tenant. Esta separación es obligatoria porque una
+mutación del `ContextVar` hecha en un worker no regresa al caller. La dependencia
+de super admin también permanece async y envía únicamente
+`validate_super_admin` al mismo offload estándar; su contexto `public` se fija y
+restaura dentro del worker.
+
+El inventario completo de los caminos HTTP registrados encontró un máximo
+estático `H=2` conexiones simultáneas retenidas por un worker. Los dos casos son
+`PUT /tipos-pagos/{id}/cursos` y
+`PUT /estudiantes/{estudiante_id}/valores-pago-personalizados/{tipo_pago_id}`:
+cada controller conserva la conexión exterior hasta evaluar una lectura final
+que abre la segunda. No se corrigieron esos controllers porque sus contratos y
+transacciones pertenecen a otro dominio. No se encontró un camino HTTP con tres
+checkouts solapados, un generador que retenga DB ni un consumidor HTTP de DB
+fuera del limitador compartido después de los tres offloads; la reserva HTTP
+actual es por ello `R=0`.
+
+La capacidad se deriva antes del `yield` del `lifespan` como
+`T=floor((DB_POOL_MAX_CONNECTIONS-R)/H)`. Con el pool actual, `T=floor(10/2)=5`.
+Se configura el limitador por defecto de AnyIO que comparten FastAPI, Starlette
+y los offloads explícitos; no se creó un limitador privado. Un pool menor de dos
+conexiones hace fallar el arranque porque no puede sostener el pico observado.
+La garantía cubre las rutas registradas del proceso y su event loop. Llamadas
+directas desde threads/scripts, varios event loops que compartan el mismo pool,
+plugins o futuros consumidores background requieren reauditar `H` y `R`.
+
+La prueba con `ThreadedConnectionPool` real y conexiones falsas confirmó dos
+oleadas de cinco workers, dos leases por worker, pico diez, cero `PoolError` y
+cero leases finales. El control con seis tokens reprodujo exactamente dos
+`PoolError`. El mismo limitador también acota a cinco los trabajos sync sin DB,
+incluidos potencialmente `UploadFile`, `FileResponse` y storage: evita competir
+sin límite por DB, pero puede aumentar su tiempo de cola bajo carga y queda como
+riesgo operativo a observar en staging.
+
+La auditoría del runtime corrigió una omisión histórica de 2.0: existe
+`GET /uploads/{file_path:path}` en `app/main.py`. El estado actual correcto es
+**140 APIRoutes**, 139 sync y una async (`/branding/logo`); 134 atraviesan
+`get_current_user`, cuatro `get_current_super_admin`, y solo login/logout quedan
+fuera. Por tanto eran 138/140, no 137/139, los caminos con el bloqueo común de
+autenticación antes de 2.5. Los números de 2.0 se conservan como registro de la
+auditoría histórica y esta entrada los reconcilia sin reescribirla.
+
+El arnés nuevo `scripts/measure_auth_concurrency.py` usa JWT real y dobles solo
+para las dos operaciones DB. Antes del cambio reprodujo cinco rondas con mediana
+total 223,811 ms, heartbeat retrasado 203,777 ms, solapamiento máximo uno y
+ambas fronteras en el event loop. Después del cambio, el mismo arnés dio mediana
+103,909 ms, retraso 6,667 ms, solapamiento dos y ambas fronteras en workers,
+con tenants A/B y contexto exterior restaurados. Este par es evidencia dirigida
+de 2.5; no se equipara a la línea base de 2.0, que usó un arnés distinto. La
+medición final de cierre y su interpretación permanecen reservadas para 2.6.
+
+| Comprobación | Resultado |
+|---|---|
+| Línea base existente dirigida | 58 pasaron, 5 warnings conocidos |
+| Caracterización previa de contratos y pico anidado | 6 pasaron, 5 warnings conocidos |
+| Pruebas nuevas finales | 23 pasaron, 5 warnings conocidos |
+| Conjunto dirigido ampliado | 81 pasaron, 5 warnings conocidos |
+| Estabilidad concurrente y capacidad | 10 rondas; 60/60 casos correctos antes del último caso Bearer |
+| Compuerta global final fuera del sandbox | 477 pruebas, 5 warnings conocidos |
+| Ruff | `All checks passed!` |
+| `pip check` | `No broken requirements found.` |
+
+### Siguiente subcapa: 2.6, trabajo exacto
+
+Ejecutar únicamente la medición posterior formal y el cierre de capa: repetir y
+analizar el procedimiento reproducible acordado, ejecutar la compuerta global,
+documentar staging, rollback y verificación manual, actualizar el índice maestro
+y dejar la capa 3 en espera. No activar la capa 3 ni implementar trabajo suyo.
+
 ## Criterios de cierre de la subcapa 2.0
 
 - Cada frontera relevante entre petición asíncrona y DB síncrona está localizada
@@ -809,6 +887,16 @@ conexiones. No iniciar la medición final ni el cierre 2.6 en el mismo turno.
   resto de esos dominios.
 - La calibración pendiente de `DB_STATEMENT_TIMEOUT_MS` permanece registrada en
   la capa 1 y no se da por cumplida al activar esta capa.
+- En 2.5 se preserva `get_current_user` como coroutine y se usan dos offloads
+  separados. El `set(tenant)` debe ocurrir en el caller entre ambos; agrupar el
+  chequeo público, la mutación y la validación en un solo worker rompería cookie.
+- El limitador por defecto compartido se deriva con `H=2`, `R=0` y el máximo
+  configurado del pool: `floor(maxconn/2)`. La invariante procede del inventario
+  completo de rutas HTTP y debe reauditarse si cambia una cadena DB, aparece un
+  consumidor fuera de AnyIO o se comparte el pool entre varios event loops.
+- Se limita el threadpool común, no solo DB, porque únicamente esa frontera
+  gobierna tanto handlers `def` como los offloads explícitos. Un limitador DB
+  privado no habría protegido los handlers sync que comparten el mismo pool.
 
 ## Riesgos
 
@@ -877,6 +965,20 @@ conexiones. No iniciar la medición final ni el cierre 2.6 en el mismo turno.
   async inventariados. Los 137 handlers que atraviesan autenticación async
   siguen expuestos al bloqueo común hasta 2.5; 2.4 no se presenta como solución
   completa de la request.
+- Después de 2.5, la DB síncrona de autenticación ya no bloquea el event loop,
+  pero hasta cinco workers pueden quedar esperando consultas o storage. La
+  cancelación continúa protegida y una desconexión puede dejar completar el
+  trabajo antes de liberar la conexión.
+- El techo `H=2` y la reserva `R=0` son invariantes del inventario HTTP actual,
+  no una garantía universal para llamadas directas, scripts, plugins, nuevos
+  background jobs o varios event loops que compartan el pool. Cualquiera de
+  esos cambios exige recalcular la capacidad antes de desplegarlo.
+- Reducir el limitador compartido de 40 a 5 también serializa trabajo sync sin
+  DB, como lectura de archivos, multipart y storage. El test confirma el límite;
+  el impacto de cola bajo carga real debe observarse en staging.
+- `DB_POOL_MAX_CONNECTIONS=1` deja de ser una configuración arrancable porque
+  no soporta los dos leases simultáneos observados. Este fallo temprano evita
+  publicar una capacidad que no puede ser segura.
 
 ## Registro de ejecución
 
@@ -1277,26 +1379,116 @@ conexiones. No iniciar la medición final ni el cierre 2.6 en el mismo turno.
   DB síncrona de las dependencias async de usuario/super admin y derivando una
   capacidad segura frente al pool; detenerse antes de 2.6.
 
+### 2026-08-12 — subcapa 2.5
+
+- Modo de acceso: mismo checkout local; rama `main` y árbol limpio antes de
+  editar.
+- Commit observado: `794bc7022c141b93e6f79b15390cb975d656b8b8`, siete
+  commits locales por delante de `origin/main` y del base de la capa.
+- Continuidad: `b24cb8d` es ancestro; `c6483e4`, `e6301d0`, `d2f7c9d`,
+  `b7d7c57`, `297aac6`, `d82c78f` y `794bc70` corresponden a activación,
+  2.0, 2.1, 2.2, 2.3a, 2.3b y 2.4. Sus alcances están explicados en esta
+  bitácora; no había cambios pendientes ni divergencia antes de iniciar 2.5.
+- Código de producto: únicamente `app/dependencies.py`,
+  `app/core/super_admin.py` y `app/main.py`. Se añadieron dos offloads separados
+  en usuario, uno en super admin y la capacidad del limitador compartido antes
+  del `yield` del lifespan. No cambió ningún helper SQL, pool, timeout, ruta,
+  controller, payload, status, permiso, tenant, transacción ni storage.
+- Pruebas y medición: se crearon `tests/test_auth_threadpool.py`,
+  `tests/test_threadpool_capacity.py` y
+  `scripts/measure_auth_concurrency.py`. Son herméticos, usan conexiones falsas
+  con un `ThreadedConnectionPool` real donde corresponde, y no acceden a red,
+  PostgreSQL, R2 ni producción.
+- Archivos modificados: `app/dependencies.py`, `app/core/super_admin.py`,
+  `app/main.py`, `scripts/measure_auth_concurrency.py`,
+  `tests/test_auth_threadpool.py`, `tests/test_threadpool_capacity.py` y esta
+  bitácora.
+- Comandos ejecutados:
+  - precondiciones y continuidad: `git status --short --branch`,
+    `git branch --show-current`, `git rev-parse HEAD`,
+    `git rev-list --left-right --count origin/main...HEAD`,
+    `git merge-base --is-ancestor b24cb8d3f1a8fa1d48699ed5732d4013ab6fe7f9 HEAD`,
+    `git log --oneline --reverse b24cb8d3f1a8fa1d48699ed5732d4013ab6fe7f9..HEAD`;
+  - línea base dirigida:
+    `.\venv\Scripts\python.exe -m pytest -p no:cacheprovider -q tests/test_auth_tenant.py tests/test_super_admin.py tests/test_tenant_context_concurrency.py tests/test_db_session_contrato.py tests/test_db_pool_timeouts.py`;
+  - caracterización previa de contratos y pico:
+    `.\venv\Scripts\python.exe -m pytest -p no:cacheprovider -q tests/test_auth_threadpool.py::test_suspended_tenant_keeps_403_and_skips_user_validation tests/test_auth_threadpool.py::test_invalid_tenant_user_keeps_canonical_401 tests/test_auth_threadpool.py::test_unexpected_tenant_database_error_is_not_reclassified tests/test_auth_threadpool.py::test_inactive_super_admin_keeps_canonical_401 tests/test_threadpool_capacity.py::test_registered_nested_db_paths_hold_two_connections`;
+  - medición comparable de 2.5, antes y después:
+    `.\venv\Scripts\python.exe scripts/measure_auth_concurrency.py`;
+  - pruebas nuevas finales:
+    `.\venv\Scripts\python.exe -m pytest -p no:cacheprovider -q tests/test_auth_threadpool.py tests/test_threadpool_capacity.py`;
+  - conjunto dirigido ampliado:
+    `.\venv\Scripts\python.exe -m pytest -p no:cacheprovider -q tests/test_auth_tenant.py tests/test_super_admin.py tests/test_tenant_context_concurrency.py tests/test_db_session_contrato.py tests/test_db_pool_timeouts.py tests/test_auth_threadpool.py tests/test_threadpool_capacity.py`;
+  - estabilidad de aislamiento, cancelación y capacidad:
+    `$tests = @('tests/test_auth_threadpool.py::test_cookie_auth_threadpool_preserves_tenants_and_middleware_cleanup','tests/test_auth_threadpool.py::test_auth_threadpool_cancellation_waits_for_boundary_cleanup','tests/test_threadpool_capacity.py::test_threadpool_capacity_prevents_exhaustion_with_two_leases_per_worker','tests/test_threadpool_capacity.py::test_one_extra_threadpool_token_reproduces_pool_exhaustion'); 1..10 | ForEach-Object { .\venv\Scripts\python.exe -m pytest -p no:cacheprovider -q @tests --disable-warnings; if ($LASTEXITCODE -ne 0) { throw "Fallo en ronda $_" }; Write-Output "ronda ${_}: OK" }`;
+  - conteo de pruebas nuevas:
+    `.\venv\Scripts\python.exe -m pytest -p no:cacheprovider --collect-only -q tests/test_auth_threadpool.py tests/test_threadpool_capacity.py`;
+  - inventario runtime de `APIRoute` y dependencias mediante script Python en
+    memoria: 140 totales, 139 sync, una async, 134 usuario, cuatro super admin y
+    dos sin esas dependencias;
+  - lint del alcance:
+    `.\venv\Scripts\python.exe -m ruff check app/dependencies.py app/core/super_admin.py app/main.py scripts/measure_auth_concurrency.py tests/test_auth_threadpool.py tests/test_threadpool_capacity.py`;
+  - compuerta global: `.\venv\Scripts\python.exe scripts/verify.py`;
+  - alcance y estructura: AST en memoria, `rg` dirigido de primitivas prohibidas,
+    `git diff --name-only -- app`, `git status --short`, `git diff --check` y
+    `git diff --no-index --check NUL` para cada archivo nuevo.
+- Línea base existente: **58 pasaron**, 5 warnings conocidos. La caracterización
+  previa ejecutable dio **6 pasadas**; las poscondiciones nuevas de offload y
+  limitador se habilitaron después del cambio.
+- Verificación final: **23 casos nuevos** y **81 pruebas dirigidas** correctas,
+  con 5 warnings conocidos. La estabilidad completó diez rondas, **60/60 casos
+  correctos**; el caso Bearer añadido después pasó en el conjunto final y en la
+  compuerta.
+- Medición de 2.5: antes, 223,811 ms totales y 203,777 ms de retraso de
+  heartbeat, solapamiento uno y event loop; después, 103,909 ms, 6,667 ms,
+  solapamiento dos y workers. JWT y contratos funcionales reales se conservaron;
+  solo las operaciones DB fueron dobles. No se presenta como la medición final
+  de 2.6 ni como comparación directa con el arnés histórico de 2.0.
+- Capacidad: inventario `H=2`, reserva HTTP `R=0`, fórmula
+  `floor((maxconn-R)/H)` y resultado actual cinco tokens. Dos rutas reales
+  caracterizan el doble checkout; el stress seguro alcanzó pico diez sin error y
+  el control con seis tokens produjo dos `PoolError`. No se afirma seguridad
+  fuera del proceso/event loop y rutas inventariadas.
+- Primera compuerta dentro del sandbox: pytest alcanzó 470 pasadas, pero seis
+  fixtures de uploads fallaron en setup por el `WinError 5` conocido sobre el
+  temporal; Ruff y `pip check` fueron correctos. Repetición autorizada fuera del
+  sandbox sobre el estado final: **exit 0, 477 pruebas**, 5 warnings conocidos,
+  Ruff correcto y dependencias íntegras.
+- Auditoría estructural: `get_current_user` y `get_current_super_admin` siguen
+  `AsyncFunctionDef`; usuario tiene dos awaits con `set(tenant)` entre ellos y
+  super admin uno. Bajo `app/` solo cambiaron los tres archivos autorizados;
+  existen cuatro `run_in_threadpool` totales contando branding y ningún executor
+  crudo, limitador privado o cancelación abandonable.
+- `git diff --check`: exit 0, con avisos informativos LF→CRLF. Las tres
+  comprobaciones `--no-index` terminan en exit 1 por diferir de `NUL`, esperado,
+  sin errores de whitespace.
+- Riesgos residuales: el limitador compartido también cola trabajo sin DB;
+  `H=2` y `R=0` deben reauditarse ante nuevas rutas/threads/event loops; una
+  cancelación espera cleanup y una desconexión puede dejar completar trabajo;
+  la calibración de `DB_STATEMENT_TIMEOUT_MS` sigue pendiente y no se marcó
+  cumplida.
+- Estado: **2.5 cerrada**. No se inició 2.6.
+- Siguiente acción exacta: ejecutar únicamente **2.6**, con medición final,
+  compuerta, staging, rollback, verificación manual e índice de cierre; dejar la
+  capa 3 en espera y no activarla.
+
 ## Entrega al próximo chat
 
 - Capa activa: **2, concurrencia**.
-- Última subcapa terminada: **2.4**, caso especial de branding.
-- Primera subcapa pendiente: **2.5**, dependencias async de usuario/super admin
-  y capacidad compartida derivada con medición.
-- Hallazgo central: 137/139 handlers todavía bloquean el event loop durante una
-  dependencia DB async. Después de 2.4 ya no queda storage o DB síncrona sin
-  offload dentro de los cuerpos async inventariados; reportes, dashboard, plan
-  de clases y branding dejaron de formar ese segundo grupo.
-- Verificación vigente: compuerta en exit 0 con 454 pruebas, Ruff y dependencias
-  correctos; 34 pruebas específicas ampliadas de 2.4 correctas y 40/40 casos de
-  estabilidad del worker/cancelación.
-- Bloqueos: ninguno para 2.5. La calibración operativa heredada de
+- Última subcapa terminada: **2.5**, autenticación y capacidad compartida.
+- Primera subcapa pendiente: **2.6**, medición final y cierre de la capa.
+- Hallazgo central: el inventario actual correcto es 140 rutas; 138 atravesaban
+  las dependencias async con DB síncrona. Sus tres llamadas DB ya usan el
+  threadpool estándar. El pico HTTP inventariado es dos conexiones por worker y
+  el limitador compartido deriva cinco tokens frente al pool de diez.
+- Verificación vigente: compuerta en exit 0 con 477 pruebas, Ruff y dependencias
+  correctos; 81 pruebas dirigidas y 60/60 casos sensibles correctos.
+- Bloqueos: ninguno para 2.6. La calibración operativa heredada de
   `DB_STATEMENT_TIMEOUT_MS` continúa pendiente y no debe marcarse como cumplida.
 - Nota de continuidad: el `README.md` conserva la frase de activación «2.0
   pendiente» porque 2.0 solo podía modificar esta bitácora. La tabla maestra
   sigue siendo correcta —capa 2 activa— y **esta bitácora gobierna la subcapa
-  vigente: 2.5**; no es una segunda capa activa ni una divergencia de Git.
-- Siguiente acción exacta: ejecutar 2.5 con pruebas antes del cambio, conservar
-  la fijación del tenant en la tarea llamadora, migrar solo las consultas sync de
-  autenticación mediante la primitiva estándar, derivar el límite con medición
-  y detenerse antes de 2.6.
+  vigente: 2.6**; no es una segunda capa activa ni una divergencia de Git.
+- Siguiente acción exacta: ejecutar solo 2.6, repetir la medición formal de
+  cierre, documentar staging/rollback/verificación manual, ejecutar la compuerta
+  y cerrar la capa en el índice. No activar la capa 3.

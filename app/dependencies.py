@@ -1,6 +1,8 @@
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
+from starlette.concurrency import run_in_threadpool
+
 from app.config import settings
 from app.core.tenant_status import ensure_tenant_allowed_for_app
 from app.database import get_connection
@@ -106,11 +108,11 @@ async def get_current_user(request: Request, token: str = Depends(oauth2_scheme)
             
         user_id_int = int(user_id)
 
-        ensure_tenant_allowed_for_app(tenant)
+        await run_in_threadpool(ensure_tenant_allowed_for_app, tenant)
 
         # Configuramos el contexto de esta petición para que la BD apunte al colegio correcto
         tenant_schema_var.set(tenant)
-        _validar_usuario_en_bd(user_id_int, rol)
+        await run_in_threadpool(_validar_usuario_en_bd, user_id_int, rol)
         
     except (JWTError, ValueError):
         raise credentials_exception

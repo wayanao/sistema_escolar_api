@@ -2,6 +2,7 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import anyio
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
@@ -58,10 +59,28 @@ from app.routes import (
 configure_logging()
 logger = logging.getLogger(__name__)
 
+MAX_DB_CONNECTIONS_PER_THREADPOOL_WORKER = 2
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Starting %s in %s mode", settings.APP_NAME, settings.ENVIRONMENT)
+    threadpool_capacity = (
+        settings.DB_POOL_MAX_CONNECTIONS
+        // MAX_DB_CONNECTIONS_PER_THREADPOOL_WORKER
+    )
+    if threadpool_capacity < 1:
+        raise RuntimeError(
+            "DB_POOL_MAX_CONNECTIONS must allow at least 2 connections "
+            "per threadpool worker"
+        )
+    thread_limiter = anyio.to_thread.current_default_thread_limiter()
+    thread_limiter.total_tokens = threadpool_capacity
+    logger.info(
+        "Shared threadpool limited to %s workers for DB pool max %s",
+        thread_limiter.total_tokens,
+        settings.DB_POOL_MAX_CONNECTIONS,
+    )
     yield
     close_pool()
     logger.info("Database pool closed")

@@ -9,15 +9,15 @@
 - Rama acordada: `main`.
 - Estado al activar: árbol limpio; `HEAD` coincidente con la referencia local
   `origin/main`.
-- Primera subcapa pendiente: **2.1**, contrato de propagación del tenant y
-  primera tanda de handlers bloqueantes.
+- Primera subcapa pendiente: **2.2**, siete lecturas de dashboard.
 - Código de producto modificado al activar: **ninguno**.
-- Código de producto modificado hasta ahora: **ninguno**. La subcapa 2.0 fue de
-  inventario, caracterización y documentación.
-- Progreso: **2.0 cerrada**. Se localizaron 137 handlers que atraviesan
-  dependencias async que ejecutan DB síncrona en el event loop, 24 handlers
-  async con una segunda frontera bloqueante en su cuerpo y 0 mecanismos
-  explícitos de offload.
+- Código de producto modificado hasta ahora: `app/routes/reportes.py`; cinco
+  handlers sin `await` pasaron de `async def` a `def`, sin cambiar sus cuerpos.
+- Progreso: **2.0 y 2.1 cerradas**. Los cinco reportes ya ejecutan sus
+  controllers DB síncronos en el threadpool gobernado por FastAPI; quedan 19
+  handlers async con una frontera bloqueante en su cuerpo. La dependencia común
+  de autenticación continúa bloqueando el event loop y se mantiene reservada
+  para 2.5.
 - Autorización: orden explícita del usuario el 2026-08-12, después de cerrar la
   capa 1 y commitear su reconciliación documental.
 
@@ -108,8 +108,8 @@ el commit base antes de inventariar o medir.
 | Subcapa | Resultado | Estado |
 |---:|---|---|
 | 2.0 | Inventario, contratos, estrategia de verificación y línea base medible | **Cerrada** |
-| 2.1 | Contrato concurrente del tenant y primera tanda: 5 reportes de solo lectura | **Pendiente** |
-| 2.2 | Segunda tanda: 7 lecturas de dashboard | Pendiente |
+| 2.1 | Contrato concurrente del tenant y primera tanda: 5 reportes de solo lectura | **Cerrada** |
+| 2.2 | Segunda tanda: 7 lecturas de dashboard | **Pendiente** |
 | 2.3a | Tercera tanda: 5 lecturas de plan de clases | Pendiente |
 | 2.3b | Cuarta tanda: 6 escrituras o efectos de plan de clases | Pendiente |
 | 2.4 | Caso especial de branding: lectura async más storage y DB síncronos | Pendiente |
@@ -371,6 +371,68 @@ existentes que corresponda, un archivo de contrato concurrente del tenant y esta
 bitácora. No se modifica todavía `app/dependencies.py`, el limitador global ni
 ninguna otra familia de rutas.
 
+### Subcapa 2.1: resultado
+
+Se agregó primero el contrato hermético del tenant y se ejecutó con los cinco
+handlers todavía en `async def`: **16 pruebas pasaron**. Después se cambiaron
+exclusivamente esas cinco declaraciones a `def`. FastAPI puede así enviar sus
+cuerpos síncronos al threadpool de AnyIO sin introducir una abstracción nueva ni
+modificar controllers.
+
+El contrato concurrente invoca directamente la función real
+`tenant_middleware` con dos tareas autenticadas solo por cookie. El middleware
+fija `None`, `get_current_user` fija `tenant_alpha` o `tenant_beta`, y dos
+workers distintos se solapan mediante barreras. Se exige A→A y B→B antes,
+durante y después del trabajo síncrono, y el `finally` real del middleware debe
+restaurar el contexto exterior. No es una prueba HTTP end-to-end ni usa red o
+PostgreSQL.
+
+El mismo archivo fija dos contratos adicionales:
+
+- un `ThreadPoolExecutor` dedicado demuestra que el executor crudo no copia el
+  tenant del llamador ni devuelve mutaciones del worker;
+- un centinela dentro del mismo `CancelScope` confirma que la cancelación ya fue
+  entregada mientras `run_in_threadpool` todavía espera a que el worker libere
+  sus recursos.
+
+Las pruebas de reportes conservan delegación, parámetros, respuesta legacy y
+paginada, traducción de excepciones a HTTP 400 y la condición de que las cinco
+funciones sean síncronas. Por inspección exacta del diff permanecen iguales los
+decoradores GET, paths, restricciones `Query`, dependencia admin común, cuerpos
+y llamadas a controllers.
+
+Resultado verificado:
+
+| Comprobación | Resultado |
+|---|---|
+| Estado previo, contrato + reportes | 16 pasaron |
+| Estado posterior, contrato + reportes | 21 pasaron |
+| Específicas ampliadas con dos controllers financieros | 23 pasaron |
+| Estabilidad del contrato concurrente | 20 rondas; 60/60 casos pasaron |
+| Compuerta global fuera del sandbox | 349 pruebas, 5 warnings conocidos |
+| Ruff | `All checks passed!` |
+| `pip check` | `No broken requirements found.` |
+
+La primera compuerta global dentro del sandbox reprodujo la limitación ambiental
+ya observada en 2.0: 343 pruebas pasaron y seis casos de uploads fallaron en
+*setup* por `WinError 5` al enumerar el temporal de pytest. Ruff y `pip check`
+pasaron en esa ejecución. La misma compuerta, autorizada fuera del sandbox,
+terminó en exit 0.
+
+### Siguiente subcapa: 2.2, trabajo exacto
+
+1. Confirmar `main` limpia y que todo commit posterior al base esté explicado
+   por esta bitácora.
+2. Abrir únicamente las siete rutas de dashboard inventariadas, sus controllers
+   síncronos inmediatos y sus pruebas existentes.
+3. Agregar antes del cambio la caracterización mínima que falte para preservar
+   delegación, parámetros, respuestas y traducción de errores.
+4. Convertir solo los siete handlers de lectura de dashboard sin `await` de
+   `async def` a `def`. No tocar reportes, plan de clases, branding,
+   autenticación, SQL ni el limitador global.
+5. Ejecutar pruebas específicas, Ruff del alcance, compuerta global y
+   `git diff --check`; actualizar esta bitácora y detenerse antes de 2.3a.
+
 ## Criterios de cierre de la subcapa 2.0
 
 - Cada frontera relevante entre petición asíncrona y DB síncrona está localizada
@@ -544,22 +606,76 @@ ninguna otra familia de rutas.
   concurrente del tenant y migrando solo las cinco rutas de reportes de
   `async def` sin `await` a `def`; detenerse antes de dashboard.
 
+### 2026-08-12 — subcapa 2.1
+
+- Modo de acceso: mismo checkout local; rama `main` y árbol limpio antes de
+  editar.
+- Commit observado: `e6301d06df7a4d04c94195702bb3d116c903a53d`, dos
+  commits locales por delante de `origin/main` y del base de la capa.
+- Continuidad: `b24cb8d` es ancestro. Los únicos commits posteriores son
+  `c6483e4` (activación) y `e6301d0` (2.0), ambos documentales y explicados en
+  esta bitácora; el diff acumulado previo no contenía código ejecutable.
+- Caracterización previa: 16 pruebas pasaron con las rutas todavía async.
+- Código de producto: solo `app/routes/reportes.py`; cinco declaraciones
+  `async def` pasaron a `def`. Controllers, SQL, transacciones, autenticación,
+  permisos, paths, payloads, status codes y parámetros no cambiaron.
+- Pruebas: `tests/test_reportes_pagination.py` amplió cobertura de delegación,
+  respuestas y errores; `tests/test_tenant_context_concurrency.py` fijó
+  propagación, aislamiento, restauración del middleware, control negativo y
+  cancelación protegida.
+- Archivos modificados: `app/routes/reportes.py`,
+  `tests/test_reportes_pagination.py`,
+  `tests/test_tenant_context_concurrency.py` y esta bitácora.
+- Comandos ejecutados:
+  - caracterización previa y pruebas posteriores:
+    `.\venv\Scripts\python.exe -m pytest -p no:cacheprovider -q tests/test_reportes_pagination.py tests/test_tenant_context_concurrency.py`;
+  - específicas ampliadas:
+    `.\venv\Scripts\python.exe -m pytest -p no:cacheprovider -q tests/test_reportes_pagination.py tests/test_tenant_context_concurrency.py tests/test_anulaciones_financieras.py::test_reporte_general_excluye_pagos_anulados_de_totales tests/test_pagos_adelantados.py::test_reporte_curso_aplica_solo_adelantos_maduros_y_no_los_duplica`;
+  - estabilidad:
+    `$testRuns = 1..20; foreach ($testRun in $testRuns) { .\venv\Scripts\python.exe -m pytest -p no:cacheprovider -q tests/test_tenant_context_concurrency.py; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } }`;
+  - lint del alcance:
+    `.\venv\Scripts\python.exe -m ruff check app/routes/reportes.py tests/test_reportes_pagination.py tests/test_tenant_context_concurrency.py`;
+  - compuerta global, que también ejecuta Ruff y `pip check`:
+    `.\venv\Scripts\python.exe scripts\verify.py`;
+  - alcance y whitespace: `git status --short --branch`,
+    `git diff --name-only`, `git diff --check` y
+    `git diff --no-index --check -- NUL tests/test_tenant_context_concurrency.py`.
+- Pruebas específicas posteriores: 21 pasaron; con los dos casos existentes de
+  controllers financieros, 23 pasaron.
+- Estabilidad concurrente: 20 rondas consecutivas, **60/60 casos correctos**.
+- Compuerta dentro del sandbox: 343 pasaron y seis errores de setup de uploads
+  por el `WinError 5` conocido; Ruff y `pip check` correctos.
+- Compuerta fuera del sandbox: **exit 0**, 349 pruebas, 5 warnings conocidos,
+  Ruff correcto y dependencias íntegras.
+- `git diff --check`: exit 0; únicamente avisos informativos LF→CRLF para
+  archivos existentes. El alcance final contiene solo los cuatro archivos
+  enumerados y no incluye dashboard. La comprobación `--no-index` del archivo
+  nuevo terminó en exit 1 porque existe una diferencia frente a `NUL`, como es
+  esperado, y no reportó errores de whitespace; solo el mismo aviso LF→CRLF.
+- Auditoría independiente: sin hallazgos altos o medios; confirmó dos workers
+  solapados, A→A/B→B, restauración mediante el middleware real, executor
+  dedicado y cancelación determinista. La prueba invoca directamente la función
+  real del middleware; no se presenta como prueba HTTP end-to-end.
+- Estado: **2.1 cerrada**. No se inició dashboard ni 2.2.
+- Siguiente acción exacta: ejecutar **2.2**, caracterizando y migrando únicamente
+  las siete lecturas de dashboard de `async def` sin `await` a `def`.
+
 ## Entrega al próximo chat
 
 - Capa activa: **2, concurrencia**.
-- Última subcapa terminada: **2.0**, inventario, contratos, estrategia de
-  verificación y línea base medible. No modificó código.
-- Primera subcapa pendiente: **2.1**, contrato concurrente del tenant y cinco
+- Última subcapa terminada: **2.1**, contrato concurrente del tenant y cinco
   handlers de reportes de solo lectura.
+- Primera subcapa pendiente: **2.2**, siete lecturas de dashboard.
 - Hallazgo central: 137/139 handlers bloquean hoy el event loop durante una
-  dependencia DB async y 24/139 vuelven a bloquearlo en su cuerpo.
-- Línea base: compuerta en exit 0 con 334 pruebas; 43 pruebas específicas
-  correctas; bloqueo hermético medido en 224 ms para dos validaciones de 100 ms.
-- Bloqueos: ninguno para 2.1. La calibración operativa heredada de
+  dependencia DB async; después de 2.1, 19/139 vuelven a bloquearlo en su
+  cuerpo. Reportes ya no forma parte de ese segundo grupo.
+- Verificación vigente: compuerta en exit 0 con 349 pruebas, Ruff y dependencias
+  correctos; contrato concurrente estable en 60/60 casos.
+- Bloqueos: ninguno para 2.2. La calibración operativa heredada de
   `DB_STATEMENT_TIMEOUT_MS` continúa pendiente y no debe marcarse como cumplida.
 - Nota de continuidad: el `README.md` conserva la frase de activación «2.0
   pendiente» porque 2.0 solo podía modificar esta bitácora. La tabla maestra
   sigue siendo correcta —capa 2 activa— y **esta bitácora gobierna la subcapa
-  vigente: 2.1**; no es una segunda capa activa ni una divergencia de Git.
-- Siguiente acción exacta: ejecutar 2.1 con pruebas antes del cambio, migrar solo
-  `app/routes/reportes.py`, verificar y detenerse sin iniciar dashboard.
+  vigente: 2.2**; no es una segunda capa activa ni una divergencia de Git.
+- Siguiente acción exacta: ejecutar 2.2 con pruebas antes del cambio, migrar solo
+  las siete lecturas de dashboard, verificar y detenerse antes de 2.3a.

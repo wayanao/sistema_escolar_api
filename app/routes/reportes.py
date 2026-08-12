@@ -14,7 +14,7 @@ router = APIRouter(tags=["Reportes"], dependencies=[Depends(get_current_active_a
 
 # 📊 Reporte general del sistema
 @router.get("/reportes/general")
-async def reporte_general():
+def reporte_general():
     try:
         data = reporte_general_controller()
         return data
@@ -23,7 +23,7 @@ async def reporte_general():
 
 # 📊 Estado de cuenta por curso
 @router.get("/reportes/estado-cuenta/{curso_id}")
-async def reporte_estado_cuenta_curso(curso_id: int):
+def reporte_estado_cuenta_curso(curso_id: int):
     try:
         data = reporte_estado_cuenta_curso_controller(curso_id)
         return data
@@ -32,7 +32,7 @@ async def reporte_estado_cuenta_curso(curso_id: int):
 
 # 📊 Reporte ingresos mes
 @router.get("/reportes/ingresos-mes/{mes}")
-async def reporte_ingresos_mes(
+def reporte_ingresos_mes(
     mes: str,
     limit: Annotated[Optional[int], Query(ge=1, le=200)] = None,
     offset: Annotated[int, Query(ge=0)] = 0,
@@ -45,7 +45,7 @@ async def reporte_ingresos_mes(
 
 # 📊 Reporte ingresos rango
 @router.get("/reportes/ingresos-rango")
-async def reporte_ingresos_rango(
+def reporte_ingresos_rango(
     inicio: str,
     fin: str,
     limit: Annotated[Optional[int], Query(ge=1, le=200)] = None,
@@ -59,7 +59,7 @@ async def reporte_ingresos_rango(
 
 
 @router.get("/reportes/egresos-rango")
-async def reporte_egresos_rango(
+def reporte_egresos_rango(
     inicio: str,
     fin: str,
     limit: Annotated[Optional[int], Query(ge=1, le=200)] = None,

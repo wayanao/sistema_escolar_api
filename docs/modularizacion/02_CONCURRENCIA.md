@@ -9,16 +9,18 @@
 - Rama acordada: `main`.
 - Estado al activar: árbol limpio; `HEAD` coincidente con la referencia local
   `origin/main`.
-- Primera subcapa pendiente: **2.3a**, cinco lecturas de plan de clases.
+- Primera subcapa pendiente: **2.3b**, seis escrituras o efectos de plan de
+  clases.
 - Código de producto modificado al activar: **ninguno**.
-- Código de producto modificado hasta ahora: `app/routes/reportes.py` y
-  `app/routes/dashboard.py`; doce handlers sin `await` pasaron de `async def` a
-  `def`, sin cambiar sus cuerpos.
-- Progreso: **2.0, 2.1 y 2.2 cerradas**. Los cinco reportes y siete lecturas de
-  dashboard ya ejecutan sus controllers DB síncronos en el threadpool gobernado
-  por FastAPI; quedan 12 handlers async con una frontera bloqueante en su cuerpo.
-  La dependencia común de autenticación continúa bloqueando el event loop y se
-  mantiene reservada para 2.5.
+- Código de producto modificado hasta ahora: `app/routes/reportes.py`,
+  `app/routes/dashboard.py` y `app/routes/plan_de_clases.py`; diecisiete handlers
+  sin `await` pasaron de `async def` a `def`, sin cambiar sus cuerpos.
+- Progreso: **2.0, 2.1, 2.2 y 2.3a cerradas**. Los cinco reportes, siete lecturas
+  de dashboard y cinco lecturas de plan de clases ya ejecutan sus controllers DB
+  síncronos en el threadpool gobernado por FastAPI; quedan 7 handlers async con
+  una frontera bloqueante en su cuerpo: seis efectos de plan de clases y el caso
+  especial de branding. La dependencia común de autenticación continúa
+  bloqueando el event loop y se mantiene reservada para 2.5.
 - Autorización: orden explícita del usuario el 2026-08-12, después de cerrar la
   capa 1 y commitear su reconciliación documental.
 
@@ -111,8 +113,8 @@ el commit base antes de inventariar o medir.
 | 2.0 | Inventario, contratos, estrategia de verificación y línea base medible | **Cerrada** |
 | 2.1 | Contrato concurrente del tenant y primera tanda: 5 reportes de solo lectura | **Cerrada** |
 | 2.2 | Segunda tanda: 7 lecturas de dashboard | **Cerrada** |
-| 2.3a | Tercera tanda: 5 lecturas de plan de clases | **Pendiente** |
-| 2.3b | Cuarta tanda: 6 escrituras o efectos de plan de clases | Pendiente |
+| 2.3a | Tercera tanda: 5 lecturas de plan de clases | **Cerrada** |
+| 2.3b | Cuarta tanda: 6 escrituras o efectos de plan de clases | **Pendiente** |
 | 2.4 | Caso especial de branding: lectura async más storage y DB síncronos | Pendiente |
 | 2.5 | Dependencias async de usuario y super admin; límite compartido derivado y medido | Pendiente |
 | 2.6 | Medición posterior, compuerta global, staging, rollback y cierre | Pendiente |
@@ -495,6 +497,82 @@ handlers como `FunctionDef`; bajo `app/` no cambió ningún otro archivo.
 5. Ejecutar pruebas específicas, Ruff del alcance, compuerta global y
    `git diff --check`; actualizar esta bitácora y detenerse antes de 2.3b.
 
+### Subcapa 2.3a: resultado
+
+Se caracterizaron primero los cinco GET de plan de clases mientras todavía eran
+`async def`: **16 pruebas pasaron** y el conjunto dirigido con repositorios y
+permisos terminó con **22 pruebas correctas**. Después se eliminaron únicamente
+los cinco tokens `async` de sus declaraciones. No cambiaron decoradores, firmas,
+guards, límites de los `try`, llamadas a controllers ni retornos.
+
+Las pruebas nuevas fijan:
+
+- los cinco paths GET, sus dependencias por identidad y los parámetros/defaults
+  relevantes del esquema OpenAPI;
+- los roles permitidos para notificaciones y la selección del profesor desde el
+  usuario autenticado;
+- el guard de asignación antes del `try`, las ramas exclusivas por fecha o
+  historial paginado y la traducción de errores de lectura a HTTP 400;
+- los filtros del listado admin y su error HTTP 500 genérico;
+- la dependencia admin y el 404 sin traducción del detalle;
+- el ownership del plan antes de listar observaciones, con sus 403 y 404
+  conservados;
+- la respuesta opaca, incluidas las referencias `imagen1` e `imagen2`, sin
+  introducir I/O de storage; y
+- que los cinco endpoints realmente registrados son síncronos después del
+  cambio.
+
+Sus controllers, services, repositorios y guards inmediatos continúan siendo
+síncronos. Los cinco caminos solo leen PostgreSQL, materializan sus resultados y
+no escriben archivos ni datos. El SQL, los parámetros, el orden de consultas,
+las conexiones y las fronteras transaccionales permanecen iguales. La garantía
+de 2.1 sigue cubriendo que el tenant fijado antes del handler se copia al worker
+de Starlette/AnyIO; no se introdujo ningún executor crudo.
+
+Resultado verificado:
+
+| Comprobación | Resultado |
+|---|---|
+| Línea base relacionada existente | 43 pasaron |
+| Caracterización previa nueva | 16 pasaron |
+| Dirigidas antes del cambio | 22 pasaron |
+| Caracterización posterior | 17 pasaron |
+| Dirigidas posteriores | 23 pasaron |
+| Específicas ampliadas con repositorios, permisos y tenant | 60 pasaron, 5 warnings conocidos |
+| Compuerta global fuera del sandbox | 395 pruebas, 5 warnings conocidos |
+| Ruff | `All checks passed!` |
+| `pip check` | `No broken requirements found.` |
+
+La primera compuerta global dentro del sandbox terminó en exit 1: **389 pruebas
+pasaron** y los seis casos de uploads fallaron en *setup* por el `WinError 5`
+conocido al enumerar el temporal de pytest. Ruff y `pip check` sí pasaron. La
+misma compuerta, autorizada fuera del sandbox, terminó en exit 0 con las 395
+pruebas correctas.
+
+La revisión estructural confirmó exactamente 10 líneas de contenido modificadas
+en producto: cinco pares `-async def` / `+def`. El AST final encuentra esos cinco
+handlers como `FunctionDef`; los seis handlers de escrituras o efectos
+reservados para 2.3b permanecen `AsyncFunctionDef`. Bajo `app/` no cambió ningún
+otro archivo.
+
+### Siguiente subcapa: 2.3b, trabajo exacto
+
+1. Confirmar `main` limpia y que todo commit posterior al base esté explicado
+   por esta bitácora.
+2. Abrir únicamente los seis handlers de escrituras o efectos de plan de clases
+   ya inventariados —`crear_plan_de_clases`,
+   `eliminar_imagen_plan_profesor`, `actualizar_revision_plan`,
+   `crear_observacion_plan`, `marcar_observacion_vista` y
+   `eliminar_imagen_plan_admin`—, sus fronteras síncronas inmediatas y pruebas
+   relacionadas.
+3. Agregar antes del cambio la caracterización mínima de multipart, storage,
+   permisos, ownership, revisión versionada, transacciones, cleanup y errores.
+4. Migrar solo esos seis handlers de acuerdo con la evidencia obtenida. No
+   tocar las cinco lecturas ya cerradas, branding, autenticación, SQL ni el
+   limitador global.
+5. Ejecutar pruebas específicas, Ruff del alcance, compuerta global y
+   `git diff --check`; actualizar esta bitácora y detenerse antes de 2.4.
+
 ## Criterios de cierre de la subcapa 2.0
 
 - Cada frontera relevante entre petición asíncrona y DB síncrona está localizada
@@ -569,6 +647,13 @@ handlers como `FunctionDef`; bajo `app/` no cambió ningún otro archivo.
 - La caracterización de dashboard usa las rutas registradas y compara
   dependencias por identidad, no por nombre u orden. Esto protege el wiring sin
   acoplarse innecesariamente al orden interno de FastAPI.
+- Las cinco lecturas de plan de clases conservan en 2.3a la misma transformación
+  declarativa: FastAPI gobierna el offload de sus cuerpos `def` y no se envuelve
+  ningún controller, service, repositorio o guard.
+- Las referencias de imágenes leídas por estas rutas son valores del payload;
+  ninguno de los cinco caminos usa storage. Por eso la caracterización conserva
+  esas referencias sin introducir mocks ni abstracciones de archivo. Los efectos
+  reales permanecen reservados para 2.3b.
 - La lectura de 2.0 se amplió solo a cinco funciones de `tenant_status.py` y
   `super_admin.py` descubiertas como dependencias HTTP opacas. No se leyó el
   resto de esos dominios.
@@ -608,6 +693,14 @@ handlers como `FunctionDef`; bajo `app/` no cambió ningún otro archivo.
   sus dependencias async de autenticación todavía pueden hacerlo antes de entrar
   al worker. No debe presentarse esta tanda como la eliminación completa del
   bloqueo de una request.
+- Después de 2.3a, también están fuera del event loop los guards y lecturas
+  ejecutados dentro de sus cinco handlers, pero no la DB síncrona de las
+  dependencias async previas. Las pruebas de ruta invocan handlers directamente;
+  el cruce real de tenant al threadpool se sustenta por separado en el contrato
+  concurrente de 2.1.
+- Los pares guard/lectura, conteo/listado y existencia/observaciones conservan
+  conexiones o consultas secuenciales y pueden observar cambios intermedios.
+  Es una ventana preexistente que 2.3a no rediseña.
 
 ## Registro de ejecución
 
@@ -786,22 +879,93 @@ handlers como `FunctionDef`; bajo `app/` no cambió ningún otro archivo.
 - Siguiente acción exacta: ejecutar **2.3a**, caracterizando y migrando solo los
   cinco handlers de lectura de plan de clases y deteniéndose antes de 2.3b.
 
+### 2026-08-12 — subcapa 2.3a
+
+- Modo de acceso: mismo checkout local; rama `main` y árbol limpio antes de
+  editar.
+- Commit observado: `b7d7c57a9ca5b6b8ba633d71cb4b9036a2c4b8fd`, cuatro
+  commits locales por delante de `origin/main` y del base de la capa.
+- Continuidad: `b24cb8d` es ancestro; `c6483e4`, `e6301d0`, `d2f7c9d` y
+  `b7d7c57` corresponden respectivamente a activación, 2.0, 2.1 y 2.2. Sus
+  archivos y resultados están explicados en esta bitácora; no había cambios
+  pendientes ni divergencia antes de iniciar 2.3a.
+- Código de producto: solo `app/routes/plan_de_clases.py`; cinco declaraciones
+  `async def` pasaron a `def`: `obtener_notificaciones_planeadores`,
+  `obtener_planes_por_asignacion`, `listar_planes_admin`,
+  `obtener_plan_admin` y `listar_observaciones_plan`.
+- Contratos conservados: paths y métodos GET, parámetros y validación,
+  dependencias, roles, tenant, ownership, orden de guards, límites de excepción,
+  status/detail, respuestas, SQL, conexiones y transacciones. No hubo I/O de
+  storage; las referencias de imagen continúan como valores opacos del payload.
+- Fuera del cambio: los seis handlers de efectos de 2.3b permanecen `async def`;
+  no se modificaron controllers, services, repositorios, branding,
+  autenticación, limitador, configuración ni dependencias.
+- Pruebas: se creó `tests/test_plan_de_clases_routes.py`; se conservaron
+  `tests/test_plan_de_clases_integridad.py`,
+  `tests/test_plan_de_clases_revision.py`, `tests/test_permissions.py` y el
+  contrato concurrente tenant de 2.1.
+- Archivos modificados: `app/routes/plan_de_clases.py`,
+  `tests/test_plan_de_clases_routes.py` y esta bitácora.
+- Comandos ejecutados:
+  - línea base relacionada:
+    `.\venv\Scripts\python.exe -m pytest -p no:cacheprovider tests/test_plan_de_clases_integridad.py tests/test_plan_de_clases_revision.py tests/test_permissions.py tests/test_tenant_context_concurrency.py -q`;
+  - caracterización previa y posterior:
+    `.\venv\Scripts\python.exe -m pytest -p no:cacheprovider tests/test_plan_de_clases_routes.py -q`;
+  - dirigidas antes y después del cambio:
+    `.\venv\Scripts\python.exe -m pytest -p no:cacheprovider tests/test_plan_de_clases_routes.py tests/test_plan_de_clases_integridad.py::test_filtros_admin_agrupan_estados_internos tests/test_plan_de_clases_integridad.py::test_historial_asignacion_aplica_paginacion_opcional tests/test_plan_de_clases_revision.py::test_notificaciones_admin_agrupa_eventos_no_leidos_por_profesor tests/test_plan_de_clases_revision.py::test_notificaciones_profesor_solo_lista_observaciones_propias_no_leidas tests/test_permissions.py::test_require_asignacion_access_blocks_non_owner_profesor tests/test_permissions.py::test_require_plan_de_clases_access_blocks_non_owner_profesor -q`;
+  - específicas ampliadas:
+    `.\venv\Scripts\python.exe -m pytest -p no:cacheprovider tests/test_plan_de_clases_routes.py tests/test_plan_de_clases_integridad.py tests/test_plan_de_clases_revision.py tests/test_permissions.py tests/test_tenant_context_concurrency.py -q`;
+  - lint del alcance:
+    `.\venv\Scripts\python.exe -m ruff check app/routes/plan_de_clases.py tests/test_plan_de_clases_routes.py`;
+  - compuerta global, que también ejecuta Ruff y `pip check`:
+    `.\venv\Scripts\python.exe scripts\verify.py`;
+  - estructura y alcance: `git diff --unified=0 -- app/routes/plan_de_clases.py`,
+    AST en memoria con `ast.parse`, `git status --short --branch`,
+    `git diff --name-only -- app`, `git diff --check` y
+    `git diff --no-index --check -- NUL tests/test_plan_de_clases_routes.py`.
+- Línea base relacionada: 43 pasaron; caracterización previa: 16; dirigidas
+  previas: 22; caracterización posterior: 17; dirigidas posteriores: 23;
+  específicas ampliadas: **60 pasaron**.
+- Compuerta dentro del sandbox: 389 pasaron y seis errores de setup de uploads
+  por el `WinError 5` conocido; Ruff y `pip check` correctos.
+- Compuerta fuera del sandbox: **exit 0**, 395 pruebas, 5 warnings conocidos,
+  Ruff correcto y dependencias íntegras.
+- Auditoría estructural: exactamente cinco pares `async def`/`def`; los cinco
+  endpoints objetivo son `FunctionDef`, los seis de 2.3b siguen
+  `AsyncFunctionDef` y bajo `app/` solo cambió la ruta autorizada.
+- `git diff --check`: exit 0; solo avisos informativos LF→CRLF para los archivos
+  rastreados. La comprobación `--no-index` del test nuevo terminó en exit 1 porque
+  difiere de `NUL`, como es esperado, sin errores de whitespace.
+- Auditorías independientes: sin defectos de producto. La primera revisión del
+  arnés detectó que algunos tipos y defaults opcionales de OpenAPI no estaban
+  completamente fijados; se añadieron esas aserciones, el conjunto exacto de
+  paths y la llamada keyword de `limit`, y la reejecución quedó verde.
+- Riesgos residuales: la DB síncrona de autenticación sigue antes de estos
+  handlers; la relación 40 workers/10 conexiones queda para 2.5; la cancelación
+  protegida y las ventanas secuenciales guard/lectura permanecen como
+  invariantes. No se amplió ese alcance.
+- Estado: **2.3a cerrada**. No se inició 2.3b.
+- Siguiente acción exacta: ejecutar **2.3b**, caracterizando y migrando solo los
+  seis handlers de escrituras o efectos de plan de clases y deteniéndose antes
+  de 2.4.
+
 ## Entrega al próximo chat
 
 - Capa activa: **2, concurrencia**.
-- Última subcapa terminada: **2.2**, siete lecturas de dashboard.
-- Primera subcapa pendiente: **2.3a**, cinco lecturas de plan de clases.
+- Última subcapa terminada: **2.3a**, cinco lecturas de plan de clases.
+- Primera subcapa pendiente: **2.3b**, seis escrituras o efectos de plan de
+  clases.
 - Hallazgo central: 137/139 handlers bloquean hoy el event loop durante una
-  dependencia DB async; después de 2.2, 12/139 vuelven a bloquearlo en su
-  cuerpo. Reportes y dashboard ya no forman parte de ese segundo grupo.
-- Verificación vigente: compuerta en exit 0 con 378 pruebas, Ruff y dependencias
-  correctos; 53 pruebas específicas de 2.2 correctas.
-- Bloqueos: ninguno para 2.3a. La calibración operativa heredada de
+  dependencia DB async; después de 2.3a, 7/139 vuelven a bloquearlo en su
+  cuerpo. Reportes, dashboard y las cinco lecturas de plan de clases ya no
+  forman parte de ese segundo grupo.
+- Verificación vigente: compuerta en exit 0 con 395 pruebas, Ruff y dependencias
+  correctos; 60 pruebas específicas ampliadas de 2.3a correctas.
+- Bloqueos: ninguno para 2.3b. La calibración operativa heredada de
   `DB_STATEMENT_TIMEOUT_MS` continúa pendiente y no debe marcarse como cumplida.
 - Nota de continuidad: el `README.md` conserva la frase de activación «2.0
   pendiente» porque 2.0 solo podía modificar esta bitácora. La tabla maestra
   sigue siendo correcta —capa 2 activa— y **esta bitácora gobierna la subcapa
-  vigente: 2.3a**; no es una segunda capa activa ni una divergencia de Git.
-- Siguiente acción exacta: ejecutar 2.3a con pruebas antes del cambio, migrar
-  solo las cinco lecturas de plan de clases, verificar y detenerse antes de
-  2.3b.
+  vigente: 2.3b**; no es una segunda capa activa ni una divergencia de Git.
+- Siguiente acción exacta: ejecutar 2.3b con pruebas antes del cambio, migrar
+  solo los seis efectos de plan de clases, verificar y detenerse antes de 2.4.

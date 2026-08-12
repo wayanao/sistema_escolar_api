@@ -28,7 +28,7 @@ router = APIRouter(tags=["Plan De Clases"])
 
 
 @router.get("/notificaciones/planeadores")
-async def obtener_notificaciones_planeadores(
+def obtener_notificaciones_planeadores(
     limit: int = Query(8, ge=1, le=20),
     current_user: dict = Depends(get_current_user),
 ):
@@ -79,7 +79,7 @@ async def crear_plan_de_clases(
         raise HTTPException(status_code=400, detail=str(e)) from e
 
 @router.get("/plan-de-clases/{asignacion_id}")
-async def obtener_planes_por_asignacion(
+def obtener_planes_por_asignacion(
     asignacion_id: int,
     fecha: Optional[date] = None,
     limit: Optional[int] = Query(None, ge=1, le=50),
@@ -120,7 +120,7 @@ async def eliminar_imagen_plan_profesor(
 
 
 @router.get("/admin/plan-de-clases", dependencies=[Depends(get_current_active_admin)])
-async def listar_planes_admin(
+def listar_planes_admin(
     profesor_id: Optional[int] = None,
     fecha_desde: Optional[date] = None,
     fecha_hasta: Optional[date] = None,
@@ -149,7 +149,7 @@ async def listar_planes_admin(
     "/admin/plan-de-clases/{plan_id}",
     dependencies=[Depends(get_current_active_admin)],
 )
-async def obtener_plan_admin(plan_id: int):
+def obtener_plan_admin(plan_id: int):
     return obtener_plan_admin_controller(plan_id)
 
 
@@ -172,7 +172,7 @@ async def crear_observacion_plan(
 
 
 @router.get("/plan-de-clases/{plan_id}/observaciones")
-async def listar_observaciones_plan(
+def listar_observaciones_plan(
     plan_id: int,
     current_user: dict = Depends(get_current_user),
 ):

@@ -41,7 +41,7 @@ def validar_filtro_rendimiento_profesor(
 
 
 @router.get('/dashboard/cumpleanos/admin')
-async def obtener_cumpleanos_admin(
+def obtener_cumpleanos_admin(
     dias: int = Query(7, ge=0, le=31),
     _admin: dict = Depends(get_current_active_admin),
 ):
@@ -52,7 +52,7 @@ async def obtener_cumpleanos_admin(
 
 
 @router.get('/dashboard/cumpleanos/profesor/{profesor_id}')
-async def obtener_cumpleanos_profesor(
+def obtener_cumpleanos_profesor(
     profesor_id: int,
     dias: int = Query(7, ge=0, le=31),
     current_user: dict = Depends(get_current_user),
@@ -65,7 +65,7 @@ async def obtener_cumpleanos_profesor(
 
 
 @router.get('/dashboard/inasistencias/{profesor_id}')
-async def obtener_inasistencias_profesor(
+def obtener_inasistencias_profesor(
     profesor_id: int,
     current_user: dict = Depends(get_current_user)
 ):
@@ -78,7 +78,7 @@ async def obtener_inasistencias_profesor(
 
 
 @router.get('/dashboard/notas-bajas/{profesor_id}')
-async def obtener_notas_bajas_profesor(
+def obtener_notas_bajas_profesor(
     profesor_id: int,
     curso_id: int | None = Query(None),
     asignacion_id: int | None = Query(None),
@@ -98,7 +98,7 @@ async def obtener_notas_bajas_profesor(
 
 
 @router.get('/dashboard/notas-altas/{profesor_id}')
-async def obtener_notas_altas_profesor(
+def obtener_notas_altas_profesor(
     profesor_id: int,
     curso_id: int | None = Query(None),
     asignacion_id: int | None = Query(None),
@@ -118,7 +118,7 @@ async def obtener_notas_altas_profesor(
 
 
 @router.get('/dashboard/ranking/{asignacion_id}/{periodo}')
-async def obtener_ranking_rendimiento(
+def obtener_ranking_rendimiento(
     asignacion_id: int,
     periodo: int = 1,
     current_user: dict = Depends(get_current_user)
@@ -132,7 +132,7 @@ async def obtener_ranking_rendimiento(
 
 
 @router.get('/dashboard/ranking-mejor/{asignacion_id}/{periodo}')
-async def obtener_ranking_mejor_rendimiento(
+def obtener_ranking_mejor_rendimiento(
     asignacion_id: int,
     periodo: int = 1,
     current_user: dict = Depends(get_current_user)

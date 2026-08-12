@@ -9,9 +9,15 @@
 - Rama acordada: `main`.
 - Estado al activar: árbol limpio; `HEAD` coincidente con la referencia local
   `origin/main`.
-- Primera subcapa pendiente: **2.0**, inventario, contratos y línea base de
-  concurrencia.
+- Primera subcapa pendiente: **2.1**, contrato de propagación del tenant y
+  primera tanda de handlers bloqueantes.
 - Código de producto modificado al activar: **ninguno**.
+- Código de producto modificado hasta ahora: **ninguno**. La subcapa 2.0 fue de
+  inventario, caracterización y documentación.
+- Progreso: **2.0 cerrada**. Se localizaron 137 handlers que atraviesan
+  dependencias async que ejecutan DB síncrona en el event loop, 24 handlers
+  async con una segunda frontera bloqueante en su cuerpo y 0 mecanismos
+  explícitos de offload.
 - Autorización: orden explícita del usuario el 2026-08-12, después de cerrar la
   capa 1 y commitear su reconciliación documental.
 
@@ -91,60 +97,279 @@ el commit base antes de inventariar o medir.
 
 | Comprobación | Comando | Resultado |
 |---|---|---|
-| Pruebas específicas | Se define en 2.0 tras localizar la cobertura existente | Pendiente |
-| Compuerta global | `.\venv\Scripts\python.exe scripts\verify.py` | Pendiente; 334 pruebas heredadas |
-| Ruff | `.\venv\Scripts\python.exe -m ruff check --no-cache app tests scripts apply_migration.py` | Pendiente |
-| Dependencias | `.\venv\Scripts\python.exe -m pip check` | Pendiente |
-| Medición de concurrencia | Procedimiento reproducible por definir en 2.0 | Pendiente |
+| Pruebas específicas | `.\venv\Scripts\python.exe -m pytest -p no:cacheprovider -q tests/test_auth_tenant.py tests/test_db_session_contrato.py tests/test_db_pool_timeouts.py` | **43 pasaron** en 0,43 s |
+| Compuerta global | `.\venv\Scripts\python.exe scripts\verify.py` | **Exit 0** fuera del sandbox: 334 pruebas, 5 warnings conocidos |
+| Ruff | Ejecutado por la compuerta | `All checks passed!` |
+| Dependencias | Ejecutado por la compuerta | `No broken requirements found.` |
+| Medición de concurrencia | Harness hermético en memoria descrito abajo | Línea base registrada |
 
 ## Subcapas
 
 | Subcapa | Resultado | Estado |
 |---:|---|---|
-| 2.0 | Inventario, contratos, estrategia de verificación y línea base medible | **Pendiente** |
-| 2.1 | Propagación del tenant caracterizada y primer límite de offload protegido | Pendiente |
-| 2.2 | Primera tanda pequeña de caminos bloqueantes migrada | Pendiente |
-| 2.3 | Tandas restantes definidas por el inventario | Pendiente |
-| 2.4 | Medición posterior, compuerta global y cierre | Pendiente |
+| 2.0 | Inventario, contratos, estrategia de verificación y línea base medible | **Cerrada** |
+| 2.1 | Contrato concurrente del tenant y primera tanda: 5 reportes de solo lectura | **Pendiente** |
+| 2.2 | Segunda tanda: 7 lecturas de dashboard | Pendiente |
+| 2.3a | Tercera tanda: 5 lecturas de plan de clases | Pendiente |
+| 2.3b | Cuarta tanda: 6 escrituras o efectos de plan de clases | Pendiente |
+| 2.4 | Caso especial de branding: lectura async más storage y DB síncronos | Pendiente |
+| 2.5 | Dependencias async de usuario y super admin; límite compartido derivado y medido | Pendiente |
+| 2.6 | Medición posterior, compuerta global, staging, rollback y cierre | Pendiente |
 
-El desglose posterior a 2.0 es provisional porque se definió sin inspeccionar el
-código de esta capa. El inventario puede dividir, fusionar o marcar subcapas
-`No aplica` con justificación escrita. Nunca se ejecutan dos subcapas en el mismo
-turno ni se amplía el alcance sin autorización.
+El inventario de 2.0 reemplaza el desglose provisional de la activación. Las
+tandas separan lecturas, escrituras/efectos y autenticación para que cada diff sea
+revisable. Nunca se ejecutan dos subcapas en el mismo turno.
 
-## Subcapa activa: 2.0, trabajo exacto
+## Subcapa 2.0: resultado
 
-1. Reproducir la compuerta heredada desde el commit base y registrar el resultado
-   real.
-2. Inventariar, sin modificar código, las fronteras `async`/síncronas de los
-   caminos de petición que alcanzan PostgreSQL. Clasificar qué trabajo puede
-   bloquear el event loop y qué trabajo ya se ejecuta fuera de él.
-3. Trazar el ciclo del tenant desde la entrada de la petición hasta la preparación
-   de la conexión y cualquier frontera de thread existente. Registrar el
-   comportamiento observado y las incógnitas; no implementar todavía.
-4. Localizar solo las pruebas relacionadas con tenant, `ContextVar`, sesión de
-   base de datos, concurrencia o threadpool y determinar qué contratos ya fijan.
-5. Definir una prueba que falle si el tenant no se propaga o se mezcla entre dos
-   trabajos concurrentes, y un procedimiento reproducible para medir la línea
-   base antes de cambiar el mecanismo. Si exige infraestructura externa o una
-   decisión de alcance, presentarla al usuario antes de 2.1.
-6. Actualizar esta bitácora con inventario, comandos, resultados, decisión de
-   verificación, riesgos y la siguiente acción exacta; detenerse sin iniciar 2.1.
+### Línea base reproducida
 
-Lectura permitida en 2.0:
+La primera ejecución de la compuerta dentro del sandbox terminó en exit 1: 328
+pruebas pasaron y 6 casos de `tests/test_uploads_permissions.py` fallaron en
+*setup* porque pytest no podía enumerar
+`C:\Users\David\AppData\Local\Temp\pytest-of-David` (`WinError 5`). Ruff y
+`pip check` sí terminaron correctamente. No fue una regresión del checkout.
 
-- `app/main.py`, `app/dependencies.py`, `app/db/session.py` y
-  `app/db/tenant.py`, si conservan esas responsabilidades;
-- coincidencias dirigidas en `app/routes/`, `app/controllers/` y
-  `app/services/` para `async def`, `get_cursor`, `get_connection`,
-  `ContextVar`, `run_in_threadpool`, `to_thread` o equivalentes;
-- solo los archivos de pruebas devueltos por búsquedas de tenant, contexto,
-  sesión, concurrencia o threadpool;
-- manifiestos de dependencias, únicamente para identificar las versiones del
-  stack que gobiernan la ejecución en threads.
+La misma compuerta se repitió con autorización fuera del sandbox y terminó en
+exit 0: **334 pruebas correctas**, los 5 warnings conocidos, Ruff correcto y
+dependencias íntegras. Las 43 pruebas específicas de autenticación tenant,
+sesión y pool también pasaron con el cache de pytest desactivado.
 
-Archivos que 2.0 puede modificar: **únicamente esta bitácora**. Sus comandos de
-verificación son la compuerta global y `git diff --check`.
+Stack efectivo de la medición, tomado del `venv` del repositorio:
+
+| Componente | Versión |
+|---|---:|
+| Python | 3.14.3 |
+| FastAPI | 0.136.1 |
+| Starlette | 1.0.0 |
+| AnyIO | 4.13.0 |
+| psycopg2-binary | 2.9.12 |
+| pytest | 9.0.3 |
+
+`requirements.txt` declara límites inferiores, pero no fija versiones máximas ni
+declara Starlette o AnyIO directamente. Las comparaciones antes/después de esta
+capa deben usar el mismo `venv` y registrar estas versiones; si cambian, la
+medición no es comparable sin repetir la línea base.
+
+### Inventario cuantitativo de fronteras HTTP
+
+Se hizo con búsquedas dirigidas y un análisis AST en memoria sobre
+`app/routes/`, `app/controllers/` y `app/services/`; no se agregó ningún script
+al repositorio.
+
+| Patrón | Cantidad | Ejecución actual |
+|---|---:|---|
+| Handlers HTTP totales | 139 | — |
+| Handlers `def` | 115 | FastAPI los envía al threadpool de AnyIO |
+| Handlers `async def` | 24 | FastAPI los ejecuta en el event loop |
+| Handlers async cuyo cuerpo alcanza DB síncrona | **24** | **Bloquean el event loop** |
+| Handlers sync cuyo cuerpo alcanza DB | 109 | Ya están fuera del event loop |
+| Handlers sync sin DB visible | 6 | No requieren migración por su cuerpo |
+| Handlers que atraviesan `get_current_user` async | **133** | Su validación DB bloquea el event loop antes del handler |
+| Handlers que atraviesan `get_current_super_admin` async | **4** | Su validación DB bloquea el event loop antes del handler |
+| Mecanismos explícitos de offload en rutas/controllers/services | **0** | — |
+
+Conclusión: **137 de los 139 handlers** atraviesan una dependencia async que
+ejecuta PostgreSQL síncrono en el event loop. Los dos restantes son `login`, cuyo
+handler sync ya se ejecuta en un worker, y `logout`, que no consulta DB. Además,
+los 24 handlers async añaden una segunda frontera bloqueante después de la
+autenticación. Convertir solo rutas no resolverá el cuello de botella común.
+
+Los 24 handlers async se reparten así:
+
+| Familia | Sitios | Funciones |
+|---|---:|---|
+| Branding | 1 | `subir_logo` |
+| Dashboard | 7 | `obtener_cumpleanos_admin`, `obtener_cumpleanos_profesor`, `obtener_inasistencias_profesor`, `obtener_notas_bajas_profesor`, `obtener_notas_altas_profesor`, `obtener_ranking_rendimiento`, `obtener_ranking_mejor_rendimiento` |
+| Plan de clases | 11 | `obtener_notificaciones_planeadores`, `crear_plan_de_clases`, `obtener_planes_por_asignacion`, `eliminar_imagen_plan_profesor`, `listar_planes_admin`, `obtener_plan_admin`, `actualizar_revision_plan`, `crear_observacion_plan`, `listar_observaciones_plan`, `marcar_observacion_vista`, `eliminar_imagen_plan_admin` |
+| Reportes | 5 | `reporte_general`, `reporte_estado_cuenta_curso`, `reporte_ingresos_mes`, `reporte_ingresos_rango`, `reporte_egresos_rango` |
+
+Veintitrés de los 24 no contienen ningún `await`: llaman directamente a un
+controller o service síncrono. El caso distinto es `branding.subir_logo`, que
+espera `UploadFile.read()` y luego llama al helper async
+`subir_logo_controller`; este ejecuta storage síncrono, `get_cursor(commit=True)`
+y borrado de archivo sin offload. Debe conservarse como caso separado por el
+orden entre archivo y transacción.
+
+Las cinco rutas de reportes llegan a controllers síncronos con
+`get_connection`; las siete de dashboard llegan a `get_connection` o
+`get_cursor`; y las once de plan de clases cruzan controllers y services
+síncronos hasta su repository. La implementación interna del repository no se
+abrió: para clasificar la frontera basta que el handler async lo invoque sin
+`await`.
+
+Entre los 115 handlers sync, 108 cadenas DB quedaron confirmadas dentro de
+rutas/controllers/services y una adicional —`tenant_status`— llega a
+`get_tenant_by_schema`, cuya consulta pública sí se confirmó en la revisión
+dirigida. FastAPI ya gobierna correctamente esos cuerpos `def`; no deben
+reescribirse solo para uniformar estilo. Los seis sin DB visible son `logout` y
+cinco deletes deshabilitados.
+
+### La frontera común de autenticación
+
+`get_current_user` es `async def`, pero llama directamente a dos funciones sync
+con DB:
+
+1. `ensure_tenant_allowed_for_app` termina en `_query_public_colegio`, que fija
+   temporalmente el schema `public`, toma conexión y consulta el colegio.
+2. Después de fijar el tenant de la petición, `_validar_usuario_en_bd` toma otra
+   conexión y valida existencia, rol y estado.
+
+`get_current_active_admin` depende de esa misma función. El análisis de
+dependencias a nivel de router, decorador y parámetro muestra **133 handlers** en
+esta cadena.
+
+Los cuatro handlers de super admin usan `get_current_super_admin`, también
+`async def`; esta llama directamente a `validate_super_admin`, que toma conexión
+pública y consulta `public.super_admins`. Son otros cuatro bloqueos del event
+loop, no una frontera segura por ser dependencias.
+
+### Contrato observado del tenant
+
+1. `tenant_schema_var` es un `ContextVar` con valor por defecto `None`.
+2. `tenant_middleware` fija primero `None`, si hay Bearer válido siembra el
+   tenant, ejecuta el downstream y restaura siempre el token original.
+3. La autenticación por cookie no puede ser sembrada por el middleware:
+   `get_current_user` decodifica la cookie y fija el tenant dentro de la tarea
+   downstream antes de validar al usuario.
+4. Cada `get_connection()` lee ese contexto, rechaza `None` o un schema inválido
+   y reaplica `search_path` antes de entregar la conexión. La pérdida de contexto
+   falla cerrada antes del SQL de negocio.
+5. Las consultas públicas cambian a `public` con token y lo restauran en
+   `finally`.
+6. `branding_controller` y `plan_de_clases_controller` leen el `ContextVar`
+   directamente para construir rutas de storage. Ahí una pérdida podría formar
+   un namespace con `None` antes de que la DB alcance su guarda.
+
+FastAPI ejecuta handlers y dependencias normales `def` mediante el threadpool;
+Starlette concreta ese límite con `anyio.to_thread.run_sync`. AnyIO copia el
+contexto de la tarea al worker, pero las mutaciones hechas en el worker **no
+regresan** al llamador. Se verificó empíricamente con el stack instalado:
+
+- 1.000 pares concurrentes con tenants distintos mediante
+  `starlette.concurrency.run_in_threadpool`: **1.000 correctos, 0 pérdidas, 0
+  mezclas y 0 fugas**; 0,310 s.
+- El control negativo con `asyncio.run_in_executor` crudo observó `None` en
+  ambos workers.
+- Fijar `tenant_worker` dentro de un worker devolvió ese valor allí, pero el
+  llamador continuó viendo `None`.
+
+Consecuencia de seguridad: **no se puede convertir `get_current_user` a `def`
+sin más**. En autenticación por cookie, el tenant fijado dentro del worker no
+volvería a la tarea que después lanza el handler. La dependencia debe conservar
+una parte async que fije el tenant en el llamador antes de enviar DB al worker.
+
+Referencias primarias usadas para contrastar el comportamiento instalado:
+
+- [FastAPI: Concurrency and async / await](https://fastapi.tiangolo.com/async/).
+- [Starlette: Thread Pool](https://www.starlette.io/threadpool/).
+- [AnyIO: Working with threads](https://anyio.readthedocs.io/en/stable/threads.html).
+
+### Capacidad y cancelación medidas
+
+El limitador compartido por defecto de AnyIO tiene **40 tokens** y el pool DB
+configurado tiene `minconn=1`, `maxconn=10`. El pool de la capa 1 falla de
+inmediato al agotarse: si simplemente se liberan los 137 bloqueos hacia el
+threadpool por defecto, hasta cuarenta workers podrían competir por diez
+conexiones y convertir serialización en errores visibles.
+
+Un limitador dedicado solo para nuevas llamadas explícitas no controla los
+handlers `def` que FastAPI ya envía al limitador compartido. Por eso el objetivo
+final es que todo el trabajo DB del camino HTTP use el límite compartido y,
+cuando ya no quede DB en el event loop, derivar sus tokens a partir de
+`DB_POOL_MAX_CONNECTIONS` **y del máximo de conexiones simultáneas que puede
+retener un solo worker**. Diez tokens es un límite superior candidato, no un
+valor correcto por definición: si una petición retiene dos conexiones a la vez,
+sería demasiado alto. La política se aplicará al final de la migración, no en la
+primera tanda, y medirá también el impacto sobre `FileResponse`, `UploadFile` y
+otros usos internos que comparten tokens.
+
+La cancelación también se caracterizó con un worker que duerme 100 ms y un
+`CancelScope` de 20 ms:
+
+| Variante | Retorno observado | Significado |
+|---|---:|---|
+| `anyio.to_thread.run_sync` por defecto | 102 ms | Espera al worker; no abandona recursos vivos |
+| `run_in_threadpool` de Starlette | 101 ms | Misma semántica protegida |
+| AnyIO con `abandon_on_cancel=True` | 21 ms | El llamador sale, pero el thread sigue trabajando |
+
+Para DB se conserva la semántica por defecto. Abandonar un thread que todavía
+posee conexión haría ambiguos el cierre, el rollback y el efecto de una
+cancelación HTTP.
+
+### Cobertura existente y hueco exacto
+
+- `test_auth_tenant.py` comprueba una llamada aislada: el tenant se fija antes de
+  la validación, pero todo ocurre en la misma tarea.
+- `test_db_session_contrato.py` fija manualmente un tenant y protege preparación,
+  devolución al pool, commit y rollback; el caso sin tenant exige
+  `RuntimeError`.
+- `test_db_pool_timeouts.py` fija que `search_path` se aplica antes de los
+  timeouts, pero sus pruebas del pool son secuenciales.
+- `test_plan_de_clases_integridad.py` simula un conflicto lógico concurrente con
+  filas prefabricadas; no crea threads ni prueba `ContextVar`.
+
+No existe una prueba que solape dos tenants, cruce un thread, detecte mezcla o
+afirme restauración. Tampoco existe cobertura de cancelación del offload.
+
+La prueba discriminante de 2.1 debe:
+
+1. ejecutar dos tareas con tenants distintos y autenticación por cookie;
+2. coordinarlas con una barrera dentro de dos workers reales;
+3. observar el tenant antes del salto, dentro del worker y al volver;
+4. exigir `A -> A`, `B -> B`, nunca `None` ni el tenant contrario;
+5. verificar que el contexto exterior queda restaurado;
+6. incluir un control de mutación contra un executor que no copie contexto;
+7. fijar que la cancelación normal espera a que el trabajo DB libere sus
+   recursos.
+
+No necesita PostgreSQL, `httpx`, red ni una dependencia nueva. Una prueba HTTP
+completa se descartó para esta tanda porque añadiría un cliente o harness cuando
+la frontera puede discriminarse directamente con AnyIO/Starlette.
+
+### Medición reproducible antes y después
+
+Se ejecutó cinco veces un harness hermético contra la función real
+`get_current_user`, sustituyendo JWT y DB por dobles. Dos autenticaciones
+concurrentes realizan cada una una validación bloqueante de 100 ms, mientras una
+tarea heartbeat intenta despertar a los 20 ms.
+
+| Métrica actual | Resultado |
+|---|---:|
+| Mediana total del par | **224 ms** |
+| Retraso mediano adicional del heartbeat | **204 ms** |
+| Máximo de validaciones solapadas | **1** |
+| Validaciones en el thread del event loop | **Sí, todas** |
+| Tenants observados | A y B correctos, sin mezcla |
+
+El mismo harness se repetirá después de migrar las dependencias. La compuerta
+funcional no será un umbral temporal frágil: exigirá workers distintos del event
+loop, solapamiento mediante barrera, cero pérdidas/mezclas/fugas y preservación
+de excepciones. Las medianas de tiempo se registrarán como evidencia, usando el
+mismo `venv`, demora, número de repeticiones y versiones.
+
+### Siguiente subcapa: 2.1, trabajo exacto
+
+1. Confirmar `main` limpia y que el único commit posterior al base sigue
+   explicado por esta bitácora.
+2. Agregar primero la prueba hermética concurrente del tenant descrita arriba y
+   comprobar que pasa sobre el mecanismo actual de Starlette/AnyIO; ejecutar el
+   control negativo sin incorporarlo como camino de producto.
+3. Localizar y conservar las pruebas existentes de las cinco rutas de reportes;
+   si falta caracterización, agregar solo la necesaria para forma de respuesta,
+   errores y llamada al controller.
+4. Convertir únicamente los cinco handlers de `app/routes/reportes.py` que no
+   contienen `await` de `async def` a `def`, para que FastAPI envíe sus
+   controllers DB síncronos al worker. No tocar controllers, SQL, permisos ni la
+   dependencia de autenticación.
+5. Ejecutar las pruebas nuevas y de reportes, Ruff del alcance, compuerta global
+   y `git diff --check`; revisar que el diff pertenezca solo a 2.1.
+6. Actualizar esta bitácora y detenerse sin iniciar 2.2.
+
+Archivos previstos para 2.1: `app/routes/reportes.py`, las pruebas de reportes
+existentes que corresponda, un archivo de contrato concurrente del tenant y esta
+bitácora. No se modifica todavía `app/dependencies.py`, el limitador global ni
+ninguna otra familia de rutas.
 
 ## Criterios de cierre de la subcapa 2.0
 
@@ -186,21 +411,63 @@ verificación son la compuerta global y `git diff --check`.
 - 2.0 es primero una subcapa de inventario y medición. Elegir una API de
   threadpool o convertir funciones antes de conocer las fronteras reales fijaría
   una solución sin evidencia.
-- Las subcapas posteriores son provisionales hasta completar 2.0.
+- El inventario divide la migración por familia y tipo de efecto: reportes,
+  dashboard, lecturas de plan de clases, escrituras/efectos de plan de clases,
+  branding, dependencias y cierre. La alternativa de migrar los 24 handlers en
+  una sola tanda se descarta por volumen y por mezclar lecturas, transacciones y
+  storage.
+- Los 23 handlers async sin `await` se migrarán a `def` para usar el offload que
+  FastAPI ya gobierna. `branding.subir_logo` no admite esa transformación porque
+  sí espera la lectura del archivo; su tramo síncrono se tratará aparte.
+- La primitiva admitida para offload explícito será la que usa el propio stack:
+  `starlette.concurrency.run_in_threadpool` / `anyio.to_thread.run_sync`. Se
+  descarta `asyncio.run_in_executor` crudo porque el control empírico perdió los
+  dos tenants.
+- Las dependencias de autenticación conservarán una envoltura async que fije el
+  tenant en la tarea llamadora antes del salto. Convertirlas simplemente a `def`
+  queda descartado porque las mutaciones del `ContextVar` hechas en un worker no
+  regresan y romperían la autenticación por cookie.
+- Se conserva la cancelación protegida por defecto; no se usará
+  `abandon_on_cancel=True` para trabajo que pueda poseer una conexión.
+- El limitador compartido no se cambia durante las tandas parciales. Cuando toda
+  la DB del camino HTTP esté fuera del event loop, 2.5 debe medir cuántas
+  conexiones puede retener cada worker y derivar una capacidad segura frente a
+  `DB_POOL_MAX_CONNECTIONS`; no se asumirá que diez conexiones implican diez
+  tokens. Hacerlo antes mezclaría workers limitados con accesos DB todavía fuera
+  del limitador.
+- Reportes es la primera tanda porque son cinco handlers de solo lectura, ninguno
+  contiene `await` y sus controllers ya son síncronos. Es el diff de producto más
+  pequeño que prueba la transformación normal de FastAPI.
+- La lectura de 2.0 se amplió solo a cinco funciones de `tenant_status.py` y
+  `super_admin.py` descubiertas como dependencias HTTP opacas. No se leyó el
+  resto de esos dominios.
 - La calibración pendiente de `DB_STATEMENT_TIMEOUT_MS` permanece registrada en
   la capa 1 y no se da por cumplida al activar esta capa.
 
 ## Riesgos
 
-- Un mecanismo de offload puede copiar el contexto correctamente en una API y
-  perderlo en otra. El tenant podría caer al schema equivocado sin un error
-  visible; por eso la propagación debe probarse antes de migrar consumidores.
-- Un límite de threads mayor que el pool puede trasladar el bloqueo del event
-  loop a una cola de conexiones; uno menor puede reducir el rendimiento. Deben
-  medirse juntos.
-- Cancelar una coroutine no detiene necesariamente una llamada síncrona que ya
-  corre en otro thread. La propiedad de la conexión y los timeouts de la capa 1
-  mitigan el riesgo, pero el comportamiento debe caracterizarse.
+- La propagación funciona con AnyIO/Starlette en el stack medido, pero no con un
+  executor crudo. El riesgo se mitiga prohibiendo ese camino y fijándolo con una
+  prueba de dos tenants concurrentes antes de la primera migración.
+- AnyIO permite hoy 40 workers y el pool solo 10 conexiones. Liberar de golpe
+  los 137 bloqueos de autenticación puede convertir el cuello de botella actual
+  en `PoolError`; por eso autenticación y el límite global se dejan para 2.5,
+  después de las rutas.
+- Un worker puede retener más de una conexión si una cadena anidada abre otra
+  antes de devolver la primera. Fijar diez tokens solo porque `maxconn=10` sería
+  inseguro hasta medir ese máximo.
+- Reducir el limitador compartido también afecta `FileResponse`, `UploadFile`,
+  tareas background síncronas y otras operaciones internas. Un valor seguro para
+  DB puede degradar storage; debe medirse y documentarse, no suponerse.
+- Cancelar la coroutine no detiene un thread ya iniciado. Abandonarlo liberaría
+  al llamador mientras la conexión sigue viva; se conserva el comportamiento
+  protegido y los timeouts de la capa 1 como límite del trabajo bloqueante.
+- Dos consumidores de storage leen el `ContextVar` sin la validación fail-closed
+  de `get_connection`; una pérdida puede crear una ruta con `None`. Las pruebas
+  deben observar también ese punto antes de tocar branding o plan de clases.
+- Las versiones del stack flotan por límites inferiores. Una actualización de
+  FastAPI, Starlette o AnyIO entre mediciones invalida la comparación aunque el
+  código del repositorio no cambie.
 - Las pruebas herméticas pueden demostrar aislamiento de contexto, pero no por sí
   solas el rendimiento bajo carga ni el comportamiento de un endpoint agrupado
   real.
@@ -238,12 +505,61 @@ verificación son la compuerta global y `git diff --check`.
   estrategia de prueba y el procedimiento de medición. Actualizar únicamente esta
   bitácora y detenerse sin iniciar 2.1.
 
+### 2026-08-12 — subcapa 2.0
+
+- Rama acordada: `main`; árbol **limpio** antes de editar.
+- Commit observado: `c6483e483080c4e9961265765a8cc6a7d95ea041`,
+  un commit local por delante de la referencia local `origin/main`.
+- Comparación con el base: el único commit posterior a `b24cb8d` es la activación
+  de la capa 2 y está explicado en la entrada anterior. Su diff contiene solo
+  `README.md` y esta bitácora, por lo que el árbol ejecutable probado es idéntico
+  al base. No hay divergencia.
+- Archivos modificados: únicamente esta bitácora.
+- Código de producto, pruebas, configuración, dependencias y workflow
+  modificados: **ninguno**.
+- Compuerta, primera pasada dentro del sandbox: exit 1 por seis errores de setup
+  causados por `WinError 5` sobre el temporal de pytest; 328 pruebas sí pasaron,
+  Ruff y `pip check` fueron correctos.
+- Compuerta repetida con autorización fuera del sandbox: **exit 0**; 334 pruebas
+  correctas, 5 warnings conocidos, Ruff correcto y dependencias íntegras.
+- Pruebas específicas existentes: **43 pasaron** en 0,43 s.
+- Inventario AST: 139 handlers; 115 sync, 24 async; 137 atraviesan una dependencia
+  async con DB síncrona; los 24 async alcanzan además DB síncrona desde su cuerpo;
+  cero mecanismos explícitos de offload.
+- Contexto, stress de 1.000 pares con `run_in_threadpool`: 1.000 correctos, cero
+  pérdidas, mezclas o fugas. Control con executor crudo: tenant perdido en ambos
+  workers. Mutación dentro del worker: no regresó al llamador.
+- Capacidad medida: 40 tokens AnyIO frente a 10 conexiones máximas del pool.
+- Cancelación medida: AnyIO y Starlette esperaron ~101–102 ms por un worker de
+  100 ms pese a un cancel scope de 20 ms; `abandon_on_cancel=True` volvió en 21
+  ms y dejó el thread en ejecución. Se conserva la primera semántica.
+- Línea base de bloqueo sobre `get_current_user`, cinco repeticiones con dobles:
+  mediana total 224 ms, heartbeat retrasado 204 ms, máximo solapamiento 1 y todas
+  las validaciones ejecutadas en el thread del event loop.
+- `git diff --check`: exit 0; solo el aviso informativo de conversión LF a CRLF
+  la próxima vez que Git toque el archivo.
+- Alcance final del diff: exclusivamente esta bitácora.
+- Estado: **2.0 cerrada**. No se inició 2.1.
+- Siguiente acción exacta: ejecutar **2.1**, agregando primero el contrato
+  concurrente del tenant y migrando solo las cinco rutas de reportes de
+  `async def` sin `await` a `def`; detenerse antes de dashboard.
+
 ## Entrega al próximo chat
 
 - Capa activa: **2, concurrencia**.
-- Última subcapa terminada: ninguna; solo se activó la capa.
-- Primera subcapa pendiente: **2.0**, inventario, contratos y línea base medible.
-- Bloqueos: ninguno para 2.0. La calibración operativa heredada de
+- Última subcapa terminada: **2.0**, inventario, contratos, estrategia de
+  verificación y línea base medible. No modificó código.
+- Primera subcapa pendiente: **2.1**, contrato concurrente del tenant y cinco
+  handlers de reportes de solo lectura.
+- Hallazgo central: 137/139 handlers bloquean hoy el event loop durante una
+  dependencia DB async y 24/139 vuelven a bloquearlo en su cuerpo.
+- Línea base: compuerta en exit 0 con 334 pruebas; 43 pruebas específicas
+  correctas; bloqueo hermético medido en 224 ms para dos validaciones de 100 ms.
+- Bloqueos: ninguno para 2.1. La calibración operativa heredada de
   `DB_STATEMENT_TIMEOUT_MS` continúa pendiente y no debe marcarse como cumplida.
-- Siguiente acción exacta: ejecutar 2.0 con el alcance de lectura y documentación
-  definido arriba; no modificar código ni iniciar 2.1.
+- Nota de continuidad: el `README.md` conserva la frase de activación «2.0
+  pendiente» porque 2.0 solo podía modificar esta bitácora. La tabla maestra
+  sigue siendo correcta —capa 2 activa— y **esta bitácora gobierna la subcapa
+  vigente: 2.1**; no es una segunda capa activa ni una divergencia de Git.
+- Siguiente acción exacta: ejecutar 2.1 con pruebas antes del cambio, migrar solo
+  `app/routes/reportes.py`, verificar y detenerse sin iniciar dashboard.

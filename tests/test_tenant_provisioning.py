@@ -1,8 +1,8 @@
 """Caracterizacion del alta de tenant, previa a rehacerla desde migraciones.
 
-Estas pruebas fijan lo que el alta hace **hoy**, incluido un defecto conocido:
-no siembra `public.schema_migrations`. Ver
-`test_el_alta_todavia_no_siembra_el_historial_de_migraciones`.
+Estas pruebas fijan lo que el alta hace hoy: crea el schema copiando la
+estructura de la plantilla y, desde 3.3b, hereda tambien su historial de
+migraciones.
 """
 import psycopg2
 import pytest
@@ -31,20 +31,31 @@ COLEGIO_ROW = (9, "Colegio Nuevo", "nuevo", "tenant_nuevo", "activo")
 class ProvisioningCursor:
     """Cursor que guarda el SQL como texto para poder inspeccionar `sql.Composed`."""
 
-    def __init__(self, rows=None, fail_on=None, error=None):
+    def __init__(self, rows=None, fail_on=None, error=None, historial_existe=True):
         self.rows = list(rows or [])
         self.calls = []
         self.closed = False
         self._fail_on = fail_on
         self._error = error or RuntimeError("fallo simulado")
+        self._historial_existe = historial_existe
+        self._pendiente = None
 
     def execute(self, query, params=None):
         text = str(query)
         self.calls.append((text, params))
         if self._fail_on and self._fail_on in text:
             raise self._error
+        if "to_regclass" in text:
+            self._pendiente = (
+                ("public.schema_migrations",) if self._historial_existe else (None,)
+            )
+        else:
+            self._pendiente = None
 
     def fetchone(self):
+        if self._pendiente is not None:
+            pendiente, self._pendiente = self._pendiente, None
+            return pendiente
         return self.rows.pop(0) if self.rows else None
 
     def fetchall(self):
@@ -115,24 +126,60 @@ def test_el_alta_copia_la_estructura_del_schema_plantilla(monkeypatch):
     assert cursor.executed(settings.DEFAULT_TENANT_SCHEMA)
 
 
-def test_el_alta_todavia_no_siembra_el_historial_de_migraciones(monkeypatch):
-    """Fija el defecto que 3.3 debe corregir.
+def test_el_alta_siembra_el_historial_copiando_las_filas_de_la_plantilla(monkeypatch):
+    """Version positiva del defecto que 3.0 encontro y 3.3b corrigio.
 
-    Un tenant recien creado nace con la estructura actual de la plantilla pero
-    con historial vacio, asi que el runner lo vera como si le faltaran todas las
-    migraciones. Cuando 3.3 siembre `public.schema_migrations` en el alta, esta
-    prueba **debe fallar**: ese fallo es la senal de que el defecto quedo
-    corregido y hay que reemplazarla por su version positiva.
+    Antes, un tenant nuevo nacia con historial vacio y el runner lo veia como si
+    le faltaran todas las migraciones. Ahora hereda las filas del schema
+    plantilla, que es de donde copio su estructura.
     """
     cursor = ProvisioningCursor(rows=[COLEGIO_ROW])
 
     crear_tenant(monkeypatch, cursor)
 
-    # Control positivo: el inspector si encuentra lo que el alta realmente hace,
-    # asi que la ausencia de historial no puede deberse a un fragmento mal
-    # escrito ni a un cursor que no registro nada.
-    assert cursor.executed("INSERT INTO public.colegios")
-    assert not cursor.executed("schema_migrations")
+    assert cursor.executed("INSERT INTO public.schema_migrations")
+    assert cursor.executed("FROM public.schema_migrations")
+    assert cursor.executed("WHERE target_schema")
+    assert ("tenant_nuevo", settings.DEFAULT_TENANT_SCHEMA) in [
+        params for _, params in cursor.calls
+    ]
+
+
+def test_la_siembra_ocurre_despues_de_copiar_la_estructura_y_antes_del_commit(monkeypatch):
+    cursor = ProvisioningCursor(rows=[COLEGIO_ROW])
+
+    _, conn = crear_tenant(monkeypatch, cursor)
+
+    assert cursor.index_of("pg_tables") < cursor.index_of("INSERT INTO public.schema_migrations")
+    assert conn.committed is True
+    assert conn.rolled_back is False
+
+
+def test_el_alta_no_falla_si_el_historial_todavia_no_existe(monkeypatch):
+    """Una base sin migraciones aplicadas nunca tuvo `schema_migrations`.
+
+    El alta debe seguir funcionando ahi: se omite la siembra en vez de romper un
+    camino que antes no fallaba.
+    """
+    cursor = ProvisioningCursor(rows=[COLEGIO_ROW], historial_existe=False)
+
+    resultado, conn = crear_tenant(monkeypatch, cursor)
+
+    assert cursor.executed("to_regclass")
+    assert not cursor.executed("INSERT INTO public.schema_migrations")
+    assert resultado["esquema_db"] == "tenant_nuevo"
+    assert conn.committed is True
+
+
+def test_la_siembra_se_revierte_si_el_alta_falla_despues(monkeypatch):
+    cursor = ProvisioningCursor(rows=[COLEGIO_ROW], fail_on="INSERT INTO usuarios")
+
+    with pytest.raises(RuntimeError):
+        crear_tenant(monkeypatch, cursor)
+
+    # La siembra ya se habia ejecutado, pero comparte transaccion con el alta.
+    assert cursor.executed("INSERT INTO public.schema_migrations")
+    assert cursor.closed is True
 
 
 def test_el_alta_copia_solo_las_plantillas_predefinidas(monkeypatch):

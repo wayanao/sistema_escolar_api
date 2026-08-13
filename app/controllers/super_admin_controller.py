@@ -291,6 +291,25 @@ def crear_tenant_controller(data: dict, super_admin_id: int | None = None) -> di
             )
         )
 
+        # El schema nuevo es una copia estructural de la plantilla, asi que
+        # hereda exactamente las migraciones que la plantilla tiene aplicadas.
+        # Se copian sus filas en vez de leer el directorio migrations/, porque
+        # eso supondria que la plantilla esta al dia y nadie lo ha verificado.
+        # Sin esto el tenant nace con historial vacio y el runner intentaria
+        # aplicarle todas las migraciones sobre tablas que ya las tienen.
+        cursor.execute("SELECT to_regclass('public.schema_migrations')")
+        historial = cursor.fetchone()
+        if historial and historial[0]:
+            cursor.execute(
+                """
+                INSERT INTO public.schema_migrations (migration_name, target_schema, checksum)
+                SELECT migration_name, %s, checksum
+                FROM public.schema_migrations
+                WHERE target_schema = %s
+                """,
+                (esquema_nuevo, template_schema),
+            )
+
         cursor.execute(sql.SQL("SET search_path TO {}, public").format(sql.Identifier(esquema_nuevo)))
         cursor.execute("INSERT INTO institucion_branding (nombre_institucion) VALUES ('')")
         cursor.execute(

@@ -37,7 +37,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 0 | Línea base y calidad | Pruebas deterministas, compuerta global y CI | **Cerrada**; CI verificada en remoto | [00_LINEA_BASE_CALIDAD.md](./00_LINEA_BASE_CALIDAD.md) |
 | 1 | Fundación de base de datos | Conexiones, transacciones, timeouts y pool definidos | **Cerrada**; calibración de `statement_timeout` pendiente y aceptada | [01_FUNDACION_BASE_DATOS.md](./01_FUNDACION_BASE_DATOS.md) |
 | 2 | Concurrencia | DB síncrona fuera del event loop preservando `ContextVar` | **Cerrada** y publicada; CI posterior al cierre no verificada | [02_CONCURRENCIA.md](./02_CONCURRENCIA.md) |
-| 3 | Migraciones y tenants | Todos los tenants versionados, runner bloqueado y alta reproducible | **Activa**; 3.0–3.3a cerradas, 3.3b pendiente | [03_MIGRACIONES_TENANTS.md](./03_MIGRACIONES_TENANTS.md) |
+| 3 | Migraciones y tenants | Todos los tenants versionados, runner bloqueado y alta reproducible | **Activa**; 3.0–3.3b cerradas, 3.4 espera base desechable | [03_MIGRACIONES_TENANTS.md](./03_MIGRACIONES_TENANTS.md) |
 | 4 | Reportes financieros | Dominio modular, N+1 eliminado y consultas medidas | En espera | Se crea al activarla |
 | 5 | Pagos y tipos de pago | Dominio financiero modularizado y protegido | En espera | Se crea al activarla |
 | 6 | Asignaciones y estudiantes | Dominios grandes separados con contratos estables | En espera | Se crea al activarla |
@@ -236,9 +236,18 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   al base de la capa 2 quedaron auditados y explicados en su bitácora. La
   activación creó únicamente la bitácora nueva y este índice; no inspeccionó ni
   modificó código, migraciones, esquemas, pruebas ni configuración.
-- Capa activa: **3, migraciones y tenants**. Subcapas **3.0, 3.1, 3.2 y 3.3a
-  cerradas** el 2026-08-13. Primera subcapa pendiente: **3.3b**, siembra del
-  historial en el alta de tenant.
+- Capa activa: **3, migraciones y tenants**. Subcapas **3.0, 3.1, 3.2, 3.3a y
+  3.3b cerradas** el 2026-08-13. Primera subcapa pendiente: **3.4**, ensayo no
+  productivo, **bloqueada hasta recibir una rama de Neon** creada desde la base
+  real, con endpoint directo y confirmación de que no es producción. Una base
+  vacía no sirve: la estructura verdadera del schema plantilla no está en el
+  repositorio.
+- Decisión del 2026-08-13: las 30 migraciones de tenant son incrementales y
+  ninguna crea las tablas base, que hoy solo existen dentro del schema
+  plantilla. El usuario decidió adelantar el ensayo no productivo para extraer
+  de una base desechable el DDL real y promoverlo a una migración base
+  versionada, descartando `scripts/legacy/crear_cliente.py` como fuente. El
+  ensayo pasó a ser 3.4, el alta reproducible bajó a 3.5 y el cierre a 3.6.
 - Resultado de 3.0, de solo lectura: seis puntos de entrada pueden mutar el
   esquema de un tenant y solo `apply_migration.py` registra lo que aplicó; el
   alta copia el schema plantilla sin sembrar `public.schema_migrations`; los
@@ -259,8 +268,12 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   `public.schema_migrations` e incluye a los tenants `suspendido` y `cancelado`
   que el runner omite. Abre la transacción como `READ ONLY` y no crea el
   historial si falta. **No se ha ejecutado contra ninguna base**; su primera
-  ejecución real pertenece al ensayo de 3.5. La compuerta cerró en exit 0 con
-  **526 pruebas**.
+  ejecución real pertenece al ensayo de 3.5.
+- Resultado de 3.3b: el alta siembra `public.schema_migrations` copiando las
+  filas del schema plantilla, en su misma transacción y con una guarda para no
+  romper una base sin historial. Se verificó que las pruebas nuevas fallan
+  contra el controlador anterior, que es la señal esperada. La compuerta cerró
+  en exit 0 con **529 pruebas**.
 - Siguiente capa: 4, reportes financieros, en espera.
 - Código de producto modificado durante la capa 0: ninguno.
 - Código de producto modificado durante la capa 1: el ciclo de vida de las
@@ -277,8 +290,9 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
 - [03_MIGRACIONES_TENANTS.md](./03_MIGRACIONES_TENANTS.md): **bitácora activa**
   de la capa 3; define el alcance autorizado, los invariantes, el inventario
   cerrado en 3.0, el bloqueo cerrado en 3.1, la caracterización cerrada en 3.2,
-  el informe cerrado en 3.3a y el trabajo exacto de la subcapa 3.3b. Es el
-  documento que un chat nuevo debe leer después de este índice.
+  el informe cerrado en 3.3a, la siembra cerrada en 3.3b, la decisión sobre el
+  esquema base y el trabajo exacto de 3.4. Es el documento que un chat nuevo
+  debe leer después de este índice.
 - [02_CONCURRENCIA.md](./02_CONCURRENCIA.md): bitácora cerrada de la capa 2;
   conserva la medición, el límite de capacidad, staging, rollback, verificación
   manual y riesgos residuales.
@@ -293,5 +307,6 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   iniciar o continuar en otro chat. Su autorización de uso inmediato para
   activar la capa 3 se consumió el 2026-08-13 y **fue retirada del archivo**
   para que no se reaplique sobre un estado ya cambiado. Un chat nuevo copia solo
-  el bloque universal; el índice y la bitácora activa le indican que sigue 3.3b.
+  el bloque universal; el índice y la bitácora activa le indican que 3.4 espera
+  una base desechable y no debe iniciarse sin ella.
 - [PLANTILLA_CAPA.md](./PLANTILLA_CAPA.md): estructura de la siguiente bitácora.

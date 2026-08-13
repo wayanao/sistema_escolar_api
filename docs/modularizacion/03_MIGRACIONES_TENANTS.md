@@ -9,13 +9,16 @@
 - Rama acordada: `main`.
 - Estado al activar: árbol limpio; `HEAD` coincidente con la referencia local
   `origin/main`.
-- Primera subcapa pendiente: **3.3b**.
-- Progreso: **3.0, 3.1, 3.2 y 3.3a cerradas**. El inventario está registrado
-  abajo y reemplaza el desglose provisional de la activación.
+- Primera subcapa pendiente: **3.4**.
+- Progreso: **3.0, 3.1, 3.2, 3.3a y 3.3b cerradas**. El inventario está
+  registrado abajo y reemplaza el desglose provisional de la activación.
 - Código de producto modificado al activar: **ninguno**.
-- Código de producto modificado hasta ahora: `apply_migration.py`, que ahora toma
-  un advisory lock de sesión antes de leer o escribir el historial. 3.0 fue una
-  subcapa de solo lectura.
+- Código de producto modificado hasta ahora: `apply_migration.py`, que toma un
+  advisory lock de sesión antes de leer o escribir el historial, y
+  `app/controllers/super_admin_controller.py`, donde el alta siembra el
+  historial del tenant nuevo desde el schema plantilla. Se añadió además
+  `scripts/auditar_migraciones_tenants.py`, de solo lectura. 3.0 y 3.2 fueron
+  subcapas sin cambios de producto.
 - Autorización: orden explícita del usuario el 2026-08-13, limitada a la
   activación documental de esta capa y con la instrucción de detenerse antes de
   3.0.
@@ -133,9 +136,10 @@ del repositorio sin acceso a datos.
 | 3.1 | Bloqueo del runner contra ejecuciones simultáneas | **Cerrada** |
 | 3.2 | Caracterización ejecutable del runner y del alta actual | **Cerrada** |
 | 3.3a | Informe de solo lectura: qué migraciones le faltan a cada tenant | **Cerrada** |
-| 3.3b | Siembra del historial en el alta de tenant | **Pendiente** |
-| 3.4 | Alta reproducible desde migraciones versionadas | Pendiente |
-| 3.5 | Ensayo no productivo, rollback, verificación manual y cierre | Pendiente |
+| 3.3b | Siembra del historial en el alta de tenant | **Cerrada** |
+| 3.4 | Ensayo no productivo: base desechable, DDL base real y migración base versionada | **Pendiente** |
+| 3.5 | Alta reproducible desde la migración base versionada | Pendiente |
+| 3.6 | Rollback, verificación manual, compuerta global y cierre | Pendiente |
 
 El inventario de 3.0 **confirmó y ajustó** el desglose provisional de la
 activación. Los cambios respecto de aquella tabla y su motivo:
@@ -150,7 +154,10 @@ activación. Los cambios respecto de aquella tabla y su motivo:
   ninguna otra y reduce el riesgo de todas las siguientes;
 - 3.2 dividió después el versionado en 3.3a y 3.3b, porque detectar tenants
   atrasados es de solo lectura y sembrar historial escribe en datos reales: no
-  comparten riesgo ni deben compartir diff.
+  comparten riesgo ni deben compartir diff;
+- 3.3b descubrió que el alta reproducible no tenía punto de partida y el usuario
+  decidió **adelantar el ensayo no productivo**, que pasa a ser 3.4. El alta
+  reproducible baja a 3.5 y el cierre a 3.6.
 
 Nunca se ejecutan dos subcapas en el mismo turno.
 
@@ -701,6 +708,204 @@ La suite pasó de 510 a **526** pruebas.
 Archivos previstos para 3.3b: `app/controllers/super_admin_controller.py`,
 `tests/test_tenant_provisioning.py` y esta bitácora.
 
+## Subcapa 3.3b: resultado
+
+`crear_tenant_controller` siembra ahora `public.schema_migrations` para el
+schema nuevo, justo después de copiar la estructura y **dentro de la misma
+transacción** del alta. El diff de producto son **19 líneas, todas añadidas,
+cero eliminadas**, en un solo archivo de `app/`.
+
+La sentencia copia las filas de la plantilla:
+
+```sql
+INSERT INTO public.schema_migrations (migration_name, target_schema, checksum)
+SELECT migration_name, %s, checksum
+FROM public.schema_migrations
+WHERE target_schema = %s
+```
+
+### Por qué se copia la plantilla y no el directorio
+
+Leer `migrations/` y registrar todo lo que hay allí habría supuesto que la
+plantilla está al día, cosa que nadie ha verificado y que 3.3a existe
+precisamente para averiguar. Copiar sus filas dice la verdad: el schema nuevo es
+una copia estructural de la plantilla, así que hereda exactamente lo que la
+plantilla lleva aplicado, ni más ni menos.
+
+La consecuencia hay que decirla claro: **si la plantilla está atrasada, el
+tenant nuevo hereda ese atraso**. Eso no es un defecto de la siembra, es el
+comportamiento correcto —el schema realmente está atrasado— y ahora el informe
+de 3.3a lo mostrará en lugar de ocultarlo tras un historial vacío que fingía que
+faltaba todo.
+
+### La guarda `to_regclass`
+
+Una base que nunca ejecutó una migración no tiene `public.schema_migrations`.
+Sin guarda, el alta pasaría de funcionar a devolver un error en ese entorno. Se
+comprueba la existencia con `to_regclass` y, si falta, se omite la siembra y el
+alta continúa como antes.
+
+Se descartó crear la tabla desde el alta, como hace el runner: el alta de un
+colegio no es el lugar donde debe nacer el historial de migraciones, y hacerlo
+la convertiría en una vía más de escritura sobre el esquema global.
+
+### La señal deliberada disparó
+
+3.2 dejó `test_el_alta_todavia_no_siembra_el_historial_de_migraciones` fijando
+el defecto, con la advertencia de que su fallo sería la señal de haberlo
+corregido. Se reemplazó por cuatro pruebas positivas, y se comprobó que
+**detectan realmente el cambio**: retirando solo el cambio de producto con
+`git stash push -- app/controllers/super_admin_controller.py`, las cuatro
+fallan contra el controlador anterior y las otras diez siguen pasando.
+
+Esas diez son la prueba de que el resto del alta no se movió: paths, validación,
+orden colegio → `CREATE SCHEMA` → copia, plantillas predefinidas, admin inicial,
+409 por duplicado, cierre del cursor y restauración del `ContextVar`.
+
+| Comprobación | Resultado |
+|---|---|
+| Pruebas nuevas contra el controlador **anterior** | **4 fallaron**, 10 pasaron: la señal esperada |
+| `tests/test_tenant_provisioning.py` tras el cambio | **14 pasaron** (eran 11) |
+| Dirigidas ampliadas | **99 pasaron** |
+| Compuerta global | **Exit 0**: 529 pruebas, 5 warnings conocidos |
+| Ruff del alcance | `All checks passed!` |
+| Diff de producto | 19 líneas añadidas, 0 eliminadas, 1 archivo |
+
+La suite pasó de 526 a **529** pruebas.
+
+### Lo que sigue sin estar probado
+
+Nada de esto tocó PostgreSQL. Que el `INSERT ... SELECT` sea válido, que la
+restricción `UNIQUE (migration_name, target_schema)` no choque y que el tenant
+nuevo quede efectivamente al mismo nivel que la plantilla son afirmaciones que
+solo el ensayo no productivo puede sostener.
+
+### Siguiente subcapa: 3.4, y un obstáculo que hay que decidir antes
+
+3.4 debía sustituir la copia de la plantilla por un alta construida desde
+migraciones versionadas. El inventario deja ver un problema de fondo que no se
+puede resolver leyendo el repositorio:
+
+**las 30 migraciones de tenant son incrementales.** Son `ALTER TABLE`, índices y
+columnas que presuponen unas tablas base que ninguna migración crea. Hoy esa
+estructura base solo existe dentro del schema plantilla, en la base de datos. No
+se puede levantar un tenant desde `migrations/` sin un punto de partida.
+
+Existe un candidato: `scripts/legacy/crear_cliente.py` contiene 14
+`CREATE TABLE`. No se inspeccionó su contenido —queda fuera del alcance de
+3.3b— y **no debe asumirse que coincide con la plantilla actual**: es legacy y
+lo separan treinta migraciones de deriva posible.
+
+Por eso 3.4 no puede empezar como estaba escrita. Las opciones son dos y la
+decisión es del usuario:
+
+1. **Adelantar el ensayo no productivo** (hoy 3.5) para extraer de una base
+   desechable el DDL real de la plantilla, convertirlo en una migración base
+   versionada y recién entonces ejecutar 3.4. Es el camino con evidencia.
+2. **Reconstruir la base desde `scripts/legacy/crear_cliente.py`** y verificar
+   después su equivalencia. Es más rápido y más frágil: si el legacy divergió,
+   el error aparecería en tenants nuevos y quizá tarde.
+
+La recomendación es la primera. En cualquier caso, la siguiente subcapa **no
+debe iniciarse sin esa decisión explícita**, porque cambia qué se considera la
+fuente de verdad del esquema de un tenant.
+
+## Decisión sobre el esquema base
+
+El 2026-08-13 el usuario eligió **adelantar el ensayo no productivo**. El
+esquema base saldrá del DDL real extraído de una base desechable, no de
+`scripts/legacy/crear_cliente.py`.
+
+Consecuencias registradas:
+
+- el ensayo pasa a ser **3.4** y deja de ser el cierre; el alta reproducible baja
+  a **3.5** y el cierre de capa a **3.6**;
+- la fuente de verdad del esquema de un tenant será el DDL observado en una base
+  real, promovido a una migración base versionada dentro de `migrations/`;
+- `scripts/legacy/crear_cliente.py` queda descartado como fuente. Podrá usarse
+  como contraste para explicar diferencias, nunca como origen;
+- riesgo aceptado: 3.5 queda bloqueada hasta que exista una base desechable. Es
+  un coste deliberado, a cambio de no fundar el alta de todos los colegios
+  futuros sobre un archivo legacy cuya equivalencia nadie ha comprobado.
+
+### De dónde sale la estructura real: rama de Neon
+
+Al preparar el requisito apareció un segundo problema que el usuario detectó
+antes de gastarse un turno en él: **una base desechable vacía no sirve**. La
+estructura verdadera de `tenant_colegio_1` no está en el repositorio; existe
+únicamente en la base real. Si el asistente creara esas tablas para después
+«extraer» su DDL, estaría midiendo lo que él mismo inventó, que es el mismo
+defecto por el que se descartó `scripts/legacy/crear_cliente.py`.
+
+El entorno tampoco ofrece salida local: se comprobó que en la máquina no hay
+`pg_dump`, `psql`, Docker ni PostgreSQL instalado. El único cliente disponible
+es `psycopg2` dentro del `venv`.
+
+Decisión del usuario el 2026-08-13: **usar una rama de Neon**. Una rama es una
+copia aislada de la base real que ya nace con el schema plantilla y su
+estructura verdadera; escribir en ella no afecta al original y puede destruirse
+después. Se descartaron:
+
+- instalar herramientas cliente para un `pg_dump --schema-only`, por el coste de
+  instalación, aunque habría dado el DDL más fiable;
+- reconstruir el DDL con un script de introspección propio, porque rehacer a
+  mano lo que hace `pg_dump` es frágil en claves foráneas, secuencias, defaults
+  e índices, y un baseline incompleto no se notaría hasta tarde.
+
+### Restricción de datos, vinculante para 3.4
+
+Si la rama no es *schema-only*, contendrá datos reales de estudiantes. La
+subcapa queda limitada a leer **estructura**: `information_schema` y
+`pg_catalog`. No se consultan filas de las tablas de negocio, no se exportan y
+no se copian a ningún archivo del repositorio.
+
+La cadena de conexión de la rama **no se escribe en esta bitácora, ni en el
+repositorio, ni en `.env`**. Se usa solo como variable de entorno durante la
+ejecución. Aquí se registra que existió una rama desechable, nunca su
+credencial.
+
+### Requisito para poder ejecutar 3.4
+
+1. Una rama de Neon creada desde la base real, preferentemente *schema-only* si
+   el plan lo permite.
+2. Su cadena de conexión con el endpoint **directo**, no el `-pooler`: la capa 1
+   registró que el agrupado es PgBouncer, y 3.1 dejó pendiente comprobar si un
+   advisory lock de sesión se sostiene sobre él.
+3. Confirmación explícita de que esa cadena corresponde a la rama y **no** a
+   producción.
+
+Mientras no exista, 3.4 no puede empezar. Ninguna subcapa usará el
+`DATABASE_URL` del `.env` del repositorio.
+
+### Siguiente subcapa: 3.4, trabajo exacto
+
+1. Confirmar `main`, árbol limpio y que todo commit posterior al base esté
+   explicado en esta bitácora.
+2. Confirmar que la conexión recibida es la rama desechable y no producción, y
+   registrarlo. Comprobar antes de escribir nada que el destino no es la base
+   real; ante cualquier duda, detenerse.
+3. Partir de lo que la rama ya trae: el schema plantilla con su estructura
+   verdadera y `public.colegios` con sus tenants. Solo se **añaden** los tenants
+   de prueba que falten para cubrir los cuatro estados —`activo`, `en_mora`,
+   `suspendido` y `cancelado`—, con schemas propios y nombres inequívocamente de
+   prueba. No se modifican ni se borran las filas heredadas.
+4. Ejecutar por primera vez con datos reales `scripts/auditar_migraciones_tenants.py`
+   y registrar su salida: es la primera medición del versionado por tenant, que
+   3.0 dejó explícitamente como no medida.
+5. Verificar allí las cuatro hipótesis que 3.0 dejó abiertas sobre
+   `LIKE ... INCLUDING ALL`: claves foráneas, secuencias `SERIAL`, objetos que no
+   son tablas y si `tenant_colegio_1` es además un tenant operativo.
+6. Comprobar la precondición de 3.1: si el lock de sesión se sostiene sobre el
+   endpoint que use el runner, o si exige el endpoint directo.
+7. Extraer el DDL de la plantilla y promoverlo a una migración base versionada
+   en `migrations/`, sin tocar ningún archivo existente de ese directorio.
+8. Documentar el rollback de esquema con la evidencia obtenida.
+9. Actualizar esta bitácora y detenerse sin iniciar 3.5.
+
+Archivos previstos para 3.4: una migración base nueva en `migrations/`, quizá un
+script de apoyo para el ensayo, y esta bitácora. **No** se modifican archivos
+existentes de `migrations/` ni el runner.
+
 ## Criterios de cierre de la subcapa 3.0
 
 - El mecanismo actual de migraciones y de alta de tenants está descrito con
@@ -1100,13 +1305,109 @@ Archivos previstos para 3.3b: `app/controllers/super_admin_controller.py`,
   de tenant desde las filas del schema plantilla y reemplazando la prueba
   deliberada por su versión positiva; detenerse antes de 3.4.
 
+### 2026-08-13 — subcapa 3.3b
+
+- Modo de acceso: mismo checkout local; rama `main` y árbol limpio antes de
+  editar.
+- Commit observado: `7aa1003a95a8ea1b585b8b9411054667b428b6dd`, cinco commits
+  locales por delante de la referencia local `origin/main`.
+- Continuidad: `81882f3` es el base; los cinco commits posteriores son
+  `38dc6b2` (activación), `7d1386a` (3.0), `73a777d` (3.1), `cfd9e4c` (3.2) y
+  `7aa1003` (3.3a), todos explicados en esta bitácora. No había cambios
+  pendientes ni divergencia al iniciar.
+- Código de producto: únicamente `app/controllers/super_admin_controller.py`,
+  con 19 líneas añadidas y ninguna eliminada. Se añadió la guarda `to_regclass`
+  y el `INSERT ... SELECT` que copia el historial de la plantilla, dentro de la
+  transacción existente. No cambiaron validaciones, paths, payload, status
+  codes, permisos, orden de efectos, el `CREATE SCHEMA`, la copia de estructura,
+  las plantillas predefinidas, el admin inicial ni el manejo de errores.
+- Fuera del cambio: el runner, los cuatro scripts ad-hoc, el informe de 3.3a,
+  `migrations/`, el workflow y las dependencias. Verificado con
+  `git status --short -- apply_migration.py scripts migrations .github requirements.txt`
+  vacío.
+- Pruebas: `tests/test_tenant_provisioning.py` pasó de 11 a **14 casos**. Se
+  retiró la prueba deliberada de 3.2 y se pusieron en su lugar cuatro positivas:
+  la siembra, su orden respecto de la copia de estructura, la omisión cuando el
+  historial no existe todavía y su reversión si el alta falla después.
+- Migraciones ejecutadas, conexiones a PostgreSQL abiertas y accesos a
+  producción: **ninguno**.
+- Comandos ejecutados:
+  - precondiciones y continuidad: `git status --short --branch`,
+    `git log --oneline 81882f3..HEAD`, `git rev-parse HEAD`;
+  - verificación de la señal contra el controlador anterior:
+    `git stash push -- app/controllers/super_admin_controller.py`,
+    `.\venv\Scripts\python.exe -m pytest -p no:cacheprovider -q tests/test_tenant_provisioning.py`,
+    `git stash pop`;
+  - pruebas del archivo tras el cambio: el mismo comando de pytest;
+  - dirigidas ampliadas:
+    `.\venv\Scripts\python.exe -m pytest -p no:cacheprovider -q tests/test_tenant_provisioning.py tests/test_super_admin.py tests/test_auditar_migraciones_tenants.py tests/test_apply_migration.py tests/test_auth_tenant.py tests/test_permissions.py`;
+  - lint del alcance:
+    `.\venv\Scripts\python.exe -m ruff check app/controllers/super_admin_controller.py tests/test_tenant_provisioning.py`;
+  - compuerta global: `.\venv\Scripts\python.exe scripts\verify.py`;
+  - alcance y whitespace: `git status --short`, `git diff --stat -- app`,
+    `git diff --check` y el barrido C0.
+- Señal deliberada: contra el controlador anterior, **4 pruebas fallaron y 10
+  pasaron**. Las cuatro son las nuevas, así que detectan realmente el cambio;
+  las diez confirman que el resto del alta no se movió.
+- Verificación final: 14 pruebas del archivo, **99 dirigidas** y compuerta global
+  en **exit 0 con 529 pruebas**, 5 warnings conocidos, Ruff correcto y
+  dependencias íntegras.
+- Decisiones: copiar las filas de la plantilla en vez de leer `migrations/`,
+  porque lo segundo supondría que la plantilla está al día; guarda `to_regclass`
+  para no romper un alta que hoy funciona en una base sin historial; se descartó
+  crear la tabla desde el alta.
+- Riesgos: si la plantilla está atrasada, el tenant nuevo hereda ese atraso. Es
+  el comportamiento correcto y ahora queda visible en el informe de 3.3a, pero
+  no debe leerse como que un tenant sembrado está al día.
+- Hallazgo que condiciona la subcapa siguiente: las 30 migraciones de tenant son
+  incrementales y ninguna crea las tablas base, así que 3.4 no puede construir
+  un tenant desde `migrations/` sin un punto de partida. Documentado arriba con
+  las dos opciones y la recomendación.
+- Verificación operativa heredada: la calibración de `DB_STATEMENT_TIMEOUT_MS`
+  permanece **pendiente y aceptada**.
+- Evidencia remota: sigue sin haber cliente de GitHub en este checkout; GitHub
+  Actions continúa **no verificada**.
+- Estado: **3.3b cerrada**. No se inició 3.4.
+- Siguiente acción exacta: **pedir una decisión al usuario** entre adelantar el
+  ensayo no productivo para extraer el DDL base real o reconstruirlo desde
+  `scripts/legacy/crear_cliente.py`. No iniciar 3.4 sin esa decisión.
+
+### 2026-08-13 — decisión sobre el esquema base
+
+- No es una subcapa: es la decisión que 3.3b dejó pendiente y que desbloquea el
+  resto de la capa. Se registra aparte para que su diff no se confunda con
+  trabajo de implementación.
+- Decisión del usuario: **adelantar el ensayo no productivo**. El esquema base
+  saldrá del DDL real de una base desechable, no de
+  `scripts/legacy/crear_cliente.py`.
+- Reordenamiento: el ensayo pasa a **3.4**, el alta reproducible a **3.5** y el
+  cierre de capa a **3.6**.
+- Riesgo aceptado: 3.5 queda bloqueada hasta que exista una base desechable. Se
+  acepta a cambio de no fundar el alta de todos los colegios futuros sobre un
+  archivo legacy sin equivalencia comprobada.
+- Archivos modificados: esta bitácora y `docs/modularizacion/README.md`. Sin
+  cambios de producto, pruebas ni migraciones.
+- Bloqueo declarado: 3.4 no puede iniciarse hasta recibir una base PostgreSQL
+  desechable, su cadena de conexión y la confirmación explícita de que no es
+  producción. Ninguna subcapa usará el `DATABASE_URL` del `.env`.
+- Corrección posterior, el mismo día: el usuario preguntó quién crearía las
+  tablas si solo entregaba una cadena de conexión. La pregunta destapó que el
+  paso 3 estaba mal especificado: una base vacía no contiene la estructura real
+  y fabricarla habría sido circular. Se comprobó además que la máquina no tiene
+  `pg_dump`, `psql`, Docker ni PostgreSQL. El usuario decidió usar una **rama de
+  Neon**, que ya nace con el schema plantilla verdadero. Se añadieron la
+  restricción de leer solo estructura, la prohibición de registrar la
+  credencial y la exigencia del endpoint directo.
+- Siguiente acción exacta: esperar la cadena de conexión de la rama y su
+  confirmación. Después, ejecutar únicamente 3.4 según su «trabajo exacto».
+
 ## Entrega al próximo chat
 
 - Capa activa: **3, migraciones y tenants**.
-- Última subcapa terminada: **3.3a**, informe de solo lectura de migraciones
-  faltantes por tenant.
-- Primera subcapa pendiente: **3.3b**, siembra del historial en el alta de
-  tenant.
+- Última subcapa terminada: **3.3b**, siembra del historial en el alta de tenant.
+- Primera subcapa pendiente: **3.4**, ensayo no productivo. Bloqueada hasta
+  recibir la cadena de conexión de una **rama de Neon** creada desde la base
+  real, con endpoint directo y confirmación de que no es producción.
 - Commit base: `81882f3b1ee9e3b50076b0fc1fd93dcd9fd5ac70`, rama `main`.
 - Hallazgo central: seis puntos de entrada pueden mutar el esquema de un tenant
   y solo `apply_migration.py` registra lo que aplicó. El alta crea el schema
@@ -1127,11 +1428,24 @@ Archivos previstos para 3.3b: `app/controllers/super_admin_controller.py`,
   incluye a los tenants suspendidos y cancelados que el runner omite. **Nunca se
   ha ejecutado contra una base de datos**; su primera ejecución real pertenece
   al ensayo de 3.5.
-- Verificación local vigente: compuerta global en exit 0 con **526 pruebas**,
-  Ruff y dependencias correctos; 16 pruebas del informe y 71 dirigidas. La
-  caracterización de 3.1 se comprobó además contra el runner anterior, con 8
-  pasadas.
-- Bloqueos: ninguno para iniciar 3.3b. Permanece pendiente y aceptada la
+- Estado de 3.3b: el alta siembra `public.schema_migrations` copiando las filas
+  del schema plantilla, en su misma transacción y con una guarda `to_regclass`
+  para no romper una base que aún no tiene historial. Si la plantilla está
+  atrasada, el tenant nuevo hereda ese atraso: es lo correcto, pero sembrado no
+  significa al día.
+- Verificación local vigente: compuerta global en exit 0 con **529 pruebas**,
+  Ruff y dependencias correctos; 14 pruebas del alta y 99 dirigidas. Tanto en
+  3.1 como en 3.3b se comprobó contra el código anterior que las pruebas nuevas
+  detectan realmente el cambio.
+- Decisión tomada el 2026-08-13: el esquema base saldrá del DDL real de una base
+  desechable, no de `scripts/legacy/crear_cliente.py`. El ensayo se adelantó a
+  **3.4**, el alta reproducible bajó a 3.5 y el cierre a 3.6.
+- **Bloqueo para 3.4**: hace falta una **rama de Neon** creada desde la base
+  real —una base vacía no sirve, porque la estructura verdadera solo existe
+  allí— con su cadena de conexión de endpoint directo y la confirmación de que
+  no es producción. La subcapa solo leerá estructura, nunca filas de negocio, y
+  la credencial no se registra en ningún documento. Ninguna subcapa usará el
+  `DATABASE_URL` del `.env`. Permanece además pendiente y aceptada la
   calibración de `DB_STATEMENT_TIMEOUT_MS` de la capa 1, y GitHub Actions sigue
   sin evidencia de run.
 - No medido todavía: el estado real de versionado por tenant, las cuatro
@@ -1139,9 +1453,10 @@ Archivos previstos para 3.3b: `app/controllers/super_admin_controller.py`,
   directo o el agrupado. Las tres cosas exigen acceso a una base y no deben
   darse por ciertas; la última condiciona que el lock sirva de algo en el
   entorno real.
-- Siguiente acción exacta: ejecutar únicamente 3.3b según «Siguiente subcapa:
-  3.3b, trabajo exacto»: sembrar `public.schema_migrations` en el alta de tenant
-  copiando las filas del schema plantilla, dentro de la misma transacción, y
-  reemplazar la prueba deliberada por su versión positiva. Sin tocar el runner,
-  los scripts ad-hoc, el informe de 3.3a ni archivos existentes de
-  `migrations/`, y sin ejecutar ninguna migración.
+- Siguiente acción exacta: esperar la base desechable y su confirmación. Después,
+  ejecutar únicamente **3.4** según su «trabajo exacto»: montar el estado de
+  partida, ejecutar por primera vez con datos reales el informe de 3.3a,
+  verificar las cuatro hipótesis sobre `LIKE ... INCLUDING ALL` y la
+  precondición del lock, y extraer el DDL base para promoverlo a una migración
+  versionada. Sin tocar archivos existentes de `migrations/` ni el runner, y sin
+  usar el `DATABASE_URL` del `.env`.

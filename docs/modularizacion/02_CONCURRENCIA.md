@@ -1643,6 +1643,32 @@ puede crearse desde la plantilla tras una orden explícita del usuario.
   `PLANTILLA_CAPA.md`, se registra el HEAD limpio vigente como base, se actualiza
   el índice y se detiene antes de implementar 3.0, salvo autorización adicional.
 
+### 2026-08-13 — publicación del cierre y preparación del relevo
+
+- Modo de acceso: mismo checkout local; Git validado directamente.
+- Estado inicial verificado: rama `main`, árbol limpio, `HEAD` y la referencia
+  local `origin/main` coincidentes en
+  `8c3939ad5dc872b08e93464145369b3a1eea909e`, sin divergencia.
+- Publicación: el usuario confirmó el commit y push del cierre; Git local
+  confirma que el commit de cierre está en la referencia `origin/main`. Esto no
+  demuestra por sí solo el resultado de GitHub Actions y no se registra un run
+  remoto como verificado sin evidencia adicional.
+- Alcance solicitado: preparar `PROMPT_CONTINUACION.md` para que otro LLM sin
+  contexto pueda activar únicamente la capa 3. Se conserva el protocolo
+  universal y se agrega una autorización específica de uso inmediato.
+- Documentación reconciliada: este índice de continuidad, el índice maestro y
+  el prompt universal. No se inspeccionó ni modificó código, pruebas, scripts,
+  configuración, migraciones o la futura bitácora de la capa 3.
+- Estado del programa: la capa 2 continúa cerrada; la capa 3 continúa en espera
+  y no fue activada. `DB_STATEMENT_TIMEOUT_MS` permanece pendiente y aceptado;
+  no se marca como cumplido.
+- El usuario debe revisar y publicar este cambio documental antes de entregar
+  el checkout a otro LLM. La activación deberá registrar como base el `HEAD`
+  limpio vigente después de esa publicación, no asumir `8c3939a` por memoria.
+- Siguiente acción exacta: en otro chat, validar nuevamente Git y usar la
+  autorización específica de `PROMPT_CONTINUACION.md` para crear únicamente
+  `03_MIGRACIONES_TENANTS.md`, actualizar el índice y detenerse antes de 3.0.
+
 ## Entrega al próximo chat
 
 - Capa activa: **ninguna**.
@@ -1655,7 +1681,8 @@ puede crearse desde la plantilla tras una orden explícita del usuario.
 - Verificación local vigente: medición formal 5/5, 81 pruebas dirigidas y
   60/60 casos sensibles previos; compuerta global en exit 0 con 477 pruebas,
   Ruff y dependencias correctos.
-  GitHub Actions no está verificada porque los commits siguen sin push.
+  El cierre está publicado en la referencia local `origin/main`; GitHub Actions
+  posterior al cierre no se presenta como verificada sin evidencia del run.
 - Verificación operativa pendiente: la calibración heredada de
   `DB_STATEMENT_TIMEOUT_MS` continúa pendiente y no debe marcarse como cumplida.
 - Riesgos conservados: cola de cinco workers para trabajo sync compartido,

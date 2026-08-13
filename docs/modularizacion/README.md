@@ -36,7 +36,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 |---:|---|---|---|---|
 | 0 | Línea base y calidad | Pruebas deterministas, compuerta global y CI | **Cerrada**; CI verificada en remoto | [00_LINEA_BASE_CALIDAD.md](./00_LINEA_BASE_CALIDAD.md) |
 | 1 | Fundación de base de datos | Conexiones, transacciones, timeouts y pool definidos | **Cerrada**; calibración de `statement_timeout` pendiente y aceptada | [01_FUNDACION_BASE_DATOS.md](./01_FUNDACION_BASE_DATOS.md) |
-| 2 | Concurrencia | DB síncrona fuera del event loop preservando `ContextVar` | **Cerrada**; compuerta local correcta, sin push | [02_CONCURRENCIA.md](./02_CONCURRENCIA.md) |
+| 2 | Concurrencia | DB síncrona fuera del event loop preservando `ContextVar` | **Cerrada** y publicada; CI posterior al cierre no verificada | [02_CONCURRENCIA.md](./02_CONCURRENCIA.md) |
 | 3 | Migraciones y tenants | Todos los tenants versionados, runner bloqueado y alta reproducible | En espera | Se crea al activarla |
 | 4 | Reportes financieros | Dominio modular, N+1 eliminado y consultas medidas | En espera | Se crea al activarla |
 | 5 | Pagos y tipos de pago | Dominio financiero modularizado y protegido | En espera | Se crea al activarla |
@@ -50,7 +50,9 @@ tabla.
 
 La capa 2 se cerró el 2026-08-13 después de completar sus siete subcapas. Las
 capas 0, 1 y 2 están cerradas; la capa 3 permanece en espera y no fue activada.
-No existe una capa activa en este momento.
+No existe una capa activa en este momento. El commit documental de cierre fue
+publicado en `origin/main`; no se atribuye un resultado nuevo de GitHub Actions
+sin evidencia del run correspondiente.
 
 ## Alcance de cada capa
 
@@ -212,9 +214,12 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   entorno sin desplegar código. No debe marcarse como cumplida.
 - Capa 2 **cerrada** el 2026-08-13. Commit base:
   `b24cb8d3f1a8fa1d48699ed5732d4013ab6fe7f9`; al comenzar el cierre había ocho
-  commits locales posteriores, todos explicados en su bitácora. Los cambios
-  documentales de 2.6 se entregan sin commit. No hubo push ni ejecución nueva de
-  GitHub Actions, por lo que la evidencia de cierre es local.
+  commits locales posteriores, todos explicados en su bitácora. El cierre
+  documental quedó publicado en
+  `8c3939ad5dc872b08e93464145369b3a1eea909e`; al preparar el relevo,
+  `HEAD` y la referencia local `origin/main` coincidían en ese commit. No se
+  presenta GitHub Actions como verificada para la capa 2 sin evidencia de un
+  run asociado.
 - Resultado de la capa 2: 23 handlers sin `await` pasan por el threadpool de
   FastAPI, branding conserva su lectura async y descarga storage/DB al worker,
   y las tres consultas de autenticación async usan el offload estándar sin
@@ -243,6 +248,7 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
 - [00_LINEA_BASE_CALIDAD.md](./00_LINEA_BASE_CALIDAD.md): bitácora cerrada de
   la capa 0, sin verificaciones pendientes; conserva la compuerta, la CI y el
   inventario de contratos que la capa 1 debe preservar.
-- [PROMPT_CONTINUACION.md](./PROMPT_CONTINUACION.md): texto para iniciar o
-  continuar en otro chat.
+- [PROMPT_CONTINUACION.md](./PROMPT_CONTINUACION.md): texto universal para
+  iniciar o continuar en otro chat, más la autorización de uso inmediato para
+  activar únicamente la capa 3 y detenerse antes de 3.0.
 - [PLANTILLA_CAPA.md](./PLANTILLA_CAPA.md): estructura de la siguiente bitácora.

@@ -240,15 +240,18 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   3.3b y 3.4a cerradas** el 2026-08-13. Primera subcapa pendiente: **3.4b**,
   migración base versionada extraída del DDL real; requiere otra vez una rama
   desechable de Neon con endpoint directo.
-- **Resultado de 3.4a, el más importante de la capa.** El ensayo sobre una rama
-  de Neon confirmó las cuatro hipótesis de 3.0 y encontró daño ya presente en
-  producción: a cada uno de los tres colegios le faltan entre 23 y 26 claves
-  foráneas, y entre 23 y 26 de sus tablas generan `id` con secuencias de
-  `tenant_colegio_1`, que además es un colegio operativo. `tenant_4444` y
-  `tenant_2005` no están estructuralmente atrasados: les faltan 9 y 15
-  registros. Y el advisory lock de 3.1 **no se sostiene sobre el endpoint
-  agrupado**, que es el que usa `.env`, así que hoy no protege. Tres
-  reparaciones quedaron identificadas y sin abordar.
+- **Resultado de 3.4a, el más importante de la capa.** De los cuatro schemas
+  solo `tenant_2005` es producción real; los demás son demo o prueba. El ensayo
+  sobre una rama de Neon confirmó las cuatro hipótesis de 3.0 y encontró una
+  **avería en curso**: ocho tablas de ese colegio —`estudiantes`, `profesor`,
+  `asignaciones`, `asistencia`, `notas_detalle`, `pagos`, `boletin_cabecera` y
+  `boletin_detalles`— no pueden insertar, porque toman su `id` de secuencias que
+  viven en el schema de demostración y ya están por debajo del `MAX(id)` real.
+  Además, `scripts/limpiar_tenant_colegio_1_operativo.py` haría
+  `TRUNCATE … RESTART IDENTITY` sobre 19 de esas secuencias. `tenant_2005` tiene
+  también 11 claves foráneas de 37, y el advisory lock de 3.1 no se sostiene
+  sobre el endpoint agrupado que usa `.env`. **Ninguna reparación se ejecutó**;
+  la capa reordena su trabajo para atenderlas antes de 3.4b.
 - Decisión del 2026-08-13: las 30 migraciones de tenant son incrementales y
   ninguna crea las tablas base, que hoy solo existen dentro del schema
   plantilla. El usuario decidió adelantar el ensayo no productivo para extraer

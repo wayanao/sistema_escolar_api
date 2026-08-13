@@ -1015,6 +1015,95 @@ como está configurado hoy, **la protección que añadió 3.1 no impediría dos
 ejecuciones simultáneas del runner**. El riesgo que se registró como hipótesis
 resultó ser el caso real.
 
+### Reclasificación: solo `tenant_2005` es producción real
+
+El usuario aclaró después del ensayo que **de los cuatro schemas, únicamente
+`tenant_2005` corresponde a un colegio en producción**. `tenant_colegio_1`
+(«Colegio Demo»), `tenant_3333` y `tenant_4444` son demo o prueba, aunque los
+cuatro figuren como `activo` en `public.colegios` y el runner los trate igual.
+
+Esto no reduce la gravedad: la invierte. Antes parecía «tres colegios comparten
+secuencias con la plantilla». Ahora se lee así: **el único colegio real toma 26
+de sus contadores de ID de un schema de demostración**, y su integridad depende
+de que nadie limpie esa demo.
+
+#### Hallazgo crítico: 8 tablas de `tenant_2005` no pueden insertar hoy
+
+Al medir el estado real de las secuencias compartidas frente a los datos de
+`tenant_2005`, ocho de ellas ya están **por debajo** del máximo `id` existente.
+Como esas columnas tienen `PRIMARY KEY`, el próximo `nextval` devuelve un valor
+que ya existe y la inserción falla con clave duplicada:
+
+| Tabla de `tenant_2005` | Próximo id | Máximo id existente | Filas |
+|---|---:|---:|---:|
+| `estudiantes` | 9 | 685 | 172 |
+| `profesor` | 3 | 48 | 10 |
+| `asignaciones` | 6 | 353 | 225 |
+| `asistencia` | 2.571 | 3.125 | 2.481 |
+| `notas_detalle` | 1.092 | 20.366 | 608 |
+| `pagos` | 51 | 10.111 | 74 |
+| `boletin_cabecera` | 36 | 99 | 3 |
+| `boletin_detalles` | 56 | 313 | 4 |
+
+Matricular un estudiante, registrar un profesor, crear una asignación, tomar
+asistencia, guardar notas o registrar un pago falla con clave duplicada. Cada
+intento consume un `nextval`, así que el contador avanza de uno en uno: para
+`estudiantes` harían falta unos 676 intentos fallidos antes de que uno pase, y
+para `notas_detalle` más de 19.000. En la práctica, esas operaciones están rotas.
+
+La explicación más plausible es que los datos del colegio se cargaran con `id`
+explícitos —una importación—, cosa que **no** avanza la secuencia. Como además
+la secuencia vive en la demo, solo avanzó con el uso de la demo. Nada de esto
+requiere que alguien se equivoque: es el estado actual.
+
+Solo se leyeron agregados `MAX(id)` y `COUNT(*)`. No se consultó ningún dato
+personal.
+
+#### El arma cargada: `limpiar_tenant_colegio_1_operativo.py`
+
+3.0 anotó ese script como indicio de tensión sin abrirlo. Abierto ahora, hace:
+
+```sql
+TRUNCATE tenant_colegio_1.<20 tablas> RESTART IDENTITY
+```
+
+`RESTART IDENTITY` reinicia las secuencias de esas tablas. **19 de las 26
+secuencias que usa `tenant_2005` pertenecen a tablas de esa lista.** Ejecutar la
+limpieza de la demo —una operación que parece inocua, tiene respaldo propio y
+está pensada para no tocar nada importante— devolvería a 1 los contadores del
+colegio real y agravaría la rotura ya existente.
+
+Las 7 que se salvan son `cursos`, `materias`, `usuarios`,
+`institucion_branding`, `plantilla_impresion`, `tipos_de_pagos` y
+`tipos_pagos_cursos`, precisamente porque el script las preserva.
+
+#### Riesgos reordenados por gravedad real
+
+| # | Riesgo | Alcance | Estado |
+|---:|---|---|---|
+| 1 | 8 tablas de `tenant_2005` fallan al insertar por secuencias agotadas | **Producción, ahora** | Sin reparar |
+| 2 | Limpiar la demo reiniciaría 19 contadores del colegio real | **Producción, un comando de distancia** | Sin reparar |
+| 3 | `tenant_2005` tiene 11 claves foráneas de 37: sin integridad referencial | **Producción** | Sin reparar |
+| 4 | El lock de 3.1 no se sostiene sobre `-pooler`, que es lo que usa `.env` | Operativo | Sin reparar |
+| 5 | A `tenant_2005` le faltan 15 registros en `schema_migrations` | Registro, no estructura | Sin reparar |
+| 6 | El alta creaba tenants sin historial | Futuro | **Corregido en 3.3b** |
+
+Los riesgos 1 y 2 no son deuda técnica: son una avería en curso y un detonante
+al alcance de la mano. El 3 puede haber permitido filas huérfanas en el colegio
+real, lo que condiciona su propia reparación. El 5 es el menos grave pese a ser
+el que motivó la capa: `tenant_2005` tiene las mismas 281 columnas y 89 índices
+que la plantilla, así que **no está estructuralmente atrasado**; aplicarle esas
+15 migraciones repetiría cambios ya presentes, y lo correcto es sembrar su
+historial.
+
+#### Consecuencia para el orden de la capa
+
+3.4b —la migración base— deja de ser lo más urgente. Antes está reparar el
+colegio real. La reparación mínima y correcta del riesgo 1 es la misma que
+resuelve el 2: dar a `tenant_2005` **secuencias propias**, inicializadas en el
+`MAX(id)` real de cada tabla, y reapuntar sus `DEFAULT` a ellas. Eso corta de
+raíz el acoplamiento con la demo. No se ejecutó nada de esto en 3.4a.
+
 ### Siguiente subcapa: 3.4b, trabajo exacto
 
 Los hallazgos cambian lo que la migración base debe contener: ya no basta con
@@ -1172,18 +1261,27 @@ usuario decida cuándo abordarlas:
   `-pooler` obtuvieron el mismo lock. La protección de 3.1 es hoy inefectiva en
   el entorno real; funciona solo sobre el endpoint directo. Reparación
   pendiente, no abordada.
-- **Confirmado en 3.4a, ya en producción**: a cada uno de los tres colegios le
-  faltan entre 23 y 26 claves foráneas, porque `LIKE INCLUDING ALL` no las
-  copia. Puede haber filas huérfanas que la base no impide. Añadirlas más tarde
-  fallará si esas huérfanas existen, así que la reparación exige auditarlas
-  antes.
-- **Confirmado en 3.4a, ya en producción**: entre 23 y 26 tablas de cada colegio
-  generan su `id` con secuencias de `tenant_colegio_1`, que además es un tenant
-  operativo. Borrar ese schema o sus secuencias dejaría a todos los colegios sin
-  poder insertar. La reparación debe conservar los valores actuales de cada
-  contador.
-- `tenant_4444` y `tenant_2005` no están estructuralmente atrasados: les faltan
-  9 y 15 **registros**. Aplicarles esas migraciones repetiría cambios ya
+- **AVERÍA EN CURSO, producción.** Ocho tablas de `tenant_2005` —el único
+  colegio real— tienen su secuencia compartida por debajo del `MAX(id)`
+  existente: `estudiantes`, `profesor`, `asignaciones`, `asistencia`,
+  `notas_detalle`, `pagos`, `boletin_cabecera` y `boletin_detalles`. Matricular,
+  registrar un profesor, tomar asistencia, guardar notas o registrar un pago
+  falla hoy con clave duplicada. No es un riesgo futuro.
+- **DETONANTE A UN COMANDO.** `scripts/limpiar_tenant_colegio_1_operativo.py`
+  ejecuta `TRUNCATE … RESTART IDENTITY` sobre 20 tablas de la demo, y 19 de las
+  26 secuencias que usa `tenant_2005` pertenecen a esas tablas. Limpiar la demo
+  reiniciaría a 1 los contadores del colegio real. El script parece inocuo y
+  hasta genera respaldo propio; nada en él advierte del alcance cruzado.
+- **Confirmado en 3.4a, producción**: `tenant_2005` tiene 11 claves foráneas
+  frente a las 37 de la plantilla, porque `LIKE INCLUDING ALL` no las copia.
+  Puede haber filas huérfanas que la base no impide. Añadirlas más tarde fallará
+  si esas huérfanas existen, así que la reparación exige auditarlas antes.
+- Los demás schemas comparten los mismos defectos, pero `tenant_colegio_1`,
+  `tenant_3333` y `tenant_4444` son demo o prueba: su reparación no es urgente.
+  Lo que sí importa es que la demo **no puede tratarse como desechable** mientras
+  el colegio real dependa de sus secuencias.
+- `tenant_2005` no está estructuralmente atrasado: le faltan 15 **registros**,
+  no columnas ni índices. Aplicarle esas migraciones repetiría cambios ya
   presentes; lo correcto es sembrar su historial, que es una escritura sobre
   datos reales y necesita ensayo y rollback propios.
 - La CI remota no está verificada para los commits de la capa 2. Un fallo de
@@ -1665,18 +1763,23 @@ usuario decida cuándo abordarlas:
 - Decisión tomada el 2026-08-13: el esquema base saldrá del DDL real de una base
   desechable, no de `scripts/legacy/crear_cliente.py`. El ensayo se adelantó a
   **3.4**, el alta reproducible bajó a 3.5 y el cierre a 3.6.
-- **Resultado de 3.4a, lo que hay que saber antes de seguir**: las cuatro
-  hipótesis de 3.0 quedaron confirmadas y el daño ya está en producción. A cada
-  uno de los tres colegios le faltan entre 23 y 26 claves foráneas, y entre 23 y
-  26 de sus tablas generan `id` con secuencias de `tenant_colegio_1`, que además
-  es un colegio operativo. `tenant_4444` y `tenant_2005` no están
-  estructuralmente atrasados: les faltan 9 y 15 **registros**. Y el advisory
-  lock de 3.1 **no se sostiene sobre el endpoint agrupado**, que es el que usa
-  `.env`.
-- **Tres reparaciones identificadas y no abordadas**: negar el runner sobre
-  `-pooler`, sembrar el historial de los dos tenants y reparar claves foráneas y
-  secuencias compartidas. La última exige auditar filas huérfanas y una ventana
-  de mantenimiento.
+- **Lo primero que debe saber quien continúe**: de los cuatro schemas, solo
+  `tenant_2005` es producción real; los otros tres son demo o prueba. Y ocho de
+  sus tablas —`estudiantes`, `profesor`, `asignaciones`, `asistencia`,
+  `notas_detalle`, `pagos`, `boletin_cabecera`, `boletin_detalles`— **no pueden
+  insertar hoy**: su secuencia compartida está por debajo del `MAX(id)` y el
+  próximo valor ya existe. Es una avería en curso, no una deuda.
+- **Detonante adicional**: `scripts/limpiar_tenant_colegio_1_operativo.py` haría
+  `TRUNCATE … RESTART IDENTITY` sobre 19 de las 26 secuencias que usa el colegio
+  real. La demo **no es desechable** mientras dure ese acoplamiento.
+- Otros hallazgos de 3.4a: `tenant_2005` tiene 11 claves foráneas de 37, le
+  faltan 15 registros de historial sin estar estructuralmente atrasado, y el
+  advisory lock de 3.1 **no se sostiene sobre el endpoint agrupado**, que es el
+  que usa `.env`.
+- **Orden alterado**: la migración base de 3.4b deja de ser lo urgente. Antes
+  está reparar el colegio real dándole secuencias propias inicializadas en su
+  `MAX(id)`, lo que resuelve a la vez la avería y el acoplamiento con la demo.
+  Ninguna reparación se ejecutó en 3.4a.
 - **Requisito para 3.4b**: otra vez una rama desechable de Neon, con endpoint
   directo y confirmación de que no es producción. La credencial no se registra
   en ningún documento y solo se lee estructura. Ninguna subcapa usará el

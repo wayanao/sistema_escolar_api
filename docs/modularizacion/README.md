@@ -37,7 +37,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 0 | Línea base y calidad | Pruebas deterministas, compuerta global y CI | **Cerrada**; CI verificada en remoto | [00_LINEA_BASE_CALIDAD.md](./00_LINEA_BASE_CALIDAD.md) |
 | 1 | Fundación de base de datos | Conexiones, transacciones, timeouts y pool definidos | **Cerrada**; calibración de `statement_timeout` pendiente y aceptada | [01_FUNDACION_BASE_DATOS.md](./01_FUNDACION_BASE_DATOS.md) |
 | 2 | Concurrencia | DB síncrona fuera del event loop preservando `ContextVar` | **Cerrada** y publicada; CI posterior al cierre no verificada | [02_CONCURRENCIA.md](./02_CONCURRENCIA.md) |
-| 3 | Migraciones y tenants | Todos los tenants versionados, runner bloqueado y alta reproducible | En espera | Se crea al activarla |
+| 3 | Migraciones y tenants | Todos los tenants versionados, runner bloqueado y alta reproducible | **Activa**; subcapa 3.0 pendiente | [03_MIGRACIONES_TENANTS.md](./03_MIGRACIONES_TENANTS.md) |
 | 4 | Reportes financieros | Dominio modular, N+1 eliminado y consultas medidas | En espera | Se crea al activarla |
 | 5 | Pagos y tipos de pago | Dominio financiero modularizado y protegido | En espera | Se crea al activarla |
 | 6 | Asignaciones y estudiantes | Dominios grandes separados con contratos estables | En espera | Se crea al activarla |
@@ -49,10 +49,11 @@ cierre y el usuario ordene continuar, se crea su sucesora desde
 tabla.
 
 La capa 2 se cerró el 2026-08-13 después de completar sus siete subcapas. Las
-capas 0, 1 y 2 están cerradas; la capa 3 permanece en espera y no fue activada.
-No existe una capa activa en este momento. El commit documental de cierre fue
-publicado en `origin/main`; no se atribuye un resultado nuevo de GitHub Actions
-sin evidencia del run correspondiente.
+capas 0, 1 y 2 están cerradas. La capa 3 se activó el 2026-08-13 por orden
+explícita del usuario, con alcance limitado a la activación documental: es la
+única capa marcada como Activa y su primera subcapa pendiente es 3.0. El commit
+documental de cierre de la capa 2 fue publicado en `origin/main`; no se atribuye
+un resultado nuevo de GitHub Actions sin evidencia del run correspondiente.
 
 ## Alcance de cada capa
 
@@ -229,18 +230,31 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   4,471 ms, solapamiento 2, trabajo DB simulado en workers y tenants/restauración
   correctos. La compuerta local cerró con **477 pruebas**, Ruff correcto y
   `pip check` correcto.
-- Capa activa: **ninguna**. No hay una subcapa pendiente autorizada.
-- Siguiente capa: 3, migraciones y tenants, en espera.
+- Capa 3 **activada** el 2026-08-13 por orden explícita del usuario. Commit base:
+  `81882f3b1ee9e3b50076b0fc1fd93dcd9fd5ac70`, el `HEAD` limpio vigente y
+  coincidente con la referencia local `origin/main`. Los diez commits posteriores
+  al base de la capa 2 quedaron auditados y explicados en su bitácora. La
+  activación creó únicamente la bitácora nueva y este índice; no inspeccionó ni
+  modificó código, migraciones, esquemas, pruebas ni configuración.
+- Capa activa: **3, migraciones y tenants**. Primera subcapa pendiente: **3.0**,
+  inventario, contratos y caracterización, no implementada en el turno de
+  activación.
+- Siguiente capa: 4, reportes financieros, en espera.
 - Código de producto modificado durante la capa 0: ninguno.
 - Código de producto modificado durante la capa 1: el ciclo de vida de las
   conexiones en 20 archivos de `app/`, más los timeouts. Sin cambios en rutas,
   payloads, status codes, permisos, tenant, ownership ni SQL observable.
+- Código de producto modificado al activar la capa 3: ninguno.
 
 ## Archivos de continuidad
 
+- [03_MIGRACIONES_TENANTS.md](./03_MIGRACIONES_TENANTS.md): **bitácora activa**
+  de la capa 3; define el alcance autorizado, los invariantes y el trabajo exacto
+  de la subcapa 3.0. Es el documento que un chat nuevo debe leer después de este
+  índice.
 - [02_CONCURRENCIA.md](./02_CONCURRENCIA.md): bitácora cerrada de la capa 2;
   conserva la medición, el límite de capacidad, staging, rollback, verificación
-  manual y riesgos residuales. No autoriza activar la capa 3.
+  manual y riesgos residuales.
 - [01_FUNDACION_BASE_DATOS.md](./01_FUNDACION_BASE_DATOS.md): bitácora cerrada de
   la capa 1; conserva pendiente la calibración de `statement_timeout` y registra
   la lección de que un cambio en el pool no se verifica solo con pruebas
@@ -249,6 +263,8 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   la capa 0, sin verificaciones pendientes; conserva la compuerta, la CI y el
   inventario de contratos que la capa 1 debe preservar.
 - [PROMPT_CONTINUACION.md](./PROMPT_CONTINUACION.md): texto universal para
-  iniciar o continuar en otro chat, más la autorización de uso inmediato para
-  activar únicamente la capa 3 y detenerse antes de 3.0.
+  iniciar o continuar en otro chat. Su sección de autorización de uso inmediato
+  para activar la capa 3 **ya fue consumida** el 2026-08-13 y no debe reutilizarse:
+  el estado documental cambió y ahora existe una capa activa. Un chat nuevo debe
+  copiar solo el bloque universal y continuar por 3.0.
 - [PLANTILLA_CAPA.md](./PLANTILLA_CAPA.md): estructura de la siguiente bitácora.

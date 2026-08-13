@@ -9,9 +9,9 @@
 - Rama acordada: `main`.
 - Estado al activar: árbol limpio; `HEAD` coincidente con la referencia local
   `origin/main`.
-- Primera subcapa pendiente: **3.3a**.
-- Progreso: **3.0, 3.1 y 3.2 cerradas**. El inventario está registrado abajo y
-  reemplaza el desglose provisional de la activación.
+- Primera subcapa pendiente: **3.3b**.
+- Progreso: **3.0, 3.1, 3.2 y 3.3a cerradas**. El inventario está registrado
+  abajo y reemplaza el desglose provisional de la activación.
 - Código de producto modificado al activar: **ninguno**.
 - Código de producto modificado hasta ahora: `apply_migration.py`, que ahora toma
   un advisory lock de sesión antes de leer o escribir el historial. 3.0 fue una
@@ -132,8 +132,8 @@ del repositorio sin acceso a datos.
 | 3.0 | Inventario, contratos, criterio de tenant reactivable, estrategia de verificación y línea base | **Cerrada** |
 | 3.1 | Bloqueo del runner contra ejecuciones simultáneas | **Cerrada** |
 | 3.2 | Caracterización ejecutable del runner y del alta actual | **Cerrada** |
-| 3.3a | Informe de solo lectura: qué migraciones le faltan a cada tenant | **Pendiente** |
-| 3.3b | Siembra del historial en el alta de tenant | Pendiente |
+| 3.3a | Informe de solo lectura: qué migraciones le faltan a cada tenant | **Cerrada** |
+| 3.3b | Siembra del historial en el alta de tenant | **Pendiente** |
 | 3.4 | Alta reproducible desde migraciones versionadas | Pendiente |
 | 3.5 | Ensayo no productivo, rollback, verificación manual y cierre | Pendiente |
 
@@ -576,6 +576,131 @@ diff sea revisable por separado.
 3.3b, que siembra el historial en el alta y hará fallar a propósito la prueba
 descrita arriba, queda para su propio turno.
 
+## Subcapa 3.3a: resultado
+
+Se añadió `scripts/auditar_migraciones_tenants.py`, un informe que compara el
+directorio `migrations/` contra `public.schema_migrations` y dice, por destino,
+qué le falta. **No modifica nada** y no cambia el runner ni ningún archivo
+existente de producto: el único cambio en `app/`, `apply_migration.py`,
+`migrations/`, el workflow y `requirements.txt` es que no hay ninguno,
+verificado con `git status` acotado.
+
+### Cómo garantiza que es de solo lectura
+
+No basta con no escribir por descuido; el script lo hace imposible por
+construcción, siguiendo la convención de
+`scripts/auditar_plan_de_clases_integridad.py`:
+
+- abre la transacción con `SET TRANSACTION READ ONLY` como primera sentencia;
+- termina siempre con `rollback` en el `finally`;
+- comprueba la existencia del historial con `to_regclass`, **sin** el
+  `CREATE TABLE IF NOT EXISTS` que sí hace el runner: si la tabla no existe, lo
+  informa y devuelve 2 en vez de crearla.
+
+Esa última diferencia importa. El runner crea el historial como efecto
+colateral de auditarlo; una auditoría que hiciera lo mismo cambiaría el estado
+que dice observar.
+
+### Qué ve que el runner no ve
+
+`fetch_tenants` consulta `public.colegios` **sin `WHERE`**. Ahí está el valor de
+la subcapa: el runner solo alcanza `activo` y `en_mora`, mientras que el informe
+incluye también `suspendido` y `cancelado` y los marca con
+`[el runner lo omite]`. Cuando uno de esos está atrasado, imprime además una
+línea propia advirtiendo que quedaría incompleto si se reactiva, que es
+exactamente el defecto que 3.0 describió.
+
+El informe distingue dos problemas, no uno:
+
+- **faltantes**: la migración no está registrada para ese destino;
+- **divergentes**: está registrada, pero con un checksum distinto al del archivo
+  actual. 3.0 dejó anotado que el checksum es sensible al byte, así que un
+  destino con divergencias no está al día aunque el nombre figure.
+
+También incluye siempre el destino `public`, con las migraciones de
+`migrations/public/`.
+
+### Una sola definición de checksum
+
+El script importa `calculate_checksum` de `apply_migration` en lugar de
+reescribirlo. Como compara contra lo que el runner registró, ambas partes deben
+usar la misma función: una copia podría divergir en silencio y producir
+divergencias falsas. Para que funcione al ejecutarlo como script suelto
+—donde `sys.path[0]` es `scripts/` y no la raíz— se inserta `ROOT_DIR` en
+`sys.path` con un comentario que explica el motivo, y el `import` lleva
+`# noqa: E402`.
+
+Se descartó duplicar la función y protegerla con una prueba de igualdad: es
+menos seguro que no tener dos definiciones. La prueba de igualdad se conservó de
+todos modos, ahora como aserción de identidad, para que un cambio futuro que
+rompa el enlace se vea.
+
+### Verificación
+
+Las pruebas están en `tests/test_auditar_migraciones_tenants.py`, **16 casos**
+herméticos con un cursor falso y directorios de `tmp_path`. Cubren los dos casos
+que esta bitácora exigía —un tenant reactivable atrasado y un tenant recién
+creado con historial vacío— más el tenant `cancelado`, el activo atrasado que no
+debe marcarse como omitido, el destino al día, el destino público, la
+divergencia por checksum, el agrupado por schema, que `fetch_tenants` no lleva
+`WHERE` y que `historial_existe` no ejecuta ningún `CREATE`.
+
+Se comprobó aparte que el `import` resuelve al ejecutarlo como script suelto:
+importando el módulo desde un directorio de trabajo fuera del repositorio, con
+`sys.path[0]` apuntando a `scripts/`. Devolvió `IMPORT_OK` y confirmó que
+`calculate_checksum` procede del módulo `apply_migration`. Ese ejercicio no
+abrió ninguna conexión.
+
+| Comprobación | Resultado |
+|---|---|
+| `tests/test_auditar_migraciones_tenants.py` | **16 pasaron**, archivo nuevo |
+| Dirigidas ampliadas | **71 pasaron** |
+| Compuerta global | **Exit 0**: 526 pruebas, 5 warnings conocidos |
+| Ruff del alcance | `All checks passed!` |
+| Dependencias | `No broken requirements found.` |
+| Producto existente modificado | **ninguno**; solo se añadió un script |
+
+La suite pasó de 510 a **526** pruebas.
+
+### Límites de este informe
+
+- **No se ejecutó contra ninguna base de datos.** Hacerlo habría significado
+  conectarse a la base real, que está fuera de lo autorizado. Su ejecución con
+  datos verdaderos pertenece al ensayo no productivo de 3.5, y solo entonces se
+  sabrá cuántos tenants están realmente atrasados.
+- El informe cree lo que dice `public.schema_migrations`, y 3.0 estableció que
+  los cuatro scripts ad-hoc aplican DDL sin registrar nada. Un destino puede
+  aparecer «faltante» aunque el cambio ya esté aplicado por esa vía. El informe
+  acota el problema; no lo resuelve.
+- Los nombres de archivo se comparan tal cual. Renombrar una migración ya
+  aplicada la haría aparecer como faltante, igual que le ocurre al runner.
+
+### Siguiente subcapa: 3.3b, trabajo exacto
+
+1. Confirmar `main`, árbol limpio y que todo commit posterior al base esté
+   explicado en esta bitácora.
+2. Abrir únicamente `crear_tenant_controller` en
+   `app/controllers/super_admin_controller.py` y
+   `tests/test_tenant_provisioning.py`.
+3. Sembrar `public.schema_migrations` para el schema nuevo **dentro de la misma
+   transacción** del alta, copiando las filas del schema plantilla:
+   `INSERT ... SELECT migration_name, <schema_nuevo>, checksum FROM
+   public.schema_migrations WHERE target_schema = <plantilla>`. Se copia lo que
+   la plantilla tiene aplicado, no el contenido del directorio `migrations/`,
+   porque el schema nuevo es una copia estructural de la plantilla y hereda
+   exactamente lo que ella lleva. Leer el directorio supondría que la plantilla
+   está al día, cosa que nadie ha verificado.
+4. Reemplazar `test_el_alta_todavia_no_siembra_el_historial_de_migraciones` por
+   su versión positiva. Su fallo al aplicar el cambio es la señal esperada, no
+   una regresión.
+5. No tocar el runner, los scripts ad-hoc, el informe de 3.3a ni archivos
+   existentes de `migrations/`.
+6. Ejecutar pruebas específicas, Ruff del alcance, compuerta global y
+   `git diff --check`; actualizar esta bitácora y detenerse antes de 3.4.
+
+Archivos previstos para 3.3b: `app/controllers/super_admin_controller.py`,
+`tests/test_tenant_provisioning.py` y esta bitácora.
+
 ## Criterios de cierre de la subcapa 3.0
 
 - El mecanismo actual de migraciones y de alta de tenants está descrito con
@@ -919,13 +1044,69 @@ descrita arriba, queda para su propio turno.
   compare `migrations/` con `public.schema_migrations` incluyendo a los tenants
   suspendidos y cancelados; detenerse antes de 3.3b.
 
+### 2026-08-13 — subcapa 3.3a
+
+- Modo de acceso: mismo checkout local; rama `main` y árbol limpio antes de
+  editar.
+- Commit observado: `cfd9e4c04f940d67c3338c00364f65912add5f35`, cuatro commits
+  locales por delante de la referencia local `origin/main`.
+- Continuidad: `81882f3` es el base; los cuatro commits posteriores son
+  `38dc6b2` (activación), `7d1386a` (3.0), `73a777d` (3.1) y `cfd9e4c` (3.2),
+  todos explicados en esta bitácora. No había cambios pendientes ni divergencia
+  al iniciar.
+- Código de producto existente modificado: **ninguno**. Se añadió un script
+  nuevo, `scripts/auditar_migraciones_tenants.py`; el runner, `app/`, las
+  migraciones, el workflow y las dependencias quedaron intactos, verificado con
+  `git status --short -- app apply_migration.py migrations .github requirements.txt`
+  vacío.
+- Pruebas: se creó `tests/test_auditar_migraciones_tenants.py` con **16 casos**
+  herméticos.
+- Archivos modificados o creados: `scripts/auditar_migraciones_tenants.py`,
+  `tests/test_auditar_migraciones_tenants.py` y esta bitácora.
+- Migraciones ejecutadas, conexiones a PostgreSQL abiertas y accesos a
+  producción: **ninguno**. El informe se escribió y se probó, pero **no se
+  ejecutó contra ninguna base**.
+- Comandos ejecutados:
+  - precondiciones y continuidad: `git status --short --branch`,
+    `git log --oneline 81882f3..HEAD`, `git rev-parse HEAD`;
+  - pruebas del archivo nuevo:
+    `.\venv\Scripts\python.exe -m pytest -p no:cacheprovider -q tests/test_auditar_migraciones_tenants.py`;
+  - dirigidas ampliadas:
+    `.\venv\Scripts\python.exe -m pytest -p no:cacheprovider -q tests/test_auditar_migraciones_tenants.py tests/test_apply_migration.py tests/test_tenant_provisioning.py tests/test_apply_tenant_indexes.py tests/test_super_admin.py`;
+  - resolución del `import` como script suelto, desde un directorio de trabajo
+    fuera del repositorio y con `sys.path[0]` en `scripts/`, sin abrir conexión;
+  - lint del alcance:
+    `.\venv\Scripts\python.exe -m ruff check scripts/auditar_migraciones_tenants.py tests/test_auditar_migraciones_tenants.py`;
+  - compuerta global: `.\venv\Scripts\python.exe scripts\verify.py`;
+  - alcance y whitespace: `git status --short`, `git diff --check`,
+    `git diff --no-index --check` sobre los dos archivos nuevos y el barrido C0.
+- Verificación final: 16 pruebas nuevas, **71 dirigidas** y compuerta global en
+  **exit 0 con 526 pruebas**, 5 warnings conocidos, Ruff correcto y dependencias
+  íntegras.
+- Decisiones: `SET TRANSACTION READ ONLY` y `to_regclass` en vez del
+  `CREATE TABLE IF NOT EXISTS` del runner, para no alterar el estado observado;
+  consulta a `public.colegios` sin `WHERE`, que es lo que distingue el informe
+  del descubrimiento del runner; una sola definición de checksum importada del
+  runner, descartando duplicarla.
+- Riesgos: el informe cree lo que dice el historial y los cuatro scripts ad-hoc
+  no registran nada, así que puede señalar como faltante algo ya aplicado por
+  esa vía. Registrado, no resuelto.
+- Verificación operativa heredada: la calibración de `DB_STATEMENT_TIMEOUT_MS`
+  permanece **pendiente y aceptada**.
+- Evidencia remota: sigue sin haber cliente de GitHub en este checkout; GitHub
+  Actions continúa **no verificada**.
+- Estado: **3.3a cerrada**. No se inició 3.3b.
+- Siguiente acción exacta: ejecutar **3.3b**, sembrando el historial en el alta
+  de tenant desde las filas del schema plantilla y reemplazando la prueba
+  deliberada por su versión positiva; detenerse antes de 3.4.
+
 ## Entrega al próximo chat
 
 - Capa activa: **3, migraciones y tenants**.
-- Última subcapa terminada: **3.2**, caracterización ejecutable del runner y del
-  alta de tenant, sin cambios de producto.
-- Primera subcapa pendiente: **3.3a**, informe de solo lectura de migraciones
+- Última subcapa terminada: **3.3a**, informe de solo lectura de migraciones
   faltantes por tenant.
+- Primera subcapa pendiente: **3.3b**, siembra del historial en el alta de
+  tenant.
 - Commit base: `81882f3b1ee9e3b50076b0fc1fd93dcd9fd5ac70`, rama `main`.
 - Hallazgo central: seis puntos de entrada pueden mutar el esquema de un tenant
   y solo `apply_migration.py` registra lo que aplicó. El alta crea el schema
@@ -941,11 +1122,16 @@ descrita arriba, queda para su propio turno.
   `test_el_alta_todavia_no_siembra_el_historial_de_migraciones`. Fija el defecto
   actual; su fallo será la señal de que quedó corregido. No borrarla por
   confusión.
-- Verificación local vigente: compuerta global en exit 0 con **510 pruebas**,
-  Ruff y dependencias correctos; 28 pruebas del runner, 11 del alta y 70
-  dirigidas. La caracterización de 3.1 se comprobó además contra el runner
-  anterior, con 8 pasadas.
-- Bloqueos: ninguno para iniciar 3.3a. Permanece pendiente y aceptada la
+- Estado de 3.3a: existe `scripts/auditar_migraciones_tenants.py`, un informe de
+  solo lectura que compara `migrations/` con `public.schema_migrations` e
+  incluye a los tenants suspendidos y cancelados que el runner omite. **Nunca se
+  ha ejecutado contra una base de datos**; su primera ejecución real pertenece
+  al ensayo de 3.5.
+- Verificación local vigente: compuerta global en exit 0 con **526 pruebas**,
+  Ruff y dependencias correctos; 16 pruebas del informe y 71 dirigidas. La
+  caracterización de 3.1 se comprobó además contra el runner anterior, con 8
+  pasadas.
+- Bloqueos: ninguno para iniciar 3.3b. Permanece pendiente y aceptada la
   calibración de `DB_STATEMENT_TIMEOUT_MS` de la capa 1, y GitHub Actions sigue
   sin evidencia de run.
 - No medido todavía: el estado real de versionado por tenant, las cuatro
@@ -953,8 +1139,9 @@ descrita arriba, queda para su propio turno.
   directo o el agrupado. Las tres cosas exigen acceso a una base y no deben
   darse por ciertas; la última condiciona que el lock sirva de algo en el
   entorno real.
-- Siguiente acción exacta: ejecutar únicamente 3.3a según «Siguiente subcapa:
-  3.3a, trabajo exacto»: un informe de solo lectura que compare `migrations/`
-  con `public.schema_migrations` e incluya a los tenants suspendidos y
-  cancelados. Sin aplicar ni escribir nada, sin tocar los scripts ad-hoc ni
-  archivos existentes de `migrations/`, y sin ejecutar ninguna migración.
+- Siguiente acción exacta: ejecutar únicamente 3.3b según «Siguiente subcapa:
+  3.3b, trabajo exacto»: sembrar `public.schema_migrations` en el alta de tenant
+  copiando las filas del schema plantilla, dentro de la misma transacción, y
+  reemplazar la prueba deliberada por su versión positiva. Sin tocar el runner,
+  los scripts ad-hoc, el informe de 3.3a ni archivos existentes de
+  `migrations/`, y sin ejecutar ninguna migración.

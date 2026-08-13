@@ -37,7 +37,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 0 | Línea base y calidad | Pruebas deterministas, compuerta global y CI | **Cerrada**; CI verificada en remoto | [00_LINEA_BASE_CALIDAD.md](./00_LINEA_BASE_CALIDAD.md) |
 | 1 | Fundación de base de datos | Conexiones, transacciones, timeouts y pool definidos | **Cerrada**; calibración de `statement_timeout` pendiente y aceptada | [01_FUNDACION_BASE_DATOS.md](./01_FUNDACION_BASE_DATOS.md) |
 | 2 | Concurrencia | DB síncrona fuera del event loop preservando `ContextVar` | **Cerrada** y publicada; CI posterior al cierre no verificada | [02_CONCURRENCIA.md](./02_CONCURRENCIA.md) |
-| 3 | Migraciones y tenants | Todos los tenants versionados, runner bloqueado y alta reproducible | **Activa**; 3.0–3.3b cerradas, 3.4 espera base desechable | [03_MIGRACIONES_TENANTS.md](./03_MIGRACIONES_TENANTS.md) |
+| 3 | Migraciones y tenants | Todos los tenants versionados, runner bloqueado y alta reproducible | **Activa**; 3.0–3.4a cerradas, 3.4b pendiente | [03_MIGRACIONES_TENANTS.md](./03_MIGRACIONES_TENANTS.md) |
 | 4 | Reportes financieros | Dominio modular, N+1 eliminado y consultas medidas | En espera | Se crea al activarla |
 | 5 | Pagos y tipos de pago | Dominio financiero modularizado y protegido | En espera | Se crea al activarla |
 | 6 | Asignaciones y estudiantes | Dominios grandes separados con contratos estables | En espera | Se crea al activarla |
@@ -237,11 +237,18 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   activación creó únicamente la bitácora nueva y este índice; no inspeccionó ni
   modificó código, migraciones, esquemas, pruebas ni configuración.
 - Capa activa: **3, migraciones y tenants**. Subcapas **3.0, 3.1, 3.2, 3.3a y
-  3.3b cerradas** el 2026-08-13. Primera subcapa pendiente: **3.4**, ensayo no
-  productivo, **bloqueada hasta recibir una rama de Neon** creada desde la base
-  real, con endpoint directo y confirmación de que no es producción. Una base
-  vacía no sirve: la estructura verdadera del schema plantilla no está en el
-  repositorio.
+  3.3b y 3.4a cerradas** el 2026-08-13. Primera subcapa pendiente: **3.4b**,
+  migración base versionada extraída del DDL real; requiere otra vez una rama
+  desechable de Neon con endpoint directo.
+- **Resultado de 3.4a, el más importante de la capa.** El ensayo sobre una rama
+  de Neon confirmó las cuatro hipótesis de 3.0 y encontró daño ya presente en
+  producción: a cada uno de los tres colegios le faltan entre 23 y 26 claves
+  foráneas, y entre 23 y 26 de sus tablas generan `id` con secuencias de
+  `tenant_colegio_1`, que además es un colegio operativo. `tenant_4444` y
+  `tenant_2005` no están estructuralmente atrasados: les faltan 9 y 15
+  registros. Y el advisory lock de 3.1 **no se sostiene sobre el endpoint
+  agrupado**, que es el que usa `.env`, así que hoy no protege. Tres
+  reparaciones quedaron identificadas y sin abordar.
 - Decisión del 2026-08-13: las 30 migraciones de tenant son incrementales y
   ninguna crea las tablas base, que hoy solo existen dentro del schema
   plantilla. El usuario decidió adelantar el ensayo no productivo para extraer

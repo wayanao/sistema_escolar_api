@@ -9,8 +9,8 @@
 - Rama acordada: `main`.
 - Estado al activar: árbol limpio; `HEAD` coincidente con la referencia local
   `origin/main`.
-- Primera subcapa pendiente: **3.4**.
-- Progreso: **3.0, 3.1, 3.2, 3.3a y 3.3b cerradas**. El inventario está
+- Primera subcapa pendiente: **3.4b**.
+- Progreso: **3.0, 3.1, 3.2, 3.3a, 3.3b y 3.4a cerradas**. El inventario está
   registrado abajo y reemplaza el desglose provisional de la activación.
 - Código de producto modificado al activar: **ninguno**.
 - Código de producto modificado hasta ahora: `apply_migration.py`, que toma un
@@ -137,9 +137,15 @@ del repositorio sin acceso a datos.
 | 3.2 | Caracterización ejecutable del runner y del alta actual | **Cerrada** |
 | 3.3a | Informe de solo lectura: qué migraciones le faltan a cada tenant | **Cerrada** |
 | 3.3b | Siembra del historial en el alta de tenant | **Cerrada** |
-| 3.4 | Ensayo no productivo: base desechable, DDL base real y migración base versionada | **Pendiente** |
+| 3.4a | Ensayo no productivo: medición real y verificación de hipótesis | **Cerrada** |
+| 3.4b | Migración base versionada extraída del DDL real | **Pendiente** |
 | 3.5 | Alta reproducible desde la migración base versionada | Pendiente |
 | 3.6 | Rollback, verificación manual, compuerta global y cierre | Pendiente |
+
+El ensayo se dividió al ejecutarlo. 3.4a resultó ser una subcapa completa por sí
+sola: sus hallazgos cambian qué debe contener la migración base, así que
+extraerla en el mismo turno habría sido escribirla antes de saber qué tenía que
+incluir. 3.4b se define ahora con esa evidencia.
 
 El inventario de 3.0 **confirmó y ajustó** el desglose provisional de la
 activación. Los cambios respecto de aquella tabla y su motivo:
@@ -906,6 +912,148 @@ Archivos previstos para 3.4: una migración base nueva en `migrations/`, quizá 
 script de apoyo para el ensayo, y esta bitácora. **No** se modifican archivos
 existentes de `migrations/` ni el runner.
 
+## Subcapa 3.4a: resultado
+
+Ejecutada sobre la rama de Neon `ensayo-3-4-no-produccion`, creada por el
+usuario desde `production` y confirmada por él como desechable. Antes de
+conectar se comparó el host recibido con el de `.env` sin exponer su
+contraseña: `ep-tiny-dream-aiceysjn…` frente a `ep-late-smoke-aip41j6x-pooler…`,
+endpoints distintos. Los scripts del ensayo viven en el scratchpad, fuera del
+repositorio, y todos llevan un guardarraíl que aborta si el DSN no contiene el
+identificador de la rama.
+
+**Ningún archivo del repositorio cambió en 3.4a salvo esta bitácora y el
+índice.** El único objeto creado en la rama fue un schema de prueba destruido al
+terminar; se verificó después que no quedaron restos y que los cuatro schemas
+heredados, las 4 filas de `public.colegios` y las 100 de
+`public.schema_migrations` siguen intactos.
+
+### Primera medición real del versionado
+
+`scripts/auditar_migraciones_tenants.py` se ejecutó por primera vez contra datos
+verdaderos y terminó en exit 2, como debe cuando hay pendientes:
+
+| Destino | Estado | Migraciones registradas | Faltan | Divergen |
+|---|---|---:|---:|---:|
+| `public` | — | 4 de 4 | 0 | 0 |
+| `tenant_colegio_1` (Colegio Demo) | activo | 30 de 30 | 0 | 0 |
+| `tenant_3333` (milagro) | activo | 30 de 30 | 0 | 0 |
+| `tenant_4444` (la paz) | activo | 21 de 30 | **9** | 0 |
+| `tenant_2005` (…la sabiduría de galapa) | activo | 15 de 30 | **15** | 0 |
+
+Ningún tenant está hoy `suspendido` ni `cancelado`, así que el riesgo de
+reactivación que motivó 3.3a existe como mecanismo pero no tiene víctimas
+actuales. No hay ninguna divergencia de checksum.
+
+Las que faltan son siempre **las más antiguas**, en bloque y sin huecos. Es la
+firma de un tenant creado *después* de que esas migraciones se aplicaran: nació
+copiando la plantilla, con la estructura ya puesta y el historial vacío. Es
+exactamente el defecto que 3.3b corrigió para las altas futuras.
+
+Y la comparación estructural lo confirma: frente a la plantilla, los tres
+tenants tienen **las mismas 281 columnas y los mismos 89 índices**, sin
+diferencias. No están estructuralmente atrasados; les falta el **registro**.
+Aplicarles hoy esas migraciones con el runner intentaría repetir cambios ya
+presentes.
+
+### Las cuatro hipótesis de 3.0, resueltas
+
+Se creó el schema de prueba `tenant_zzz_ensayo_3_4_borrame` y se le aplicó
+**exactamente el mismo bloque `DO $$` del alta**, para atribuir causa y no solo
+correlación. Resultado sobre 30 tablas copiadas:
+
+| Hipótesis de 3.0 | Veredicto | Evidencia en la copia controlada |
+|---|---|---|
+| `LIKE INCLUDING ALL` no copia claves foráneas | **Confirmada** | **0 claves foráneas**; la plantilla tiene 37 |
+| Los `SERIAL` pueden apuntar a la secuencia de la plantilla | **Confirmada** | **30 de 30** defaults apuntan a `tenant_colegio_1.<tabla>_id_seq` |
+| Solo se copia `pg_tables` | **Confirmada** | 0 secuencias, 0 disparadores, 0 funciones; la plantilla tiene 30, 1 y 1 |
+| La plantilla es además un tenant operativo | **Confirmada** | `tenant_colegio_1` figura en `public.colegios` como «Colegio Demo», estado `activo` |
+
+### El daño ya está en producción
+
+Esto no es una conjetura sobre altas futuras: los tres colegios reales lo
+arrastran hoy.
+
+| Schema | Claves foráneas | Secuencias propias | Columnas que usan secuencias de la plantilla |
+|---|---:|---:|---:|
+| `tenant_colegio_1` (plantilla) | 37 | 30 | — |
+| `tenant_3333` | 14 | 7 | **23** |
+| `tenant_4444` | 11 | 4 | **26** |
+| `tenant_2005` | 11 | 4 | **26** |
+
+Dos consecuencias, ambas reales:
+
+1. **Sin integridad referencial.** A cada colegio le faltan entre 23 y 26 claves
+   foráneas: `asignaciones → cursos/materias/profesor`,
+   `asistencia → estudiantes`, `boletin_cabecera → estudiantes`,
+   `boletin_detalles → boletin_cabecera` y otras. Hoy pueden existir filas
+   huérfanas sin que la base lo impida. Las `CHECK`, `PRIMARY KEY` y `UNIQUE` sí
+   se copiaron y coinciden.
+2. **Los colegios comparten los contadores de ID de la plantilla.** Entre 23 y 26
+   tablas por tenant generan su `id` con `nextval('tenant_colegio_1.…')`. Los
+   tenants están acoplados a un schema que además es un colegio operativo: si
+   alguien borrara `tenant_colegio_1` o sus secuencias, **todas las altas de
+   todos los colegios fallarían**. Las secuencias propias que sí tienen son las
+   de tablas creadas por migraciones posteriores, ejecutadas dentro de cada
+   schema.
+
+Nada de esto se corrigió en 3.4a. Es un hallazgo, y su reparación toca datos
+reales.
+
+### El lock de 3.1 no funciona sobre el endpoint que usa producción
+
+3.1 dejó anotado como no verificado si un advisory lock de sesión se sostiene
+sobre PgBouncer. Se probó sobre la rama, en sus dos endpoints:
+
+| Endpoint | Conexión 1 | Conexión 2 | Exclusión mutua |
+|---|---|---|---|
+| Directo | obtiene el lock | **no** lo obtiene | **Se sostiene** |
+| Agrupado (`-pooler`) | obtiene el lock | **también** lo obtiene | **No se sostiene** |
+
+Y el `DATABASE_URL` de `.env` apunta al endpoint **agrupado**. Es decir: tal
+como está configurado hoy, **la protección que añadió 3.1 no impediría dos
+ejecuciones simultáneas del runner**. El riesgo que se registró como hipótesis
+resultó ser el caso real.
+
+### Siguiente subcapa: 3.4b, trabajo exacto
+
+Los hallazgos cambian lo que la migración base debe contener: ya no basta con
+las tablas, tiene que traer las 37 claves foráneas, las 30 secuencias propias,
+el disparador y la función que la copia actual nunca reproduce.
+
+1. Confirmar `main`, árbol limpio y continuidad.
+2. Con la rama disponible, extraer el DDL completo de `tenant_colegio_1`:
+   tablas, columnas, defaults con secuencias **propias del schema destino**,
+   `PRIMARY KEY`, `UNIQUE`, `CHECK`, **claves foráneas**, índices, el disparador
+   y la función.
+3. Escribirlo como una migración base nueva en `migrations/`, sin tocar ninguno
+   de los 34 archivos existentes.
+4. Verificar la equivalencia creando en la rama un schema de prueba desde esa
+   migración y comparándolo contra la plantilla con el mismo método de 3.4a:
+   columnas, índices y restricciones por definición normalizada. La diferencia
+   admisible es cero.
+5. Destruir el schema de prueba y comprobar que no quedan restos.
+6. Ejecutar compuerta global, Ruff y `git diff --check`; actualizar esta
+   bitácora y detenerse antes de 3.5.
+
+### Tres reparaciones que esta capa debe encarar, y aún no ha encarado
+
+Ninguna cabe en 3.4b. Se registran aquí para que no se pierdan y para que el
+usuario decida cuándo abordarlas:
+
+- **Runner sobre endpoint agrupado.** Lo más barato y honesto es que
+  `apply_migration.py` se niegue a ejecutarse contra un DSN con `-pooler`, en
+  lugar de sostener una protección que no protege.
+- **Historial faltante de `tenant_4444` y `tenant_2005`.** Como no están
+  estructuralmente atrasados, lo correcto es sembrar sus registros, no aplicar
+  las migraciones. Es una escritura sobre datos reales y necesita su propio
+  ensayo y rollback.
+- **Claves foráneas y secuencias compartidas de los tres colegios.** Es la
+  reparación más delicada de la capa: añadir claves foráneas puede fallar si ya
+  existen filas huérfanas, y reasignar secuencias exige cuidar los valores
+  actuales. Requiere auditoría previa de huérfanos, ensayo completo y una
+  ventana de mantenimiento.
+
 ## Criterios de cierre de la subcapa 3.0
 
 - El mecanismo actual de migraciones y de alta de tenants está descrito con
@@ -1019,11 +1167,25 @@ existentes de `migrations/` ni el runner.
   paralelo con el runner y chocar sobre el mismo tenant. Extender el lock a esos
   scripts o retirarlos es una decisión pendiente; ninguna subcapa la ha tomado
   y no debe presentarse la exclusión mutua como completa.
-- El lock de sesión de 3.1 supone una sesión real y estable. Si `DATABASE_URL`
-  apunta al endpoint agrupado que la capa 1 documentó como PgBouncer, la
-  conexión puede reasignarse entre sentencias y el lock deja de garantizar nada.
-  No se verificó qué endpoint usa el runner; es una precondición del ensayo, no
-  un hecho comprobado.
+- **Confirmado en 3.4a**: el advisory lock de sesión no se sostiene sobre el
+  endpoint agrupado, y `.env` apunta precisamente a él. Dos conexiones al
+  `-pooler` obtuvieron el mismo lock. La protección de 3.1 es hoy inefectiva en
+  el entorno real; funciona solo sobre el endpoint directo. Reparación
+  pendiente, no abordada.
+- **Confirmado en 3.4a, ya en producción**: a cada uno de los tres colegios le
+  faltan entre 23 y 26 claves foráneas, porque `LIKE INCLUDING ALL` no las
+  copia. Puede haber filas huérfanas que la base no impide. Añadirlas más tarde
+  fallará si esas huérfanas existen, así que la reparación exige auditarlas
+  antes.
+- **Confirmado en 3.4a, ya en producción**: entre 23 y 26 tablas de cada colegio
+  generan su `id` con secuencias de `tenant_colegio_1`, que además es un tenant
+  operativo. Borrar ese schema o sus secuencias dejaría a todos los colegios sin
+  poder insertar. La reparación debe conservar los valores actuales de cada
+  contador.
+- `tenant_4444` y `tenant_2005` no están estructuralmente atrasados: les faltan
+  9 y 15 **registros**. Aplicarles esas migraciones repetiría cambios ya
+  presentes; lo correcto es sembrar su historial, que es una escritura sobre
+  datos reales y necesita ensayo y rollback propios.
 - La CI remota no está verificada para los commits de la capa 2. Un fallo de
   entorno en GitHub Actions podría aparecer atribuido a esta capa; conviene
   obtener evidencia del run antes de acumular más cambios.
@@ -1401,13 +1563,76 @@ existentes de `migrations/` ni el runner.
 - Siguiente acción exacta: esperar la cadena de conexión de la rama y su
   confirmación. Después, ejecutar únicamente 3.4 según su «trabajo exacto».
 
+### 2026-08-13 — subcapa 3.4a
+
+- Modo de acceso: mismo checkout local; rama `main` y árbol limpio antes de
+  editar.
+- Commit observado: `e33a6ee`, seis commits locales por delante de la referencia
+  local `origin/main`. Los seis están explicados en esta bitácora.
+- Base de datos: rama de Neon `ensayo-3-4-no-produccion`, creada por el usuario
+  desde `production` y confirmada por él como desechable. Su credencial **no se
+  registra aquí**; se guardó en el scratchpad, fuera del repositorio.
+- Comprobación de destino antes de conectar: el host de la rama
+  (`ep-tiny-dream-aiceysjn…`) difiere del de `.env`
+  (`ep-late-smoke-aip41j6x-pooler…`). La comparación imprimió solo nombres de
+  host, nunca contraseñas. Todos los scripts abortan si el DSN no contiene el
+  identificador de la rama.
+- Restricción cumplida: solo se leyeron `information_schema`, `pg_catalog` y las
+  tablas de infraestructura `public.colegios` y `public.schema_migrations`. **No
+  se leyó ninguna fila de tablas de negocio.**
+- Escrituras: un único schema de prueba, `tenant_zzz_ensayo_3_4_borrame`, creado
+  y destruido en el mismo script. No se modificó ni se borró nada heredado.
+- Archivos del repositorio modificados: **solo esta bitácora y
+  `docs/modularizacion/README.md`**. Sin cambios de producto, pruebas,
+  migraciones ni dependencias.
+- Comandos ejecutados, todos desde scripts del scratchpad salvo el informe:
+  - comparación de hosts y `git status`/`git log` de continuidad;
+  - inventario estructural de solo lectura;
+  - `.\venv\Scripts\python.exe scripts\auditar_migraciones_tenants.py` con
+    `DATABASE_URL` apuntando a la rama. Antes se comprobó que
+    `load_dotenv(override=False)` no sustituye una variable ya definida, para
+    que el script no pudiera alcanzar producción por accidente;
+  - comparación estructural tenant a tenant contra la plantilla;
+  - desglose de restricciones por tipo y detección de defaults que apuntan a
+    otro schema;
+  - prueba controlada del bloque `DO $$` del alta sobre un schema nuevo;
+  - prueba del advisory lock en los endpoints directo y agrupado de la rama;
+  - verificación final de limpieza.
+- Resultados: el informe de 3.3a funcionó con datos reales y devolvió exit 2;
+  `tenant_4444` y `tenant_2005` carecen de 9 y 15 registros, sin ninguna
+  divergencia de checksum; los tres tenants tienen columnas e índices idénticos
+  a la plantilla, así que el atraso es de registro, no estructural.
+- Las cuatro hipótesis de 3.0 quedaron **confirmadas** con evidencia causal, y
+  el daño está en producción: a cada colegio le faltan entre 23 y 26 claves
+  foráneas, y entre 23 y 26 de sus tablas generan `id` con secuencias de
+  `tenant_colegio_1`.
+- El advisory lock de 3.1 **se sostiene en el endpoint directo y no en el
+  agrupado**, que es el que usa `.env`. La protección de 3.1 es hoy inefectiva
+  en el entorno real.
+- Decisión: dividir el ensayo. 3.4a cierra con la medición y la verificación;
+  3.4b escribirá la migración base, ahora que se sabe que debe incluir claves
+  foráneas, secuencias propias, disparador y función. Extraerla en el mismo
+  turno habría sido escribirla antes de saber qué debía contener.
+- Riesgos: tres reparaciones quedaron identificadas y **no** abordadas —el
+  runner sobre endpoint agrupado, el historial faltante de dos tenants y las
+  claves foráneas y secuencias compartidas de los tres colegios—. Ninguna se
+  marcó como resuelta.
+- Verificación operativa heredada: la calibración de `DB_STATEMENT_TIMEOUT_MS`
+  permanece **pendiente y aceptada**.
+- Evidencia remota: sigue sin haber cliente de GitHub en este checkout; GitHub
+  Actions continúa **no verificada**.
+- Estado: **3.4a cerrada**. No se inició 3.4b.
+- Siguiente acción exacta: ejecutar **3.4b**, extrayendo el DDL completo de la
+  plantilla y escribiéndolo como migración base nueva, con verificación de
+  equivalencia en la rama; detenerse antes de 3.5.
+
 ## Entrega al próximo chat
 
 - Capa activa: **3, migraciones y tenants**.
-- Última subcapa terminada: **3.3b**, siembra del historial en el alta de tenant.
-- Primera subcapa pendiente: **3.4**, ensayo no productivo. Bloqueada hasta
-  recibir la cadena de conexión de una **rama de Neon** creada desde la base
-  real, con endpoint directo y confirmación de que no es producción.
+- Última subcapa terminada: **3.4a**, ensayo no productivo sobre una rama de
+  Neon: primera medición real y las cuatro hipótesis de 3.0 resueltas.
+- Primera subcapa pendiente: **3.4b**, migración base versionada extraída del
+  DDL real de la plantilla. Requiere de nuevo una rama desechable.
 - Commit base: `81882f3b1ee9e3b50076b0fc1fd93dcd9fd5ac70`, rama `main`.
 - Hallazgo central: seis puntos de entrada pueden mutar el esquema de un tenant
   y solo `apply_migration.py` registra lo que aplicó. El alta crea el schema
@@ -1440,23 +1665,28 @@ existentes de `migrations/` ni el runner.
 - Decisión tomada el 2026-08-13: el esquema base saldrá del DDL real de una base
   desechable, no de `scripts/legacy/crear_cliente.py`. El ensayo se adelantó a
   **3.4**, el alta reproducible bajó a 3.5 y el cierre a 3.6.
-- **Bloqueo para 3.4**: hace falta una **rama de Neon** creada desde la base
-  real —una base vacía no sirve, porque la estructura verdadera solo existe
-  allí— con su cadena de conexión de endpoint directo y la confirmación de que
-  no es producción. La subcapa solo leerá estructura, nunca filas de negocio, y
-  la credencial no se registra en ningún documento. Ninguna subcapa usará el
+- **Resultado de 3.4a, lo que hay que saber antes de seguir**: las cuatro
+  hipótesis de 3.0 quedaron confirmadas y el daño ya está en producción. A cada
+  uno de los tres colegios le faltan entre 23 y 26 claves foráneas, y entre 23 y
+  26 de sus tablas generan `id` con secuencias de `tenant_colegio_1`, que además
+  es un colegio operativo. `tenant_4444` y `tenant_2005` no están
+  estructuralmente atrasados: les faltan 9 y 15 **registros**. Y el advisory
+  lock de 3.1 **no se sostiene sobre el endpoint agrupado**, que es el que usa
+  `.env`.
+- **Tres reparaciones identificadas y no abordadas**: negar el runner sobre
+  `-pooler`, sembrar el historial de los dos tenants y reparar claves foráneas y
+  secuencias compartidas. La última exige auditar filas huérfanas y una ventana
+  de mantenimiento.
+- **Requisito para 3.4b**: otra vez una rama desechable de Neon, con endpoint
+  directo y confirmación de que no es producción. La credencial no se registra
+  en ningún documento y solo se lee estructura. Ninguna subcapa usará el
   `DATABASE_URL` del `.env`. Permanece además pendiente y aceptada la
   calibración de `DB_STATEMENT_TIMEOUT_MS` de la capa 1, y GitHub Actions sigue
   sin evidencia de run.
-- No medido todavía: el estado real de versionado por tenant, las cuatro
-  hipótesis sobre `LIKE ... INCLUDING ALL` y si el runner usa el endpoint
-  directo o el agrupado. Las tres cosas exigen acceso a una base y no deben
-  darse por ciertas; la última condiciona que el lock sirva de algo en el
-  entorno real.
-- Siguiente acción exacta: esperar la base desechable y su confirmación. Después,
-  ejecutar únicamente **3.4** según su «trabajo exacto»: montar el estado de
-  partida, ejecutar por primera vez con datos reales el informe de 3.3a,
-  verificar las cuatro hipótesis sobre `LIKE ... INCLUDING ALL` y la
-  precondición del lock, y extraer el DDL base para promoverlo a una migración
-  versionada. Sin tocar archivos existentes de `migrations/` ni el runner, y sin
+- Siguiente acción exacta: ejecutar únicamente **3.4b** según su «trabajo
+  exacto»: extraer el DDL completo de `tenant_colegio_1` —incluidas las 37
+  claves foráneas, las 30 secuencias propias, el disparador y la función—,
+  escribirlo como migración base nueva y verificar su equivalencia creando un
+  schema de prueba en la rama y comparándolo contra la plantilla. Sin tocar
+  ninguno de los 34 archivos existentes de `migrations/` ni el runner, y sin
   usar el `DATABASE_URL` del `.env`.

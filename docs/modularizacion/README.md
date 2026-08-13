@@ -37,7 +37,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 0 | Línea base y calidad | Pruebas deterministas, compuerta global y CI | **Cerrada**; CI verificada en remoto | [00_LINEA_BASE_CALIDAD.md](./00_LINEA_BASE_CALIDAD.md) |
 | 1 | Fundación de base de datos | Conexiones, transacciones, timeouts y pool definidos | **Cerrada**; calibración de `statement_timeout` pendiente y aceptada | [01_FUNDACION_BASE_DATOS.md](./01_FUNDACION_BASE_DATOS.md) |
 | 2 | Concurrencia | DB síncrona fuera del event loop preservando `ContextVar` | **Cerrada** y publicada; CI posterior al cierre no verificada | [02_CONCURRENCIA.md](./02_CONCURRENCIA.md) |
-| 3 | Migraciones y tenants | Todos los tenants versionados, runner bloqueado y alta reproducible | **Activa**; 3.0–3.4c cerradas, reparación pendiente de aplicar | [03_MIGRACIONES_TENANTS.md](./03_MIGRACIONES_TENANTS.md) |
+| 3 | Migraciones y tenants | Todos los tenants versionados, runner bloqueado y alta reproducible | **Activa**; 3.0–3.4f cerradas, falta 3.5 | [03_MIGRACIONES_TENANTS.md](./03_MIGRACIONES_TENANTS.md) |
 | 4 | Reportes financieros | Dominio modular, N+1 eliminado y consultas medidas | En espera | Se crea al activarla |
 | 5 | Pagos y tipos de pago | Dominio financiero modularizado y protegido | En espera | Se crea al activarla |
 | 6 | Asignaciones y estudiantes | Dominios grandes separados con contratos estables | En espera | Se crea al activarla |
@@ -237,17 +237,34 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   activación creó únicamente la bitácora nueva y este índice; no inspeccionó ni
   modificó código, migraciones, esquemas, pruebas ni configuración.
 - Capa activa: **3, migraciones y tenants**. Subcapas **3.0, 3.1, 3.2, 3.3a y
-  3.3b, 3.4a, 3.4b y 3.4c cerradas** el 2026-08-13. Primera subcapa pendiente:
-  **3.5**, alta reproducible: sustituir en el alta la copia por
-  `LIKE INCLUDING ALL` por la aplicación de la migración base.
+  3.3b y 3.4a–3.4f cerradas** el 2026-08-13. Primera subcapa pendiente: **3.5**,
+  alta reproducible: sustituir en el alta la copia por `LIKE INCLUDING ALL` por
+  la aplicación de la migración base.
+- Resultado de 3.4d: `apply_migration.py` se niega a ejecutarse sobre el endpoint
+  agrupado, donde 3.4a demostró que el lock no se sostiene. Efecto operativo: con
+  el `.env` actual el runner ya no arranca; hay que usar el endpoint directo.
+- Resultado de 3.4e, **aplicado a producción** el 2026-08-13:
+  `scripts/sembrar_historial_tenant.py` registró las 15 migraciones que
+  `tenant_2005` ya tenía aplicadas, tras comprobar que reproduce la estructura
+  de la plantilla. El informe de 3.3a lo da ahora como `OK`; solo queda
+  `tenant_4444`, que es demo. Se verificó antes que ninguna de las 15 cambiaría
+  la estructura y que solo una tocaría datos, de forma inocua.
+- Resultado de 3.4f, **aplicado a producción** el 2026-08-13: se repusieron las
+  26 claves foráneas ausentes de `tenant_2005`, que ahora iguala las
+  restricciones de la plantilla y las tiene todas validadas. El ensayo destapó
+  que `pg_get_constraintdef` devuelve las definiciones sin cualificar: sin fijar
+  el `search_path` al destino, las claves se habrían creado apuntando al schema
+  de la plantilla. Corregido y protegido con una verificación posterior.
 - Resultado de 3.4c: existe `migrations/base/20260813_esquema_base_tenant.sql`,
   extraído del catálogo real y verificado contra la plantilla —281 columnas
   idénticas y **cero** defaults apuntando a ella, porque las columnas se
   declaran `SERIAL`—. Vive en `migrations/base/` para no entrar en el corpus que
   audita el informe de 3.3a.
-- **Acción pendiente del usuario**: aplicar a producción la reparación ensayada
-  en 3.4b con `scripts/reparar_secuencias_tenant.py --schema tenant_2005`.
-  Mientras no se aplique, ocho tablas del colegio real no admiten inserciones.
+- **Reparación aplicada a producción el 2026-08-13**, con autorización explícita
+  y tras revisar el `--dry-run`: `tenant_2005` tiene sus 30 secuencias propias y
+  las ocho tablas que no admitían inserciones vuelven a funcionar, verificado con
+  una inserción controlada que se revirtió sin dejar filas. Es la única
+  modificación de la base real en todo el programa.
 - **Resultado de 3.4a, el más importante de la capa.** De los cuatro schemas
   solo `tenant_2005` es producción real; los demás son demo o prueba. El ensayo
   sobre una rama de Neon confirmó las cuatro hipótesis de 3.0 y encontró una

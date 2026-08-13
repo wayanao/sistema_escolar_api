@@ -391,6 +391,55 @@ def test_public_dry_run_applies_nothing(monkeypatch, tmp_path):
     assert not cursor.executed("INSERT INTO public.schema_migrations")
 
 
+def test_el_endpoint_agrupado_se_detecta_por_el_host():
+    directo = "postgresql://u:p@ep-algo-1234.c-4.us-east-1.aws.neon.tech/db?sslmode=require"
+    agrupado = "postgresql://u:p@ep-algo-1234-pooler.c-4.us-east-1.aws.neon.tech/db?sslmode=require"
+
+    assert apply_migration.es_endpoint_agrupado(directo) is False
+    assert apply_migration.es_endpoint_agrupado(agrupado) is True
+
+
+def test_el_endpoint_agrupado_no_se_confunde_con_la_base_ni_los_parametros():
+    # '-pooler' fuera del host no debe disparar la guarda.
+    dsn = "postgresql://u:p@ep-algo.neon.tech/mi-pooler-db?options=-pooler"
+
+    assert apply_migration.es_endpoint_agrupado(dsn) is False
+
+
+def test_el_runner_se_niega_a_correr_sobre_el_endpoint_agrupado(monkeypatch, tmp_path):
+    """El lock de sesion no se sostiene sobre PgBouncer: mejor negarse que fingir."""
+    sql_path = tmp_path / "20260813_demo.sql"
+    sql_path.write_text(SQL_DEMO, encoding="utf-8")
+
+    def no_debe_conectar(url):
+        raise AssertionError("no debio intentar conectar")
+
+    monkeypatch.setattr(apply_migration, "load_dotenv", lambda *a, **k: None)
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        "postgresql://u:p@ep-algo-pooler.c-4.us-east-1.aws.neon.tech/db",
+    )
+    monkeypatch.setattr(apply_migration.psycopg2, "connect", no_debe_conectar)
+
+    assert apply_migration.apply_migration(sql_path) == 1
+
+
+def test_el_runner_si_corre_sobre_el_endpoint_directo(monkeypatch, tmp_path):
+    cursor = ScriptedCursor()
+    conn = RunnerConnection(cursor)
+
+    sql_path = tmp_path / "20260813_demo.sql"
+    sql_path.write_text(SQL_DEMO, encoding="utf-8")
+    monkeypatch.setattr(apply_migration, "load_dotenv", lambda *a, **k: None)
+    monkeypatch.setenv(
+        "DATABASE_URL", "postgresql://u:p@ep-algo.c-4.us-east-1.aws.neon.tech/db"
+    )
+    monkeypatch.setattr(apply_migration.psycopg2, "connect", lambda url: conn)
+
+    assert apply_migration.apply_migration(sql_path) == 0
+    assert cursor.executed(SQL_DEMO)
+
+
 def test_missing_file_and_missing_database_url_return_one(monkeypatch, tmp_path):
     assert apply_migration.apply_migration(tmp_path / "no_existe.sql") == 1
 

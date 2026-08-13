@@ -41,6 +41,17 @@ def calculate_checksum(sql_text: str) -> str:
     return hashlib.sha256(sql_text.encode("utf-8")).hexdigest()
 
 
+def es_endpoint_agrupado(dsn: str) -> bool:
+    """Detecta el endpoint agrupado de Neon, que es PgBouncer.
+
+    Sobre el pooler, dos conexiones distintas obtienen el mismo advisory lock de
+    sesion: se comprobo contra PostgreSQL 17 y la exclusion mutua no se sostiene.
+    Ejecutar migraciones por ahi daria una falsa sensacion de proteccion.
+    """
+    host = dsn.split("@", 1)[-1].split("/", 1)[0]
+    return "-pooler" in host
+
+
 def try_acquire_migration_lock(cursor) -> bool:
     """Toma el lock que impide dos ejecuciones simultaneas del runner.
 
@@ -105,6 +116,14 @@ def apply_migration(sql_path: Path, dry_run: bool = False) -> int:
     db_url = os.getenv("DATABASE_URL")
     if not db_url:
         print("X DATABASE_URL no esta definido en .env")
+        return 1
+
+    if es_endpoint_agrupado(db_url):
+        print(
+            "X DATABASE_URL apunta al endpoint agrupado (-pooler), que es PgBouncer.\n"
+            "  El lock que impide dos ejecuciones simultaneas no se sostiene ahi.\n"
+            "  Usa el endpoint directo, sin '-pooler' en el host."
+        )
         return 1
 
     conn = psycopg2.connect(db_url)

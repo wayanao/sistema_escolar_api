@@ -10,12 +10,14 @@
 - Estado al activar: árbol limpio; `HEAD` coincidente con la referencia local
   `origin/main`.
 - Primera subcapa pendiente: **3.5**.
-- Progreso: **3.0, 3.1, 3.2, 3.3a, 3.3b, 3.4a, 3.4b y 3.4c cerradas**. El
-  inventario está registrado abajo y reemplaza el desglose provisional de la
-  activación.
-- **Acción pendiente del usuario**: aplicar a producción la reparación ensayada
-  en 3.4b. Mientras no se aplique, ocho tablas de `tenant_2005` no admiten
-  inserciones.
+- Progreso: **3.0 a 3.4f cerradas**. El inventario está registrado abajo y
+  reemplaza el desglose provisional de la activación.
+- **Reparación de 3.4b aplicada a producción** el 2026-08-13, con autorización
+  explícita del usuario y tras revisar juntos el `--dry-run`. Las ocho tablas
+  bloqueadas de `tenant_2005` vuelven a admitir inserciones.
+- **Siembra de 3.4e aplicada a producción** el 2026-08-13. El informe de 3.3a
+  da `tenant_2005` como `OK`; el único destino pendiente es `tenant_4444`, que
+  es demo.
 - Código de producto modificado al activar: **ninguno**.
 - Código de producto modificado hasta ahora: `apply_migration.py`, que toma un
   advisory lock de sesión antes de leer o escribir el historial, y
@@ -142,8 +144,11 @@ del repositorio sin acceso a datos.
 | 3.3a | Informe de solo lectura: qué migraciones le faltan a cada tenant | **Cerrada** |
 | 3.3b | Siembra del historial en el alta de tenant | **Cerrada** |
 | 3.4a | Ensayo no productivo: medición real y verificación de hipótesis | **Cerrada** |
-| 3.4b | Reparación urgente: secuencias propias para `tenant_2005` | **Cerrada, pendiente de aplicar** |
+| 3.4b | Reparación urgente: secuencias propias para `tenant_2005` | **Cerrada y aplicada en producción** |
 | 3.4c | Migración base versionada extraída del DDL real | **Cerrada** |
+| 3.4d | Guarda: el runner se niega sobre el endpoint agrupado | **Cerrada** |
+| 3.4e | Siembra del historial ya aplicado de `tenant_2005` | **Cerrada y aplicada en producción** |
+| 3.4f | Reposición de las 26 claves foráneas de `tenant_2005` | **Cerrada y aplicada en producción** |
 | 3.5 | Alta reproducible desde la migración base versionada | Pendiente |
 | 3.6 | Rollback, verificación manual, compuerta global y cierre | Pendiente |
 
@@ -1387,17 +1392,182 @@ al alta.
 7. Compuerta global, Ruff, `git diff --check`; actualizar esta bitácora y
    detenerse antes de 3.6.
 
+## Subcapa 3.4d: guarda del endpoint agrupado
+
+3.4a demostró que el advisory lock de 3.1 no se sostiene sobre PgBouncer y que
+`.env` apunta justo a ese endpoint: la protección existía pero no protegía.
+
+`apply_migration.py` gana `es_endpoint_agrupado()` y se niega a ejecutarse
+—**exit 1, antes de conectar**— cuando el host del DSN contiene `-pooler`. Se
+clasifica como error de configuración, no como fallo de migración, porque no se
+intentó nada. Cuatro pruebas nuevas: detección por host, que no se confunda con
+un `-pooler` que aparezca en el nombre de la base o en los parámetros, el
+rechazo sin conectar y que el endpoint directo sí funcione.
+
+Verificado además contra el `.env` real: el runner imprime el motivo y sale con
+1 sin abrir conexión.
+
+**Consecuencia operativa que hay que tener presente**: con la configuración
+actual, `apply_migration.py` ya no se puede ejecutar. Para aplicar una migración
+habrá que usar el endpoint directo. Es el efecto buscado —antes se ejecutaba sin
+protección real—, pero es un cambio en una herramienta operativa.
+
+No se añadió la guarda a la auditoría de 3.3a ni al reparador de secuencias: son
+de solo lectura la primera y transaccional sin locks el segundo, y ambos
+funcionan correctamente sobre el pooler.
+
+## Subcapa 3.4e: siembra del historial
+
+`scripts/sembrar_historial_tenant.py` copia al tenant los registros de
+`public.schema_migrations` que la plantilla tiene y a él le faltan. No aplica
+ninguna migración: solo escribe historial.
+
+### No es un acto de fe
+
+Antes de sembrar, el script **comprueba que el destino reproduce la estructura
+de la plantilla** en columnas e índices, y se niega si no. Sembrar sin esa
+comprobación afirmaría algo que podría ser falso.
+
+Las claves foráneas se excluyen de la comparación a propósito: su ausencia viene
+de la copia con `LIKE INCLUDING ALL`, que no las reproduce, no de una migración
+sin aplicar. Está fijado con una prueba.
+
+### Un falso positivo que obligó a corregir la comprobación
+
+La primera versión comparaba la definición completa del índice, nombre incluido,
+y **se negó a sembrar** alegando 32 diferencias. Investigado contra producción,
+resultó ser cosmético: la plantilla nombra sus índices `idx_cursos_estado` y el
+tenant los llama `cursos_estado_idx` —el nombre que PostgreSQL genera solo—.
+Comparando por **función** —tabla, unicidad, columnas y condición— las
+diferencias son **cero**.
+
+La comprobación pasó a comparar por función y a ignorar el nombre, con dos
+pruebas que lo fijan. Lo que una migración aporta es el índice, no cómo se
+llama.
+
+### Hallazgo colateral: 13 índices duplicados en `tenant_2005`
+
+Al investigar lo anterior salió que `tenant_2005` tiene **106 índices frente a
+los 93 de la plantilla**, y que ninguno aporta una función nueva: son 13
+duplicados exactos bajo otro nombre. Cuestan escritura y espacio sin dar nada.
+No se tocan aquí; queda anotado como limpieza posible.
+
+### Ensayo y verificación
+
+Ensayado en la rama sobre `tenant_2005`: `--dry-run` sin efectos; siembra real
+que llevó los registros de **15 a 30**; el informe de 3.3a pasó de
+`PENDIENTE … faltan 15` a **`OK`**; y una segunda ejecución informó «Nada que
+sembrar». Once pruebas herméticas nuevas.
+
+`--dry-run` contra producción: las mismas 15 migraciones, comprobación
+estructural **sin diferencias**, nada escrito. Coincide con el ensayo.
+
+**No se ha aplicado a producción.** Queda a la espera de la orden del usuario.
+
+### Por qué sembrar y no ejecutar las migraciones
+
+Se comprobó contra producción, migración por migración, que ninguna de las 15
+cambiaría la estructura —ya está— y que de las diez que rellenan datos, nueve
+tocarían **cero filas**. La única que cambiaría algo es
+`20260527_pagos_anulacion`, que pondría `estado = 'Pagado'` en 73 de los 74
+pagos que hoy lo tienen nulo. Es inocuo: la aplicación nunca lee ese campo en
+crudo, usa `COALESCE(estado, 'Pagado')` en los cinco sitios que importan. La
+prueba de que es deliberado: la propia plantilla, con las 30 migraciones
+registradas, también tiene 12 pagos con `estado` nulo.
+
+Ejecutar el runner además alcanzaría a los cuatro tenants, porque el
+descubrimiento no distingue producción de demo.
+
+## Subcapa 3.4f: reposición de claves foráneas
+
+`scripts/reponer_claves_foraneas_tenant.py` copia al tenant las claves foráneas
+que la plantilla tiene y a él le faltan, conservando `ON DELETE` y `ON UPDATE`.
+Cuenta huérfanos antes y se niega si encuentra alguno.
+
+### El error que casi introduce un acoplamiento entre schemas
+
+Merece quedar escrito porque el ensayo lo cazó por casualidad.
+
+`pg_get_constraintdef` devuelve la definición **sin cualificar**:
+`FOREIGN KEY (curso_id) REFERENCES cursos(id)`. La primera versión leía las
+definiciones con el `search_path` en la plantilla —correcto, para obtener ese
+texto portable— pero **no lo cambiaba antes de crear**. PostgreSQL resolvía
+`cursos` con el `search_path` vigente, de modo que iba a crear una clave desde
+`tenant_2005.asignaciones` hacia **`tenant_colegio_1.cursos`**: exactamente el
+acoplamiento entre schemas que 3.4b acababa de eliminar de las secuencias.
+
+Falló con `ForeignKeyViolation` sobre `curso_id=33`, un curso que el colegio
+real tiene y la demo no. **Si los identificadores hubieran coincidido, la clave
+se habría creado en silencio apuntando al schema equivocado.**
+
+Lo que delató el fallo fue la contradicción entre el recuento —0 huérfanos, con
+nombres cualificados, correcto— y la violación al crear. Se comprobó en las dos
+bases que el recuento era bueno antes de tocar el script.
+
+Correcciones: se fija el `search_path` **al destino** antes de crear, y se añadió
+`claves_que_apuntan_fuera()`, que tras crearlas verifica que ninguna referencia
+salga del schema y revierte si alguna lo hace. Con su prueba, que documenta el
+error real para que no vuelva.
+
+### Ensayo
+
+Sobre la rama: 11 → **37** claves, 26 → **0** ausentes, idempotente. Y dos
+demostraciones funcionales en transacciones revertidas:
+
+- **la cascada actúa**: borrar un `boletin_cabecera` se llevó sus 4 detalles;
+- **lo que antes dejaba huérfanos ahora se bloquea**: borrar un curso con 28
+  asignaciones falla con `23503`. Antes habría pasado sin más.
+
+`--dry-run` contra producción: las 26 claves, todas **sin huérfanos**, nada
+creado.
+
+### Aplicado a producción
+
+`>> Creadas 26 clave(s) foranea(s) en tenant_2005`, exit 0. Verificación
+posterior, solo de catálogo:
+
+| Comprobación | Resultado |
+|---|---|
+| Restricciones por tipo frente a la plantilla | `CHECK=15 FK=37 PK=30 UNIQUE=13` en ambos, **idénticas** |
+| Claves que apuntan fuera del schema | **0** |
+| Claves sin validar | **0** |
+| Ausentes frente a la plantilla | **0** |
+| Reparto `ON DELETE` | 16 `NO ACTION`, 16 `CASCADE`, 5 `SET NULL` |
+
+Que las 37 estén **validadas** es una confirmación independiente de que no hay
+huérfanos: PostgreSQL las comprobó contra los datos reales al crearlas. Ya no
+depende de mi recuento.
+
+No se hizo ninguna prueba de borrado sobre producción, ni siquiera revertida: el
+comportamiento quedó demostrado sobre la rama, que tiene los mismos datos.
+
+### Cambio de comportamiento declarado
+
+Un `DELETE` físico que antes pasaba dejando huérfanos ahora falla. Es el
+objetivo, y deja `tenant_2005` comportándose igual que la plantilla. La
+aplicación no se ve afectada porque usa borrado lógico en todas partes —
+`activo`, `estado`, `anulado`— y varios de sus endpoints `DELETE` devuelven 405.
+Pero un script que borre directamente por SQL empezará a encontrar errores donde
+antes no los había.
+
+### Rollback
+
+`ALTER TABLE <tabla> DROP CONSTRAINT <nombre>` para las 26. El `--dry-run`
+imprime tabla, columnas y nombre de cada una. Revertir devuelve el schema a no
+tener integridad referencial, así que solo procede ante un problema concreto.
+
 ### Reparaciones que esta capa debe encarar
 
 Se registran aquí para que no se pierdan y para que el usuario decida cuándo
 abordarlas. La lista se escribió en 3.4a con tres entradas; 3.4b resolvió la de
 las secuencias.
 
-- **Secuencias compartidas.** *Resuelta en 3.4b* con
-  `scripts/reparar_secuencias_tenant.py`, ensayado sobre la rama y **pendiente
-  de que el usuario lo aplique a producción**. Los tres schemas de demo siguen
-  sin reparar; no corre prisa, pero mientras compartan secuencias con
-  `tenant_colegio_1` el script de limpieza sigue siendo peligroso para ellos.
+- **Secuencias compartidas.** *Resuelta en 3.4b y **aplicada a producción** el
+  2026-08-13* con `scripts/reparar_secuencias_tenant.py`. `tenant_2005` tiene
+  ya sus 30 secuencias propias y las ocho tablas bloqueadas vuelven a insertar.
+  Los tres schemas de demo siguen sin reparar; no corre prisa, pero mientras
+  compartan secuencias con `tenant_colegio_1` el script de limpieza sigue siendo
+  peligroso para ellos.
 - **Runner sobre endpoint agrupado.** Sin abordar. Lo más barato y honesto es
   que `apply_migration.py` se niegue a ejecutarse contra un DSN con `-pooler`,
   en lugar de sostener una protección que no protege.
@@ -1405,10 +1575,9 @@ las secuencias.
   están estructuralmente atrasados, lo correcto es sembrar sus registros, no
   aplicar las migraciones. Es una escritura sobre datos reales y necesita su
   propio ensayo y rollback.
-- **Claves foráneas ausentes.** Sin abordar, y la más delicada de la capa:
-  añadirlas puede fallar si ya existen filas huérfanas. Requiere auditoría
-  previa de huérfanos, ensayo completo y una ventana de mantenimiento. En
-  `tenant_2005` faltan 26 de las 37 de la plantilla.
+- **Claves foráneas ausentes.** *Resuelta en 3.4f y **aplicada a producción** el
+  2026-08-13.* Las 26 se repusieron en `tenant_2005` y quedaron validadas. Los
+  tres schemas de demo siguen sin ellas; son demo y no urge.
 
 ## Criterios de cierre de la subcapa 3.0
 
@@ -1528,21 +1697,28 @@ las secuencias.
   `-pooler` obtuvieron el mismo lock. La protección de 3.1 es hoy inefectiva en
   el entorno real; funciona solo sobre el endpoint directo. Reparación
   pendiente, no abordada.
-- **AVERÍA EN CURSO, producción.** Ocho tablas de `tenant_2005` —el único
-  colegio real— tienen su secuencia compartida por debajo del `MAX(id)`
-  existente: `estudiantes`, `profesor`, `asignaciones`, `asistencia`,
-  `notas_detalle`, `pagos`, `boletin_cabecera` y `boletin_detalles`. Matricular,
-  registrar un profesor, tomar asistencia, guardar notas o registrar un pago
-  falla hoy con clave duplicada. No es un riesgo futuro.
-- **DETONANTE A UN COMANDO.** `scripts/limpiar_tenant_colegio_1_operativo.py`
-  ejecuta `TRUNCATE … RESTART IDENTITY` sobre 20 tablas de la demo, y 19 de las
-  26 secuencias que usa `tenant_2005` pertenecen a esas tablas. Limpiar la demo
-  reiniciaría a 1 los contadores del colegio real. El script parece inocuo y
-  hasta genera respaldo propio; nada en él advierte del alcance cruzado.
-- **Confirmado en 3.4a, producción**: `tenant_2005` tiene 11 claves foráneas
-  frente a las 37 de la plantilla, porque `LIKE INCLUDING ALL` no las copia.
-  Puede haber filas huérfanas que la base no impide. Añadirlas más tarde fallará
-  si esas huérfanas existen, así que la reparación exige auditarlas antes.
+- ~~**AVERÍA EN CURSO, producción.**~~ **RESUELTA el 2026-08-13.** Ocho tablas
+  de `tenant_2005` tenían su secuencia compartida por debajo del `MAX(id)` y no
+  admitían inserciones: `estudiantes`, `profesor`, `asignaciones`, `asistencia`,
+  `notas_detalle`, `pagos`, `boletin_cabecera` y `boletin_detalles`. La
+  reparación de 3.4b se aplicó a producción y se verificó con una inserción
+  controlada. Se conserva el enunciado porque explica por qué existía la capa.
+- **DETONANTE A UN COMANDO, parcialmente desactivado.**
+  `scripts/limpiar_tenant_colegio_1_operativo.py` ejecuta
+  `TRUNCATE … RESTART IDENTITY` sobre 20 tablas de la demo. Ya **no** alcanza a
+  `tenant_2005`, que tiene secuencias propias, pero `tenant_3333` y
+  `tenant_4444` siguen compartiéndolas y se verían afectados. Son demo, así que
+  no urge; el script sigue sin advertir de su alcance cruzado.
+- ~~**Confirmado en 3.4a, producción**: `tenant_2005` tiene 11 claves foráneas
+  frente a las 37 de la plantilla.~~ **RESUELTO en 3.4f el 2026-08-13**: las 26
+  ausentes se repusieron y quedaron validadas contra los datos reales, lo que
+  confirma de paso que no había huérfanos. `tenant_2005` iguala ahora las
+  restricciones de la plantilla.
+- **Riesgo nuevo, de la propia reparación**: `pg_get_constraintdef` devuelve las
+  definiciones sin cualificar y se resuelven con el `search_path`. Cualquier
+  script que copie claves foráneas entre schemas debe apuntarlo al destino, o
+  creará referencias cruzadas. Está protegido con una verificación posterior,
+  pero es una trampa que reaparecerá en 3.5.
 - Los demás schemas comparten los mismos defectos, pero `tenant_colegio_1`,
   `tenant_3333` y `tenant_4444` son demo o prueba: su reparación no es urgente.
   Lo que sí importa es que la demo **no puede tratarse como desechable** mientras
@@ -2112,6 +2288,101 @@ las secuencias.
   `LIKE` por la aplicación de la migración base, con ensayo comparativo en una
   rama; detenerse antes de 3.6.
 
+### 2026-08-13 — aplicación de 3.4b a producción
+
+Primera y única vez en todo el programa que se modifica la base real. Se hace
+constar aparte porque rompe la regla general de no tocar producción, y solo
+ocurrió con autorización explícita del usuario para esta reparación concreta.
+
+- Autorización: el usuario ordenó priorizar la reparación, exigió ejecutar
+  primero `--dry-run`, revisarlo juntos y detenerse ante cualquier diferencia
+  frente a lo ensayado. Después autorizó la aplicación de forma inequívoca.
+- Comprobación de destino antes de conectar: el host de `.env`,
+  `ep-late-smoke-aip41j6x-pooler…`, se contrastó con el de la rama,
+  `ep-tiny-dream-aiceysjn…`. Distintos. Solo se imprimieron nombres de host.
+- `--dry-run` contra producción: exit 0, sin escribir nada. Devolvió **las
+  mismas 26 columnas** y **los 26 máximos idénticos** a los medidos en la rama,
+  coherente con que la aplicación estuviera fuera de uso. Ninguna anomalía: nada
+  apuntaba a un tercer schema y las 4 columnas que ya tenían secuencia propia
+  siguieron fuera del plan.
+- Aplicación: `python scripts/reparar_secuencias_tenant.py --schema tenant_2005`.
+  Salida «Reparadas 26 columna(s). Verificacion correcta», **exit 0**.
+- Sobre el endpoint agrupado: no afectó. El script no toma locks de sesión y
+  todo su trabajo cabe en una transacción, que PgBouncer mantiene sobre la misma
+  conexión de servidor.
+- Verificación posterior:
+  - columnas usando secuencias de otro schema: **0**;
+  - problemas según `verificar()`: **0**;
+  - secuencias propias del tenant: **30** —las 4 previas más las 26 nuevas—,
+    las 30 con `OWNED BY` su columna;
+  - las ocho tablas antes bloqueadas quedaron con el siguiente id por encima de
+    su máximo: `estudiantes` 686 sobre 685, `profesor` 49/48, `asignaciones`
+    354/353, `asistencia` 3126/3125, `notas_detalle` 20367/20366, `pagos`
+    10112/10111, `boletin_cabecera` 100/99 y `boletin_detalles` 314/313.
+- Prueba controlada de inserción, dentro de una transacción revertida:
+  `estudiantes` recibió id **686** y `profesor` id **49**, ambos por encima de
+  su máximo previo. Tras el `rollback`, los conteos y los máximos quedaron
+  intactos: 172 y 10 filas, máximos 685 y 48. **No se creó ninguna fila.**
+- Efecto residual declarado: cada inserción de prueba consumió un `nextval`, que
+  no se revierte. `estudiantes_id_seq` y `profesor_id_seq` quedan un valor por
+  delante, de modo que los ids 686 y 49 no se usarán. Es un hueco de un id en
+  cada tabla, sin ninguna consecuencia.
+- Rollback disponible: la salida del `--dry-run`, conservada en la conversación,
+  lista el `DEFAULT anterior` de las 26 columnas y sirve de guion de reversión.
+  Revertir reintroduciría la avería, así que solo procede ante un problema
+  inesperado.
+- Alcance: solo `tenant_2005`. Los tres schemas de demo siguen compartiendo
+  secuencias con `tenant_colegio_1` y pueden repararse con el mismo comando
+  cuando se quiera.
+- Estado: **riesgo 1 resuelto en producción**. El riesgo 2 queda desactivado
+  para el colegio real —el script de limpieza ya no puede reiniciar sus
+  contadores—, pero sigue vivo para los tres schemas de demo.
+- Siguiente acción exacta: sin cambios; ejecutar 3.5 cuando el usuario lo
+  ordene. No se inició.
+
+### 2026-08-13 — subcapas 3.4d y 3.4e
+
+El usuario ordenó cerrar primero estas dos, antes de las claves foráneas. Se
+hicieron en el mismo turno porque la primera no toca producción y la segunda se
+detuvo en el `--dry-run` para su revisión, como en 3.4b.
+
+**3.4d, guarda del endpoint agrupado.** Solo código: `apply_migration.py` gana
+`es_endpoint_agrupado()` y devuelve 1 sin conectar si el host lleva `-pooler`.
+Cuatro pruebas nuevas. Verificado contra el `.env` real: imprime el motivo y
+sale con 1. Consecuencia operativa declarada: con la configuración actual el
+runner ya no arranca y habrá que usar el endpoint directo. No se añadió la
+guarda a la auditoría ni al reparador de secuencias, que funcionan bien sobre el
+pooler.
+
+**3.4e, siembra del historial.** `scripts/sembrar_historial_tenant.py` copia los
+registros de la plantilla que le faltan al tenant, tras comprobar que reproduce
+su estructura. Once pruebas herméticas.
+
+- Falso positivo corregido: la primera comprobación comparaba el nombre del
+  índice y se negó alegando 32 diferencias. Contra producción resultó cosmético
+  —`idx_cursos_estado` frente a `cursos_estado_idx`, el nombre autogenerado—.
+  Comparando por función las diferencias son cero. La comprobación pasó a
+  ignorar el nombre, con dos pruebas que lo fijan.
+- Hallazgo colateral, no reparado: `tenant_2005` tiene 106 índices frente a los
+  93 de la plantilla y ninguno aporta función nueva. Son 13 duplicados exactos.
+- Ensayo en la rama: dry-run sin efectos, siembra de 15 a 30, el informe de 3.3a
+  pasó a `OK`, segunda ejecución «Nada que sembrar».
+- `--dry-run` contra producción: mismas 15, estructura sin diferencias, nada
+  escrito.
+- **Aplicado a producción** con la orden del usuario: «Registradas 15
+  migracion(es)», exit 0. Verificación posterior: el informe de 3.3a da
+  `tenant_2005` como **OK** y solo deja `tenant_4444` pendiente con 9, que es
+  demo. Reejecutar informó «Nada que sembrar».
+- Rollback: `DELETE FROM public.schema_migrations WHERE target_schema =
+  'tenant_2005' AND migration_name IN (…las 15…)`. No borra datos del colegio;
+  solo deshace el registro.
+- Verificación: compuerta global en **exit 0 con 558 pruebas**, Ruff correcto y
+  `git diff --check` en exit 0.
+- Estado: **3.4d y 3.4e cerradas**, ambas aplicadas donde correspondía. No se
+  inició la reparación de claves foráneas ni 3.5.
+- Siguiente acción exacta: reponer las 26 claves foráneas de `tenant_2005`, con
+  0 huérfanos ya confirmados en producción; después 3.5.
+
 ## Entrega al próximo chat
 
 - Capa activa: **3, migraciones y tenants**.
@@ -2167,12 +2438,11 @@ las secuencias.
   faltan 15 registros de historial sin estar estructuralmente atrasado, y el
   advisory lock de 3.1 **no se sostiene sobre el endpoint agrupado**, que es el
   que usa `.env`.
-- **Reparación lista, sin aplicar**: 3.4b añadió
-  `scripts/reparar_secuencias_tenant.py`, auto-medido, transaccional e
-  idempotente, ensayado sobre la rama con su ciclo completo incluido el
-  rollback. Resuelve a la vez la avería y el acoplamiento con la demo. **Falta
-  que el usuario lo aplique a producción**; hasta entonces las ocho tablas
-  siguen sin admitir inserciones.
+- **Reparación aplicada a producción el 2026-08-13**: `tenant_2005` tiene sus
+  30 secuencias propias y las ocho tablas bloqueadas vuelven a insertar,
+  verificado con una inserción controlada que se revirtió sin dejar filas. Es la
+  única modificación de la base real en todo el programa, hecha con autorización
+  explícita y tras revisar el `--dry-run`.
 - **Estado de 3.4c**: existe `migrations/base/20260813_esquema_base_tenant.sql`,
   extraído del catálogo real y verificado contra la plantilla: 281 columnas
   idénticas y **cero** defaults apuntando a la plantilla, porque las columnas se
@@ -2182,10 +2452,8 @@ las secuencias.
   está reparado. Permanece además pendiente y aceptada la calibración de
   `DB_STATEMENT_TIMEOUT_MS` de la capa 1, y GitHub Actions sigue sin evidencia
   de run.
-- Siguiente acción exacta, por orden de prioridad: **primero**, que el usuario
-  aplique a producción la reparación ensayada en 3.4b, siguiendo «Cómo aplicarlo
-  a producción» y guardando la salida del `--dry-run` como guion de reversión.
-  **Después**, ejecutar únicamente **3.5** según su «trabajo exacto»: sustituir
+- Siguiente acción exacta: ejecutar únicamente **3.5** según su «trabajo
+  exacto», cuando el usuario lo ordene: sustituir
   en `crear_tenant_controller` la copia por `LIKE INCLUDING ALL` por la
   aplicación de la migración base, decidir qué ocurre con la siembra de datos y
   con `public.schema_migrations`, y ensayar en una rama comparando un tenant

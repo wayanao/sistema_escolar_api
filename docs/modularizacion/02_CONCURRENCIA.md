@@ -1,15 +1,15 @@
 # Capa 2: concurrencia
 
-Última revisión: 2026-08-12.
+Última revisión: 2026-08-13.
 
 ## Control
 
-- Estado: **Activa**.
+- Estado: **Cerrada**.
 - Commit base: `b24cb8d3f1a8fa1d48699ed5732d4013ab6fe7f9`.
 - Rama acordada: `main`.
 - Estado al activar: árbol limpio; `HEAD` coincidente con la referencia local
   `origin/main`.
-- Primera subcapa pendiente: **2.6**, medición final y cierre de la capa.
+- Primera subcapa pendiente: **ninguna**.
 - Código de producto modificado al activar: **ninguno**.
 - Código de producto modificado hasta ahora: `app/routes/reportes.py`,
   `app/routes/dashboard.py`, `app/routes/plan_de_clases.py` y
@@ -17,7 +17,7 @@
   `app/core/super_admin.py` y `app/main.py`; veintitrés handlers sin `await`
   pasaron de `async def` a `def`, sin cambiar sus cuerpos, y branding conserva
   su lectura async mientras envía únicamente storage y DB al threadpool.
-- Progreso: **2.0, 2.1, 2.2, 2.3a, 2.3b, 2.4 y 2.5 cerradas**. Los cinco reportes,
+- Progreso: **2.0, 2.1, 2.2, 2.3a, 2.3b, 2.4, 2.5 y 2.6 cerradas**. Los cinco reportes,
   siete lecturas de dashboard y once rutas de plan de clases ya ejecutan sus
   cuerpos síncronos en el threadpool gobernado por FastAPI; branding mantiene
   su handler async, pero ya no ejecuta storage ni PostgreSQL síncronos en el
@@ -25,6 +25,9 @@
   ya usan el offload estándar; el limitador compartido queda en cinco workers
   para el pool actual de diez conexiones, conforme al pico medido de dos
   conexiones retenidas por worker.
+- Cierre: **2.0–2.6 cerradas** el 2026-08-13. La medición formal, la
+  compuerta global, staging, rollback y verificación manual quedaron
+  documentados; la capa 3 permanece en espera y no fue activada.
 - Autorización: orden explícita del usuario el 2026-08-12, después de cerrar la
   capa 1 y commitear su reconciliación documental.
 
@@ -121,7 +124,7 @@ el commit base antes de inventariar o medir.
 | 2.3b | Cuarta tanda: 6 escrituras o efectos de plan de clases | **Cerrada** |
 | 2.4 | Caso especial de branding: lectura async más storage y DB síncronos | **Cerrada** |
 | 2.5 | Dependencias async de usuario y super admin; límite compartido derivado y medido | **Cerrada** |
-| 2.6 | Medición posterior, compuerta global, staging, rollback y cierre | Pendiente |
+| 2.6 | Medición posterior, compuerta global, staging, rollback y cierre | **Cerrada** |
 
 El inventario de 2.0 reemplaza el desglose provisional de la activación. Las
 tandas separan lecturas, escrituras/efectos y autenticación para que cada diff sea
@@ -785,6 +788,118 @@ Ejecutar únicamente la medición posterior formal y el cierre de capa: repetir 
 analizar el procedimiento reproducible acordado, ejecutar la compuerta global,
 documentar staging, rollback y verificación manual, actualizar el índice maestro
 y dejar la capa 3 en espera. No activar la capa 3 ni implementar trabajo suyo.
+
+### Subcapa 2.6: resultado y cierre
+
+La medición formal se ejecutó sobre `main`, `HEAD 225f80e`, con el mismo stack
+registrado en 2.0: Python 3.14.3, FastAPI 0.136.1, Starlette 1.0.0, AnyIO
+4.13.0, psycopg2-binary 2.9.12 y pytest 9.0.3. El comando reproducible fue:
+
+`.\venv\Scripts\python.exe -B scripts\measure_auth_concurrency.py --runs 5 --validation-ms 100 --heartbeat-ms 20 --json`
+
+| Ronda | Total ms | Retardo heartbeat ms | Solapamiento | Estado y validación |
+|---:|---:|---:|---:|---|
+| 1 | 108,722 | 6,980 | 2 | worker / worker |
+| 2 | 101,878 | 2,869 | 2 | worker / worker |
+| 3 | 103,319 | 4,471 | 2 | worker / worker |
+| 4 | 102,093 | 4,590 | 2 | worker / worker |
+| 5 | 101,564 | 1,101 | 2 | worker / worker |
+
+La mediana formal fue **102,093 ms** total y **4,471 ms** de retardo adicional
+del heartbeat. Las cinco rondas preservaron A→A/B→B, el contexto exterior,
+ambas fronteras en workers y solapamiento dos. Frente a la línea previa del
+mismo arnés en 2.5 —223,811 ms y 203,777 ms, solapamiento uno en el event
+loop— son reducciones observadas de 54,4 % y 97,8 %. Los tiempos no son un SLO
+ni una prueba de rendimiento operativo: el arnés usa JWT y autenticación reales,
+pero dobles de DB y ninguna red. La línea histórica de 2.0 usó otro arnés y no
+se compara temporalmente con estas cifras.
+
+La compuerta final fuera del sandbox terminó en exit 0: **477 pruebas**, los 5
+warnings deprecatorios conocidos, Ruff correcto y `pip check` sin dependencias
+rotas. Las 81 pruebas dirigidas de autenticación, tenant, sesión, pool y
+capacidad también pasaron. No se modificó código, pruebas, scripts,
+configuración ni workflow en 2.6; el cambio de cierre es exclusivamente esta
+bitácora y el índice maestro.
+
+#### Plan de staging
+
+No fue ejecutado en este turno. Antes de publicar, usar un entorno no
+productivo con la misma topología por proceso y variables representativas:
+
+1. desplegar el commit revisado sin migraciones ni cambios de schema;
+2. confirmar al arrancar el log `Shared threadpool limited to 5 workers for DB
+   pool max 10` —o el valor derivado del `DB_POOL_MAX_CONNECTIONS` de staging—;
+3. ejecutar autenticación Bearer y cookie en al menos dos tenants, además del
+   flujo de super admin, y verificar 401/403/200 sin mezcla de datos;
+4. probar reportes, dashboard, plan de clases y carga de branding, incluidos un
+   error/rollback y un borrado de imagen;
+5. aplicar carga controlada concurrente a autenticación y a las dos rutas que
+   pueden retener dos conexiones, observando latencias, cola, `PoolError`, uso
+   del pool y timeouts; no usar producción para esta prueba;
+6. observar también descargas, multipart y storage porque comparten los cinco
+   tokens aunque no consuman DB;
+7. repetir `scripts/verify.py` en el artefacto exacto y conservar evidencia del
+   run. GitHub Actions continúa **no verificada** para estos commits locales
+   mientras no exista un push autorizado y un run asociado.
+
+#### Rollback
+
+No se ejecutó. La capa no agrega migraciones, tablas ni transformación de datos,
+por lo que el rollback es de aplicación:
+
+1. detener el rollout y volver al artefacto/commit anterior a la capa 2,
+   `b24cb8d3f1a8fa1d48699ed5732d4013ab6fe7f9`, o revertir en orden inverso los
+   commits posteriores de la capa una vez publicados;
+2. reiniciar todos los procesos para restaurar el código y el limitador anterior;
+3. no ejecutar migraciones ni manipular datos como parte del rollback;
+4. repetir smoke tests de login cookie/Bearer, tenant A/B, super admin, una
+   lectura DB, una escritura DB y un archivo;
+5. si el problema es únicamente cola del threadpool, no elevar tokens por
+   encima de `floor((maxconn-R)/H)` sin reauditar `H`, `R` y los consumidores;
+   preferir rollback o una nueva calibración revisada.
+
+Revertir solo `app/main.py` y conservar los nuevos offloads reabriría el riesgo
+de hasta 40 workers compitiendo por 10 conexiones. Revertir solo los offloads
+restauraría bloqueo del event loop. El rollback debe tratar la capa como una
+unidad coherente.
+
+#### Verificación manual posterior
+
+No se ejecutó porque no hubo deploy. En staging, comprobar y conservar evidencia
+de:
+
+- cookie: middleware entra sin tenant, autenticación fija el tenant correcto y
+  lo restaura al terminar;
+- Bearer: el contexto sembrado se conserva durante la consulta pública y el
+  worker tenant;
+- dos tenants concurrentes no intercambian schema, payload ni rutas de storage;
+- super admin consulta `public` sin filtrar ese contexto al caller;
+- 403 de tenant suspendido no inicia validación tenant; usuario inválido sigue
+  401 con `WWW-Authenticate`, y errores DB inesperados siguen como 500;
+- cancelación/desconexión no devuelve una conexión al pool antes del cleanup;
+- el pico de conexiones no supera el pool ni aparecen `PoolError`; y
+- archivos, reportes, dashboard y plan de clases conservan payloads, permisos,
+  orden de efectos y status codes observados.
+
+#### Riesgos y verificaciones que permanecen abiertas
+
+- `DB_STATEMENT_TIMEOUT_MS` sigue pendiente de calibración operativa desde la
+  capa 1 y no se marca cumplido.
+- `H=2` y `R=0` describen las rutas HTTP y el proceso/event loop inventariados;
+  nuevos threads, background jobs, plugins, rutas o varios event loops exigen
+  reauditar la fórmula.
+- El límite compartido de cinco workers puede aumentar la cola de storage,
+  multipart y archivos; solo staging con carga representativa puede cuantificarlo.
+- La cancelación protegida puede completar trabajo después de una desconexión.
+- Las ventanas TOCTOU y la no atomicidad entre storage y DB permanecen como
+  contratos/riesgos preexistentes deliberadamente no rediseñados.
+- Las versiones del stack están limitadas solo por mínimos; una resolución
+  distinta exige repetir medición y compuerta.
+- No hubo push, deploy, producción, migraciones ni ejecución de CI remoto.
+
+La capa 2 queda **cerrada**. La capa 3 permanece en espera y no existe una capa
+activa. Una orden genérica de continuar no autoriza activarla; su bitácora solo
+puede crearse desde la plantilla tras una orden explícita del usuario.
 
 ## Criterios de cierre de la subcapa 2.0
 
@@ -1472,23 +1587,83 @@ y dejar la capa 3 en espera. No activar la capa 3 ni implementar trabajo suyo.
   compuerta, staging, rollback, verificación manual e índice de cierre; dejar la
   capa 3 en espera y no activarla.
 
+### 2026-08-13 — subcapa 2.6 y cierre de la capa
+
+- Modo de acceso: mismo checkout local; rama `main` y árbol limpio antes de
+  editar.
+- Commit observado: `225f80ec4f031c6bb7df6900c7fb91f4389a439e`, ocho
+  commits locales por delante de `origin/main` y del base de la capa.
+- Continuidad: `b24cb8d` es ancestro; los ocho commits lineales corresponden a
+  activación y 2.0–2.5. El último commit contiene exactamente los siete archivos
+  documentados de 2.5. No había cambios pendientes ni divergencia al iniciar.
+- Alcance de 2.6: exclusivamente `docs/modularizacion/02_CONCURRENCIA.md` y
+  `docs/modularizacion/README.md`. No cambió producto, pruebas, scripts,
+  configuración, dependencias ni workflow; no se inició la capa 3.
+- Comandos ejecutados:
+  - precondiciones y continuidad: `git status --short --branch`,
+    `git branch --show-current`, `git rev-parse HEAD`, `git rev-parse origin/main`,
+    `git rev-list --left-right --count origin/main...HEAD`,
+    `git merge-base --is-ancestor b24cb8d3f1a8fa1d48699ed5732d4013ab6fe7f9 HEAD`,
+    `git log --oneline --decorate --reverse b24cb8d3f1a8fa1d48699ed5732d4013ab6fe7f9..HEAD`;
+  - stack efectivo:
+    `.\venv\Scripts\python.exe -c "import sys; from importlib.metadata import version; print('Python=' + sys.version.split()[0], *(name + '=' + version(name) for name in ('fastapi','starlette','anyio','psycopg2-binary','pytest')))"`;
+  - medición formal:
+    `.\venv\Scripts\python.exe -B scripts\measure_auth_concurrency.py --runs 5 --validation-ms 100 --heartbeat-ms 20 --json`;
+  - pruebas dirigidas:
+    `.\venv\Scripts\python.exe -m pytest -p no:cacheprovider -q tests/test_auth_tenant.py tests/test_super_admin.py tests/test_tenant_context_concurrency.py tests/test_db_session_contrato.py tests/test_db_pool_timeouts.py tests/test_auth_threadpool.py tests/test_threadpool_capacity.py`;
+  - compuerta final fuera del sandbox:
+    `.\venv\Scripts\python.exe scripts\verify.py`;
+  - alcance y documentación: `git diff --name-only`,
+    `git diff --name-only -- app`, `git status --short --branch`,
+    `git diff --check`, revisión del diff acumulado `b24cb8d..HEAD` y barrido C0
+    reproducible:
+    `.\venv\Scripts\python.exe -c "from pathlib import Path; paths=(Path('docs/modularizacion/README.md'),Path('docs/modularizacion/02_CONCURRENCIA.md')); bad=[(str(path),line_number,ord(char)) for path in paths for line_number,line in enumerate(path.read_text(encoding='utf-8').splitlines(),1) for char in line if ord(char)<32 and char not in '\t\r']; print('C0_OK' if not bad else bad)"`.
+- Medición formal: cinco rondas correctas, mediana **102,093 ms** total y
+  **4,471 ms** de retraso del heartbeat; solapamiento dos, estado y validación
+  en workers, tenants A/B y contexto exterior restaurados. Frente al mismo arnés
+  antes del cambio: 54,4 % menos tiempo total y 97,8 % menos bloqueo observado.
+- Verificación: **81 pruebas dirigidas** y **477 pruebas globales** correctas;
+  cinco warnings deprecatorios conocidos, Ruff correcto y dependencias íntegras.
+- Verificación documental: `git diff --check` terminó en exit 0, solo con avisos
+  informativos LF→CRLF; el alcance contiene exactamente esta bitácora y
+  `README.md`, ningún archivo de `app/` ni archivo no rastreado. El barrido de
+  caracteres de control terminó en `C0_OK`.
+- Staging, rollback y verificación manual: documentados como planes no
+  ejecutados en «Subcapa 2.6: resultado y cierre».
+- Evidencia externa: no hubo push; GitHub Actions no puede considerarse
+  verificada para los ocho commits locales. No hubo deploy, producción,
+  migraciones ni cambios de datos.
+- Riesgos abiertos: calibración de `DB_STATEMENT_TIMEOUT_MS`; cola compartida
+  del limitador; reauditar `H/R` ante nuevas fronteras; cancelación protegida;
+  storage/DB no atómicos; versiones flotantes. Ninguno se marcó como resuelto
+  por inferencia.
+- Estado: **capa 2 cerrada**. No existe una capa activa.
+- Siguiente acción exacta: esperar una decisión explícita del usuario. Solo una
+  orden inequívoca puede activar la capa 3; en ese caso se crea su bitácora desde
+  `PLANTILLA_CAPA.md`, se registra el HEAD limpio vigente como base, se actualiza
+  el índice y se detiene antes de implementar 3.0, salvo autorización adicional.
+
 ## Entrega al próximo chat
 
-- Capa activa: **2, concurrencia**.
-- Última subcapa terminada: **2.5**, autenticación y capacidad compartida.
-- Primera subcapa pendiente: **2.6**, medición final y cierre de la capa.
+- Capa activa: **ninguna**.
+- Última capa terminada: **2, concurrencia**; subcapas 2.0–2.6 cerradas.
+- Primera subcapa pendiente: **ninguna**.
 - Hallazgo central: el inventario actual correcto es 140 rutas; 138 atravesaban
   las dependencias async con DB síncrona. Sus tres llamadas DB ya usan el
   threadpool estándar. El pico HTTP inventariado es dos conexiones por worker y
   el limitador compartido deriva cinco tokens frente al pool de diez.
-- Verificación vigente: compuerta en exit 0 con 477 pruebas, Ruff y dependencias
-  correctos; 81 pruebas dirigidas y 60/60 casos sensibles correctos.
-- Bloqueos: ninguno para 2.6. La calibración operativa heredada de
+- Verificación local vigente: medición formal 5/5, 81 pruebas dirigidas y
+  60/60 casos sensibles previos; compuerta global en exit 0 con 477 pruebas,
+  Ruff y dependencias correctos.
+  GitHub Actions no está verificada porque los commits siguen sin push.
+- Verificación operativa pendiente: la calibración heredada de
   `DB_STATEMENT_TIMEOUT_MS` continúa pendiente y no debe marcarse como cumplida.
-- Nota de continuidad: el `README.md` conserva la frase de activación «2.0
-  pendiente» porque 2.0 solo podía modificar esta bitácora. La tabla maestra
-  sigue siendo correcta —capa 2 activa— y **esta bitácora gobierna la subcapa
-  vigente: 2.6**; no es una segunda capa activa ni una divergencia de Git.
-- Siguiente acción exacta: ejecutar solo 2.6, repetir la medición formal de
-  cierre, documentar staging/rollback/verificación manual, ejecutar la compuerta
-  y cerrar la capa en el índice. No activar la capa 3.
+- Riesgos conservados: cola de cinco workers para trabajo sync compartido,
+  invariante H/R por reauditar ante nuevas fronteras, cancelación protegida,
+  storage/DB no atómicos y dependencias flotantes.
+- Siguiente capa: **3, migraciones y tenants, en espera**. No tiene bitácora y no
+  puede activarse con una instrucción genérica de continuar.
+- Siguiente acción exacta: esperar una orden explícita entre mantener el programa
+  cerrado o activar solo la capa 3. Si se autoriza activarla, crear únicamente
+  su bitácora e índice y detenerse; no implementar 3.0 en ese mismo turno sin
+  autorización inequívoca adicional.

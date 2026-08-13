@@ -1,6 +1,6 @@
 # Guía maestra de evolución segura del backend
 
-Última revisión: 2026-08-12.
+Última revisión: 2026-08-13.
 
 ## Propósito
 
@@ -36,7 +36,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 |---:|---|---|---|---|
 | 0 | Línea base y calidad | Pruebas deterministas, compuerta global y CI | **Cerrada**; CI verificada en remoto | [00_LINEA_BASE_CALIDAD.md](./00_LINEA_BASE_CALIDAD.md) |
 | 1 | Fundación de base de datos | Conexiones, transacciones, timeouts y pool definidos | **Cerrada**; calibración de `statement_timeout` pendiente y aceptada | [01_FUNDACION_BASE_DATOS.md](./01_FUNDACION_BASE_DATOS.md) |
-| 2 | Concurrencia | DB síncrona fuera del event loop preservando `ContextVar` | **Activa** | [02_CONCURRENCIA.md](./02_CONCURRENCIA.md) |
+| 2 | Concurrencia | DB síncrona fuera del event loop preservando `ContextVar` | **Cerrada**; compuerta local correcta, sin push | [02_CONCURRENCIA.md](./02_CONCURRENCIA.md) |
 | 3 | Migraciones y tenants | Todos los tenants versionados, runner bloqueado y alta reproducible | En espera | Se crea al activarla |
 | 4 | Reportes financieros | Dominio modular, N+1 eliminado y consultas medidas | En espera | Se crea al activarla |
 | 5 | Pagos y tipos de pago | Dominio financiero modularizado y protegido | En espera | Se crea al activarla |
@@ -48,9 +48,9 @@ cierre y el usuario ordene continuar, se crea su sucesora desde
 `PLANTILLA_CAPA.md`, se registra el commit base vigente y se actualiza esta
 tabla.
 
-La capa 2 está activa por orden explícita del usuario del 2026-08-12. Las capas
-0 y 1 están cerradas; la capa 3 permanece en espera. La primera subcapa pendiente
-es 2.0 y no se inició durante la activación.
+La capa 2 se cerró el 2026-08-13 después de completar sus siete subcapas. Las
+capas 0, 1 y 2 están cerradas; la capa 3 permanece en espera y no fue activada.
+No existe una capa activa en este momento.
 
 ## Alcance de cada capa
 
@@ -210,10 +210,21 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   `DB_STATEMENT_TIMEOUT_MS` contra la duración real de las consultas pesadas. El
   usuario la aceptó para no bloquear el cierre; el valor puede ajustarse por
   entorno sin desplegar código. No debe marcarse como cumplida.
-- Capa activa: **2, concurrencia**. Commit base:
-  `b24cb8d3f1a8fa1d48699ed5732d4013ab6fe7f9`.
-- Primera subcapa pendiente: **2.0**, inventario, contratos y línea base de
-  concurrencia. No se inspeccionó ni modificó código al activar.
+- Capa 2 **cerrada** el 2026-08-13. Commit base:
+  `b24cb8d3f1a8fa1d48699ed5732d4013ab6fe7f9`; al comenzar el cierre había ocho
+  commits locales posteriores, todos explicados en su bitácora. Los cambios
+  documentales de 2.6 se entregan sin commit. No hubo push ni ejecución nueva de
+  GitHub Actions, por lo que la evidencia de cierre es local.
+- Resultado de la capa 2: 23 handlers sin `await` pasan por el threadpool de
+  FastAPI, branding conserva su lectura async y descarga storage/DB al worker,
+  y las tres consultas de autenticación async usan el offload estándar sin
+  perder el tenant. El limitador compartido deriva 5 workers para el pool actual
+  de 10 conexiones a partir del pico inventariado de 2 conexiones por worker.
+- Medición hermética final: mediana total 102,093 ms, heartbeat retrasado
+  4,471 ms, solapamiento 2, trabajo DB simulado en workers y tenants/restauración
+  correctos. La compuerta local cerró con **477 pruebas**, Ruff correcto y
+  `pip check` correcto.
+- Capa activa: **ninguna**. No hay una subcapa pendiente autorizada.
 - Siguiente capa: 3, migraciones y tenants, en espera.
 - Código de producto modificado durante la capa 0: ninguno.
 - Código de producto modificado durante la capa 1: el ciclo de vida de las
@@ -222,9 +233,9 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
 
 ## Archivos de continuidad
 
-- [02_CONCURRENCIA.md](./02_CONCURRENCIA.md): bitácora activa de la capa 2. Su
-  primera subcapa pendiente es 2.0 y limita el siguiente turno a inventario,
-  contratos, verificación y medición, sin modificar código.
+- [02_CONCURRENCIA.md](./02_CONCURRENCIA.md): bitácora cerrada de la capa 2;
+  conserva la medición, el límite de capacidad, staging, rollback, verificación
+  manual y riesgos residuales. No autoriza activar la capa 3.
 - [01_FUNDACION_BASE_DATOS.md](./01_FUNDACION_BASE_DATOS.md): bitácora cerrada de
   la capa 1; conserva pendiente la calibración de `statement_timeout` y registra
   la lección de que un cambio en el pool no se verifica solo con pruebas

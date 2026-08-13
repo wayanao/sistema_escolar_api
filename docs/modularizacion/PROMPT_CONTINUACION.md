@@ -122,61 +122,21 @@ archivos requeridos.
 Si dos asistentes indican capas diferentes, prevalece el estado guardado en
 `README.md` y en la bitácora de continuidad, no la memoria de la conversación.
 
-## Autorización de uso inmediato: activar la capa 3
+## Autorizaciones puntuales ya consumidas
 
-Esta sección es específica para el relevo posterior al cierre y publicación de
-la capa 2. Mientras el índice maestro siga indicando que no existe una capa
-activa y que la capa 3 está en espera, copia el bloque universal anterior y
-agrega inmediatamente después el siguiente bloque. Si el estado documental ya
-cambió, no reutilices esta autorización: vuelve a determinar el estado desde el
-índice.
+Este archivo llegó a contener una autorización de uso inmediato para activar la
+capa 3. **Fue consumida el 2026-08-13** y se retiró para que nadie la vuelva a
+aplicar sobre un estado que ya cambió: la capa 3 está activa, su subcapa 3.0
+quedó cerrada y existe una bitácora propia. Reutilizar aquel texto hoy
+intentaría crear una bitácora que ya existe y registrar un commit base
+equivocado.
 
-```text
-Autorizo activar únicamente la capa 3, Migraciones y tenants.
+La regla general que deja esa experiencia: una autorización puntual se escribe
+para un estado documental concreto, se usa una vez y se retira. El estado vivo
+se lee siempre desde `README.md` y la bitácora activa, nunca desde una
+autorización guardada. El bloque universal de arriba no caduca; estos añadidos
+sí.
 
-Acepto continuar manteniendo pendiente la calibración operativa de
-DB_STATEMENT_TIMEOUT_MS heredada de la capa 1. Regístrala como pendiente,
-conserva su riesgo y no la marques como cumplida.
-
-Esta autorización permite solamente la activación documental. No autoriza
-inspeccionar código de la capa 3, implementar 3.0, ejecutar migraciones, acceder
-a producción, hacer deploy, commit o push. Después de activar la capa, detente.
-
-En el mismo checkout local:
-
-1. Lee y aplica completamente el protocolo universal anterior.
-2. Valida `main`, `git status`, el HEAD limpio vigente, `origin/main`, la
-   continuidad desde el base de la capa 2
-   `b24cb8d3f1a8fa1d48699ed5732d4013ab6fe7f9` y todos los commits posteriores.
-3. Confirma que la capa 2 está cerrada, que la capa 3 sigue en espera y que no
-   existe otra capa activa. Si hay divergencia o un commit sin explicar,
-   detente.
-4. El commit de cierre publicado de la capa 2 es
-   `8c3939ad5dc872b08e93464145369b3a1eea909e`. Puede existir después un
-   commit exclusivamente documental que prepare este relevo; debes verificar
-   su alcance y su explicación en `02_CONCURRENCIA.md`. No uses ningún hash como
-   base sin comprobar primero el HEAD limpio real.
-5. No declares GitHub Actions verificada solo porque `HEAD` coincida con
-   `origin/main`; exige evidencia del run asociado.
-6. Crea `docs/modularizacion/03_MIGRACIONES_TENANTS.md` partiendo de
-   `docs/modularizacion/PLANTILLA_CAPA.md`.
-7. Registra el HEAD limpio vigente como commit base, rama `main`, estado
-   `Activa`, primera subcapa pendiente `3.0` y código de producto modificado al
-   activar: ninguno.
-8. Define el objetivo solo desde el índice: tenants versionados, runner
-   protegido contra ejecuciones simultáneas, alta reproducible mediante
-   migraciones y ensayo posterior no productivo con rollback.
-9. Deja 3.0 como inventario, contratos y caracterización. No inventes detalles
-   de implementación sin inspeccionarlos en un turno posterior.
-10. Actualiza `docs/modularizacion/README.md` para marcar únicamente la capa 3
-    como Activa, enlazar su bitácora y dejar 3.0 pendiente.
-11. Ejecuta `git diff --check`, comprueba también el whitespace del archivo
-    nuevo y verifica que el alcance contenga exclusivamente `README.md` y
-    `03_MIGRACIONES_TENANTS.md`.
-12. Informa el commit base, la primera subcapa pendiente, la verificación
-    operativa heredada y cualquier evidencia remota disponible. Detente sin
-    inspeccionar ni implementar 3.0.
-
-No hagas commit, push, deploy, migraciones reales ni acceso a producción. Yo
-revisaré los cambios y controlaré su publicación.
-```
+Si en el futuro hace falta otra autorización puntual —activar la capa
+siguiente, aceptar una verificación pendiente, ampliar un alcance—, el usuario
+la escribe en el chat junto al bloque universal. No es necesario guardarla aquí.

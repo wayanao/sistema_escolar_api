@@ -9,8 +9,12 @@
 - Rama acordada: `main`.
 - Estado al activar: árbol limpio; `HEAD` coincidente con la referencia local
   `origin/main`.
-- Primera subcapa pendiente: **3.0**.
+- Primera subcapa pendiente: **3.1**.
+- Progreso: **3.0 cerrada**. El inventario está registrado abajo y reemplaza el
+  desglose provisional de la activación.
 - Código de producto modificado al activar: **ninguno**.
+- Código de producto modificado hasta ahora: **ninguno**. 3.0 fue una subcapa de
+  solo lectura.
 - Autorización: orden explícita del usuario el 2026-08-13, limitada a la
   activación documental de esta capa y con la instrucción de detenerse antes de
   3.0.
@@ -103,57 +107,256 @@ el commit base antes de inventariar, medir o cambiar nada.
 
 | Comprobación | Comando | Resultado |
 |---|---|---|
-| Pruebas específicas | Por determinar en 3.0 según el inventario | Pendiente |
-| Compuerta global | `.\venv\Scripts\python.exe scripts\verify.py` | Pendiente |
-| Ruff | Ejecutado por la compuerta | Pendiente |
-| Dependencias | Ejecutado por la compuerta | Pendiente |
-| Estado de versionado por tenant | Por determinar en 3.0 | Pendiente |
+| Pruebas específicas | `.\venv\Scripts\python.exe -m pytest -p no:cacheprovider -q tests/test_apply_migration.py tests/test_super_admin.py tests/test_auth_tenant.py` | **33 pasaron** en 0,56 s |
+| Específicas ampliadas | Las anteriores más `tests/test_apply_tenant_indexes.py` y `tests/test_tenant_context_concurrency.py` | **40 pasaron**, 5 warnings conocidos |
+| Compuerta global | `.\venv\Scripts\python.exe scripts\verify.py` | **Exit 0**: 477 pruebas, 5 warnings conocidos |
+| Ruff | Ejecutado por la compuerta | `All checks passed!` |
+| Dependencias | Ejecutado por la compuerta | `No broken requirements found.` |
+| Estado de versionado por tenant | No verificable sin base de datos | **No medido**; requiere el ensayo no productivo de 3.4 |
 
-La referencia heredada es la compuerta de cierre de la capa 2: 477 pruebas,
-Ruff correcto y `pip check` correcto, ejecutada fuera del sandbox. 3.0 debe
-reproducirla sobre el commit base y registrar el resultado observado, no
-copiarlo.
+La compuerta se reprodujo sobre el árbol del commit base y coincide con la cifra
+heredada del cierre de la capa 2. A diferencia de todas las subcapas de la capa
+2, esta ejecución terminó en exit 0 **dentro del sandbox**: el `WinError 5` al
+enumerar el temporal de pytest no se reprodujo. Se registra como observación
+ambiental, no como corrección de nada; puede volver a aparecer.
+
+El estado real de versionado por tenant **no se midió**. Requiere consultar
+`public.schema_migrations` contra una base, y 3.0 es una subcapa de solo lectura
+del repositorio sin acceso a datos.
 
 ## Subcapas
 
 | Subcapa | Resultado | Estado |
 |---:|---|---|
-| 3.0 | Inventario, contratos, criterio de tenant reactivable, estrategia de verificación y línea base | **Pendiente** |
-| 3.1 | Bloqueo del runner contra ejecuciones simultáneas | Pendiente |
-| 3.2 | Versionado verificable de todos los tenants incluidos | Pendiente |
-| 3.3 | Alta reproducible desde migraciones versionadas | Pendiente |
-| 3.4 | Ensayo no productivo, rollback, verificación manual y cierre | Pendiente |
+| 3.0 | Inventario, contratos, criterio de tenant reactivable, estrategia de verificación y línea base | **Cerrada** |
+| 3.1 | Bloqueo del runner contra ejecuciones simultáneas | **Pendiente** |
+| 3.2 | Caracterización ejecutable del runner y del alta actual | Pendiente |
+| 3.3 | Versionado verificable: detectar tenants atrasados y sembrar altas nuevas | Pendiente |
+| 3.4 | Alta reproducible desde migraciones versionadas | Pendiente |
+| 3.5 | Ensayo no productivo, rollback, verificación manual y cierre | Pendiente |
 
-El desglose de 3.1 a 3.4 es **provisional** y deriva únicamente del alcance
-registrado en el índice maestro. El inventario de 3.0 debe confirmarlo,
-reordenarlo, dividirlo o marcar subcapas como `No aplica` con su explicación,
-igual que el inventario de 2.0 reemplazó el desglose provisional de su capa.
+El inventario de 3.0 **confirmó y ajustó** el desglose provisional de la
+activación. Los cambios respecto de aquella tabla y su motivo:
+
+- se intercala una subcapa de caracterización ejecutable (3.2) porque la
+  cobertura actual no ejercita ningún camino real del runner y una extracción
+  sin ella no sería reversible con evidencia;
+- el versionado (3.3) se separa del alta reproducible (3.4) porque el inventario
+  mostró que son dos defectos distintos: los tenants omitidos mientras están
+  suspendidos y las altas nuevas que nacen sin historial;
+- 3.1 permanece primero porque es la única subcapa cuyo beneficio no depende de
+  ninguna otra y reduce el riesgo de todas las siguientes.
+
 Nunca se ejecutan dos subcapas en el mismo turno.
 
-## Subcapa activa: trabajo exacto
+## Subcapa 3.0: resultado
 
-Subcapa **3.0**, inventario y caracterización. No modifica producto.
+Inventario hecho con búsquedas dirigidas y lectura de los archivos implicados.
+No se ejecutó ninguna migración, no se abrió ninguna conexión a PostgreSQL y no
+se modificó producto. Todo lo que sigue está sostenido por un archivo y una
+línea concretos del repositorio; las conjeturas que no pude verificar sin base
+de datos están marcadas como hipótesis.
 
-1. Confirmar rama `main`, árbol limpio y que todo commit posterior al base
-   `81882f3b1ee9e3b50076b0fc1fd93dcd9fd5ac70` esté explicado en esta bitácora.
-2. Reproducir desde el base la compuerta global y registrar el resultado real,
-   incluida cualquier limitación ambiental observada.
-3. Inventariar con búsquedas dirigidas, sin modificar nada: descubrimiento de
-   tenants, registro de versión por schema, ejecutor de migraciones, orden de
-   aplicación, manejo de errores parciales y camino actual de alta de un tenant.
-4. Registrar los contratos observables que la capa debe conservar y el criterio
-   con evidencia de qué tenants son reactivables y cuáles no.
-5. Determinar qué pruebas existentes cubren migraciones y alta de tenants, y
-   cuál es el hueco exacto de caracterización.
-6. Definir el procedimiento de ensayo no productivo y la forma del rollback de
-   esquema, antes de proponer cualquier cambio.
-7. Ejecutar `git diff --check`, comprobar el alcance del diff y actualizar
-   únicamente esta bitácora.
-8. Detenerse sin iniciar 3.1 y sin ejecutar ninguna migración.
+### Puntos de entrada que pueden mutar un schema de tenant
 
-Archivos previstos para 3.0: **únicamente esta bitácora**. Si el inventario
-exigiera un script de apoyo, debe justificarse y autorizarse antes, no añadirse
-por conveniencia.
+| Entrada | Descubre tenants | Registra versión | Bloqueo |
+|---|---|---|---|
+| `apply_migration.py` (raíz) | Sí | **Sí** | **No** |
+| `scripts/apply_plan_de_clases_migration.py` | Sí | No | No |
+| `scripts/apply_pagos_tipo_pago_migration.py` | Sí | No | No |
+| `scripts/apply_tipos_pagos_avanzado_migration.py` | Sí | No | No |
+| `scripts/apply_tenant_indexes.py` | Sí | No | No |
+| `crear_tenant_controller` (HTTP, super admin) | No aplica | **No** | No |
+
+Los cinco scripts repiten literalmente la misma consulta de descubrimiento
+—`WHERE LOWER(estado) IN ('activo', 'en_mora')`— y abren su propia conexión con
+`psycopg2.connect(DATABASE_URL)`. Una búsqueda de `schema_migrations` en todo el
+repositorio devuelve únicamente `apply_migration.py`, su prueba y documentación:
+**ningún otro punto de entrada registra lo que aplicó**.
+
+Consecuencia inmediata: existen cuatro caminos capaces de cambiar la estructura
+de un tenant sin dejar rastro en el historial, y un sexto camino —el alta— que
+crea un schema completo también sin dejarlo.
+
+### El runner
+
+`apply_migration.py` recibe **un archivo por invocación**. No existe un modo
+«aplicar todo lo pendiente» ni un orden declarado: el orden lo pone el operador
+al elegir qué archivo ejecuta. Por archivo:
+
+1. calcula SHA-256 del texto;
+2. crea `public.schema_migrations` si falta;
+3. si el archivo está en `migrations/public/`, el único destino es `public`;
+4. si no, descubre tenants operativos y recorre uno por uno;
+5. si ya hay registro con el mismo checksum, imprime `OMITIDA`; si el checksum
+   difiere, marca fallo y no aplica;
+6. aplica con `SET search_path TO <schema>, public`, ejecuta el SQL y registra;
+7. `commit` por tenant; ante excepción, `rollback` de **ese** tenant y continúa
+   con los demás; devuelve exit 2 si hubo algún fallo.
+
+Corpus actual: **34 archivos** en `migrations/`, de los cuales **30** son de
+tenant y **4** están en `migrations/public/`.
+
+### El registro de versiones
+
+`public.schema_migrations` tiene `id`, `migration_name`, `target_schema`,
+`checksum`, `applied_at` y `UNIQUE (migration_name, target_schema)`.
+
+Es un registro **por archivo y por schema**, no un número de versión ordenado.
+No existe el concepto de «migración siguiente» ni de secuencia: solo se puede
+responder «este archivo, ¿está aplicado en este schema?». Cualquier verificación
+de que un tenant esté al día debe construirse comparando el directorio
+`migrations/` contra esa tabla; hoy nada en el repositorio hace esa comparación.
+
+### El alta de tenant
+
+`crear_tenant_controller` (`app/controllers/super_admin_controller.py:216`), en
+una sola transacción: inserta en `public.colegios` con estado `'activo'`, crea
+el schema, y copia la estructura desde `settings.DEFAULT_TENANT_SCHEMA` con un
+bloque `DO $$` que recorre `pg_tables` del schema plantilla ejecutando
+`CREATE TABLE %I.%I (LIKE %I.%I INCLUDING ALL)`. Después inserta una fila de
+`institucion_branding`, copia las `plantilla_impresion` predefinidas, crea el
+usuario admin inicial y registra suscripción y auditoría.
+
+`DEFAULT_TENANT_SCHEMA` vale `"tenant_colegio_1"` (`app/config.py:35`).
+
+**Hallazgo central de la subcapa**: el alta **no inserta ninguna fila en
+`public.schema_migrations`** para el schema nuevo. Un tenant recién creado nace
+con la estructura actual de la plantilla y con historial vacío. Frente al
+runner, ese tenant aparece como si le faltaran las 30 migraciones de tenant, y
+la próxima ejecución intentará aplicárselas todas sobre tablas que ya tienen los
+cambios. Que eso resulte en `OMITIDA`, en error o en un cambio no deseado
+depende de si cada SQL es idempotente, lo cual no es un contrato declarado en
+ningún sitio.
+
+### Criterio de tenant reactivable, con evidencia
+
+`app/core/tenant_status.py` define cuatro estados: `activo`, `en_mora`,
+`suspendido` y `cancelado`. `LOGIN_ALLOWED_STATUSES` y `APP_ALLOWED_STATUSES`
+son ambos `{activo, en_mora}`. El runner usa exactamente ese mismo par.
+
+`super_admin_controller.py:160` permite mover un tenant a cualquier estado
+normalizado con `UPDATE public.colegios SET estado = %s`, dejando auditoría en
+`public.tenant_estado_auditoria`. Ese camino **no aplica migraciones**.
+
+De ahí sale la definición operativa, no inventada: **tenant reactivable es el
+que está en `suspendido` o `cancelado` y puede volver a `activo` o `en_mora` por
+ese endpoint**. Es exactamente la población que el runner omite. Un tenant que
+pase seis meses suspendido y sea reactivado vuelve al servicio con el esquema
+congelado en el día de su suspensión, sin ninguna señal, y la aplicación
+empezará a servirle peticiones de inmediato.
+
+### Contratos observables que la capa debe conservar
+
+- El descubrimiento `LOWER(estado) IN ('activo','en_mora')` y su `ORDER BY id`.
+- La identidad de la migración: par `(migration_name, target_schema)` y checksum
+  SHA-256 del texto exacto del archivo, sensible incluso a un salto de línea
+  final.
+- La semántica de salida: `OK`, `OMITIDA`, `PENDIENTE`, `FALLO`, exit 0 o 2, y
+  `--dry-run` que no escribe nada.
+- El aislamiento transaccional por tenant: un fallo revierte ese tenant y no
+  detiene a los demás.
+- `SET search_path TO <schema>, public` durante la aplicación.
+- El payload y los status codes del alta de tenant, incluidas sus validaciones
+  422 y la normalización de código y correo.
+- El nombre derivado del schema, `tenant_<codigo>`, y `TENANT_CODE_PATTERN`.
+
+### Cobertura existente y hueco exacto
+
+`tests/test_apply_migration.py` tiene seis casos, todos con un `FakeCursor` que
+solo acumula llamadas: estabilidad del checksum, presencia del `CREATE TABLE IF
+NOT EXISTS`, parámetros de lectura y de inserción del historial, la cláusula
+`WHERE` comparada **como subcadena literal** y `is_public_migration`.
+
+`tests/test_super_admin.py` cubre `crear_tenant_controller` con dobles: verifica
+los parámetros de `colegios`, admin, suscripción y auditoría, y que hubo commit.
+
+Ninguna prueba ejecuta `apply_migration()` de principio a fin. En consecuencia
+**no existe cobertura** de: la transacción por tenant, el `rollback` parcial, el
+conteo de fallos, el exit 2, el camino `--dry-run`, la rama de migración
+pública, el rechazo por checksum divergente ni el `search_path` efectivo.
+Tampoco hay prueba alguna que observe el `CREATE SCHEMA`, el bloque `DO $$` de
+copia ni la ausencia de siembra de historial en el alta.
+
+El hueco discriminante que 3.2 debe cerrar es una prueba que falle si:
+
+1. un tenant suspendido y luego reactivado queda sin migraciones aplicadas;
+2. un tenant recién creado tiene historial vacío;
+3. dos ejecuciones concurrentes del runner no se excluyen;
+4. un fallo en el tenant *n* impide continuar con el *n+1* o pierde el conteo.
+
+Las cuatro pueden probarse con un pool o conexiones falsas, sin PostgreSQL, como
+ya se hizo en la capa 2 con `tests/test_threadpool_capacity.py`.
+
+### Hipótesis que requieren base de datos y no se afirman aquí
+
+No pude verificarlas leyendo el repositorio. Quedan como trabajo del ensayo no
+productivo, **no** como hechos:
+
+1. `LIKE ... INCLUDING ALL` no copia claves foráneas, por lo que un tenant nuevo
+   podría carecer de las FK que sí tiene la plantilla.
+2. Las columnas `SERIAL` copiadas por `INCLUDING DEFAULTS` podrían conservar un
+   `nextval` apuntando a la secuencia del schema plantilla.
+3. El bloque solo recorre `pg_tables`: vistas, funciones, disparadores y tipos
+   del schema plantilla no se copiarían.
+4. `tenant_colegio_1` sería además un tenant operativo real y no una plantilla
+   inerte, de modo que cualquier cambio manual en él afectaría a las altas
+   futuras. La existencia de `scripts/limpiar_tenant_colegio_1_operativo.py`
+   sugiere esa tensión, pero no la demuestra.
+
+### Ensayo no productivo y rollback de esquema
+
+El procedimiento acordado para las subcapas siguientes, antes de tocar nada:
+
+1. levantar una base desechable, nunca producción ni la base real de staging;
+2. sembrar `public.colegios` con al menos un tenant `activo`, uno `en_mora`, uno
+   `suspendido` y uno `cancelado`, y un schema plantilla;
+3. capturar la estructura de referencia de cada schema con una consulta de solo
+   lectura a `information_schema`, guardada como texto comparable;
+4. ejecutar el camino bajo prueba;
+5. volver a capturar y comparar contra la referencia;
+6. reactivar el tenant suspendido y comprobar qué le falta.
+
+El rollback de esta capa deja de ser solo de aplicación. Para cada subcapa que
+toque esquema, la bitácora debe registrar antes: la sentencia inversa cuando
+exista, el respaldo previo cuando no exista, y si la migración es reversible sin
+pérdida. Ninguna subcapa puede aplicarse a un tenant real sin ese registro.
+
+### Criterios de cierre de 3.0: estado real
+
+Seis de los siete criterios quedaron cumplidos: el mecanismo está descrito con
+evidencia citada, los contratos están enumerados, existe una estrategia de
+prueba discriminante, existe un procedimiento de ensayo y una forma de rollback,
+la compuerta y `git diff --check` terminaron correctamente, y no se inició 3.1.
+
+Uno quedó **cumplido a medias y se declara así**: «el criterio de tenant
+reactivable está definido y aplicado a un inventario concreto». El criterio está
+definido con evidencia del código, pero **no se aplicó a un inventario real de
+tenants** porque eso exige consultar `public.colegios` y 3.0 no abrió ninguna
+conexión. Se cierra la subcapa con esa parte pendiente en lugar de darla por
+cumplida; el recuento por estado debe hacerse en el ensayo de 3.5 o antes, en
+cuanto exista una base desechable, y no debe leerse de `docs/MIGRACIONES.md`,
+que describe cuatro schemas operativos a una fecha pasada.
+
+### Siguiente subcapa: 3.1, trabajo exacto
+
+1. Confirmar `main`, árbol limpio y que todo commit posterior al base esté
+   explicado en esta bitácora.
+2. Abrir únicamente `apply_migration.py` y `tests/test_apply_migration.py`.
+3. Agregar primero la caracterización que fije el comportamiento actual del
+   camino que se va a tocar, antes de introducir el bloqueo.
+4. Añadir un bloqueo que impida dos ejecuciones simultáneas, usando el propio
+   PostgreSQL y sin dependencias nuevas. Conservar sin cambios el
+   descubrimiento, el checksum, la transacción por tenant, los mensajes, los
+   códigos de salida y `--dry-run`.
+5. No tocar los cuatro scripts ad-hoc, el alta de tenant, las migraciones
+   existentes ni `app/`.
+6. Ejecutar las pruebas específicas, Ruff del alcance, la compuerta global y
+   `git diff --check`; revisar que el diff pertenezca solo a 3.1.
+7. Actualizar esta bitácora y detenerse sin iniciar 3.2.
+
+Archivos previstos para 3.1: `apply_migration.py`,
+`tests/test_apply_migration.py` y esta bitácora.
 
 ## Criterios de cierre de la subcapa 3.0
 
@@ -211,6 +414,18 @@ por conveniencia.
 - No se registra ningún resultado de GitHub Actions. El `HEAD` coincide con la
   referencia local `origin/main`, pero eso no es evidencia de un run; no hay
   cliente de GitHub disponible en este checkout para obtenerla.
+- La autorización de uso inmediato que `PROMPT_CONTINUACION.md` guardaba para
+  activar la capa 3 se retiró del archivo en el mismo turno que 3.0, por orden
+  explícita y separada del usuario. Es un cambio documental **ajeno al alcance
+  de 3.0** y se declara como tal para que el diff no se lea como parte del
+  inventario. El motivo es que el propio texto decía no reutilizarse tras un
+  cambio de estado, pero seguía siendo copiable y habría intentado recrear una
+  bitácora existente con un commit base equivocado. Se descartó dejarlo con una
+  nota de caducidad porque un lector apurado copia el bloque, no la advertencia.
+- 3.0 no midió el estado real de versionado por tenant ni verificó el
+  comportamiento de `LIKE ... INCLUDING ALL`. Se prefirió dejarlo explícitamente
+  como no medido antes que deducirlo de la documentación existente, que describe
+  el estado productivo a una fecha pasada y no puede confirmar el actual.
 
 ## Riesgos
 
@@ -232,9 +447,25 @@ por conveniencia.
   —runner, script o job en background—, la invariante `H=2`, `R=0` y el
   limitador de cinco workers derivados en la capa 2 dejan de estar justificados
   y deben reauditarse antes de desplegar.
-- `DB_STATEMENT_TIMEOUT_MS` sigue sin calibrarse contra consultas pesadas. Una
-  migración larga puede toparse con ese timeout; es un riesgo operativo
-  heredado, aceptado explícitamente y no resuelto por esta capa.
+- `DB_STATEMENT_TIMEOUT_MS` sigue sin calibrarse y permanece aceptado como
+  pendiente. **3.0 corrigió el supuesto con que se activó esta capa**: los cinco
+  scripts de migración abren su propia conexión con
+  `psycopg2.connect(DATABASE_URL)` y no pasan por `app/database.py`, así que los
+  timeouts por transacción de la capa 1 **no** se aplican a una migración. El
+  riesgo real es el inverso al que se registró al activar: una migración larga
+  no tiene límite de tiempo ni de espera de lock y puede bloquear tablas que la
+  aplicación está sirviendo.
+- Cuatro scripts ad-hoc en `scripts/` aplican DDL a los mismos tenants sin
+  registrar nada en `public.schema_migrations`. Cualquier verificación de «al
+  día» construida solo sobre esa tabla será ciega a lo que ellos hicieron.
+- El alta crea schemas sin sembrar historial, de modo que la población de
+  tenants está dividida en dos clases que el runner no distingue. Corregirlo
+  sembrando el historial retroactivamente es una escritura sobre datos reales y
+  necesita ensayo y rollback propios.
+- El checksum es sensible al byte. Un archivo de `migrations/` reformateado, o
+  convertido de LF a CRLF, cambia su checksum y convierte un `OMITIDA` en un
+  `FALLO` para todos los tenants que ya lo tenían aplicado. Ninguna subcapa debe
+  tocar los archivos existentes de `migrations/`.
 - La CI remota no está verificada para los commits de la capa 2. Un fallo de
   entorno en GitHub Actions podría aparecer atribuido a esta capa; conviene
   obtener evidencia del run antes de acumular más cambios.
@@ -282,15 +513,89 @@ por conveniencia.
   junto con sus contratos y la estrategia de verificación. Actualizar únicamente
   esta bitácora y detenerse sin iniciar 3.1 y sin ejecutar migraciones.
 
+### 2026-08-13 — subcapa 3.0
+
+- Modo de acceso: mismo checkout local; rama `main` y árbol limpio antes de
+  editar.
+- Commit observado: `38dc6b211f45229962826dbdc55079c354533ef8`, un commit local
+  por delante de la referencia local `origin/main` y del base de la capa.
+- Continuidad: `81882f3` es el base; el único commit posterior es la activación
+  de la capa 3, explicada en la entrada anterior. Se verificó que su diff
+  contiene exactamente `03_MIGRACIONES_TENANTS.md` y `README.md`, por lo que el
+  árbol ejecutable probado es idéntico al base. No hay divergencia.
+- Archivos modificados: únicamente esta bitácora y, por orden explícita y
+  separada del usuario, `docs/modularizacion/PROMPT_CONTINUACION.md`.
+- Código de producto, migraciones, esquemas, pruebas, configuración,
+  dependencias y workflow modificados: **ninguno**.
+- Migraciones ejecutadas, conexiones a PostgreSQL abiertas y accesos a
+  producción: **ninguno**.
+- Comandos ejecutados:
+  - precondiciones y continuidad: `git status --short --branch`,
+    `git rev-parse HEAD`, `git rev-parse origin/main`,
+    `git log --oneline 81882f3..HEAD`, `git show --stat 38dc6b2`,
+    `git status --short -- app scripts tests .github requirements.txt`;
+  - compuerta global: `.\venv\Scripts\python.exe scripts\verify.py`;
+  - pruebas específicas:
+    `.\venv\Scripts\python.exe -m pytest -p no:cacheprovider -q tests/test_apply_migration.py tests/test_super_admin.py tests/test_auth_tenant.py`;
+  - específicas ampliadas: las anteriores más
+    `tests/test_apply_tenant_indexes.py` y
+    `tests/test_tenant_context_concurrency.py`;
+  - inventario: búsquedas dirigidas de `schema_migrations`, `CREATE SCHEMA`,
+    `esquema_db`, `DEFAULT_TENANT_SCHEMA` y los estados de tenant, más lectura
+    de `apply_migration.py`, `tests/test_apply_migration.py`,
+    `app/controllers/super_admin_controller.py`, `app/core/tenant_status.py`,
+    `app/config.py`, los cuatro `scripts/apply_*.py` y `docs/MIGRACIONES.md`;
+  - alcance y whitespace: `git diff --check`,
+    `git diff --no-index --check` sobre el archivo nuevo y el barrido C0
+    reproducible.
+- Compuerta global: **exit 0**, 477 pruebas, 5 warnings conocidos, Ruff correcto
+  y dependencias íntegras. Terminó correctamente **dentro del sandbox**; el
+  `WinError 5` sobre el temporal de pytest, presente en toda la capa 2, no se
+  reprodujo. Se registra como observación ambiental, no como corrección.
+- Pruebas específicas: **33 pasaron** en 0,56 s; ampliadas, **40 pasaron**.
+- Hallazgos principales: seis puntos de entrada pueden mutar el esquema de un
+  tenant y solo uno registra historial; el alta crea schemas sin sembrar
+  `public.schema_migrations`; los tenants `suspendido` y `cancelado` quedan
+  fuera del descubrimiento y pueden reactivarse sin recuperar lo omitido; y el
+  historial es un registro por par archivo/schema, no una versión ordenada.
+- Corrección registrada: los scripts de migración no pasan por `app/database.py`
+  y por tanto no heredan los timeouts de la capa 1. El riesgo anotado al activar
+  estaba invertido y quedó rectificado en «Riesgos».
+- Decisiones: se reordenó el desglose de subcapas con el motivo de cada cambio y
+  se dejó 3.1, el bloqueo del runner, como siguiente por ser la única subcapa
+  cuyo beneficio no depende de las demás.
+- Riesgos: registrados en «Riesgos»; ninguno se marcó como resuelto y las cuatro
+  conjeturas sobre `LIKE INCLUDING ALL` quedaron explícitamente como hipótesis
+  pendientes de una base de datos desechable.
+- Verificación operativa heredada: la calibración de `DB_STATEMENT_TIMEOUT_MS`
+  permanece **pendiente y aceptada**.
+- Evidencia remota: sigue sin haber cliente de GitHub en este checkout; GitHub
+  Actions continúa **no verificada**.
+- Estado: **3.0 cerrada**. No se inició 3.1.
+- Siguiente acción exacta: ejecutar **3.1**, caracterizando primero el
+  comportamiento actual y añadiendo después un bloqueo que impida dos
+  ejecuciones simultáneas del runner; detenerse antes de 3.2.
+
 ## Entrega al próximo chat
 
 - Capa activa: **3, migraciones y tenants**.
-- Última subcapa terminada: **ninguna**; la capa acaba de activarse.
-- Primera subcapa pendiente: **3.0**, inventario, contratos y caracterización.
+- Última subcapa terminada: **3.0**, inventario, contratos y caracterización.
+- Primera subcapa pendiente: **3.1**, bloqueo del runner contra ejecuciones
+  simultáneas.
 - Commit base: `81882f3b1ee9e3b50076b0fc1fd93dcd9fd5ac70`, rama `main`.
-- Bloqueos: ninguno para iniciar 3.0. Permanece pendiente y aceptada la
+- Hallazgo central: seis puntos de entrada pueden mutar el esquema de un tenant
+  y solo `apply_migration.py` registra lo que aplicó. El alta crea el schema
+  copiando la plantilla sin sembrar historial, y los tenants suspendidos o
+  cancelados quedan fuera del descubrimiento sin recuperar nada al reactivarse.
+- Verificación local vigente: compuerta global en exit 0 con 477 pruebas, Ruff y
+  dependencias correctos; 33 pruebas específicas y 40 ampliadas.
+- Bloqueos: ninguno para iniciar 3.1. Permanece pendiente y aceptada la
   calibración de `DB_STATEMENT_TIMEOUT_MS` de la capa 1, y GitHub Actions sigue
   sin evidencia de run.
-- Siguiente acción exacta: ejecutar únicamente 3.0 según «Subcapa activa:
-  trabajo exacto», sin inspeccionar más de lo que esa lista autoriza, sin tocar
-  producto y sin ejecutar ninguna migración.
+- No medido todavía: el estado real de versionado por tenant y las cuatro
+  hipótesis sobre `LIKE ... INCLUDING ALL`. Ambas cosas exigen una base
+  desechable y no deben darse por ciertas.
+- Siguiente acción exacta: ejecutar únicamente 3.1 según «Siguiente subcapa:
+  3.1, trabajo exacto», sin tocar los scripts ad-hoc ni el alta de tenant, sin
+  modificar archivos existentes de `migrations/` y sin ejecutar ninguna
+  migración.

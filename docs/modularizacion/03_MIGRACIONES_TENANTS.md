@@ -9,8 +9,8 @@
 - Rama acordada: `main`.
 - Estado al activar: árbol limpio; `HEAD` coincidente con la referencia local
   `origin/main`.
-- Primera subcapa pendiente: **3.2**.
-- Progreso: **3.0 y 3.1 cerradas**. El inventario está registrado abajo y
+- Primera subcapa pendiente: **3.3a**.
+- Progreso: **3.0, 3.1 y 3.2 cerradas**. El inventario está registrado abajo y
   reemplaza el desglose provisional de la activación.
 - Código de producto modificado al activar: **ninguno**.
 - Código de producto modificado hasta ahora: `apply_migration.py`, que ahora toma
@@ -131,8 +131,9 @@ del repositorio sin acceso a datos.
 |---:|---|---|
 | 3.0 | Inventario, contratos, criterio de tenant reactivable, estrategia de verificación y línea base | **Cerrada** |
 | 3.1 | Bloqueo del runner contra ejecuciones simultáneas | **Cerrada** |
-| 3.2 | Caracterización ejecutable del runner y del alta actual | **Pendiente** |
-| 3.3 | Versionado verificable: detectar tenants atrasados y sembrar altas nuevas | Pendiente |
+| 3.2 | Caracterización ejecutable del runner y del alta actual | **Cerrada** |
+| 3.3a | Informe de solo lectura: qué migraciones le faltan a cada tenant | **Pendiente** |
+| 3.3b | Siembra del historial en el alta de tenant | Pendiente |
 | 3.4 | Alta reproducible desde migraciones versionadas | Pendiente |
 | 3.5 | Ensayo no productivo, rollback, verificación manual y cierre | Pendiente |
 
@@ -146,7 +147,10 @@ activación. Los cambios respecto de aquella tabla y su motivo:
   mostró que son dos defectos distintos: los tenants omitidos mientras están
   suspendidos y las altas nuevas que nacen sin historial;
 - 3.1 permanece primero porque es la única subcapa cuyo beneficio no depende de
-  ninguna otra y reduce el riesgo de todas las siguientes.
+  ninguna otra y reduce el riesgo de todas las siguientes;
+- 3.2 dividió después el versionado en 3.3a y 3.3b, porque detectar tenants
+  atrasados es de solo lectura y sembrar historial escribe en datos reales: no
+  comparten riesgo ni deben compartir diff.
 
 Nunca se ejecutan dos subcapas en el mismo turno.
 
@@ -467,6 +471,111 @@ Archivos previstos para 3.2: `tests/test_apply_migration.py`,
 `tests/test_super_admin.py` o un archivo de pruebas nuevo para el alta, y esta
 bitácora.
 
+## Subcapa 3.2: resultado
+
+Subcapa de solo pruebas. **No se modificó producto**, lo que se verificó con
+`git status --short -- app apply_migration.py scripts migrations` vacío al
+terminar. Por construcción, entonces, todo lo que estas pruebas fijan es el
+comportamiento que ya existía: no hizo falta retirar ningún cambio para
+comprobarlo, como sí hizo 3.1.
+
+### Runner: lo que faltaba del camino real
+
+`tests/test_apply_migration.py` pasó de 17 a **28 casos**. Se cerraron las
+cuatro zonas que 3.0 marcó sin cobertura y que 3.1 solo rozó:
+
+- **Rama pública**: destino único `public`, `SET search_path TO public`, registro
+  con `target_schema = "public"`, ausencia de consulta a `public.colegios`, el
+  caso ya aplicado, el checksum divergente que devuelve 2 y su `--dry-run`. Se
+  fijó además que la rama pública también pide el lock antes que nada.
+- **Aislamiento del fallo por tenant**: con tres tenants y el segundo fallando,
+  se intenta el SQL en los tres pero solo quedan registrados dos, y el runner
+  devuelve 2. Una prueba gemela hace fallar al **primero** y comprueba que los
+  otros dos siguen. Esto fija que un fallo revierte su tenant y no interrumpe la
+  ejecución.
+- **Qué tenant queda fuera del historial**: se afirma la lista exacta
+  `["tenant_a", "tenant_c"]`, no solo el conteo. Un cambio que registrara al
+  tenant equivocado no pasaría desapercibido.
+- **`--dry-run` sobre varios tenants**: cero ejecuciones del SQL, cero registros
+  y ni siquiera un `SET search_path`.
+- Se añadieron también los dos retornos tempranos con código 1: archivo
+  inexistente y `DATABASE_URL` ausente.
+
+### Alta de tenant: archivo propio
+
+Se creó `tests/test_tenant_provisioning.py` con **11 casos**, en vez de ampliar
+`tests/test_super_admin.py`. El motivo es que 3.3 y 3.4 van a reescribir este
+camino y conviene que su caracterización viva en un archivo cuyo diff se pueda
+revisar aislado; `test_super_admin.py` cubre además listado, estados y auth, que
+no se tocan. Sus dobles no servían tal cual porque guardan el objeto de consulta
+sin convertirlo a texto, y el alta usa `sql.Composed`.
+
+Lo que queda fijado: el schema derivado `tenant_<codigo>`, la copia de
+estructura desde `settings.DEFAULT_TENANT_SCHEMA` vía `pg_tables` e
+`INCLUDING ALL`, el orden colegio → `CREATE SCHEMA` → copia, la copia solo de
+plantillas predefinidas, el estado inicial `activo`, el admin obligado a cambiar
+password, el 409 por código o correo duplicado, el cierre del cursor ante fallo
+y la restauración del `ContextVar` del tenant tanto en el camino correcto como
+en el de error.
+
+### La prueba que debe fallar en 3.3
+
+`test_el_alta_todavia_no_siembra_el_historial_de_migraciones` afirma que el alta
+**no** escribe en `public.schema_migrations`. Es deliberada: fija el defecto
+central que encontró 3.0. Cuando 3.3 lo corrija, esta prueba fallará, y ese
+fallo es la señal buscada, no una regresión. Su docstring lo dice para que nadie
+la «arregle» borrándola.
+
+Una aserción negativa puede pasar por el motivo equivocado —un fragmento mal
+escrito, un cursor que no registró nada—, así que lleva un **control positivo**
+en el mismo caso: se exige que el inspector sí encuentre
+`INSERT INTO public.colegios`. Sin ese control, la prueba sería decorativa.
+
+| Comprobación | Resultado |
+|---|---|
+| `tests/test_apply_migration.py` | **28 pasaron** (eran 17) |
+| `tests/test_tenant_provisioning.py` | **11 pasaron**, archivo nuevo |
+| Dirigidas ampliadas | **70 pasaron** |
+| Compuerta global | **Exit 0**: 510 pruebas, 5 warnings conocidos |
+| Ruff del alcance | `All checks passed!` |
+| Dependencias | `No broken requirements found.` |
+| Producto modificado | **ninguno**, verificado con `git status` acotado |
+
+La suite pasó de 488 a **510** pruebas.
+
+### Lo que 3.2 deliberadamente no cubre
+
+- Los cuatro scripts ad-hoc siguen sin caracterización propia, salvo
+  `scripts/apply_tenant_indexes.py`, que ya tenía la suya. No se amplió el
+  alcance para cubrirlos porque su destino —extenderles el lock o retirarlos—
+  es una decisión todavía no tomada.
+- Nada de esto toca PostgreSQL. Son dobles: demuestran orden, parámetros y
+  ramas, no que el SQL sea válido ni que el schema resultante sea correcto. Esa
+  evidencia solo puede venir del ensayo no productivo.
+
+### Siguiente subcapa: 3.3a, trabajo exacto
+
+El inventario de 3.0 juntó en 3.3 dos cambios que no comparten riesgo: detectar
+tenants atrasados es de solo lectura, mientras que sembrar historial escribe en
+datos reales. Se separan siguiendo el precedente de 2.3a y 2.3b, para que cada
+diff sea revisable por separado.
+
+1. Confirmar `main`, árbol limpio y que todo commit posterior al base esté
+   explicado en esta bitácora.
+2. Añadir una comprobación de solo lectura que compare el directorio
+   `migrations/` contra `public.schema_migrations` y reporte, por tenant, qué
+   migraciones le faltan. Debe incluir explícitamente a los tenants
+   `suspendido` y `cancelado`, que hoy el descubrimiento omite.
+3. No aplicar nada, no escribir nada y no cambiar el runner existente: es un
+   informe, no una corrección.
+4. Cubrirla con pruebas herméticas, incluido el caso de un tenant reactivable
+   atrasado y el de un tenant recién creado con historial vacío.
+5. Ejecutar pruebas específicas, Ruff del alcance, compuerta global y
+   `git diff --check`; actualizar esta bitácora y detenerse antes de 3.3b.
+
+3.3b, que siembra el historial en el alta y hará fallar a propósito la prueba
+descrita arriba, queda para su propio turno.
+
 ## Criterios de cierre de la subcapa 3.0
 
 - El mecanismo actual de migraciones y de alta de tenants está descrito con
@@ -755,13 +864,68 @@ bitácora.
   ejecutable del runner y del alta de tenant, sin modificar producto; detenerse
   antes de 3.3.
 
+### 2026-08-13 — subcapa 3.2
+
+- Modo de acceso: mismo checkout local; rama `main` y árbol limpio antes de
+  editar.
+- Commit observado: `73a777d1ae529c816b490a0acdf3d757b69a22f8`, tres commits
+  locales por delante de la referencia local `origin/main`.
+- Continuidad: `81882f3` es el base; los tres commits posteriores son `38dc6b2`
+  (activación), `7d1386a` (3.0) y `73a777d` (3.1), todos explicados en esta
+  bitácora. No había cambios pendientes ni divergencia al iniciar.
+- Código de producto modificado: **ninguno**. 3.2 es una subcapa de solo
+  pruebas y se verificó al terminar con
+  `git status --short -- app apply_migration.py scripts migrations` vacío.
+- Pruebas: `tests/test_apply_migration.py` pasó de 17 a **28 casos** y se creó
+  `tests/test_tenant_provisioning.py` con **11 casos**.
+- Archivos modificados: `tests/test_apply_migration.py`,
+  `tests/test_tenant_provisioning.py` y esta bitácora.
+- Migraciones ejecutadas, conexiones a PostgreSQL abiertas y accesos a
+  producción: **ninguno**.
+- Comandos ejecutados:
+  - precondiciones y continuidad: `git status --short --branch`,
+    `git log --oneline 81882f3..HEAD`, `git rev-parse HEAD`;
+  - pruebas por archivo:
+    `.\venv\Scripts\python.exe -m pytest -p no:cacheprovider -q tests/test_apply_migration.py`
+    y el equivalente para `tests/test_tenant_provisioning.py`;
+  - dirigidas ampliadas:
+    `.\venv\Scripts\python.exe -m pytest -p no:cacheprovider -q tests/test_apply_migration.py tests/test_tenant_provisioning.py tests/test_super_admin.py tests/test_apply_tenant_indexes.py tests/test_auth_tenant.py`;
+  - lint del alcance:
+    `.\venv\Scripts\python.exe -m ruff check tests/test_apply_migration.py tests/test_tenant_provisioning.py`;
+  - compuerta global: `.\venv\Scripts\python.exe scripts\verify.py`;
+  - alcance y whitespace: `git status --short`,
+    `git status --short -- app apply_migration.py scripts migrations`,
+    `git diff --check` y el barrido C0 reproducible.
+- Verificación final: 28 y 11 pruebas por archivo, **70 dirigidas** y compuerta
+  global en **exit 0 con 510 pruebas**, 5 warnings conocidos, Ruff correcto y
+  dependencias íntegras.
+- Cobertura añadida: rama pública completa, aislamiento del fallo por tenant con
+  la lista exacta de schemas registrados, `--dry-run` sobre varios tenants, los
+  dos retornos con código 1, y el camino completo del alta de tenant.
+- Decisiones: archivo separado para el alta porque 3.3 y 3.4 lo van a reescribir
+  y su diff debe poder revisarse aislado; control positivo dentro de la aserción
+  negativa del historial para que no pueda pasar por un fragmento mal escrito.
+- Riesgos: los cuatro scripts ad-hoc siguen sin caracterización propia y estas
+  pruebas usan dobles, no PostgreSQL. Ninguno se marcó como resuelto.
+- Señal deliberada: `test_el_alta_todavia_no_siembra_el_historial_de_migraciones`
+  **debe fallar** cuando 3.3b corrija el defecto. Su docstring lo advierte para
+  que no se borre por confusión.
+- Verificación operativa heredada: la calibración de `DB_STATEMENT_TIMEOUT_MS`
+  permanece **pendiente y aceptada**.
+- Evidencia remota: sigue sin haber cliente de GitHub en este checkout; GitHub
+  Actions continúa **no verificada**.
+- Estado: **3.2 cerrada**. No se inició 3.3a.
+- Siguiente acción exacta: ejecutar **3.3a**, un informe de solo lectura que
+  compare `migrations/` con `public.schema_migrations` incluyendo a los tenants
+  suspendidos y cancelados; detenerse antes de 3.3b.
+
 ## Entrega al próximo chat
 
 - Capa activa: **3, migraciones y tenants**.
-- Última subcapa terminada: **3.1**, bloqueo del runner contra ejecuciones
-  simultáneas.
-- Primera subcapa pendiente: **3.2**, caracterización ejecutable del runner y
-  del alta de tenant, sin modificar producto.
+- Última subcapa terminada: **3.2**, caracterización ejecutable del runner y del
+  alta de tenant, sin cambios de producto.
+- Primera subcapa pendiente: **3.3a**, informe de solo lectura de migraciones
+  faltantes por tenant.
 - Commit base: `81882f3b1ee9e3b50076b0fc1fd93dcd9fd5ac70`, rama `main`.
 - Hallazgo central: seis puntos de entrada pueden mutar el esquema de un tenant
   y solo `apply_migration.py` registra lo que aplicó. El alta crea el schema
@@ -770,10 +934,18 @@ bitácora.
 - Estado de 3.1: `apply_migration.py` toma un advisory lock de sesión antes de
   leer o escribir el historial y devuelve exit 2 si otra ejecución lo tiene. El
   lock **no** cubre los cuatro scripts ad-hoc.
-- Verificación local vigente: compuerta global en exit 0 con **488 pruebas**,
-  Ruff y dependencias correctos; 17 pruebas del runner y 48 dirigidas. La
-  caracterización se comprobó además contra el runner anterior, con 8 pasadas.
-- Bloqueos: ninguno para iniciar 3.2. Permanece pendiente y aceptada la
+- Estado de 3.2: existe caracterización ejecutable del runner completo —incluida
+  la rama pública, el aislamiento del fallo por tenant y `--dry-run`— y del alta
+  de tenant, en `tests/test_tenant_provisioning.py`.
+- **Prueba que debe fallar a propósito en 3.3b**:
+  `test_el_alta_todavia_no_siembra_el_historial_de_migraciones`. Fija el defecto
+  actual; su fallo será la señal de que quedó corregido. No borrarla por
+  confusión.
+- Verificación local vigente: compuerta global en exit 0 con **510 pruebas**,
+  Ruff y dependencias correctos; 28 pruebas del runner, 11 del alta y 70
+  dirigidas. La caracterización de 3.1 se comprobó además contra el runner
+  anterior, con 8 pasadas.
+- Bloqueos: ninguno para iniciar 3.3a. Permanece pendiente y aceptada la
   calibración de `DB_STATEMENT_TIMEOUT_MS` de la capa 1, y GitHub Actions sigue
   sin evidencia de run.
 - No medido todavía: el estado real de versionado por tenant, las cuatro
@@ -781,6 +953,8 @@ bitácora.
   directo o el agrupado. Las tres cosas exigen acceso a una base y no deben
   darse por ciertas; la última condiciona que el lock sirva de algo en el
   entorno real.
-- Siguiente acción exacta: ejecutar únicamente 3.2 según «Siguiente subcapa:
-  3.2, trabajo exacto», sin modificar producto, sin tocar los scripts ad-hoc ni
-  archivos existentes de `migrations/` y sin ejecutar ninguna migración.
+- Siguiente acción exacta: ejecutar únicamente 3.3a según «Siguiente subcapa:
+  3.3a, trabajo exacto»: un informe de solo lectura que compare `migrations/`
+  con `public.schema_migrations` e incluya a los tenants suspendidos y
+  cancelados. Sin aplicar ni escribir nada, sin tocar los scripts ad-hoc ni
+  archivos existentes de `migrations/`, y sin ejecutar ninguna migración.

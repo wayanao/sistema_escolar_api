@@ -37,7 +37,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 0 | Línea base y calidad | Pruebas deterministas, compuerta global y CI | **Cerrada**; CI verificada en remoto | [00_LINEA_BASE_CALIDAD.md](./00_LINEA_BASE_CALIDAD.md) |
 | 1 | Fundación de base de datos | Conexiones, transacciones, timeouts y pool definidos | **Cerrada**; calibración de `statement_timeout` pendiente y aceptada | [01_FUNDACION_BASE_DATOS.md](./01_FUNDACION_BASE_DATOS.md) |
 | 2 | Concurrencia | DB síncrona fuera del event loop preservando `ContextVar` | **Cerrada** y publicada; CI posterior al cierre no verificada | [02_CONCURRENCIA.md](./02_CONCURRENCIA.md) |
-| 3 | Migraciones y tenants | Todos los tenants versionados, runner bloqueado y alta reproducible | **Activa**; 3.0–3.4a cerradas, 3.4b pendiente | [03_MIGRACIONES_TENANTS.md](./03_MIGRACIONES_TENANTS.md) |
+| 3 | Migraciones y tenants | Todos los tenants versionados, runner bloqueado y alta reproducible | **Activa**; 3.0–3.4c cerradas, reparación pendiente de aplicar | [03_MIGRACIONES_TENANTS.md](./03_MIGRACIONES_TENANTS.md) |
 | 4 | Reportes financieros | Dominio modular, N+1 eliminado y consultas medidas | En espera | Se crea al activarla |
 | 5 | Pagos y tipos de pago | Dominio financiero modularizado y protegido | En espera | Se crea al activarla |
 | 6 | Asignaciones y estudiantes | Dominios grandes separados con contratos estables | En espera | Se crea al activarla |
@@ -237,9 +237,17 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   activación creó únicamente la bitácora nueva y este índice; no inspeccionó ni
   modificó código, migraciones, esquemas, pruebas ni configuración.
 - Capa activa: **3, migraciones y tenants**. Subcapas **3.0, 3.1, 3.2, 3.3a y
-  3.3b y 3.4a cerradas** el 2026-08-13. Primera subcapa pendiente: **3.4b**,
-  migración base versionada extraída del DDL real; requiere otra vez una rama
-  desechable de Neon con endpoint directo.
+  3.3b, 3.4a, 3.4b y 3.4c cerradas** el 2026-08-13. Primera subcapa pendiente:
+  **3.5**, alta reproducible: sustituir en el alta la copia por
+  `LIKE INCLUDING ALL` por la aplicación de la migración base.
+- Resultado de 3.4c: existe `migrations/base/20260813_esquema_base_tenant.sql`,
+  extraído del catálogo real y verificado contra la plantilla —281 columnas
+  idénticas y **cero** defaults apuntando a ella, porque las columnas se
+  declaran `SERIAL`—. Vive en `migrations/base/` para no entrar en el corpus que
+  audita el informe de 3.3a.
+- **Acción pendiente del usuario**: aplicar a producción la reparación ensayada
+  en 3.4b con `scripts/reparar_secuencias_tenant.py --schema tenant_2005`.
+  Mientras no se aplique, ocho tablas del colegio real no admiten inserciones.
 - **Resultado de 3.4a, el más importante de la capa.** De los cuatro schemas
   solo `tenant_2005` es producción real; los demás son demo o prueba. El ensayo
   sobre una rama de Neon confirmó las cuatro hipótesis de 3.0 y encontró una
@@ -250,8 +258,18 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   Además, `scripts/limpiar_tenant_colegio_1_operativo.py` haría
   `TRUNCATE … RESTART IDENTITY` sobre 19 de esas secuencias. `tenant_2005` tiene
   también 11 claves foráneas de 37, y el advisory lock de 3.1 no se sostiene
-  sobre el endpoint agrupado que usa `.env`. **Ninguna reparación se ejecutó**;
-  la capa reordena su trabajo para atenderlas antes de 3.4b.
+  sobre el endpoint agrupado que usa `.env`.
+- **Resultado de 3.4b**: `scripts/reparar_secuencias_tenant.py` da al tenant
+  secuencias propias posicionadas en su `MAX(id)` real. Es auto-medido —calcula
+  los máximos al ejecutarse, no lleva valores precalculados—, transaccional e
+  idempotente. Una revisión del usuario detectó que la primera versión usaba
+  `setval()`, que **no** se revierte con un `ROLLBACK`; se comprobó contra
+  PostgreSQL 17.10 y se cambió a `ALTER SEQUENCE … RESTART`, que sí. El ensayo
+  se repitió comparando también `last_value` de todas las secuencias e
+  incluyendo un fallo simulado: 26 columnas y 8 colisiones reparadas a 0, y ni
+  el fallo ni el rollback dejan rastro. **No se aplicó a producción**: eso lo
+  controla el usuario. Las claves foráneas, el historial faltante y el runner
+  sobre `-pooler` siguen sin reparar.
 - Decisión del 2026-08-13: las 30 migraciones de tenant son incrementales y
   ninguna crea las tablas base, que hoy solo existen dentro del schema
   plantilla. El usuario decidió adelantar el ensayo no productivo para extraer

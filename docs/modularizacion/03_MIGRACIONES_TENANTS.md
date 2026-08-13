@@ -9,9 +9,13 @@
 - Rama acordada: `main`.
 - Estado al activar: árbol limpio; `HEAD` coincidente con la referencia local
   `origin/main`.
-- Primera subcapa pendiente: **3.4b**.
-- Progreso: **3.0, 3.1, 3.2, 3.3a, 3.3b y 3.4a cerradas**. El inventario está
-  registrado abajo y reemplaza el desglose provisional de la activación.
+- Primera subcapa pendiente: **3.5**.
+- Progreso: **3.0, 3.1, 3.2, 3.3a, 3.3b, 3.4a, 3.4b y 3.4c cerradas**. El
+  inventario está registrado abajo y reemplaza el desglose provisional de la
+  activación.
+- **Acción pendiente del usuario**: aplicar a producción la reparación ensayada
+  en 3.4b. Mientras no se aplique, ocho tablas de `tenant_2005` no admiten
+  inserciones.
 - Código de producto modificado al activar: **ninguno**.
 - Código de producto modificado hasta ahora: `apply_migration.py`, que toma un
   advisory lock de sesión antes de leer o escribir el historial, y
@@ -138,14 +142,22 @@ del repositorio sin acceso a datos.
 | 3.3a | Informe de solo lectura: qué migraciones le faltan a cada tenant | **Cerrada** |
 | 3.3b | Siembra del historial en el alta de tenant | **Cerrada** |
 | 3.4a | Ensayo no productivo: medición real y verificación de hipótesis | **Cerrada** |
-| 3.4b | Migración base versionada extraída del DDL real | **Pendiente** |
+| 3.4b | Reparación urgente: secuencias propias para `tenant_2005` | **Cerrada, pendiente de aplicar** |
+| 3.4c | Migración base versionada extraída del DDL real | **Cerrada** |
 | 3.5 | Alta reproducible desde la migración base versionada | Pendiente |
 | 3.6 | Rollback, verificación manual, compuerta global y cierre | Pendiente |
 
 El ensayo se dividió al ejecutarlo. 3.4a resultó ser una subcapa completa por sí
 sola: sus hallazgos cambian qué debe contener la migración base, así que
 extraerla en el mismo turno habría sido escribirla antes de saber qué tenía que
-incluir. 3.4b se define ahora con esa evidencia.
+incluir. La migración base se define ahora con esa evidencia.
+
+Después, la reclasificación que siguió a 3.4a —solo `tenant_2005` es producción—
+mostró que había una avería en curso más urgente que cualquier trabajo de
+futuro. Por eso **3.4b pasó a ser la reparación de secuencias** y la migración
+base bajó a **3.4c**. Las entradas del registro de ejecución anteriores a ese
+momento llaman «3.4b» a la migración base: se conservan tal como se escribieron,
+porque son el registro de lo que se sabía entonces.
 
 El inventario de 3.0 **confirmó y ajustó** el desglose provisional de la
 activación. Los cambios respecto de aquella tabla y su motivo:
@@ -1098,13 +1110,161 @@ historial.
 
 #### Consecuencia para el orden de la capa
 
-3.4b —la migración base— deja de ser lo más urgente. Antes está reparar el
-colegio real. La reparación mínima y correcta del riesgo 1 es la misma que
+La migración base deja de ser lo más urgente y se pospone a **3.4c**. Antes
+está reparar el colegio real, que pasa a ser **3.4b**. La reparación mínima y correcta del riesgo 1 es la misma que
 resuelve el 2: dar a `tenant_2005` **secuencias propias**, inicializadas en el
 `MAX(id)` real de cada tabla, y reapuntar sus `DEFAULT` a ellas. Eso corta de
 raíz el acoplamiento con la demo. No se ejecutó nada de esto en 3.4a.
 
-### Siguiente subcapa: 3.4b, trabajo exacto
+## Subcapa 3.4b: resultado
+
+Reparación de la avería del riesgo 1, que desactiva de paso el riesgo 2. Se
+añadió `scripts/reparar_secuencias_tenant.py`: da a un tenant secuencias propias,
+las posiciona en el `MAX(id)` real y reapunta sus `DEFAULT`. **No modifica
+ningún archivo de producto existente**; el runner, `app/`, `migrations/`, el
+workflow y las dependencias quedaron intactos.
+
+**Nada se aplicó a producción.** El script quedó ensayado y listo; aplicarlo es
+decisión y acción del usuario.
+
+### Tres propiedades que lo hacen seguro
+
+- **Auto-medido**: calcula `MAX(id)` en el instante de ejecutarse. No lleva
+  ningún valor precalculado, así que los números que se midieron en la rama no
+  viajan al script. Esto es deliberado: la rama es una foto y producción sigue
+  moviéndose.
+- **Transaccional de verdad, tras una corrección**: todo ocurre en una
+  transacción y la verificación corre antes del `commit`; si encuentra un solo
+  problema, revierte y devuelve 2 sin confirmar nada. La primera versión
+  posicionaba las secuencias con `setval()` y eso **no** era reversible; ver
+  «La objeción sobre `setval()`» más abajo.
+- **Idempotente**: solo actúa sobre columnas cuyo `DEFAULT` apunta todavía a
+  otro schema. Sobre un tenant ya reparado imprime «Nada que reparar» y sale 0.
+
+Acepta `--schema`, porque los tres schemas de demo tienen el mismo defecto y
+podrán repararse igual, y `--dry-run`, siguiendo la convención del runner.
+Las secuencias nuevas heredan el tipo de su columna —`bigint` donde la columna
+lo es— y quedan `OWNED BY` la columna, de modo que pertenecen al tenant y ya no
+a la demo.
+
+### La objeción sobre `setval()`
+
+La primera versión posicionaba cada secuencia con `setval()`. El usuario
+advirtió, antes de aplicar nada, que **`setval()` no es transaccional**: su
+efecto sobrevive a un `ROLLBACK`, de modo que presentar el procedimiento como
+completamente reversible era incorrecto.
+
+Se comprobó directamente contra el servidor de la rama, PostgreSQL 17.10, con
+una secuencia de juguete:
+
+| Operación dentro de una transacción revertida | Valor antes | Dentro | Tras el `ROLLBACK` |
+|---|---:|---:|---:|
+| `setval(seq, 5000)` | 100 | 5000 | **5000** — no se revirtió |
+| `ALTER SEQUENCE … RESTART WITH 9000` | 5000 | 9000 | **5000** — sí se revirtió |
+
+La objeción era correcta. El script pasó a usar
+`ALTER SEQUENCE … RESTART WITH <máximo + 1>`, que además elimina la rama
+especial para tablas vacías: `RESTART WITH 1` deja el siguiente `nextval` en 1,
+que es justo lo que se quiere. Se añadió una prueba de regresión,
+`test_no_se_usa_setval_porque_no_es_transaccional`, para que nadie lo
+reintroduzca sin darse cuenta.
+
+### Ensayo completo sobre la rama
+
+El primer ensayo solo comprobaba `DEFAULT`, ownership y colisiones. A petición
+del usuario se repitió comparando también el **estado efectivo de cada
+secuencia** —`last_value` e `is_called`— y añadiendo un fallo simulado a mitad
+de la transacción:
+
+| Paso | Resultado |
+|---|---|
+| 1. Estado roto de partida | 26 columnas prestadas, 4 secuencias propias |
+| 2. **Fallo simulado** antes del `commit` | exit 2; estado **idéntico** al de partida |
+| 3. `--dry-run` | exit 0; estado **idéntico** |
+| 4. Aplicación real | 26 reparadas, verificación correcta, exit 0 |
+| 5. Estado posterior | 0 prestadas, 30 secuencias propias |
+| 6. Rollback | estado **idéntico** al de partida |
+| 7. Reaplicación e idempotencia | 0 prestadas; segunda pasada, «Nada que reparar» |
+
+«Idéntico» aquí significa comparación exacta de tres cosas: el `DEFAULT` de las
+30 columnas, la lista de secuencias del tenant y el `last_value`/`is_called` de
+**las 30 secuencias de la plantilla**. Esas últimas no cambiaron en ningún
+momento del ciclo, que era el punto que la primera versión no verificaba.
+
+El paso 2 es el que sostiene la afirmación de reversibilidad: un fallo antes del
+`commit` no deja rastro, ni en los `DEFAULT`, ni en las secuencias creadas, ni
+en el estado de las secuencias ajenas.
+
+### Rollback
+
+La reparación no borra datos ni altera filas: solo crea secuencias y cambia
+`DEFAULT`. Para revertirla después de confirmada, por cada columna:
+
+```sql
+ALTER TABLE <tenant>.<tabla> ALTER COLUMN <columna>
+    SET DEFAULT nextval('<plantilla>.<tabla>_<columna>_seq'::regclass);
+DROP SEQUENCE IF EXISTS <tenant>.<tabla>_<columna>_seq;
+```
+
+El script imprime el `DEFAULT anterior` de cada columna antes de tocarla,
+precisamente para que ese listado sirva de guion de reversión. **Conviene
+guardar esa salida al aplicarlo.** Revertir reintroduce la avería, así que solo
+tiene sentido si la reparación causara un problema inesperado.
+
+Ese rollback posterior al `commit` es **manual**: hay que ejecutarlo. Lo que sí
+es automático es el caso de fallo *durante* la ejecución, que no requiere
+ninguna acción porque la transacción no llega a confirmarse; se verificó con un
+fallo simulado.
+
+Las secuencias creadas se destruyen al revertir, así que su estado no importa.
+Las de la plantilla nunca se tocan, ni al aplicar ni al revertir: se comprobó
+comparando `last_value` e `is_called` de las 30 antes y después del ciclo
+completo.
+
+### Verificación
+
+| Comprobación | Resultado |
+|---|---|
+| `tests/test_reparar_secuencias_tenant.py` | **14 pasaron**, archivo nuevo |
+| Transaccionalidad de `setval` vs `ALTER SEQUENCE` | Probada contra PostgreSQL 17.10 |
+| Compuerta global | **Exit 0**: 543 pruebas, 5 warnings conocidos |
+| Ruff del alcance | `All checks passed!` |
+| Producto existente modificado | **ninguno**; solo se añadió un script |
+
+La suite pasó de 529 a **543** pruebas.
+
+### Estado de la rama tras el ensayo
+
+`tenant_2005` en la rama quedó **reparado**: ya no reproduce el estado de
+producción. Para un ensayo de última hora antes de aplicar, hay que **crear una
+rama nueva**; esta ya no sirve como espejo del problema.
+
+### Cómo aplicarlo a producción
+
+1. Confirmar que nadie está usando la aplicación.
+2. `python scripts/reparar_secuencias_tenant.py --schema tenant_2005 --dry-run`
+   y revisar que las 26 columnas y sus máximos tengan sentido.
+3. **Guardar esa salida**: contiene el guion de reversión.
+4. `python scripts/reparar_secuencias_tenant.py --schema tenant_2005`.
+5. Comprobar que termina con «Verificacion correcta» y exit 0. Si devuelve 2, no
+   confirmó nada y hay que leer los problemas que enumera.
+6. Probar una inserción real: matricular un estudiante de prueba y borrarlo.
+
+Los tres schemas de demo pueden repararse después con el mismo comando; no
+corren prisa, pero mientras compartan secuencias con `tenant_colegio_1` el
+script de limpieza sigue siendo peligroso para ellos.
+
+### Lo que 3.4b deliberadamente no hace
+
+- No toma el advisory lock del runner. Sería teatro: 3.4a demostró que no se
+  sostiene sobre el endpoint agrupado que usa `.env`. Es una reparación manual y
+  de un solo uso, pensada para una ventana sin tráfico.
+- No repara claves foráneas ni siembra historial: son los riesgos 3 y 5, cada
+  uno con su propio ensayo.
+- No cambia el alta de tenants. Los tenants nuevos seguirán naciendo con
+  secuencias prestadas hasta que 3.5 rehaga el alta desde la migración base.
+
+### Siguiente subcapa: 3.4c, trabajo exacto
 
 Los hallazgos cambian lo que la migración base debe contener: ya no basta con
 las tablas, tiene que traer las 37 claves foráneas, las 30 secuencias propias,
@@ -1125,23 +1285,130 @@ el disparador y la función que la copia actual nunca reproduce.
 6. Ejecutar compuerta global, Ruff y `git diff --check`; actualizar esta
    bitácora y detenerse antes de 3.5.
 
-### Tres reparaciones que esta capa debe encarar, y aún no ha encarado
+## Subcapa 3.4c: resultado
 
-Ninguna cabe en 3.4b. Se registran aquí para que no se pierdan y para que el
-usuario decida cuándo abordarlas:
+Se añadió `migrations/base/20260813_esquema_base_tenant.sql`, **568 líneas**
+extraídas del catálogo real de `tenant_colegio_1` y verificadas creando un
+schema desde ese archivo y comparándolo contra la plantilla. **Ninguno de los 34
+archivos existentes de `migrations/` cambió**, ni el runner, ni `app/`.
 
-- **Runner sobre endpoint agrupado.** Lo más barato y honesto es que
-  `apply_migration.py` se niegue a ejecutarse contra un DSN con `-pooler`, en
-  lugar de sostener una protección que no protege.
-- **Historial faltante de `tenant_4444` y `tenant_2005`.** Como no están
-  estructuralmente atrasados, lo correcto es sembrar sus registros, no aplicar
-  las migraciones. Es una escritura sobre datos reales y necesita su propio
-  ensayo y rollback.
-- **Claves foráneas y secuencias compartidas de los tres colegios.** Es la
-  reparación más delicada de la capa: añadir claves foráneas puede fallar si ya
-  existen filas huérfanas, y reasignar secuencias exige cuidar los valores
-  actuales. Requiere auditoría previa de huérfanos, ensayo completo y una
-  ventana de mantenimiento.
+### Corrección: esta rama sí servía
+
+La bitácora decía que 3.4c necesitaba una rama nueva. Era demasiado estricto: el
+ensayo de 3.4b solo modificó `tenant_2005`, y lo que 3.4c necesita es la
+**plantilla**, que quedó intacta —se comprobó comparando `last_value` de sus 30
+secuencias antes y después—. Se reutilizó la misma rama.
+
+### Cómo se extrajo
+
+`pg_get_constraintdef` y `pg_get_functiondef` omiten el schema cuando el objeto
+está en el `search_path`, así que el generador fija `search_path` a la plantilla
+y obtiene SQL portable. `pg_get_indexdef` es la excepción: cualifica la tabla
+siempre, y hubo que quitarle el prefijo.
+
+Dos decisiones de forma:
+
+- las columnas `id` se emiten como `SERIAL`/`BIGSERIAL` en lugar de copiar el
+  `DEFAULT nextval(...)` original. Así cada schema crea su **propia** secuencia,
+  que es exactamente el defecto que arrastraba el alta por copia y que 3.4b tuvo
+  que reparar a mano;
+- las claves foráneas van al final, en `ALTER TABLE … ADD CONSTRAINT`, para no
+  depender del orden de creación de las tablas.
+
+### Verificación de equivalencia
+
+Aplicando el archivo del repositorio a un schema nuevo y comparándolo contra la
+plantilla:
+
+| | Plantilla | Generado | Faltan | Sobran |
+|---|---:|---:|---:|---:|
+| Columnas | 281 | 281 | 0 | 0 |
+| Índices | 93 | 92 | 1 | 0 |
+| Restricciones | 94 | 94 | 3 | 3 |
+| Secuencias | 30 | 30 | — | — |
+| Disparadores | 1 | 1 | — | — |
+| Funciones | 1 | 1 | — | — |
+| **Defaults apuntando a la plantilla** | 30 | **0** | — | — |
+
+Ninguna columna difiere: mismas 281, mismos tipos, mismos defaults una vez
+normalizado el nombre del schema. El schema de prueba se destruyó y se comprobó
+que no quedan restos.
+
+### Las dos diferencias, explicadas
+
+**El índice que falta es una duplicación de la plantilla.** `profesor` tiene
+allí *dos* restricciones `UNIQUE` idénticas sobre `documento_identidad`:
+`profesor_documento_identidad_key` y `unique_documento_identidad`. La migración
+declara ambas y PostgreSQL descarta la segunda por ser idéntica —comprobado—,
+de modo que el schema nuevo tiene un índice único en vez de dos iguales. Es una
+mejora, no una pérdida: mismo contrato, la mitad de coste de escritura.
+
+**Las tres restricciones difieren solo en cómo se imprimen.** Son `CHECK` con
+listas de valores: la plantilla las guarda como `ANY ((ARRAY[…])::text[])` y, al
+recrearlas desde su propio texto, PostgreSQL las reescribe como
+`ANY (ARRAY[(…)::text, …])`. Afectan a las mismas tablas y tienen la misma
+semántica; es un artefacto de ida y vuelta del formateador.
+
+Es decir: la equivalencia **no es byte a byte**, y no debe presentarse como tal.
+Es equivalencia de contrato, con una duplicación eliminada a propósito.
+
+### Por qué `migrations/base/` y no `migrations/`
+
+Si el archivo viviera en `migrations/`, `scripts/auditar_migraciones_tenants.py`
+lo contaría como una migración más y reportaría a los cuatro tenants como si les
+faltara, cuando ya tienen esas tablas. En `migrations/base/` queda fuera de ese
+corpus —comprobado: la auditoría sigue viendo 30— y sigue siendo aplicable
+explícitamente al dar de alta un tenant. El runner nunca lo aplicará por su
+cuenta: recibe un archivo por invocación y no descubre nada.
+
+### Lo que no cubre
+
+El archivo reproduce la **estructura**, no los datos semilla. El alta actual
+inserta además una fila de `institucion_branding`, copia las
+`plantilla_impresion` predefinidas y crea el admin inicial. Eso es trabajo de
+3.5, que decidirá qué parte de esa siembra pertenece a la migración base y cuál
+al alta.
+
+### Siguiente subcapa: 3.5, trabajo exacto
+
+1. Confirmar `main`, árbol limpio y continuidad.
+2. Sustituir en `crear_tenant_controller` el bloque `DO $$` con
+   `LIKE INCLUDING ALL` por la aplicación de
+   `migrations/base/20260813_esquema_base_tenant.sql` sobre el schema nuevo.
+3. Decidir y documentar qué ocurre con la siembra: `institucion_branding`,
+   `plantilla_impresion` predefinidas y admin inicial siguen en el controller
+   salvo que haya motivo para moverlas.
+4. Revisar qué debe sembrarse en `public.schema_migrations`: con una base
+   versionada, copiar las filas de la plantilla como hace 3.3b puede dejar de
+   ser lo correcto.
+5. Ampliar `tests/test_tenant_provisioning.py` para fijar el camino nuevo.
+6. Ensayar en una rama: dar de alta un tenant por el camino nuevo y compararlo
+   contra la plantilla y contra uno dado de alta por el camino viejo.
+7. Compuerta global, Ruff, `git diff --check`; actualizar esta bitácora y
+   detenerse antes de 3.6.
+
+### Reparaciones que esta capa debe encarar
+
+Se registran aquí para que no se pierdan y para que el usuario decida cuándo
+abordarlas. La lista se escribió en 3.4a con tres entradas; 3.4b resolvió la de
+las secuencias.
+
+- **Secuencias compartidas.** *Resuelta en 3.4b* con
+  `scripts/reparar_secuencias_tenant.py`, ensayado sobre la rama y **pendiente
+  de que el usuario lo aplique a producción**. Los tres schemas de demo siguen
+  sin reparar; no corre prisa, pero mientras compartan secuencias con
+  `tenant_colegio_1` el script de limpieza sigue siendo peligroso para ellos.
+- **Runner sobre endpoint agrupado.** Sin abordar. Lo más barato y honesto es
+  que `apply_migration.py` se niegue a ejecutarse contra un DSN con `-pooler`,
+  en lugar de sostener una protección que no protege.
+- **Historial faltante de `tenant_2005` y `tenant_4444`.** Sin abordar. Como no
+  están estructuralmente atrasados, lo correcto es sembrar sus registros, no
+  aplicar las migraciones. Es una escritura sobre datos reales y necesita su
+  propio ensayo y rollback.
+- **Claves foráneas ausentes.** Sin abordar, y la más delicada de la capa:
+  añadirlas puede fallar si ya existen filas huérfanas. Requiere auditoría
+  previa de huérfanos, ensayo completo y una ventana de mantenimiento. En
+  `tenant_2005` faltan 26 de las 37 de la plantilla.
 
 ## Criterios de cierre de la subcapa 3.0
 
@@ -1719,18 +1986,142 @@ usuario decida cuándo abordarlas:
   permanece **pendiente y aceptada**.
 - Evidencia remota: sigue sin haber cliente de GitHub en este checkout; GitHub
   Actions continúa **no verificada**.
-- Estado: **3.4a cerrada**. No se inició 3.4b.
-- Siguiente acción exacta: ejecutar **3.4b**, extrayendo el DDL completo de la
-  plantilla y escribiéndolo como migración base nueva, con verificación de
-  equivalencia en la rama; detenerse antes de 3.5.
+- Estado: **3.4a cerrada**. No se inició la subcapa siguiente.
+- Siguiente acción exacta: extraer el DDL completo de la plantilla y escribirlo
+  como migración base nueva, con verificación de equivalencia en la rama;
+  detenerse antes de 3.5.
+
+### 2026-08-13 — subcapa 3.4b
+
+- Modo de acceso: mismo checkout local; rama `main`, árbol limpio y alineado con
+  `origin/main` antes de editar, tras la publicación de los ocho commits.
+- Commit observado: `4e8e1ba`, ocho commits después del base, todos explicados.
+- Autorización: el usuario respondió «continúa» a la propuesta explícita de
+  abrir esta subcapa con la renumeración descrita, e informó de que la
+  aplicación ya no está en uso.
+- Renumeración registrada: la reparación de secuencias pasa a ser **3.4b** y la
+  migración base baja a **3.4c**. Las entradas anteriores del registro llaman
+  «3.4b» a la migración base y se conservan sin retocar.
+- Código añadido: `scripts/reparar_secuencias_tenant.py`. **Ningún archivo de
+  producto existente cambió**, verificado con
+  `git status --short -- app apply_migration.py migrations .github requirements.txt`
+  vacío.
+- Pruebas: `tests/test_reparar_secuencias_tenant.py`, **13 casos** herméticos con
+  un cursor que normaliza `sql.Composed` para poder inspeccionar el SQL generado.
+- Base de datos: la misma rama desechable de 3.4a. **No se tocó producción.**
+- Ensayo completo sobre `tenant_2005` en la rama: 26 columnas prestadas y 8
+  colisiones antes; `--dry-run` sin efectos; aplicación con verificación
+  correcta; 0 y 0 después; **rollback que restauró exactamente 26 y 8**;
+  reaplicación limpia; y una ejecución adicional que informó «Nada que reparar».
+- Verificación: 13 pruebas nuevas, **71 dirigidas** y compuerta global en **exit
+  0 con 542 pruebas**, 5 warnings conocidos, Ruff correcto y dependencias
+  íntegras.
+- Decisiones: el script se auto-mide en tiempo de ejecución en vez de llevar los
+  máximos observados en la rama, porque la rama es una foto y producción avanza;
+  la verificación corre antes del `commit` para que un fallo no confirme nada;
+  acepta `--schema` porque los tres schemas de demo tienen el mismo defecto; no
+  toma el advisory lock del runner porque 3.4a demostró que no se sostiene sobre
+  el endpoint que usa `.env` y sería una garantía falsa.
+- Riesgos: la rama ya no refleja el estado de producción, así que un ensayo de
+  última hora necesita una rama nueva. Las claves foráneas, el historial
+  faltante y el runner sobre `-pooler` siguen sin reparar.
+- Verificación operativa heredada: la calibración de `DB_STATEMENT_TIMEOUT_MS`
+  permanece **pendiente y aceptada**.
+- Evidencia remota: sigue sin haber cliente de GitHub en este checkout; GitHub
+  Actions continúa **no verificada**.
+- Estado: **3.4b cerrada, pendiente de aplicar**. No se inició 3.4c.
+- Siguiente acción exacta: que el usuario aplique la reparación a producción
+  siguiendo el procedimiento documentado y guarde la salida del `--dry-run`.
+  Después, ejecutar 3.4c sobre una rama nueva.
+
+### 2026-08-13 — corrección de 3.4b: `setval()` no es transaccional
+
+- Origen: el usuario, antes de aplicar nada a producción, advirtió que
+  `setval()` no se revierte con un `ROLLBACK` y que por tanto no podía
+  presentarse el procedimiento como completamente transaccional ni afirmarse que
+  el rollback restauraba todo con exactitud. Pidió evaluar
+  `ALTER SEQUENCE … RESTART`, documentar qué parte requiere reversión manual y
+  repetir el ensayo comprobando también `last_value`.
+- La objeción era **correcta**. Se comprobó contra el servidor de la rama,
+  PostgreSQL 17.10: dentro de una transacción revertida, el valor puesto por
+  `setval(seq, 5000)` persistió tras el `ROLLBACK`, mientras que el puesto por
+  `ALTER SEQUENCE … RESTART WITH 9000` volvió atrás.
+- Cambio en producto: `scripts/reparar_secuencias_tenant.py` pasa a usar
+  `ALTER SEQUENCE … RESTART WITH <máximo + 1>`. Desaparece además la rama
+  especial para tablas vacías, porque `RESTART WITH 1` ya deja el siguiente
+  valor en 1. Ningún otro archivo cambió.
+- Prueba de regresión añadida:
+  `test_no_se_usa_setval_porque_no_es_transaccional`. El archivo pasó de 13 a
+  **14 casos**.
+- Ensayo repetido sobre la rama comparando, además de `DEFAULT` y ownership, el
+  `last_value`/`is_called` de las 30 secuencias de la plantilla y la lista de
+  secuencias del tenant. Se añadió un **fallo simulado** antes del `commit`.
+  Resultados: un fallo no deja rastro, el `--dry-run` no deja rastro, el
+  rollback restaura el estado de partida y las secuencias de la plantilla
+  permanecen intactas durante todo el ciclo.
+- Corrección de una afirmación anterior: el primer ensayo comprobaba solo
+  `DEFAULT`, ownership y colisiones, así que la frase «el rollback restauró
+  exactamente el estado previo» estaba sostenida por una verificación
+  insuficiente. Ahora lo está por la comparación completa.
+- Distinción documentada: el rollback **posterior al `commit` es manual** y hay
+  que ejecutarlo; el fallo *durante* la ejecución no requiere ninguna acción.
+- Verificación: 14 pruebas del archivo, Ruff correcto y compuerta global en
+  **exit 0 con 543 pruebas**.
+- **No se tocó producción.** La verificación quedó cerrada antes de aplicar, tal
+  como pidió el usuario.
+- Siguiente acción exacta: sin cambios; aplicar la reparación a producción y
+  después 3.4c.
+
+### 2026-08-13 — subcapa 3.4c
+
+- Modo de acceso: mismo checkout local; rama `main`. **El árbol no estaba
+  limpio**: contenía exactamente el trabajo de 3.4b sin commitear —dos
+  documentos modificados y dos archivos nuevos—, todo explicado en esta
+  bitácora, y ningún archivo de producto existente. Se hace constar en vez de
+  declarar un árbol limpio que no lo estaba.
+- Base de datos: la **misma** rama de 3.4a y 3.4b. Se corrigió la exigencia
+  previa de una rama nueva: 3.4b solo alteró `tenant_2005` y lo que 3.4c
+  necesita es la plantilla, verificada intacta.
+- Archivo añadido: `migrations/base/20260813_esquema_base_tenant.sql`, 568
+  líneas. Ningún archivo de producto existente cambió, y los 34 `.sql` previos
+  siguen intactos.
+- Generación: script de scratchpad que fija `search_path` a la plantilla para
+  que `pg_get_constraintdef` y `pg_get_functiondef` emitan nombres sin
+  cualificar; a `pg_get_indexdef`, que cualifica siempre, se le quita el
+  prefijo. Las columnas `id` se emiten como `SERIAL` para que cada schema cree
+  su propia secuencia, y las claves foráneas van al final.
+- Verificación de equivalencia aplicando el archivo **del repositorio** a un
+  schema nuevo: 281 columnas idénticas sin diferencias, 30 secuencias, un
+  disparador, una función, y **cero** defaults apuntando a la plantilla frente a
+  los 30 que tenía la copia por `LIKE`.
+- Dos diferencias aceptadas y documentadas: falta el índice
+  `unique_documento_identidad`, que duplicaba exactamente a
+  `profesor_documento_identidad_key` y que PostgreSQL descarta al declararlas
+  juntas; y tres `CHECK` se reimprimen con otra forma equivalente. La
+  equivalencia **no es byte a byte** y no se presenta como tal.
+- Ubicación: `migrations/base/` y no `migrations/`, para que la auditoría de
+  3.3a no lo cuente como una migración pendiente de todos los tenants.
+  Comprobado: sigue viendo 30.
+- Limpieza: el schema de prueba se destruyó y se verificó que no quedan restos.
+- Verificación: compuerta global en **exit 0 con 543 pruebas**, Ruff correcto,
+  dependencias íntegras y `git diff --check` en exit 0.
+- Riesgos: el archivo cubre estructura, no siembra de datos. Y las reparaciones
+  pendientes de la capa siguen abiertas.
+- Estado: **3.4c cerrada**. No se inició 3.5.
+- Siguiente acción exacta: ejecutar **3.5**, sustituyendo en el alta la copia por
+  `LIKE` por la aplicación de la migración base, con ensayo comparativo en una
+  rama; detenerse antes de 3.6.
 
 ## Entrega al próximo chat
 
 - Capa activa: **3, migraciones y tenants**.
 - Última subcapa terminada: **3.4a**, ensayo no productivo sobre una rama de
   Neon: primera medición real y las cuatro hipótesis de 3.0 resueltas.
-- Primera subcapa pendiente: **3.4b**, migración base versionada extraída del
-  DDL real de la plantilla. Requiere de nuevo una rama desechable.
+- Última subcapa cerrada: **3.4b**, reparación de las secuencias de
+  `tenant_2005`. **Ensayada, no aplicada**: falta que el usuario la ejecute
+  contra producción.
+- Primera subcapa pendiente: **3.5**, alta reproducible: sustituir la copia por
+  `LIKE INCLUDING ALL` por la aplicación de la migración base.
 - Commit base: `81882f3b1ee9e3b50076b0fc1fd93dcd9fd5ac70`, rama `main`.
 - Hallazgo central: seis puntos de entrada pueden mutar el esquema de un tenant
   y solo `apply_migration.py` registra lo que aplicó. El alta crea el schema
@@ -1776,20 +2167,27 @@ usuario decida cuándo abordarlas:
   faltan 15 registros de historial sin estar estructuralmente atrasado, y el
   advisory lock de 3.1 **no se sostiene sobre el endpoint agrupado**, que es el
   que usa `.env`.
-- **Orden alterado**: la migración base de 3.4b deja de ser lo urgente. Antes
-  está reparar el colegio real dándole secuencias propias inicializadas en su
-  `MAX(id)`, lo que resuelve a la vez la avería y el acoplamiento con la demo.
-  Ninguna reparación se ejecutó en 3.4a.
-- **Requisito para 3.4b**: otra vez una rama desechable de Neon, con endpoint
-  directo y confirmación de que no es producción. La credencial no se registra
-  en ningún documento y solo se lee estructura. Ninguna subcapa usará el
-  `DATABASE_URL` del `.env`. Permanece además pendiente y aceptada la
-  calibración de `DB_STATEMENT_TIMEOUT_MS` de la capa 1, y GitHub Actions sigue
-  sin evidencia de run.
-- Siguiente acción exacta: ejecutar únicamente **3.4b** según su «trabajo
-  exacto»: extraer el DDL completo de `tenant_colegio_1` —incluidas las 37
-  claves foráneas, las 30 secuencias propias, el disparador y la función—,
-  escribirlo como migración base nueva y verificar su equivalencia creando un
-  schema de prueba en la rama y comparándolo contra la plantilla. Sin tocar
-  ninguno de los 34 archivos existentes de `migrations/` ni el runner, y sin
-  usar el `DATABASE_URL` del `.env`.
+- **Reparación lista, sin aplicar**: 3.4b añadió
+  `scripts/reparar_secuencias_tenant.py`, auto-medido, transaccional e
+  idempotente, ensayado sobre la rama con su ciclo completo incluido el
+  rollback. Resuelve a la vez la avería y el acoplamiento con la demo. **Falta
+  que el usuario lo aplique a producción**; hasta entonces las ocho tablas
+  siguen sin admitir inserciones.
+- **Estado de 3.4c**: existe `migrations/base/20260813_esquema_base_tenant.sql`,
+  extraído del catálogo real y verificado contra la plantilla: 281 columnas
+  idénticas y **cero** defaults apuntando a la plantilla, porque las columnas se
+  declaran `SERIAL` y cada schema crea sus propias secuencias.
+- **Requisito para 3.5**: una rama desechable para el ensayo comparativo del
+  alta. La usada hasta ahora sirve para la plantilla, pero su `tenant_2005` ya
+  está reparado. Permanece además pendiente y aceptada la calibración de
+  `DB_STATEMENT_TIMEOUT_MS` de la capa 1, y GitHub Actions sigue sin evidencia
+  de run.
+- Siguiente acción exacta, por orden de prioridad: **primero**, que el usuario
+  aplique a producción la reparación ensayada en 3.4b, siguiendo «Cómo aplicarlo
+  a producción» y guardando la salida del `--dry-run` como guion de reversión.
+  **Después**, ejecutar únicamente **3.5** según su «trabajo exacto»: sustituir
+  en `crear_tenant_controller` la copia por `LIKE INCLUDING ALL` por la
+  aplicación de la migración base, decidir qué ocurre con la siembra de datos y
+  con `public.schema_migrations`, y ensayar en una rama comparando un tenant
+  nuevo contra la plantilla. Sin tocar los 34 archivos existentes de
+  `migrations/` ni el runner.

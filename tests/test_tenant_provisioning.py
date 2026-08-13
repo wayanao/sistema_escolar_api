@@ -116,14 +116,62 @@ def test_el_alta_crea_el_schema_derivado_del_codigo(monkeypatch):
     assert conn.committed is True
 
 
-def test_el_alta_copia_la_estructura_del_schema_plantilla(monkeypatch):
+def test_el_alta_construye_el_schema_desde_la_migracion_base(monkeypatch):
     cursor = ProvisioningCursor(rows=[COLEGIO_ROW])
 
     crear_tenant(monkeypatch, cursor)
 
-    assert cursor.executed("pg_tables")
-    assert cursor.executed("INCLUDING ALL")
-    assert cursor.executed(settings.DEFAULT_TENANT_SCHEMA)
+    # El contenido real del archivo, no una parafrasis: si la migracion base
+    # cambiara de sitio o de nombre, esta prueba lo detecta.
+    base = super_admin_controller.ESQUEMA_BASE_TENANT.read_text(encoding="utf-8")
+    assert cursor.executed("CREATE TABLE IF NOT EXISTS asignaciones")
+    assert any(texto == base for texto, _ in cursor.calls)
+
+
+def test_el_alta_ya_no_copia_la_plantilla_con_like(monkeypatch):
+    """El defecto que 3.4a documento: LIKE INCLUDING ALL no copia claves foraneas
+    ni crea secuencias propias. Si alguien reintroduce esa via, esto falla.
+
+    Se excluye el texto de la migracion base, cuya cabecera menciona
+    `INCLUDING ALL` justo para explicar por que ya no se usa.
+    """
+    cursor = ProvisioningCursor(rows=[COLEGIO_ROW])
+
+    crear_tenant(monkeypatch, cursor)
+
+    base = super_admin_controller.ESQUEMA_BASE_TENANT.read_text(encoding="utf-8")
+    otros = [texto for texto, _ in cursor.calls if texto != base]
+    assert not any("INCLUDING ALL" in texto for texto in otros)
+    assert not any("pg_tables" in texto for texto in otros)
+    assert not any("DO $$" in texto for texto in otros)
+
+
+def test_el_search_path_apunta_solo_al_schema_nuevo_al_aplicar_la_base(monkeypatch):
+    """Con la plantilla en el search_path, las claves foraneas del archivo
+    resolverian contra sus tablas y naceran cruzadas. Paso exactamente eso en
+    3.4f con otro script."""
+    cursor = ProvisioningCursor(rows=[COLEGIO_ROW])
+
+    crear_tenant(monkeypatch, cursor)
+
+    base = super_admin_controller.ESQUEMA_BASE_TENANT.read_text(encoding="utf-8")
+    indice_base = next(i for i, (t, _) in enumerate(cursor.calls) if t == base)
+    anteriores = [t for t, _ in cursor.calls[:indice_base] if "search_path" in t]
+    assert anteriores, "no se fijo el search_path antes de aplicar la base"
+    ultimo = anteriores[-1]
+    assert "tenant_nuevo" in ultimo
+    assert settings.DEFAULT_TENANT_SCHEMA not in ultimo
+
+
+def test_la_migracion_base_existe_y_trae_claves_foraneas():
+    """Sin claves foraneas en el archivo, el alta reproduciria el defecto."""
+    base = super_admin_controller.ESQUEMA_BASE_TENANT
+
+    assert base.is_file()
+    contenido = base.read_text(encoding="utf-8")
+    assert "ADD CONSTRAINT" in contenido
+    assert "FOREIGN KEY" in contenido
+    assert "SERIAL" in contenido
 
 
 def test_el_alta_siembra_el_historial_copiando_las_filas_de_la_plantilla(monkeypatch):
@@ -197,7 +245,9 @@ def test_el_alta_registra_el_colegio_antes_de_crear_el_schema(monkeypatch):
     crear_tenant(monkeypatch, cursor)
 
     assert cursor.index_of("INSERT INTO public.colegios") < cursor.index_of("CREATE SCHEMA")
-    assert cursor.index_of("CREATE SCHEMA") < cursor.index_of("pg_tables")
+    assert cursor.index_of("CREATE SCHEMA") < cursor.index_of(
+        "CREATE TABLE IF NOT EXISTS asignaciones"
+    )
 
 
 def test_el_alta_nace_en_estado_activo(monkeypatch):
@@ -221,8 +271,10 @@ def test_el_alta_crea_el_admin_inicial_obligado_a_cambiar_password(monkeypatch):
     ]
 
 
-def test_el_alta_revierte_y_cierra_si_falla_la_copia_de_estructura(monkeypatch):
-    cursor = ProvisioningCursor(rows=[COLEGIO_ROW], fail_on="pg_tables")
+def test_el_alta_revierte_y_cierra_si_falla_la_migracion_base(monkeypatch):
+    cursor = ProvisioningCursor(
+        rows=[COLEGIO_ROW], fail_on="CREATE TABLE IF NOT EXISTS asignaciones"
+    )
 
     with pytest.raises(RuntimeError):
         crear_tenant(monkeypatch, cursor)

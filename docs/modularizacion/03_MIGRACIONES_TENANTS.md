@@ -10,7 +10,7 @@
 - Estado al activar: árbol limpio; `HEAD` coincidente con la referencia local
   `origin/main`.
 - Primera subcapa pendiente: **3.5**.
-- Progreso: **3.0 a 3.4f cerradas**. El inventario está registrado abajo y
+- Progreso: **3.0 a 3.5 cerradas**. El inventario está registrado abajo y
   reemplaza el desglose provisional de la activación.
 - **Reparación de 3.4b aplicada a producción** el 2026-08-13, con autorización
   explícita del usuario y tras revisar juntos el `--dry-run`. Las ocho tablas
@@ -149,7 +149,7 @@ del repositorio sin acceso a datos.
 | 3.4d | Guarda: el runner se niega sobre el endpoint agrupado | **Cerrada** |
 | 3.4e | Siembra del historial ya aplicado de `tenant_2005` | **Cerrada y aplicada en producción** |
 | 3.4f | Reposición de las 26 claves foráneas de `tenant_2005` | **Cerrada y aplicada en producción** |
-| 3.5 | Alta reproducible desde la migración base versionada | Pendiente |
+| 3.5 | Alta reproducible desde la migración base versionada | **Cerrada** |
 | 3.6 | Rollback, verificación manual, compuerta global y cierre | Pendiente |
 
 El ensayo se dividió al ejecutarlo. 3.4a resultó ser una subcapa completa por sí
@@ -1556,6 +1556,87 @@ antes no los había.
 imprime tabla, columnas y nombre de cada una. Revertir devuelve el schema a no
 tener integridad referencial, así que solo procede ante un problema concreto.
 
+## Subcapa 3.5: alta reproducible
+
+`crear_tenant_controller` deja de copiar la plantilla con `LIKE INCLUDING ALL` y
+aplica `migrations/base/20260813_esquema_base_tenant.sql` sobre el schema nuevo.
+El diff de producto son **24 líneas añadidas y 25 eliminadas** en un solo
+archivo: el bloque `DO $$` desaparece y en su lugar quedan un `SET LOCAL
+search_path` y la ejecución del archivo.
+
+### La trampa del `search_path`, ahora en el camino del alta
+
+Es la misma que reventó en 3.4f. El archivo usa nombres sin cualificar, así que
+sus `REFERENCES` se resuelven con el `search_path` vigente. Si la plantilla
+estuviera en el camino, las claves foráneas del tenant nuevo naceran apuntando a
+sus tablas.
+
+Por eso se fija `SET LOCAL search_path TO <schema_nuevo>` —**solo** el schema
+nuevo, sin `public`— antes de aplicar el archivo. `SET LOCAL` y no `SET` porque
+la conexión vuelve a un pool y el ámbito debe morir con la transacción.
+
+Hay una prueba dedicada que comprueba que el último `search_path` fijado antes
+de aplicar la base nombra el schema nuevo y **no** el de la plantilla.
+
+### Decisiones sobre la siembra
+
+- **Los datos semilla siguen en el controller**: la fila de
+  `institucion_branding`, la copia de las `plantilla_impresion` predefinidas y
+  el admin inicial. La migración base describe estructura; mezclar datos de
+  arranque dentro de ella la haría inaplicable a un tenant existente y ataría el
+  esquema a un contenido concreto.
+- **El historial se sigue copiando de la plantilla**, como dejó 3.3b. Con una
+  base versionada podría parecer más natural leer el directorio `migrations/`,
+  pero eso supondría que el directorio y la base están sincronizados, que es
+  justo lo que no se puede afirmar.
+
+### Riesgo que esta subcapa introduce y no resuelve
+
+La migración base y el directorio `migrations/` no están enlazados por nada.
+**Si alguien añade una migración nueva, la aplica a la plantilla y no regenera
+el archivo base, un tenant nuevo nacerá con la estructura antigua pero con el
+historial de la plantilla**: dirá tener una migración que no tiene.
+
+No se construyó la guarda en esta subcapa para no ampliar el alcance. La
+comprobación que la detectaría ya existe y está probada:
+`diferencias_estructurales()` en `scripts/sembrar_historial_tenant.py`. Queda
+como trabajo pendiente decidir si el alta debe verificarse contra la plantilla
+antes de sembrar, o si conviene que la propia migración base declare qué
+migraciones incorpora.
+
+### Ensayo sobre la rama
+
+Se dio de alta un tenant real por el camino nuevo y se comparó con la plantilla:
+
+| | Plantilla | Tenant nuevo | Faltan | Sobran |
+|---|---:|---:|---:|---:|
+| Columnas | 281 | 281 | 0 | 0 |
+| Índices | 89 | 89 | 0 | 0 |
+| Restricciones | 94 | 94 | 3 | 3 |
+| **Claves foráneas** | 37 | **37** | — | — |
+| **Secuencias propias** | 30 | **30** | — | — |
+| Disparadores | 1 | 1 | — | — |
+
+Ninguna columna difiere. Las 3 restricciones son las mismas `CHECK` que 3.4c ya
+explicó: se reimprimen con otra forma equivalente.
+
+Y las dos comprobaciones que importan:
+
+- **claves que apuntan fuera del schema nuevo: 0**;
+- **defaults que apuntan a la plantilla: 0**.
+
+El camino viejo producía **0 claves foráneas y 0 secuencias propias**. El nuevo
+produce 37 y 30. Ese es el resultado de la capa.
+
+La siembra siguió intacta: 1 fila de branding, 18 plantillas predefinidas, 1
+usuario admin, y 30 migraciones registradas. El schema de prueba y sus filas en
+`public` se eliminaron al terminar.
+
+### Verificación
+
+Compuerta global en **exit 0 con 570 pruebas**, Ruff correcto, ningún archivo de
+`migrations/` modificado y el diff limitado a un controller y sus pruebas.
+
 ### Reparaciones que esta capa debe encarar
 
 Se registran aquí para que no se pierdan y para que el usuario decida cuándo
@@ -2388,11 +2469,11 @@ su estructura. Once pruebas herméticas.
 - Capa activa: **3, migraciones y tenants**.
 - Última subcapa terminada: **3.4a**, ensayo no productivo sobre una rama de
   Neon: primera medición real y las cuatro hipótesis de 3.0 resueltas.
-- Última subcapa cerrada: **3.4b**, reparación de las secuencias de
-  `tenant_2005`. **Ensayada, no aplicada**: falta que el usuario la ejecute
-  contra producción.
-- Primera subcapa pendiente: **3.5**, alta reproducible: sustituir la copia por
-  `LIKE INCLUDING ALL` por la aplicación de la migración base.
+- Última subcapa cerrada: **3.5**, alta reproducible. Un tenant nuevo se
+  construye desde la migración base y nace con sus 37 claves foráneas y sus 30
+  secuencias propias, donde antes tenía 0 y 0.
+- Primera subcapa pendiente: **3.6**, cierre de capa: rollback, verificación
+  manual, compuerta global e índice maestro.
 - Commit base: `81882f3b1ee9e3b50076b0fc1fd93dcd9fd5ac70`, rama `main`.
 - Hallazgo central: seis puntos de entrada pueden mutar el esquema de un tenant
   y solo `apply_migration.py` registra lo que aplicó. El alta crea el schema

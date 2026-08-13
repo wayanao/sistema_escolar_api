@@ -1,5 +1,6 @@
 import re
 from datetime import date
+from pathlib import Path
 
 import psycopg2
 from fastapi import HTTPException, status
@@ -17,6 +18,17 @@ from app.security import get_password_hash, password_policy_errors
 
 
 TENANT_CODE_PATTERN = re.compile(r"^[a-z0-9_]{3,50}$")
+
+# Esquema base de un tenant, extraido del catalogo real y versionado. Se nombra
+# explicitamente en vez de buscar el ultimo archivo del directorio: cambiar de
+# esquema base debe ser una edicion visible en el diff, no un efecto colateral
+# de anadir un archivo.
+ESQUEMA_BASE_TENANT = (
+    Path(__file__).resolve().parents[2]
+    / "migrations"
+    / "base"
+    / "20260813_esquema_base_tenant.sql"
+)
 
 
 def _public_connection():
@@ -263,33 +275,20 @@ def crear_tenant_controller(data: dict, super_admin_id: int | None = None) -> di
         tenant_id = colegio[0]
 
         cursor.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(esquema_nuevo)))
+
+        # El schema se construye desde una migracion base versionada, no copiando
+        # la plantilla. La copia con LIKE INCLUDING ALL no reproducia las claves
+        # foraneas ni creaba secuencias propias, asi que cada tenant nacia sin
+        # integridad referencial y compartiendo los contadores de la plantilla.
+        #
+        # El archivo usa nombres sin cualificar, de modo que el search_path debe
+        # apuntar SOLO al schema nuevo mientras se aplica: si la plantilla
+        # estuviera en el camino, sus tablas resolverian las referencias y las
+        # claves foraneas naceran apuntando a otro schema.
         cursor.execute(
-            sql.SQL(
-                """
-                DO $$
-                DECLARE
-                    r RECORD;
-                BEGIN
-                    FOR r IN (
-                        SELECT tablename
-                        FROM pg_tables
-                        WHERE schemaname = {template_schema_literal}
-                    ) LOOP
-                        EXECUTE format(
-                            'CREATE TABLE %I.%I (LIKE %I.%I INCLUDING ALL)',
-                            {target_schema_literal},
-                            r.tablename,
-                            {template_schema_literal},
-                            r.tablename
-                        );
-                    END LOOP;
-                END $$;
-                """
-            ).format(
-                target_schema_literal=sql.Literal(esquema_nuevo),
-                template_schema_literal=sql.Literal(template_schema),
-            )
+            sql.SQL("SET LOCAL search_path TO {}").format(sql.Identifier(esquema_nuevo))
         )
+        cursor.execute(ESQUEMA_BASE_TENANT.read_text(encoding="utf-8"))
 
         # El schema nuevo es una copia estructural de la plantilla, asi que
         # hereda exactamente las migraciones que la plantilla tiene aplicadas.

@@ -37,7 +37,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 0 | Línea base y calidad | Pruebas deterministas, compuerta global y CI | **Cerrada**; CI verificada en remoto | [00_LINEA_BASE_CALIDAD.md](./00_LINEA_BASE_CALIDAD.md) |
 | 1 | Fundación de base de datos | Conexiones, transacciones, timeouts y pool definidos | **Cerrada**; calibración de `statement_timeout` pendiente y aceptada | [01_FUNDACION_BASE_DATOS.md](./01_FUNDACION_BASE_DATOS.md) |
 | 2 | Concurrencia | DB síncrona fuera del event loop preservando `ContextVar` | **Cerrada** y publicada; CI posterior al cierre no verificada | [02_CONCURRENCIA.md](./02_CONCURRENCIA.md) |
-| 3 | Migraciones y tenants | Todos los tenants versionados, runner bloqueado y alta reproducible | **Activa**; 3.0–3.4f cerradas, falta 3.5 | [03_MIGRACIONES_TENANTS.md](./03_MIGRACIONES_TENANTS.md) |
+| 3 | Migraciones y tenants | Todos los tenants versionados, runner bloqueado y alta reproducible | **Activa**; 3.0–3.5 cerradas, falta 3.6 | [03_MIGRACIONES_TENANTS.md](./03_MIGRACIONES_TENANTS.md) |
 | 4 | Reportes financieros | Dominio modular, N+1 eliminado y consultas medidas | En espera | Se crea al activarla |
 | 5 | Pagos y tipos de pago | Dominio financiero modularizado y protegido | En espera | Se crea al activarla |
 | 6 | Asignaciones y estudiantes | Dominios grandes separados con contratos estables | En espera | Se crea al activarla |
@@ -237,9 +237,13 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   activación creó únicamente la bitácora nueva y este índice; no inspeccionó ni
   modificó código, migraciones, esquemas, pruebas ni configuración.
 - Capa activa: **3, migraciones y tenants**. Subcapas **3.0, 3.1, 3.2, 3.3a y
-  3.3b y 3.4a–3.4f cerradas** el 2026-08-13. Primera subcapa pendiente: **3.5**,
-  alta reproducible: sustituir en el alta la copia por `LIKE INCLUDING ALL` por
-  la aplicación de la migración base.
+  3.3b, 3.4a–3.4f y 3.5 cerradas** el 2026-08-13. Primera subcapa pendiente:
+  **3.6**, cierre de capa.
+- Resultado de 3.5: el alta construye el schema desde la migración base en vez de
+  copiar la plantilla. Un tenant nuevo nace con **37 claves foráneas y 30
+  secuencias propias**, donde el camino anterior producía **0 y 0**. Ensayado
+  dando de alta un tenant real en la rama: 281 columnas idénticas a la
+  plantilla, 0 referencias cruzadas y 0 defaults apuntando a ella.
 - Resultado de 3.4d: `apply_migration.py` se niega a ejecutarse sobre el endpoint
   agrupado, donde 3.4a demostró que el lock no se sostiene. Efecto operativo: con
   el `.env` actual el runner ya no arranca; hay que usar el endpoint directo.

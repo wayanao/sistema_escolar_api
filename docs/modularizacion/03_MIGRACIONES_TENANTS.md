@@ -9,12 +9,13 @@
 - Rama acordada: `main`.
 - Estado al activar: árbol limpio; `HEAD` coincidente con la referencia local
   `origin/main`.
-- Primera subcapa pendiente: **3.1**.
-- Progreso: **3.0 cerrada**. El inventario está registrado abajo y reemplaza el
-  desglose provisional de la activación.
+- Primera subcapa pendiente: **3.2**.
+- Progreso: **3.0 y 3.1 cerradas**. El inventario está registrado abajo y
+  reemplaza el desglose provisional de la activación.
 - Código de producto modificado al activar: **ninguno**.
-- Código de producto modificado hasta ahora: **ninguno**. 3.0 fue una subcapa de
-  solo lectura.
+- Código de producto modificado hasta ahora: `apply_migration.py`, que ahora toma
+  un advisory lock de sesión antes de leer o escribir el historial. 3.0 fue una
+  subcapa de solo lectura.
 - Autorización: orden explícita del usuario el 2026-08-13, limitada a la
   activación documental de esta capa y con la instrucción de detenerse antes de
   3.0.
@@ -129,8 +130,8 @@ del repositorio sin acceso a datos.
 | Subcapa | Resultado | Estado |
 |---:|---|---|
 | 3.0 | Inventario, contratos, criterio de tenant reactivable, estrategia de verificación y línea base | **Cerrada** |
-| 3.1 | Bloqueo del runner contra ejecuciones simultáneas | **Pendiente** |
-| 3.2 | Caracterización ejecutable del runner y del alta actual | Pendiente |
+| 3.1 | Bloqueo del runner contra ejecuciones simultáneas | **Cerrada** |
+| 3.2 | Caracterización ejecutable del runner y del alta actual | **Pendiente** |
 | 3.3 | Versionado verificable: detectar tenants atrasados y sembrar altas nuevas | Pendiente |
 | 3.4 | Alta reproducible desde migraciones versionadas | Pendiente |
 | 3.5 | Ensayo no productivo, rollback, verificación manual y cierre | Pendiente |
@@ -358,6 +359,114 @@ que describe cuatro schemas operativos a una fecha pasada.
 Archivos previstos para 3.1: `apply_migration.py`,
 `tests/test_apply_migration.py` y esta bitácora.
 
+## Subcapa 3.1: resultado
+
+`apply_migration.py` gana una constante `MIGRATION_LOCK_KEY` y la función
+`try_acquire_migration_lock`. El runner pide `pg_try_advisory_lock` justo
+después de abrir la conexión y **antes** de `ensure_migration_history`; si otra
+ejecución lo tiene, imprime un mensaje propio, cierra cursor y conexión y
+devuelve exit 2 sin haber leído ni escrito nada.
+
+Todo lo demás se conserva sin tocar: la consulta de descubrimiento y su
+`ORDER BY id`, el checksum, la transacción por tenant con su `rollback` parcial
+y el conteo de fallos, los mensajes `OK`, `OMITIDA`, `PENDIENTE` y `FALLO`, los
+códigos de salida 0, 1 y 2, `--dry-run`, el `SET search_path TO <schema>, public`
+y la rama de migración pública. No se tocaron los cuatro scripts ad-hoc, el alta
+de tenant, `app/` ni ningún archivo de `migrations/`.
+
+### Por qué un lock de sesión y no de transacción
+
+`pg_advisory_xact_lock` se libera en cada `commit`, y el runner hace un `commit`
+por tenant: el lock se soltaría a mitad de la ejecución y dos procesos podrían
+intercalarse entre tenants. El lock de sesión sobrevive a los `commit` y
+`rollback` por tenant.
+
+No se añadió una liberación explícita. PostgreSQL libera los locks de sesión al
+cerrarse la conexión, y se comprobó que **todos** los caminos de retorno
+posteriores a `psycopg2.connect` cierran la conexión: el `finally` de la rama
+pública, el retorno sin tenants y el cierre tras el bucle. Añadir un
+`pg_advisory_unlock` en cada retorno habría agrandado el diff sin dar una
+garantía que el motor ya da.
+
+### Por qué exit 2 y no un código nuevo
+
+Un conflicto de lock devuelve **2**, el código de fallo que ya existía, en vez
+de introducir un 3. Los invariantes de esta capa exigen conservar los códigos de
+salida, y cualquier automatización que trate «distinto de cero» como «no se
+aplicó» sigue funcionando sin cambios. La señal que distingue el caso es el
+mensaje, no el código.
+
+### Por qué `--dry-run` también toma el lock
+
+Se consideró eximirlo, porque una simulación no escribe. Se descartó: la
+simulación lee la misma tabla que una ejecución real está escribiendo, así que
+su respuesta `PENDIENTE`/`OMITIDA` durante una migración en curso no es
+confiable. Se prefirió un solo camino de código y una respuesta conservadora.
+El coste aceptado es que no se puede simular mientras otra ejecución corre.
+
+### La caracterización se comprobó contra el runner anterior
+
+No basta con que las pruebas pasen después del cambio: hay que demostrar que
+describen el comportamiento que ya existía. Se retiró temporalmente solo el
+cambio de producto con `git stash push -- apply_migration.py`, se ejecutó el
+subconjunto que no menciona el lock y **8 pruebas pasaron sobre el runner
+base**. Después se restauró el cambio con `git stash pop` y se verificó que el
+lock volvía a estar presente.
+
+Esas 8 fijan sobre el código anterior el camino completo: aplicar y registrar,
+omitir una migración ya aplicada, rechazar el mismo nombre con checksum
+distinto, y el caso sin tenants operativos. Las 3 restantes describen
+comportamiento nuevo y por eso no se ejecutaron contra la base.
+
+Las pruebas son herméticas: usan un cursor guionizado y una conexión falsa, sin
+PostgreSQL, sin red y sin `.env` real. No demuestran que el lock funcione en un
+motor real; demuestran que el runner lo pide antes de todo lo demás y que se
+detiene sin efectos cuando no lo obtiene.
+
+| Comprobación | Resultado |
+|---|---|
+| Caracterización sobre el runner base | **8 pasaron**, 9 deseleccionadas |
+| Pruebas del archivo tras el cambio | **17 pasaron** |
+| Dirigidas ampliadas con tenants, super admin e índices | **48 pasaron** |
+| Compuerta global | **Exit 0**: 488 pruebas, 5 warnings conocidos |
+| Ruff del alcance | `All checks passed!` |
+| Dependencias | `No broken requirements found.` |
+
+La suite pasó de 477 a **488** pruebas: 11 casos nuevos en
+`tests/test_apply_migration.py`.
+
+### Precondición no verificada que condiciona el valor del lock
+
+Un advisory lock de sesión exige una sesión real. La capa 1 dejó registrado que
+el endpoint `-pooler` de Neon es PgBouncer. Si `DATABASE_URL` apuntara a ese
+endpoint, la conexión puede reasignarse entre sentencias y **un lock de sesión
+dejaría de ser una garantía**.
+
+No se verificó: 3.1 no leyó `.env` ni abrió ninguna conexión. Queda como
+precondición explícita del ensayo: **el runner debe usar el endpoint directo, no
+el agrupado**. Mientras no se compruebe, el bloqueo no debe presentarse como
+efectivo en el entorno real.
+
+### Siguiente subcapa: 3.2, trabajo exacto
+
+1. Confirmar `main`, árbol limpio y que todo commit posterior al base esté
+   explicado en esta bitácora.
+2. Completar la caracterización ejecutable que 3.0 identificó como hueco y que
+   3.1 solo cubrió en la parte que tocó: la rama de migración pública, el fallo
+   de un tenant que no debe detener a los siguientes, el conteo de fallos y el
+   exit 2 resultante, y el camino `--dry-run` sobre varios tenants.
+3. Caracterizar el alta de tenant en lo que 3.3 y 3.4 van a necesitar: que el
+   `CREATE SCHEMA` y el bloque de copia ocurren, y que **no** se siembra
+   `public.schema_migrations`. Esa prueba debe fallar cuando 3.3 corrija el
+   defecto, y ese fallo es la señal buscada.
+4. No modificar producto en 3.2. Es una subcapa de solo pruebas.
+5. Ejecutar pruebas específicas, Ruff del alcance, compuerta global y
+   `git diff --check`; actualizar esta bitácora y detenerse antes de 3.3.
+
+Archivos previstos para 3.2: `tests/test_apply_migration.py`,
+`tests/test_super_admin.py` o un archivo de pruebas nuevo para el alta, y esta
+bitácora.
+
 ## Criterios de cierre de la subcapa 3.0
 
 - El mecanismo actual de migraciones y de alta de tenants está descrito con
@@ -466,6 +575,16 @@ Archivos previstos para 3.1: `apply_migration.py`,
   convertido de LF a CRLF, cambia su checksum y convierte un `OMITIDA` en un
   `FALLO` para todos los tenants que ya lo tenían aplicado. Ninguna subcapa debe
   tocar los archivos existentes de `migrations/`.
+- El lock añadido en 3.1 **solo protege `apply_migration.py`**. Los cuatro
+  scripts ad-hoc siguen sin pedirlo, así que uno de ellos puede correr en
+  paralelo con el runner y chocar sobre el mismo tenant. Extender el lock a esos
+  scripts o retirarlos es una decisión pendiente; ninguna subcapa la ha tomado
+  y no debe presentarse la exclusión mutua como completa.
+- El lock de sesión de 3.1 supone una sesión real y estable. Si `DATABASE_URL`
+  apunta al endpoint agrupado que la capa 1 documentó como PgBouncer, la
+  conexión puede reasignarse entre sentencias y el lock deja de garantizar nada.
+  No se verificó qué endpoint usa el runner; es una precondición del ensayo, no
+  un hecho comprobado.
 - La CI remota no está verificada para los commits de la capa 2. Un fallo de
   entorno en GitHub Actions podría aparecer atribuido a esta capa; conviene
   obtener evidencia del run antes de acumular más cambios.
@@ -576,26 +695,92 @@ Archivos previstos para 3.1: `apply_migration.py`,
   comportamiento actual y añadiendo después un bloqueo que impida dos
   ejecuciones simultáneas del runner; detenerse antes de 3.2.
 
+### 2026-08-13 — subcapa 3.1
+
+- Modo de acceso: mismo checkout local; rama `main` y árbol limpio antes de
+  editar.
+- Commit observado: `7d1386a0b7f38afba0bf022281cb354a4491600d`, dos commits
+  locales por delante de la referencia local `origin/main`.
+- Continuidad: `81882f3` es el base; los dos commits posteriores son `38dc6b2`
+  (activación) y `7d1386a` (3.0), ambos documentales y explicados en esta
+  bitácora. El árbol ejecutable probado seguía siendo idéntico al base al
+  empezar. No había divergencia.
+- Código de producto: únicamente `apply_migration.py`. Se añadieron la constante
+  `MIGRATION_LOCK_KEY`, la función `try_acquire_migration_lock` y la guarda que
+  la usa antes de `ensure_migration_history`. No cambió el descubrimiento, el
+  checksum, la transacción por tenant, los mensajes, los códigos de salida,
+  `--dry-run`, el `search_path` ni la rama pública.
+- Pruebas: `tests/test_apply_migration.py` pasó de 6 a **17 casos**. Se añadió
+  un cursor guionizado y una conexión falsa que permiten recorrer
+  `apply_migration()` de principio a fin, algo que 3.0 registró como inexistente.
+- Archivos modificados: `apply_migration.py`, `tests/test_apply_migration.py` y
+  esta bitácora.
+- Migraciones ejecutadas, conexiones a PostgreSQL abiertas y accesos a
+  producción: **ninguno**.
+- Comandos ejecutados:
+  - precondiciones y continuidad: `git status --short --branch`,
+    `git log --oneline -3`, `git log --oneline 81882f3..HEAD`;
+  - caracterización sobre el runner base:
+    `git stash push -- apply_migration.py`,
+    `.\venv\Scripts\python.exe -m pytest -p no:cacheprovider -q tests/test_apply_migration.py -k "not lock and not dry_run"`,
+    `git stash pop`;
+  - pruebas del archivo:
+    `.\venv\Scripts\python.exe -m pytest -p no:cacheprovider -q tests/test_apply_migration.py`;
+  - dirigidas ampliadas: las anteriores más
+    `tests/test_apply_tenant_indexes.py`, `tests/test_super_admin.py` y
+    `tests/test_auth_tenant.py`;
+  - lint del alcance:
+    `.\venv\Scripts\python.exe -m ruff check apply_migration.py tests/test_apply_migration.py`;
+  - compuerta global: `.\venv\Scripts\python.exe scripts\verify.py`;
+  - alcance y whitespace: `git status --short`, `git diff --check` y el barrido
+    C0 reproducible.
+- Caracterización sobre el runner base: **8 pasaron**, 9 deseleccionadas. Es la
+  prueba de que describen el comportamiento anterior y no el nuevo.
+- Verificación final: 17 pruebas del archivo, **48 dirigidas** y compuerta global
+  en **exit 0 con 488 pruebas**, 5 warnings conocidos, Ruff correcto y
+  dependencias íntegras.
+- Decisiones: lock de sesión en vez de transaccional; sin `pg_advisory_unlock`
+  explícito porque todos los retornos cierran la conexión; exit 2 en vez de un
+  código nuevo; `--dry-run` también toma el lock. Cada una con su alternativa
+  descartada, registrada arriba.
+- Riesgos: el lock no cubre los cuatro scripts ad-hoc, y su validez depende de
+  que el runner use el endpoint directo y no el agrupado. Ninguno se marcó como
+  resuelto y ambos quedaron registrados en «Riesgos».
+- Verificación operativa heredada: la calibración de `DB_STATEMENT_TIMEOUT_MS`
+  permanece **pendiente y aceptada**.
+- Evidencia remota: sigue sin haber cliente de GitHub en este checkout; GitHub
+  Actions continúa **no verificada**.
+- Estado: **3.1 cerrada**. No se inició 3.2.
+- Siguiente acción exacta: ejecutar **3.2**, completando la caracterización
+  ejecutable del runner y del alta de tenant, sin modificar producto; detenerse
+  antes de 3.3.
+
 ## Entrega al próximo chat
 
 - Capa activa: **3, migraciones y tenants**.
-- Última subcapa terminada: **3.0**, inventario, contratos y caracterización.
-- Primera subcapa pendiente: **3.1**, bloqueo del runner contra ejecuciones
+- Última subcapa terminada: **3.1**, bloqueo del runner contra ejecuciones
   simultáneas.
+- Primera subcapa pendiente: **3.2**, caracterización ejecutable del runner y
+  del alta de tenant, sin modificar producto.
 - Commit base: `81882f3b1ee9e3b50076b0fc1fd93dcd9fd5ac70`, rama `main`.
 - Hallazgo central: seis puntos de entrada pueden mutar el esquema de un tenant
   y solo `apply_migration.py` registra lo que aplicó. El alta crea el schema
   copiando la plantilla sin sembrar historial, y los tenants suspendidos o
   cancelados quedan fuera del descubrimiento sin recuperar nada al reactivarse.
-- Verificación local vigente: compuerta global en exit 0 con 477 pruebas, Ruff y
-  dependencias correctos; 33 pruebas específicas y 40 ampliadas.
-- Bloqueos: ninguno para iniciar 3.1. Permanece pendiente y aceptada la
+- Estado de 3.1: `apply_migration.py` toma un advisory lock de sesión antes de
+  leer o escribir el historial y devuelve exit 2 si otra ejecución lo tiene. El
+  lock **no** cubre los cuatro scripts ad-hoc.
+- Verificación local vigente: compuerta global en exit 0 con **488 pruebas**,
+  Ruff y dependencias correctos; 17 pruebas del runner y 48 dirigidas. La
+  caracterización se comprobó además contra el runner anterior, con 8 pasadas.
+- Bloqueos: ninguno para iniciar 3.2. Permanece pendiente y aceptada la
   calibración de `DB_STATEMENT_TIMEOUT_MS` de la capa 1, y GitHub Actions sigue
   sin evidencia de run.
-- No medido todavía: el estado real de versionado por tenant y las cuatro
-  hipótesis sobre `LIKE ... INCLUDING ALL`. Ambas cosas exigen una base
-  desechable y no deben darse por ciertas.
-- Siguiente acción exacta: ejecutar únicamente 3.1 según «Siguiente subcapa:
-  3.1, trabajo exacto», sin tocar los scripts ad-hoc ni el alta de tenant, sin
-  modificar archivos existentes de `migrations/` y sin ejecutar ninguna
-  migración.
+- No medido todavía: el estado real de versionado por tenant, las cuatro
+  hipótesis sobre `LIKE ... INCLUDING ALL` y si el runner usa el endpoint
+  directo o el agrupado. Las tres cosas exigen acceso a una base y no deben
+  darse por ciertas; la última condiciona que el lock sirva de algo en el
+  entorno real.
+- Siguiente acción exacta: ejecutar únicamente 3.2 según «Siguiente subcapa:
+  3.2, trabajo exacto», sin modificar producto, sin tocar los scripts ad-hoc ni
+  archivos existentes de `migrations/` y sin ejecutar ninguna migración.

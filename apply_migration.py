@@ -29,8 +29,28 @@ CREATE TABLE IF NOT EXISTS public.schema_migrations (
 """
 
 
+"""Clave fija del advisory lock que serializa las ejecuciones del runner.
+
+Es un entero de 64 bits arbitrario pero estable. Cambiarlo permitiria que dos
+ejecuciones se tomen locks distintos y anularia la proteccion.
+"""
+MIGRATION_LOCK_KEY = 8274119453012006001
+
+
 def calculate_checksum(sql_text: str) -> str:
     return hashlib.sha256(sql_text.encode("utf-8")).hexdigest()
+
+
+def try_acquire_migration_lock(cursor) -> bool:
+    """Toma el lock que impide dos ejecuciones simultaneas del runner.
+
+    Devuelve False si otra ejecucion ya lo tiene. El lock es de sesion, no de
+    transaccion: sobrevive a los commit y rollback por tenant y PostgreSQL lo
+    libera solo cuando la conexion se cierra.
+    """
+    cursor.execute("SELECT pg_try_advisory_lock(%s)", (MIGRATION_LOCK_KEY,))
+    row = cursor.fetchone()
+    return bool(row and row[0])
 
 
 def ensure_migration_history(cursor) -> None:
@@ -90,6 +110,14 @@ def apply_migration(sql_path: Path, dry_run: bool = False) -> int:
     conn = psycopg2.connect(db_url)
     conn.autocommit = False
     cur = conn.cursor()
+
+    # El lock se toma antes de cualquier lectura o escritura del historial para
+    # que dos ejecuciones no lleguen a decidir sobre el mismo tenant.
+    if not try_acquire_migration_lock(cur):
+        print("X Ya hay otra ejecucion de migraciones en curso. No se aplico nada.")
+        cur.close()
+        conn.close()
+        return 2
 
     ensure_migration_history(cur)
     if is_public_migration(sql_path):

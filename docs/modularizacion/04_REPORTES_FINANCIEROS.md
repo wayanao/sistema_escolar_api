@@ -9,9 +9,10 @@
 - Rama acordada: `main`.
 - Estado al activar: árbol limpio; `HEAD` coincidente con la referencia local
   `origin/main`.
-- Primera subcapa pendiente: **4.2**.
-- Progreso: **4.0 y 4.1 cerradas**; la persistencia de los cuatro reportes
-  simples quedó extraída sin cambiar SQL, contratos HTTP ni lifecycle.
+- Primera subcapa pendiente: **4.3**.
+- Progreso: **4.0, 4.1 y 4.2 cerradas**; el N+1 de estado de cuenta de reportes
+  pasó de `10 + 5N` a 15 consultas fijas para `N > 0`, sin cambiar contratos ni
+  reglas financieras.
 - Código de producto modificado al activar: **ninguno**.
 - Autorización: orden explícita del usuario el 2026-08-14 para corregir la
   continuidad documental y activar la capa 4. La activación no autoriza iniciar
@@ -113,8 +114,8 @@ archivos, consultas o pruebas forman el dominio.
 |---:|---|---|
 | 4.0 | Inventario, contratos, caracterización y línea base de consultas | **Cerrada** |
 | 4.1 | Extraer la persistencia de los reportes simples sin cambiar SQL ni respuestas | **Cerrada** |
-| 4.2 | Sustituir el N+1 de `/reportes/estado-cuenta/{curso_id}` por lecturas agrupadas equivalentes | **Pendiente** |
-| 4.3 | Separar reglas financieras de sus consumidores y cerrar medición/retirada heredada | En espera |
+| 4.2 | Sustituir el N+1 de `/reportes/estado-cuenta/{curso_id}` por lecturas agrupadas equivalentes | **Cerrada** |
+| 4.3 | Separar reglas financieras de sus consumidores y cerrar medición/retirada heredada | **Pendiente** |
 
 El desglose se deriva del inventario de 4.0. Cada subcapa deberá volver a
 acotar sus archivos antes de modificar y no podrá incorporar trabajo de la
@@ -212,7 +213,7 @@ errores 400, anulación y aplicaciones de pagos adelantados.
 Los conteos excluyen autenticación, `search_path` y la sentencia combinada de
 timeouts de cada checkout de conexión:
 
-| Camino | Consultas de dominio actuales |
+| Camino | Consultas de dominio al cerrar 4.0 |
 |---|---:|
 | Reporte general | 4 |
 | Ingresos o egresos sin paginación | 1 |
@@ -225,13 +226,15 @@ timeouts de cada checkout de conexión:
 | Cartera sin estudiantes | 5 |
 | Cartera con estudiantes | 12, independiente de `N` |
 
-El N+1 objetivo de la capa está localizado en
-`reporte_estado_cuenta_curso_controller`: por estudiante repite dos agregados
+En la línea base de 4.0, el N+1 objetivo de la capa estaba localizado en
+`reporte_estado_cuenta_curso_controller`: por estudiante repetía dos agregados
 de pagos, la comprobación y lectura de valores personalizados, y la suma de
-«otros». El consumidor `/estado-cuenta/curso` repite además todo el cálculo de
-deuda y llega a doce consultas por estudiante. Cartera ya precarga los datos y
-sirve como evidencia de un patrón agrupado, no como autorización para crear una
-abstracción común.
+«otros». 4.2 sustituyó ese `5N`; el conteo vigente es 6 para curso vacío y 15
+para cualquier `N > 0` con las tablas opcionales presentes. El consumidor
+`/estado-cuenta/curso` continúa repitiendo todo el cálculo de deuda y llega a
+doce consultas por estudiante. Cartera ya precarga los datos y sirve como
+evidencia de un patrón agrupado, no como autorización para crear una abstracción
+común.
 
 ## Medición no productiva y calibración del timeout
 
@@ -315,7 +318,7 @@ cumplido.
 Los seis puntos se cumplieron en 4.1. El cierre y sus verificaciones están en
 el registro de ejecución; no se inició el trabajo de 4.2.
 
-## Primera subcapa pendiente: 4.2 — trabajo exacto
+## Subcapa 4.2 — alcance ejecutado
 
 1. Revalidar Git y limitar el alcance a
    `/reportes/estado-cuenta/{curso_id}`, su controlador, persistencia y pruebas.
@@ -333,6 +336,34 @@ el registro de ejecución; no se inició el trabajo de 4.2.
    carecía de `pagos.concepto_id`.
 7. Ejecutar pruebas específicas, Ruff, compuerta global y `git diff --check`;
    documentar y detenerse antes de 4.3.
+
+Los siete puntos se cumplieron en 4.2. El cierre y sus verificaciones están en
+el registro de ejecución; no se inspeccionó ni inició el trabajo de 4.3.
+
+## Primera subcapa pendiente: 4.3 — trabajo exacto
+
+1. Revalidar Git y limitar la inspección a las reglas financieras de reportes,
+   su orquestación, los consumidores directos ya inventariados en 4.0 y sus
+   pruebas relacionadas.
+2. Añadir o conservar caracterización antes de mover reglas: payloads, cálculos,
+   orden, mora, redondeos, nulos, errores, tenant, lifecycle y conteo 6/15 del
+   estado de cuenta de reportes.
+3. Separar reglas, HTTP y persistencia solo donde el inventario confirme una
+   frontera real y, para cualquier abstracción compartida, al menos dos usos
+   efectivos. No unificar contratos distintos por compartir nombres.
+4. No eliminar ni optimizar el `1 + 12N` del consumidor de cuentas. Si la
+   separación exige ajustar una delegación o import, caracterizar y conservar
+   su conteo y semántica; no modificar cartera o pagos más allá de demostrar que
+   sus contratos siguen intactos.
+5. Medir las consultas críticas únicamente sobre datos no productivos y un
+   schema equivalente. Si el conjunto no es equivalente, registrar la limitación
+   y no presentar la medición como evidencia real de equivalencia.
+6. Retirar solo código heredado que quede probado sin consumidores después de la
+   separación; ejecutar pruebas específicas, Ruff, compuerta global y
+   `git diff --check`.
+7. Al ser la última subcapa, documentar staging, rollback y verificación manual;
+   cerrar la capa y actualizar el índice solo si toda la compuerta queda
+   satisfecha. Dejar la capa 5 en espera y detenerse.
 
 ## Criterios de cierre de la capa
 
@@ -385,6 +416,20 @@ el registro de ejecución; no se inició el trabajo de 4.2.
   comparación SQL exacta de `Anulado` y ausencia de desempate en ingresos— se
   preservaron deliberadamente; corregirlas no pertenecía a 4.1.
 - No se tocaron estados de cuenta, cartera, cobros, pagos, N+1 ni timeouts.
+- 4.2 mantuvo la conexión y el cursor en el controlador y añadió a la frontera
+  de persistencia solo dos operaciones: los dos agregados de pagos por todos los
+  estudiantes y el agregado de «Otros Pagos». Ninguna abre, cierra, confirma o
+  revierte recursos.
+- Los valores personalizados reutilizan el helper agrupado ya existente, ahora
+  con un segundo consumidor real. No se creó un helper genérico de paginación ni
+  otra abstracción compartida.
+- Los dos primeros mapas de `obtener_pagos_por_concepto_estudiantes` no se
+  reutilizan porque excluyen pagos con aplicaciones y no son equivalentes a las
+  lecturas heredadas; solo se conserva su tercer mapa de aplicaciones maduras.
+- La prioridad sigue siendo presencia del nombre —incluso con importe cero— y
+  luego `concepto_id` como fallback. El nombre se normaliza con `lower()` sin
+  `strip`, «Otros Pagos» conserva su forma irregular y el filtro de anulados
+  continúa siendo exacto.
 
 ## Riesgos
 
@@ -398,6 +443,13 @@ el registro de ejecución; no se inició el trabajo de 4.2.
 - Una consulta agrupada puede romper permisos, ownership o aislamiento entre
   tenants aunque reduzca el número de consultas. La equivalencia debe incluir
   esos límites, no solo los totales.
+- El conteo fijo de 15 presupone, como la caracterización de 4.0, la existencia
+  de las tablas opcionales de aplicaciones y valores personalizados. En schemas
+  parciales puede bajar a 14 o 13, pero permanece independiente de `N`.
+- Valores de `tipo_pago` que solo difieren en mayúsculas o minúsculas continúan
+  colisionando al convertirse con `lower()` en Python. Ni el SQL heredado ni el
+  agrupado definen un `ORDER BY`, por lo que cuál valor prevalece ya era
+  indeterminado; 4.2 conserva esa rareza y no la corrige.
 - `DB_STATEMENT_TIMEOUT_MS` tiene ya evidencia no productiva y cancelación real,
   pero el valor final sigue sin calibrar contra un schema equivalente, volumen
   financiero representativo y el deadline HTTP externo.
@@ -572,18 +624,95 @@ el registro de ejecución; no se inició el trabajo de 4.2.
 - Estado: 4.1 **cerrada**; 4.2 **pendiente y no iniciada**.
 - Siguiente acción exacta: ejecutar únicamente 4.2 y detenerse antes de 4.3.
 
+### 2026-08-14 — cierre de 4.2
+
+- Modo de acceso: mismo checkout local en
+  `C:\Users\David\Documents\sistema_escolar_api`; Git fue validado directamente
+  y no se usó GitHub para inferir el estado local.
+- Precondición Git: rama `main`, árbol inicialmente limpio, `HEAD`
+  `5f9035d565c8b6366b9d6674db439d1d4c0e5cd6`, tres commits por delante de la
+  referencia local `origin/main`. El commit base
+  `46fad2c4c12482830cc58ac28ea2512f96155fb8` existe y es ancestro; los tres
+  commits posteriores corresponden a la activación, el cierre de 4.0 y el
+  cierre de 4.1, todos explicados en esta bitácora.
+- Alcance inspeccionado: únicamente
+  `/reportes/estado-cuenta/{curso_id}`, su controlador, las funciones de cobros
+  que consume, la persistencia y pruebas directas. No se inspeccionó ni inició
+  4.3.
+- Línea base específica antes del cambio:
+  `.\venv\Scripts\python.exe -m pytest -q -p no:cacheprovider
+  tests\test_reportes_query_counts.py tests\test_reportes_pagination.py
+  tests\test_pagos_adelantados.py::test_reporte_curso_aplica_solo_adelantos_maduros_y_no_los_duplica`;
+  **29 pasaron** en 0,47 s.
+- Caracterización previa: se creó
+  `tests/test_reportes_estado_cuenta.py` antes de modificar producto. Sus cuatro
+  casos iniciales pasaron en 0,18 s y Ruff terminó correcto. La revisión final
+  amplió el archivo a seis casos para fijar también que no se reutilizan los
+  mapas no equivalentes del helper masivo, los predicados agrupados, nombres sin
+  `strip` y la rama sin tabla de aplicaciones.
+- Producto modificado: `app/controllers/reportes_controller.py` y
+  `app/repositories/reportes_repository.py`. Pruebas modificadas:
+  `tests/test_reportes_query_counts.py`, `tests/test_pagos_adelantados.py` y la
+  caracterización nueva. Continuidad actualizada: esta bitácora,
+  `docs/modularizacion/README.md` y
+  `docs/modularizacion/PROMPT_CONTINUACION.md`.
+- Implementación: dos agregados de pagos y uno de «Otros Pagos» leen todos los
+  estudiantes con parámetros `(estudiante_ids,)`; el helper plural existente
+  carga los valores personalizados. El controlador arma mapas aislados por
+  estudiante y conserva la aplicación madura, precedencias, cálculos, forma de
+  respuesta, conexión, cursor, fallback y cierres.
+- Medición hermética: para 0/1/3 estudiantes con las tablas opcionales presentes,
+  el conteo pasó de **6/15/25** a **6/15/15**. El nuevo valor es fijo para
+  `N > 0`; no se presenta como equivalencia real contra la rama Neon anterior,
+  que carecía de `pagos.concepto_id`.
+- Pruebas específicas finales:
+  `.\venv\Scripts\python.exe -m pytest -q -p no:cacheprovider
+  tests\test_reportes_estado_cuenta.py tests\test_reportes_query_counts.py
+  tests\test_reportes_pagination.py tests\test_pagos_adelantados.py
+  tests\test_anulaciones_financieras.py tests\test_reportes_simple_controllers.py`;
+  **65 pasaron** en 0,64 s.
+- Ruff del alcance:
+  `.\venv\Scripts\python.exe -m ruff check
+  app\controllers\reportes_controller.py
+  app\repositories\reportes_repository.py
+  tests\test_reportes_estado_cuenta.py tests\test_reportes_query_counts.py
+  tests\test_pagos_adelantados.py`; resultado **correcto**.
+- Compuerta global final: `.\venv\Scripts\python.exe scripts\verify.py`;
+  **604 pruebas pasaron** en 2,30 s, 5 warnings heredadas, Ruff correcto,
+  `pip check` íntegro y exit 0. Un primer intento dentro del sandbox dejó 575
+  pruebas pasadas y 29 errores de permiso en el directorio temporal de pytest;
+  se repitió fuera del sandbox, sin red ni base de datos, y pasó.
+- Incidente de continuidad: durante el trabajo apareció una modificación no
+  solicitada que devolvía `PROMPT_CONTINUACION.md` a un estado obsoleto. Se
+  pausó; los tres revisores confirmaron no haberlo editado y el usuario autorizó
+  explícitamente restaurar solo ese archivo desde `HEAD`. Se restauró, se
+  comprobó que no quedara diff y únicamente después se actualizó de forma
+  intencional con el cierre de 4.2.
+- Revisión final: `git diff --check` terminó en exit 0 y el chequeo equivalente
+  del archivo nuevo no emitió errores de whitespace. El diff pertenece solo a
+  los ocho archivos declarados. No hubo cambios en rutas, cuentas, cartera,
+  pagos, configuración, timeouts ni dependencias.
+- PostgreSQL, migraciones, producción, commit, push y deploy: **ninguno**. La
+  evidencia de GitHub Actions posterior a la capa 0 continúa pendiente y no se
+  atribuye CI remota.
+- Estado: 4.2 **cerrada**; 4.3 **pendiente y no iniciada**.
+- Siguiente acción exacta: ejecutar únicamente 4.3 y, por ser la última
+  subcapa, aplicar su compuerta de cierre sin activar la capa 5.
+
 ## Entrega al próximo chat
 
 - Capa activa: **4, reportes financieros**.
-- Última subcapa terminada: **4.1**, extracción de persistencia de los reportes
-  simples con SQL y contratos conservados.
-- Primera subcapa pendiente: **4.2**, eliminación agrupada del `5N` de
-  `/reportes/estado-cuenta/{curso_id}`.
+- Última subcapa terminada: **4.2**, eliminación agrupada del `5N` de
+  `/reportes/estado-cuenta/{curso_id}`; conteo hermético 6 para curso vacío y 15
+  fijo para `N > 0`.
+- Primera subcapa pendiente: **4.3**, separación final de reglas y cierre de
+  medición/retirada heredada.
 - Commit base: `46fad2c4c12482830cc58ac28ea2512f96155fb8`, rama `main`.
 - Riesgos abiertos: candidato de timeout 15000 ms no aplicado; rama de prueba no
   equivalente por ausencia de `pagos.concepto_id`; credencial privilegiada por
-  rotar; evidencia de GitHub Actions posterior a la capa 0 aún ausente.
-- Precondición antes de 4.2: el usuario debe revisar y dejar limpio este cambio;
+  rotar; colisión heredada de nombres que solo difieren en mayúsculas; evidencia
+  de GitHub Actions posterior a la capa 0 aún ausente.
+- Precondición antes de 4.3: el usuario debe revisar y dejar limpio este cambio;
   después se reaudita todo commit posterior al base.
-- Siguiente acción exacta: ejecutar únicamente el trabajo exacto de 4.2 y
-  detenerse sin iniciar 4.3.
+- Siguiente acción exacta: ejecutar únicamente el trabajo exacto de 4.3, cerrar
+  la capa 4 solo si pasa su compuerta y dejar la capa 5 en espera.

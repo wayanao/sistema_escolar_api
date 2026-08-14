@@ -158,9 +158,9 @@ def test_financial_report_http_boundary_is_admin_only_sync_get():
 
 @pytest.mark.parametrize(
     ("student_count", "expected_queries"),
-    [(0, 6), (1, 15), (3, 25)],
+    [(0, 6), (1, 15), (3, 15)],
 )
-def test_financial_report_account_characterizes_five_queries_per_student(
+def test_financial_report_account_keeps_grouped_query_count_constant(
     monkeypatch,
     student_count,
     expected_queries,
@@ -175,6 +175,11 @@ def test_financial_report_account_characterizes_five_queries_per_student(
     assert cursor.closed is True
     assert connection.closed is True
     assert connection.committed is False
+    if student_count == 0:
+        assert not any(
+            "estudiante_id in %s" in query
+            for query, _params in cursor.executed
+        )
 
 
 @pytest.mark.parametrize(

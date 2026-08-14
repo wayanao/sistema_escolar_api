@@ -203,3 +203,63 @@ def consultar_egresos_rango(
             ORDER BY fecha DESC, id DESC
         """, (fecha_inicio, fecha_fin))
     return None, cursor.fetchall()
+
+
+def consultar_pagos_estado_cuenta_por_estudiantes(cursor, estudiante_ids):
+    if not estudiante_ids:
+        return [], []
+
+    cursor.execute(
+        """
+        SELECT estudiante_id, concepto_id, COALESCE(SUM(monto), 0)
+        FROM pagos
+        WHERE estudiante_id IN %s
+          AND COALESCE(estado, 'Pagado') <> 'Anulado'
+        GROUP BY estudiante_id, concepto_id
+        """,
+        (estudiante_ids,),
+    )
+    pagos_por_concepto = cursor.fetchall()
+
+    cursor.execute(
+        """
+        SELECT estudiante_id, tipo_pago, COALESCE(SUM(monto), 0)
+        FROM pagos
+        WHERE estudiante_id IN %s
+          AND COALESCE(estado, 'Pagado') <> 'Anulado'
+        GROUP BY estudiante_id, tipo_pago
+        """,
+        (estudiante_ids,),
+    )
+    pagos_por_nombre = cursor.fetchall()
+
+    return pagos_por_concepto, pagos_por_nombre
+
+
+def consultar_otros_pagos_por_estudiantes(
+    cursor,
+    estudiante_ids,
+    tiene_aplicaciones,
+):
+    if not estudiante_ids:
+        return []
+
+    excluir_adelantos = """
+          AND NOT EXISTS (
+              SELECT 1 FROM pagos_aplicaciones pa
+              WHERE pa.pago_id = pagos.id
+          )
+    """ if tiene_aplicaciones else ""
+    cursor.execute(
+        f"""
+        SELECT estudiante_id, COALESCE(SUM(monto), 0)
+        FROM pagos
+        WHERE estudiante_id IN %s
+          AND (concepto_id IS NULL OR concepto_id NOT IN (SELECT id FROM tipos_de_pagos))
+          AND COALESCE(estado, 'Pagado') <> 'Anulado'
+          {excluir_adelantos}
+        GROUP BY estudiante_id
+        """,
+        (estudiante_ids,),
+    )
+    return cursor.fetchall()

@@ -321,7 +321,7 @@ def test_reporte_curso_aplica_solo_adelantos_maduros_y_no_los_duplica(monkeypatc
         [(7, "Ana", "Díaz")],
         [],
         [],
-        (0,),
+        [],
     ])
     conn = FakeConnection(cursor)
     tipo_pago = {
@@ -350,8 +350,8 @@ def test_reporte_curso_aplica_solo_adelantos_maduros_y_no_los_duplica(monkeypatc
     )
     monkeypatch.setattr(
         reportes_controller,
-        "obtener_valores_personalizados_estudiante",
-        lambda _cursor, _estudiante_id: {},
+        "obtener_valores_personalizados_por_estudiantes",
+        lambda _cursor, _estudiante_ids: {7: {}},
     )
 
     def calcular_resumen(**contexto):

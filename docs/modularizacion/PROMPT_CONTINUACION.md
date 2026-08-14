@@ -141,10 +141,11 @@ Lo que sigue es un resumen para orientarse; **el estado vivo está en
 
 - Capas 0, 1, 2 y 3 **cerradas**.
 - Capa activa: **4, reportes financieros**. Commit base:
-  `46fad2c4c12482830cc58ac28ea2512f96155fb8`; primera subcapa pendiente: 4.0.
+  `46fad2c4c12482830cc58ac28ea2512f96155fb8`; 4.0 cerrada y primera subcapa
+  pendiente: 4.1.
 - Siguiente capa: **5, pagos y tipos de pago, en espera**.
-- La activación de la capa 4 fue exclusivamente documental: no inspeccionó ni
-  modificó código, pruebas, consultas, configuración o base de datos.
+- 4.0 inventarió nueve entradas, fijó la línea base `10 + 5N`/`1 + 12N` y añadió
+  diez pruebas de caracterización. No modificó producto, SQL ni configuración.
 - La capa 3 es la única del programa que **modificó la base de datos real**, con
   autorización explícita del usuario para cada paso. Dejó tres reparaciones
   aplicadas a producción, dos schemas demo eliminados y el alta de tenants
@@ -152,9 +153,10 @@ Lo que sigue es un resumen para orientarse; **el estado vivo está en
 - Quedan **dos tenants**: `tenant_2005`, el único de producción, y
   `tenant_colegio_1`, que es plantilla y demo a la vez y **no se puede borrar**
   porque el alta sigue copiando de él las plantillas de impresión y el historial.
-- Verificaciones heredadas que siguen **pendientes y aceptadas**: la calibración
-  de `DB_STATEMENT_TIMEOUT_MS` de la capa 1, y que GitHub Actions no se ha
-  verificado desde la capa 0.
+- Verificaciones heredadas que siguen **pendientes y aceptadas**: el valor
+  operativo final de `DB_STATEMENT_TIMEOUT_MS` de la capa 1, aunque 4.0 ya
+  comprobó cancelación y obtuvo una primera medición READ ONLY, y que GitHub
+  Actions no se ha verificado desde la capa 0.
 
 ### Tres cosas que quien continúe debe saber antes de tocar la base
 
@@ -175,6 +177,6 @@ La autorización puntual para activar la capa 4 se consumió el 2026-08-14 con
 una orden explícita del usuario. Quedó registrada en
 `04_REPORTES_FINANCIEROS.md` y **no puede reutilizarse**.
 
-La continuidad vigente es ejecutar únicamente 4.0 en un turno posterior. No
+La continuidad vigente es ejecutar únicamente 4.1 en un turno posterior. No
 existe autorización para activar otra capa, hacer commit, push, deploy,
 migraciones reales ni acceso a producción.

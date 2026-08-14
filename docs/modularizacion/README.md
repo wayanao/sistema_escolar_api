@@ -37,7 +37,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 0 | Línea base y calidad | Pruebas deterministas, compuerta global y CI | **Cerrada**; CI verificada en remoto | [00_LINEA_BASE_CALIDAD.md](./00_LINEA_BASE_CALIDAD.md) |
 | 1 | Fundación de base de datos | Conexiones, transacciones, timeouts y pool definidos | **Cerrada**; calibración de `statement_timeout` pendiente y aceptada | [01_FUNDACION_BASE_DATOS.md](./01_FUNDACION_BASE_DATOS.md) |
 | 2 | Concurrencia | DB síncrona fuera del event loop preservando `ContextVar` | **Cerrada** y publicada; CI posterior al cierre no verificada | [02_CONCURRENCIA.md](./02_CONCURRENCIA.md) |
-| 3 | Migraciones y tenants | Todos los tenants versionados, runner bloqueado y alta reproducible | **Cerrada**; dos puntos abiertos registrados | [03_MIGRACIONES_TENANTS.md](./03_MIGRACIONES_TENANTS.md) |
+| 3 | Migraciones y tenants | Todos los tenants versionados, runner bloqueado y alta reproducible | **Cerrada**; reparó producción y verificó en uso | [03_MIGRACIONES_TENANTS.md](./03_MIGRACIONES_TENANTS.md) |
 | 4 | Reportes financieros | Dominio modular, N+1 eliminado y consultas medidas | En espera | Se crea al activarla |
 | 5 | Pagos y tipos de pago | Dominio financiero modularizado y protegido | En espera | Se crea al activarla |
 | 6 | Asignaciones y estudiantes | Dominios grandes separados con contratos estables | En espera | Se crea al activarla |
@@ -345,9 +345,9 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
 - Código de producto modificado al activar la capa 3: ninguno.
 - Limpieza final, 2026-08-14: la rama de ensayo de Neon quedó **eliminada**. Los
   14 índices duplicados de `tenant_2005` se midieron y se decidió **no
-  borrarlos**: el ahorro no compensa otra operación sobre producción. Queda por
-  confirmar si se rotó la contraseña de `neondb_owner`; si así fue, hay que
-  actualizar `DATABASE_URL` en `.env` y en el despliegue.
+  borrarlos**: el ahorro no compensa otra operación sobre producción. La
+  credencial de producción quedó verificada: el usuario inicia sesión en los dos
+  tenants, así que `.env` sigue siendo válido.
 - Código de producto modificado durante la capa 3: solo
   `apply_migration.py`, en la subcapa 3.1. Sin cambios en rutas, payloads,
   status codes, permisos, tenant, ownership, SQL de dominio ni en los archivos
@@ -372,9 +372,10 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   la capa 0, sin verificaciones pendientes; conserva la compuerta, la CI y el
   inventario de contratos que la capa 1 debe preservar.
 - [PROMPT_CONTINUACION.md](./PROMPT_CONTINUACION.md): texto universal para
-  iniciar o continuar en otro chat. Su autorización de uso inmediato para
-  activar la capa 3 se consumió el 2026-08-13 y **fue retirada del archivo**
-  para que no se reaplique sobre un estado ya cambiado. Un chat nuevo copia solo
-  el bloque universal; el índice y la bitácora activa le indican que 3.4 espera
-  una base desechable y no debe iniciarse sin ella.
+  iniciar o continuar en otro chat, más un resumen del estado del programa y una
+  **autorización de uso inmediato para activar la capa 4**, válida solo mientras
+  este índice siga marcando que no hay capa activa. Incluye las tres trampas que
+  dejó la capa 3: el endpoint `-pooler`, los nombres sin cualificar que resuelve
+  el `search_path`, y que los ensayos necesitan una rama de Neon creada desde
+  producción.
 - [PLANTILLA_CAPA.md](./PLANTILLA_CAPA.md): estructura de la siguiente bitácora.

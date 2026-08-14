@@ -122,21 +122,105 @@ archivos requeridos.
 Si dos asistentes indican capas diferentes, prevalece el estado guardado en
 `README.md` y en la bitácora de continuidad, no la memoria de la conversación.
 
-## Autorizaciones puntuales ya consumidas
+## Cómo se usan las autorizaciones puntuales
 
 Este archivo llegó a contener una autorización de uso inmediato para activar la
-capa 3. **Fue consumida el 2026-08-13** y se retiró para que nadie la vuelva a
-aplicar sobre un estado que ya cambió: la capa 3 está activa, su subcapa 3.0
-quedó cerrada y existe una bitácora propia. Reutilizar aquel texto hoy
-intentaría crear una bitácora que ya existe y registrar un commit base
-equivocado.
+capa 3. Se consumió el 2026-08-13 y se retiró. La lección no fue «no guardar
+autorizaciones», sino que **una autorización guardada debe llevar su propia
+condición de caducidad**: si el estado documental ya cambió, no debe aplicarse.
 
-La regla general que deja esa experiencia: una autorización puntual se escribe
-para un estado documental concreto, se usa una vez y se retira. El estado vivo
-se lee siempre desde `README.md` y la bitácora activa, nunca desde una
-autorización guardada. El bloque universal de arriba no caduca; estos añadidos
-sí.
+Por eso la de abajo empieza diciendo cuándo es válida. Quien la use debe leer
+antes el índice maestro; si el estado no coincide, no la reutiliza.
 
-Si en el futuro hace falta otra autorización puntual —activar la capa
-siguiente, aceptar una verificación pendiente, ampliar un alcance—, el usuario
-la escribe en el chat junto al bloque universal. No es necesario guardarla aquí.
+Cuando se consuma, se retira o se sustituye por la de la capa siguiente.
+
+## Estado del programa al 2026-08-14
+
+Lo que sigue es un resumen para orientarse; **el estado vivo está en
+`docs/modularizacion/README.md`**, que es lo que manda si algo no coincide.
+
+- Capas 0, 1, 2 y 3 **cerradas**. **No hay capa activa.**
+- Siguiente: **capa 4, reportes financieros, en espera**.
+- La capa 3 es la única del programa que **modificó la base de datos real**, con
+  autorización explícita del usuario para cada paso. Dejó tres reparaciones
+  aplicadas a producción, dos schemas demo eliminados y el alta de tenants
+  reconstruida desde una migración base versionada.
+- Quedan **dos tenants**: `tenant_2005`, el único de producción, y
+  `tenant_colegio_1`, que es plantilla y demo a la vez y **no se puede borrar**
+  porque el alta sigue copiando de él las plantillas de impresión y el historial.
+- Verificaciones heredadas que siguen **pendientes y aceptadas**: la calibración
+  de `DB_STATEMENT_TIMEOUT_MS` de la capa 1, y que GitHub Actions no se ha
+  verificado desde la capa 0.
+
+### Tres cosas que quien continúe debe saber antes de tocar la base
+
+1. **`apply_migration.py` se niega sobre el endpoint `-pooler`.** Allí su lock de
+   sesión no impide dos ejecuciones simultáneas: se comprobó. Para migrar hay
+   que apuntar `DATABASE_URL` al endpoint directo.
+2. **`pg_get_constraintdef`, `pg_get_indexdef` y la migración base devuelven
+   nombres sin cualificar**, que se resuelven con el `search_path`. Cualquier
+   cosa que copie estructura entre schemas debe fijarlo al destino, o creará
+   referencias cruzadas. Ya pasó una vez y falló por casualidad.
+3. **Los ensayos se hacen sobre una rama de Neon creada desde producción**, no
+   sobre una base vacía: la estructura real solo existe en la base. La rama que
+   se usó en la capa 3 ya fue eliminada; hace falta crear una nueva.
+
+## Autorización de uso inmediato: activar la capa 4
+
+Válida **solo mientras el índice maestro siga indicando que no existe una capa
+activa y que la capa 4 está en espera**. Si el estado ya cambió, no la
+reutilices: vuelve a determinarlo desde el índice.
+
+Se copia el bloque universal de arriba y se añade inmediatamente después:
+
+```text
+Autorizo activar únicamente la capa 4, Reportes financieros.
+
+Acepto continuar manteniendo pendientes las verificaciones heredadas: la
+calibración operativa de DB_STATEMENT_TIMEOUT_MS de la capa 1 y la ausencia de
+evidencia de GitHub Actions desde la capa 0. Regístralas como pendientes,
+conserva su riesgo y no las marques como cumplidas.
+
+Esta autorización permite solamente la activación documental. No autoriza
+inspeccionar código de la capa 4, implementar 4.0, tocar la base de datos,
+hacer deploy, commit o push. Después de activar la capa, detente.
+
+En el mismo checkout local:
+
+1. Lee y aplica completamente el protocolo universal anterior.
+2. Valida `main`, `git status`, el HEAD limpio vigente, `origin/main` y la
+   continuidad desde el commit base de la capa 3,
+   `81882f3b1ee9e3b50076b0fc1fd93dcd9fd5ac70`, comprobando que todo commit
+   posterior esté explicado en 03_MIGRACIONES_TENANTS.md.
+3. Confirma que la capa 3 está cerrada, que la capa 4 sigue en espera y que no
+   existe otra capa activa. Si hay divergencia o un commit sin explicar,
+   detente.
+4. No uses ningún hash de memoria: comprueba primero el HEAD limpio real.
+5. No declares GitHub Actions verificada solo porque HEAD coincida con
+   origin/main; exige evidencia del run asociado.
+6. Crea `docs/modularizacion/04_REPORTES_FINANCIEROS.md` partiendo de
+   `docs/modularizacion/PLANTILLA_CAPA.md`.
+7. Registra el HEAD limpio vigente como commit base, rama `main`, estado
+   `Activa`, primera subcapa pendiente `4.0` y código de producto modificado al
+   activar: ninguno.
+8. Define el objetivo solo desde el índice maestro: separar HTTP, reglas,
+   servicios y persistencia del dominio de reportes; eliminar el N+1 mediante
+   consultas agrupadas equivalentes; medir las consultas críticas con EXPLAIN
+   ANALYZE sobre datos no productivos.
+9. Deja 4.0 como inventario, contratos y caracterización. No inventes detalles
+   de implementación sin inspeccionarlos en un turno posterior.
+10. Ten presente que la capa 3 dejó claves foráneas nuevas en tenant_2005: los
+    reportes que borren o inserten pueden encontrar restricciones donde antes no
+    las había.
+11. Actualiza `docs/modularizacion/README.md` para marcar únicamente la capa 4
+    como Activa, enlazar su bitácora y dejar 4.0 pendiente.
+12. Ejecuta `git diff --check`, comprueba el whitespace del archivo nuevo y
+    verifica que el alcance contenga exclusivamente `README.md` y
+    `04_REPORTES_FINANCIEROS.md`.
+13. Informa el commit base, la primera subcapa pendiente, las verificaciones
+    heredadas y cualquier evidencia remota disponible. Detente sin inspeccionar
+    ni implementar 4.0.
+
+No hagas commit, push, deploy, migraciones reales ni acceso a producción. Yo
+revisaré los cambios y controlaré su publicación.
+```

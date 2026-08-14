@@ -1882,12 +1882,16 @@ nombres están en el registro de ejecución de esta fecha; el criterio para
 elegir cuál conservar de cada grupo es indiferente al rendimiento, lo único que
 importa es que sobreviva exactamente uno y que ninguno respalde una restricción.
 
-**Rotación de la credencial: pendiente de comprobar por el usuario.** Al intentar
-conectar a la rama tras su borrado, la autenticación falló. Si además se rotó la
-contraseña del rol `neondb_owner` —que es compartido entre ramas y producción—,
-la `DATABASE_URL` de `.env` habrá quedado obsoleta y la aplicación no podrá
-conectarse. La comprobación es arrancar la aplicación: si inicia sesión, no hay
-nada que hacer.
+**Credencial de producción: verificada el 2026-08-14.** Al intentar conectar a
+la rama tras su borrado, la autenticación falló, lo que abrió la duda de si se
+había rotado también la contraseña del rol `neondb_owner`, compartido entre
+ramas y producción. El usuario comprobó que **puede iniciar sesión en los dos
+tenants**, así que la `DATABASE_URL` de `.env` sigue siendo válida y no hay nada
+que actualizar. El fallo era propio de la rama eliminada.
+
+Ese inicio de sesión sirve además como verificación adicional: los dos schemas
+que quedan funcionan a través de la aplicación después de todas las
+reparaciones.
 
 ### Reparaciones que esta capa debe encarar
 
@@ -2763,9 +2767,9 @@ Quedan **dos schemas de tenant**: `tenant_2005`, el único de producción, y
 4. **14 índices duplicados** en `tenant_2005`. Medidos y descartados
    deliberadamente: el ahorro no compensa otra operación sobre producción.
    Disponible como limpieza cosmética, no es un defecto.
-5. ~~La rama de Neon sigue viva.~~ **Eliminada** por el usuario el 2026-08-14.
-   Queda por confirmar si se rotó también la contraseña de `neondb_owner`: si
-   así fue, hay que actualizar `DATABASE_URL` en `.env` y en el despliegue.
+5. ~~La rama de Neon sigue viva.~~ **Eliminada** por el usuario el 2026-08-14, y
+   la credencial de producción **verificada**: inicia sesión en los dos tenants,
+   así que `.env` sigue siendo válido.
 6. Heredados: `DB_STATEMENT_TIMEOUT_MS` sin calibrar desde la capa 1 y GitHub
    Actions sin verificar desde la capa 0.
 

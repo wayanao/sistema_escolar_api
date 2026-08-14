@@ -1,6 +1,6 @@
 # Guía maestra de evolución segura del backend
 
-Última revisión: 2026-08-13.
+Última revisión: 2026-08-14.
 
 ## Propósito
 
@@ -38,7 +38,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 1 | Fundación de base de datos | Conexiones, transacciones, timeouts y pool definidos | **Cerrada**; calibración de `statement_timeout` pendiente y aceptada | [01_FUNDACION_BASE_DATOS.md](./01_FUNDACION_BASE_DATOS.md) |
 | 2 | Concurrencia | DB síncrona fuera del event loop preservando `ContextVar` | **Cerrada** y publicada; CI posterior al cierre no verificada | [02_CONCURRENCIA.md](./02_CONCURRENCIA.md) |
 | 3 | Migraciones y tenants | Todos los tenants versionados, runner bloqueado y alta reproducible | **Cerrada**; reparó producción y verificó en uso | [03_MIGRACIONES_TENANTS.md](./03_MIGRACIONES_TENANTS.md) |
-| 4 | Reportes financieros | Dominio modular, N+1 eliminado y consultas medidas | En espera | Se crea al activarla |
+| 4 | Reportes financieros | Dominio modular, N+1 eliminado y consultas medidas | **Activa**; 4.0 pendiente | [04_REPORTES_FINANCIEROS.md](./04_REPORTES_FINANCIEROS.md) |
 | 5 | Pagos y tipos de pago | Dominio financiero modularizado y protegido | En espera | Se crea al activarla |
 | 6 | Asignaciones y estudiantes | Dominios grandes separados con contratos estables | En espera | Se crea al activarla |
 | 7 | Resto de dominios | Migración individual con contratos y pruebas | En espera | Una bitácora por dominio al activarlo |
@@ -48,10 +48,10 @@ cierre y el usuario ordene continuar, se crea su sucesora desde
 `PLANTILLA_CAPA.md`, se registra el commit base vigente y se actualiza esta
 tabla.
 
-Las capas 0, 1, 2 y 3 están cerradas. **No existe una capa activa**: la capa 4
-permanece en espera y no fue activada. La capa 3 se abrió y se cerró el
-2026-08-13, y es la única del programa que modificó la base de datos real, con
-autorización explícita del usuario para cada paso. No se atribuye ningún
+Las capas 0, 1, 2 y 3 están cerradas. La capa 4 está **activa** desde el
+2026-08-14 y su primera subcapa pendiente es 4.0. La capa 3 se abrió y se cerró
+el 2026-08-13, y es la única del programa que modificó la base de datos real,
+con autorización explícita del usuario para cada paso. No se atribuye ningún
 resultado de GitHub Actions sin evidencia del run correspondiente.
 
 ## Alcance de cada capa
@@ -252,7 +252,18 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   `docs/MIGRACIONES.md`, sección «Añadir una migración nueva».
 - **Verificación manual hecha** el 2026-08-13 por el usuario, con resultado
   correcto tras ejercitar la aplicación contra la base ya reparada.
-- Capa activa: **ninguna**. Siguiente capa: 4, reportes financieros, en espera.
+- Capa 4 **activada** el 2026-08-14 por orden explícita del usuario. Commit
+  base: `46fad2c4c12482830cc58ac28ea2512f96155fb8`, el `HEAD` limpio vigente en
+  `main` y coincidente con la referencia local `origin/main`. Los 13 commits
+  posteriores al base de la capa 3 fueron auditados y están explicados en su
+  bitácora. La activación es únicamente documental: no inspecciona ni modifica
+  código, pruebas, consultas, configuración o base de datos.
+- Decisión al activar la capa 4: continuar localmente aceptando que sigan
+  pendientes la calibración operativa de `DB_STATEMENT_TIMEOUT_MS` y la
+  evidencia de GitHub Actions posterior a la capa 0. No se consideran
+  cumplidas; la primera afecta la confianza en los límites de las consultas
+  pesadas y la segunda impide afirmar que este `HEAD` pasó la CI remota.
+- Capa activa: **4, reportes financieros**. Primera subcapa pendiente: **4.0**.
 - Resultado de 3.5: el alta construye el schema desde la migración base en vez de
   copiar la plantilla. Un tenant nuevo nace con **37 claves foráneas y 30
   secuencias propias**, donde el camino anterior producía **0 y 0**. Ensayado
@@ -264,9 +275,10 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
 - Resultado de 3.4e, **aplicado a producción** el 2026-08-13:
   `scripts/sembrar_historial_tenant.py` registró las 15 migraciones que
   `tenant_2005` ya tenía aplicadas, tras comprobar que reproduce la estructura
-  de la plantilla. El informe de 3.3a lo da ahora como `OK`; solo queda
-  `tenant_4444`, que es demo. Se verificó antes que ninguna de las 15 cambiaría
-  la estructura y que solo una tocaría datos, de forma inocua.
+  de la plantilla. Al aplicarla solo quedó pendiente `tenant_4444`, que era
+  demo; después se eliminó y la auditoría final pasó a exit 0. Se verificó antes
+  que ninguna de las 15 cambiaría la estructura y que solo una tocaría datos,
+  de forma inocua.
 - Resultado de 3.4f, **aplicado a producción** el 2026-08-13: se repusieron las
   26 claves foráneas ausentes de `tenant_2005`, que ahora iguala las
   restricciones de la plantilla y las tiene todas validadas. El ensayo destapó
@@ -284,16 +296,18 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   una inserción controlada que se revirtió sin dejar filas. Es la única
   modificación de la base real en todo el programa.
 - **Resultado de 3.4a, el más importante de la capa.** De los cuatro schemas
-  solo `tenant_2005` es producción real; los demás son demo o prueba. El ensayo
-  sobre una rama de Neon confirmó las cuatro hipótesis de 3.0 y encontró una
-  **avería en curso**: ocho tablas de ese colegio —`estudiantes`, `profesor`,
+  solo `tenant_2005` era producción real; los demás eran demo o prueba. El
+  ensayo sobre una rama de Neon confirmó las cuatro hipótesis de 3.0 y encontró
+  entonces una **avería en curso**: ocho tablas de ese colegio —`estudiantes`,
+  `profesor`,
   `asignaciones`, `asistencia`, `notas_detalle`, `pagos`, `boletin_cabecera` y
   `boletin_detalles`— no pueden insertar, porque toman su `id` de secuencias que
   viven en el schema de demostración y ya están por debajo del `MAX(id)` real.
   Además, `scripts/limpiar_tenant_colegio_1_operativo.py` haría
   `TRUNCATE … RESTART IDENTITY` sobre 19 de esas secuencias. `tenant_2005` tiene
   también 11 claves foráneas de 37, y el advisory lock de 3.1 no se sostiene
-  sobre el endpoint agrupado que usa `.env`.
+  sobre el endpoint agrupado que usa `.env`. Las secuencias y claves quedaron
+  reparadas después, y el runner pasó a rechazar ese endpoint.
 - **Resultado de 3.4b**: `scripts/reparar_secuencias_tenant.py` da al tenant
   secuencias propias posicionadas en su `MAX(id)` real. Es auto-medido —calcula
   los máximos al ejecutarse, no lleva valores precalculados—, transaccional e
@@ -302,42 +316,45 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   PostgreSQL 17.10 y se cambió a `ALTER SEQUENCE … RESTART`, que sí. El ensayo
   se repitió comparando también `last_value` de todas las secuencias e
   incluyendo un fallo simulado: 26 columnas y 8 colisiones reparadas a 0, y ni
-  el fallo ni el rollback dejan rastro. **No se aplicó a producción**: eso lo
-  controla el usuario. Las claves foráneas, el historial faltante y el runner
-  sobre `-pooler` siguen sin reparar.
+  el fallo ni el rollback dejan rastro. Después del ensayo se aplicó a
+  producción con autorización explícita; `tenant_2005` conserva 30 secuencias
+  propias y cero prestadas.
 - Decisión del 2026-08-13: las 30 migraciones de tenant son incrementales y
   ninguna crea las tablas base, que hoy solo existen dentro del schema
   plantilla. El usuario decidió adelantar el ensayo no productivo para extraer
   de una base desechable el DDL real y promoverlo a una migración base
   versionada, descartando `scripts/legacy/crear_cliente.py` como fuente. El
   ensayo pasó a ser 3.4, el alta reproducible bajó a 3.5 y el cierre a 3.6.
-- Resultado de 3.0, de solo lectura: seis puntos de entrada pueden mutar el
-  esquema de un tenant y solo `apply_migration.py` registra lo que aplicó; el
-  alta copia el schema plantilla sin sembrar `public.schema_migrations`; los
-  tenants `suspendido` y `cancelado` quedan fuera del descubrimiento y no
-  recuperan nada al reactivarse.
+- Resultado de 3.0, de solo lectura: registró que seis puntos de entrada podían
+  mutar el esquema de un tenant y solo `apply_migration.py` registraba lo
+  aplicado; el alta copiaba entonces el schema plantilla sin sembrar
+  `public.schema_migrations`. Las subcapas posteriores corrigieron el alta y
+  añadieron una auditoría que incluye los estados omitidos por el runner.
 - Resultado de 3.1: `apply_migration.py` toma un advisory lock de sesión antes
   de leer o escribir el historial y devuelve exit 2 si otra ejecución lo tiene.
   Se conservaron descubrimiento, checksum, transacción por tenant, mensajes,
   códigos de salida y `--dry-run`. El lock **no** cubre los cuatro scripts
-  ad-hoc y su validez depende de que el runner use el endpoint directo y no el
-  agrupado, extremo no verificado.
+  ad-hoc. 3.4a verificó que solo se sostiene sobre el endpoint directo y 3.4d
+  hizo que el runner rechace el agrupado antes de conectar.
 - Resultado de 3.2, solo pruebas: caracterización ejecutable del runner completo
-  y del alta de tenant. Incluye una prueba deliberada,
+  y del alta de tenant. Incluyó una prueba deliberada,
   `test_el_alta_todavia_no_siembra_el_historial_de_migraciones`, que **debe
-  fallar** cuando 3.3b corrija el defecto.
+  fallar** cuando 3.3b corrigiera el defecto; 3.3b produjo esa señal y la
+  reemplazó por pruebas positivas.
 - Resultado de 3.3a: se añadió `scripts/auditar_migraciones_tenants.py`, un
   informe de solo lectura que compara `migrations/` con
   `public.schema_migrations` e incluye a los tenants `suspendido` y `cancelado`
   que el runner omite. Abre la transacción como `READ ONLY` y no crea el
-  historial si falta. **No se ha ejecutado contra ninguna base**; su primera
-  ejecución real pertenece al ensayo de 3.5.
+  historial si falta. Su primera ejecución real ocurrió en 3.4a; después de las
+  reparaciones y la eliminación de los demos termina en exit 0 con todos los
+  destinos al día.
 - Resultado de 3.3b: el alta siembra `public.schema_migrations` copiando las
   filas del schema plantilla, en su misma transacción y con una guarda para no
   romper una base sin historial. Se verificó que las pruebas nuevas fallan
   contra el controlador anterior, que es la señal esperada. La compuerta cerró
   en exit 0 con **529 pruebas**.
-- Siguiente capa: 4, reportes financieros, en espera.
+- Capa 4 activa; primera subcapa pendiente: 4.0, inventario, contratos y
+  caracterización.
 - Código de producto modificado durante la capa 0: ninguno.
 - Código de producto modificado durante la capa 1: el ciclo de vida de las
   conexiones en 20 archivos de `app/`, más los timeouts. Sin cambios en rutas,
@@ -348,19 +365,25 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   borrarlos**: el ahorro no compensa otra operación sobre producción. La
   credencial de producción quedó verificada: el usuario inicia sesión en los dos
   tenants, así que `.env` sigue siendo válido.
-- Código de producto modificado durante la capa 3: solo
-  `apply_migration.py`, en la subcapa 3.1. Sin cambios en rutas, payloads,
-  status codes, permisos, tenant, ownership, SQL de dominio ni en los archivos
-  existentes de `migrations/`.
+- Código de producto modificado durante la capa 3: `apply_migration.py`, para el
+  lock y la guarda del endpoint agrupado, y
+  `app/controllers/super_admin_controller.py`, para sembrar historial y dar de
+  alta desde la migración base. Sin cambios en rutas, payloads, status codes,
+  permisos, tenant, ownership, SQL de dominio ni en los archivos existentes de
+  `migrations/`.
 
 ## Archivos de continuidad
 
+- [04_REPORTES_FINANCIEROS.md](./04_REPORTES_FINANCIEROS.md): **bitácora
+  activa** de la capa 4 y fuente de continuidad. Registra el commit base, las
+  verificaciones heredadas aceptadas como pendientes y el trabajo exacto de
+  4.0. Es el documento que un chat nuevo debe leer después de este índice.
 - [03_MIGRACIONES_TENANTS.md](./03_MIGRACIONES_TENANTS.md): **bitácora cerrada**
-  de la capa 3 y **fuente de continuidad**. Conserva el inventario, las tres
+  de la capa 3. Conserva el inventario, las tres
   reparaciones aplicadas a producción con su rollback, el ensayo sobre una rama
-  de Neon, la verificación manual pendiente, los dos puntos abiertos y las
-  lecciones sobre `setval`, el `search_path` y la comparación de índices. Es el
-  documento que un chat nuevo debe leer después de este índice.
+  de Neon, la verificación manual ya realizada, la resolución de sus dos puntos
+  abiertos y las lecciones sobre `setval`, el `search_path` y la comparación de
+  índices.
 - [02_CONCURRENCIA.md](./02_CONCURRENCIA.md): bitácora cerrada de la capa 2;
   conserva la medición, el límite de capacidad, staging, rollback, verificación
   manual y riesgos residuales.
@@ -372,10 +395,9 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   la capa 0, sin verificaciones pendientes; conserva la compuerta, la CI y el
   inventario de contratos que la capa 1 debe preservar.
 - [PROMPT_CONTINUACION.md](./PROMPT_CONTINUACION.md): texto universal para
-  iniciar o continuar en otro chat, más un resumen del estado del programa y una
-  **autorización de uso inmediato para activar la capa 4**, válida solo mientras
-  este índice siga marcando que no hay capa activa. Incluye las tres trampas que
-  dejó la capa 3: el endpoint `-pooler`, los nombres sin cualificar que resuelve
-  el `search_path`, y que los ensayos necesitan una rama de Neon creada desde
-  producción.
+  iniciar o continuar en otro chat, más un resumen del estado del programa. La
+  autorización puntual para activar la capa 4 fue consumida y retirada. Incluye
+  las tres trampas que dejó la capa 3: el endpoint `-pooler`, los nombres sin
+  cualificar que resuelve el `search_path`, y que los ensayos necesitan una rama
+  de Neon creada desde producción.
 - [PLANTILLA_CAPA.md](./PLANTILLA_CAPA.md): estructura de la siguiente bitácora.

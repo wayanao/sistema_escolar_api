@@ -1,25 +1,25 @@
 # Capa 3: migraciones y tenants
 
-Última revisión: 2026-08-13.
+Última revisión: 2026-08-14.
 
 ## Control
 
-- Estado: **Cerrada** el 2026-08-13, con dos puntos abiertos y registrados: los
-  dos schemas demo sin reparar y el enlace ausente entre la migración base y
-  `migrations/`.
+- Estado: **Cerrada** el 2026-08-13. Los dos puntos que quedaron abiertos al
+  cierre se resolvieron después: los schemas demo se eliminaron y la migración
+  base quedó enlazada con `migrations/` mediante una guarda ejecutable.
 - Commit base: `81882f3b1ee9e3b50076b0fc1fd93dcd9fd5ac70`.
 - Rama acordada: `main`.
 - Estado al activar: árbol limpio; `HEAD` coincidente con la referencia local
   `origin/main`.
-- Primera subcapa pendiente: **3.5**.
-- Progreso: **3.0 a 3.5 cerradas**. El inventario está registrado abajo y
+- Primera subcapa pendiente: **ninguna**.
+- Progreso: **3.0 a 3.6 cerradas**. El inventario está registrado abajo y
   reemplaza el desglose provisional de la activación.
 - **Reparación de 3.4b aplicada a producción** el 2026-08-13, con autorización
   explícita del usuario y tras revisar juntos el `--dry-run`. Las ocho tablas
   bloqueadas de `tenant_2005` vuelven a admitir inserciones.
 - **Siembra de 3.4e aplicada a producción** el 2026-08-13. El informe de 3.3a
-  da `tenant_2005` como `OK`; el único destino pendiente es `tenant_4444`, que
-  es demo.
+  da `tenant_2005` como `OK`; `tenant_4444`, que era demo, se eliminó después
+  por decisión del usuario y la auditoría final termina en exit 0.
 - Código de producto modificado al activar: **ninguno**.
 - Código de producto modificado hasta ahora: `apply_migration.py`, que toma un
   advisory lock de sesión antes de leer o escribir el historial, y
@@ -1893,28 +1893,26 @@ Ese inicio de sesión sirve además como verificación adicional: los dos schema
 que quedan funcionan a través de la aplicación después de todas las
 reparaciones.
 
-### Reparaciones que esta capa debe encarar
+### Reparaciones identificadas en 3.4a: estado final
 
-Se registran aquí para que no se pierdan y para que el usuario decida cuándo
-abordarlas. La lista se escribió en 3.4a con tres entradas; 3.4b resolvió la de
-las secuencias.
+La lista se escribió durante 3.4a. Al cerrar el mantenimiento posterior, todos
+los defectos quedaron resueltos para los schemas conservados; los dos demos
+incompletos se eliminaron por decisión del usuario.
 
 - **Secuencias compartidas.** *Resuelta en 3.4b y **aplicada a producción** el
   2026-08-13* con `scripts/reparar_secuencias_tenant.py`. `tenant_2005` tiene
   ya sus 30 secuencias propias y las ocho tablas bloqueadas vuelven a insertar.
-  Los tres schemas de demo siguen sin reparar; no corre prisa, pero mientras
-  compartan secuencias con `tenant_colegio_1` el script de limpieza sigue siendo
-  peligroso para ellos.
-- **Runner sobre endpoint agrupado.** Sin abordar. Lo más barato y honesto es
-  que `apply_migration.py` se niegue a ejecutarse contra un DSN con `-pooler`,
-  en lugar de sostener una protección que no protege.
-- **Historial faltante de `tenant_2005` y `tenant_4444`.** Sin abordar. Como no
-  están estructuralmente atrasados, lo correcto es sembrar sus registros, no
-  aplicar las migraciones. Es una escritura sobre datos reales y necesita su
-  propio ensayo y rollback.
+  Los demos defectuosos se eliminaron; no queda ningún schema conservado usando
+  secuencias prestadas.
+- **Runner sobre endpoint agrupado.** *Resuelto en 3.4d.*
+  `apply_migration.py` se niega a ejecutarse contra un DSN con `-pooler` y exige
+  el endpoint directo, donde el lock sí se sostiene.
+- **Historial faltante de `tenant_2005` y `tenant_4444`.** *Resuelto.* El
+  historial de `tenant_2005` se sembró en 3.4e; `tenant_4444` se eliminó por ser
+  demo. La auditoría final termina en exit 0.
 - **Claves foráneas ausentes.** *Resuelta en 3.4f y **aplicada a producción** el
   2026-08-13.* Las 26 se repusieron en `tenant_2005` y quedaron validadas. Los
-  tres schemas de demo siguen sin ellas; son demo y no urge.
+  demos incompletos se eliminaron.
 
 ## Criterios de cierre de la subcapa 3.0
 
@@ -2029,23 +2027,21 @@ las secuencias.
   paralelo con el runner y chocar sobre el mismo tenant. Extender el lock a esos
   scripts o retirarlos es una decisión pendiente; ninguna subcapa la ha tomado
   y no debe presentarse la exclusión mutua como completa.
-- **Confirmado en 3.4a**: el advisory lock de sesión no se sostiene sobre el
-  endpoint agrupado, y `.env` apunta precisamente a él. Dos conexiones al
-  `-pooler` obtuvieron el mismo lock. La protección de 3.1 es hoy inefectiva en
-  el entorno real; funciona solo sobre el endpoint directo. Reparación
-  pendiente, no abordada.
+- **Confirmado en 3.4a y mitigado en 3.4d**: el advisory lock de sesión no se
+  sostiene sobre el endpoint agrupado, y `.env` apunta precisamente a él. Dos
+  conexiones al `-pooler` obtuvieron el mismo lock. El runner rechaza ahora ese
+  endpoint antes de conectar y solo puede ejecutarse con el directo.
 - ~~**AVERÍA EN CURSO, producción.**~~ **RESUELTA el 2026-08-13.** Ocho tablas
   de `tenant_2005` tenían su secuencia compartida por debajo del `MAX(id)` y no
   admitían inserciones: `estudiantes`, `profesor`, `asignaciones`, `asistencia`,
   `notas_detalle`, `pagos`, `boletin_cabecera` y `boletin_detalles`. La
   reparación de 3.4b se aplicó a producción y se verificó con una inserción
   controlada. Se conserva el enunciado porque explica por qué existía la capa.
-- **DETONANTE A UN COMANDO, parcialmente desactivado.**
+- ~~**DETONANTE A UN COMANDO.**~~ **RESUELTO el 2026-08-13.**
   `scripts/limpiar_tenant_colegio_1_operativo.py` ejecuta
-  `TRUNCATE … RESTART IDENTITY` sobre 20 tablas de la demo. Ya **no** alcanza a
-  `tenant_2005`, que tiene secuencias propias, pero `tenant_3333` y
-  `tenant_4444` siguen compartiéndolas y se verían afectados. Son demo, así que
-  no urge; el script sigue sin advertir de su alcance cruzado.
+  `TRUNCATE … RESTART IDENTITY` sobre 20 tablas de la demo. Ya no alcanza a
+  `tenant_2005`, que tiene secuencias propias, y los otros dos demos que
+  compartían esos contadores fueron eliminados.
 - ~~**Confirmado en 3.4a, producción**: `tenant_2005` tiene 11 claves foráneas
   frente a las 37 de la plantilla.~~ **RESUELTO en 3.4f el 2026-08-13**: las 26
   ausentes se repusieron y quedaron validadas contra los datos reales, lo que
@@ -2054,16 +2050,14 @@ las secuencias.
 - **Riesgo nuevo, de la propia reparación**: `pg_get_constraintdef` devuelve las
   definiciones sin cualificar y se resuelven con el `search_path`. Cualquier
   script que copie claves foráneas entre schemas debe apuntarlo al destino, o
-  creará referencias cruzadas. Está protegido con una verificación posterior,
-  pero es una trampa que reaparecerá en 3.5.
-- Los demás schemas comparten los mismos defectos, pero `tenant_colegio_1`,
-  `tenant_3333` y `tenant_4444` son demo o prueba: su reparación no es urgente.
-  Lo que sí importa es que la demo **no puede tratarse como desechable** mientras
-  el colegio real dependa de sus secuencias.
-- `tenant_2005` no está estructuralmente atrasado: le faltan 15 **registros**,
-  no columnas ni índices. Aplicarle esas migraciones repetiría cambios ya
-  presentes; lo correcto es sembrar su historial, que es una escritura sobre
-  datos reales y necesita ensayo y rollback propios.
+  creará referencias cruzadas. Reapareció en 3.5 y quedó protegido allí con
+  `SET LOCAL search_path` al destino; permanece como lección para cambios
+  futuros.
+- Los únicos schemas conservados son `tenant_2005` y `tenant_colegio_1`; ambos
+  tienen secuencias propias, 37 claves foráneas y 30 migraciones registradas.
+- ~~`tenant_2005` carece de 15 registros de historial.~~ **RESUELTO en 3.4e.**
+  Se sembraron los registros tras verificar equivalencia estructural y la
+  auditoría final lo da como `OK`.
 - La CI remota no está verificada para los commits de la capa 2. Un fallo de
   entorno en GitHub Actions podría aparecer atribuido a esta capa; conviene
   obtener evidencia del run antes de acumular más cambios.
@@ -2722,10 +2716,10 @@ su estructura. Once pruebas herméticas.
 
 ## Entrega al próximo chat
 
-- Capa activa: **ninguna**. La capa 3 quedó **cerrada** el 2026-08-13; la capa 4
-  sigue en espera y no fue activada.
+- Capa activa: **4, reportes financieros**, activada el 2026-08-14. Esta
+  bitácora corresponde a la capa 3, **cerrada** el 2026-08-13.
 - Última subcapa terminada: **3.6**, cierre. Primera subcapa pendiente: ninguna.
-- Commit base: `81882f3b1ee9e3b50076b0fc1fd93dcd9fd5ac70`, rama `main`, con 11
+- Commit base: `81882f3b1ee9e3b50076b0fc1fd93dcd9fd5ac70`, rama `main`, con 13
   commits posteriores, todos explicados en esta bitácora.
 - Compuerta al cerrar: **exit 0 con 570 pruebas**, Ruff correcto y dependencias
   íntegras. La suite pasó de 477 al empezar la capa a 570.
@@ -2786,5 +2780,6 @@ Quedan **dos schemas de tenant**: `tenant_2005`, el único de producción, y
 
 ### Siguiente acción exacta
 
-Esperar una decisión del usuario sobre los puntos abiertos y sobre si activar la
-capa 4. **Una instrucción genérica de continuar no autoriza activarla.**
+Continuar exclusivamente desde `04_REPORTES_FINANCIEROS.md`. La primera
+subcapa pendiente es 4.0; esta bitácora cerrada no autoriza inferir ni ejecutar
+trabajo adicional de la capa 3.

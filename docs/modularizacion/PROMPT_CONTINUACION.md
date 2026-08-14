@@ -125,22 +125,26 @@ Si dos asistentes indican capas diferentes, prevalece el estado guardado en
 ## Cómo se usan las autorizaciones puntuales
 
 Este archivo llegó a contener una autorización de uso inmediato para activar la
-capa 3. Se consumió el 2026-08-13 y se retiró. La lección no fue «no guardar
+capa 3 y otra para activar la capa 4. Se consumieron el 2026-08-13 y el
+2026-08-14, respectivamente, y se retiraron. La lección no fue «no guardar
 autorizaciones», sino que **una autorización guardada debe llevar su propia
 condición de caducidad**: si el estado documental ya cambió, no debe aplicarse.
 
-Por eso la de abajo empieza diciendo cuándo es válida. Quien la use debe leer
-antes el índice maestro; si el estado no coincide, no la reutiliza.
-
-Cuando se consuma, se retira o se sustituye por la de la capa siguiente.
+No existe ahora una autorización puntual de uso inmediato. Cuando la capa 4 se
+cierre, la siguiente seguirá en espera hasta que el usuario decida de forma
+explícita si activarla.
 
 ## Estado del programa al 2026-08-14
 
 Lo que sigue es un resumen para orientarse; **el estado vivo está en
 `docs/modularizacion/README.md`**, que es lo que manda si algo no coincide.
 
-- Capas 0, 1, 2 y 3 **cerradas**. **No hay capa activa.**
-- Siguiente: **capa 4, reportes financieros, en espera**.
+- Capas 0, 1, 2 y 3 **cerradas**.
+- Capa activa: **4, reportes financieros**. Commit base:
+  `46fad2c4c12482830cc58ac28ea2512f96155fb8`; primera subcapa pendiente: 4.0.
+- Siguiente capa: **5, pagos y tipos de pago, en espera**.
+- La activación de la capa 4 fue exclusivamente documental: no inspeccionó ni
+  modificó código, pruebas, consultas, configuración o base de datos.
 - La capa 3 es la única del programa que **modificó la base de datos real**, con
   autorización explícita del usuario para cada paso. Dejó tres reparaciones
   aplicadas a producción, dos schemas demo eliminados y el alta de tenants
@@ -165,62 +169,12 @@ Lo que sigue es un resumen para orientarse; **el estado vivo está en
    sobre una base vacía: la estructura real solo existe en la base. La rama que
    se usó en la capa 3 ya fue eliminada; hace falta crear una nueva.
 
-## Autorización de uso inmediato: activar la capa 4
+## Autorización consumida: capa 4
 
-Válida **solo mientras el índice maestro siga indicando que no existe una capa
-activa y que la capa 4 está en espera**. Si el estado ya cambió, no la
-reutilices: vuelve a determinarlo desde el índice.
+La autorización puntual para activar la capa 4 se consumió el 2026-08-14 con
+una orden explícita del usuario. Quedó registrada en
+`04_REPORTES_FINANCIEROS.md` y **no puede reutilizarse**.
 
-Se copia el bloque universal de arriba y se añade inmediatamente después:
-
-```text
-Autorizo activar únicamente la capa 4, Reportes financieros.
-
-Acepto continuar manteniendo pendientes las verificaciones heredadas: la
-calibración operativa de DB_STATEMENT_TIMEOUT_MS de la capa 1 y la ausencia de
-evidencia de GitHub Actions desde la capa 0. Regístralas como pendientes,
-conserva su riesgo y no las marques como cumplidas.
-
-Esta autorización permite solamente la activación documental. No autoriza
-inspeccionar código de la capa 4, implementar 4.0, tocar la base de datos,
-hacer deploy, commit o push. Después de activar la capa, detente.
-
-En el mismo checkout local:
-
-1. Lee y aplica completamente el protocolo universal anterior.
-2. Valida `main`, `git status`, el HEAD limpio vigente, `origin/main` y la
-   continuidad desde el commit base de la capa 3,
-   `81882f3b1ee9e3b50076b0fc1fd93dcd9fd5ac70`, comprobando que todo commit
-   posterior esté explicado en 03_MIGRACIONES_TENANTS.md.
-3. Confirma que la capa 3 está cerrada, que la capa 4 sigue en espera y que no
-   existe otra capa activa. Si hay divergencia o un commit sin explicar,
-   detente.
-4. No uses ningún hash de memoria: comprueba primero el HEAD limpio real.
-5. No declares GitHub Actions verificada solo porque HEAD coincida con
-   origin/main; exige evidencia del run asociado.
-6. Crea `docs/modularizacion/04_REPORTES_FINANCIEROS.md` partiendo de
-   `docs/modularizacion/PLANTILLA_CAPA.md`.
-7. Registra el HEAD limpio vigente como commit base, rama `main`, estado
-   `Activa`, primera subcapa pendiente `4.0` y código de producto modificado al
-   activar: ninguno.
-8. Define el objetivo solo desde el índice maestro: separar HTTP, reglas,
-   servicios y persistencia del dominio de reportes; eliminar el N+1 mediante
-   consultas agrupadas equivalentes; medir las consultas críticas con EXPLAIN
-   ANALYZE sobre datos no productivos.
-9. Deja 4.0 como inventario, contratos y caracterización. No inventes detalles
-   de implementación sin inspeccionarlos en un turno posterior.
-10. Ten presente que la capa 3 dejó claves foráneas nuevas en tenant_2005: los
-    reportes que borren o inserten pueden encontrar restricciones donde antes no
-    las había.
-11. Actualiza `docs/modularizacion/README.md` para marcar únicamente la capa 4
-    como Activa, enlazar su bitácora y dejar 4.0 pendiente.
-12. Ejecuta `git diff --check`, comprueba el whitespace del archivo nuevo y
-    verifica que el alcance contenga exclusivamente `README.md` y
-    `04_REPORTES_FINANCIEROS.md`.
-13. Informa el commit base, la primera subcapa pendiente, las verificaciones
-    heredadas y cualquier evidencia remota disponible. Detente sin inspeccionar
-    ni implementar 4.0.
-
-No hagas commit, push, deploy, migraciones reales ni acceso a producción. Yo
-revisaré los cambios y controlaré su publicación.
-```
+La continuidad vigente es ejecutar únicamente 4.0 en un turno posterior. No
+existe autorización para activar otra capa, hacer commit, push, deploy,
+migraciones reales ni acceso a producción.

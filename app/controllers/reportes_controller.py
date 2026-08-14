@@ -1,4 +1,10 @@
 from app.database import get_connection
+from app.repositories.reportes_repository import (
+    consultar_egresos_rango,
+    consultar_ingresos_mes,
+    consultar_ingresos_rango,
+    consultar_reporte_general,
+)
 from app.services.cobros import (
     calcular_deudas_desde_contexto,
     obtener_asignaciones_cobro_por_curso,
@@ -45,67 +51,12 @@ def reporte_general_controller():
     cursor = conn.cursor()
 
     try:
-        # Estadísticas generales
-        cursor.execute("""
-            SELECT
-                (SELECT COUNT(*) FROM estudiantes) as total_estudiantes,        
-                (SELECT COUNT(*) FROM profesor) as total_profesores,
-                (SELECT COUNT(*) FROM cursos) as total_cursos,
-                (SELECT COUNT(*) FROM materias) as total_materias,
-                (SELECT COALESCE(SUM(monto), 0) FROM pagos WHERE COALESCE(estado, 'Pagado') <> 'Anulado') as total_ingresos,
-                (
-                    SELECT COALESCE(SUM(monto), 0)
-                    FROM pagos
-                    WHERE DATE(COALESCE(fecha, fecha_pago::timestamp)) = (NOW() AT TIME ZONE 'America/Bogota')::date
-                      AND COALESCE(estado, 'Pagado') <> 'Anulado'
-                ) as ingresos_hoy,
-                (SELECT COALESCE(SUM(monto), 0) FROM egresos) as total_egresos,
-                (
-                    SELECT COALESCE(SUM(monto), 0)
-                    FROM egresos
-                    WHERE fecha::date = (NOW() AT TIME ZONE 'America/Bogota')::date
-                ) as egresos_hoy
-        """)
-
-        stats = cursor.fetchone()
-
-        # Estudiantes por curso
-        cursor.execute("""
-            SELECT
-                c.nombre as curso,
-                COUNT(e.id) as cantidad_estudiantes
-            FROM cursos c
-            LEFT JOIN estudiantes e ON c.id = e.curso_id
-            GROUP BY c.id, c.nombre
-            ORDER BY c.nombre
-        """)
-
-        estudiantes_por_curso = cursor.fetchall()
-
-        # Ingresos por mes (últimos 6 meses) - Adaptado para PostgreSQL
-        cursor.execute("""
-            SELECT
-                TO_CHAR(COALESCE(fecha, fecha_pago::timestamp), 'YYYY-MM') as mes,
-                SUM(CASE WHEN COALESCE(estado, 'Pagado') = 'Anulado' THEN 0 ELSE monto END) as total
-            FROM pagos
-            WHERE COALESCE(fecha, fecha_pago::timestamp) >= CURRENT_DATE - INTERVAL '6 months'
-            GROUP BY TO_CHAR(COALESCE(fecha, fecha_pago::timestamp), 'YYYY-MM')
-            ORDER BY mes DESC
-        """)
-
-        ingresos_mensuales = cursor.fetchall()
-
-        cursor.execute("""
-            SELECT
-                TO_CHAR(fecha::date, 'YYYY-MM') as mes,
-                SUM(monto) as total
-            FROM egresos
-            WHERE fecha::date >= CURRENT_DATE - INTERVAL '6 months'
-            GROUP BY TO_CHAR(fecha::date, 'YYYY-MM')
-            ORDER BY mes DESC
-        """)
-
-        egresos_mensuales = cursor.fetchall()
+        (
+            stats,
+            estudiantes_por_curso,
+            ingresos_mensuales,
+            egresos_mensuales,
+        ) = consultar_reporte_general(cursor)
 
         return {
             "estadisticas_generales": {
@@ -163,62 +114,18 @@ def reporte_ingresos_mes_controller(mes: str, limit=None, offset=0):
     cursor = conn.cursor()
 
     try:
+        total, resultados = consultar_ingresos_mes(cursor, mes, limit, offset)
+        items = [_formatear_ingreso(row) for row in resultados]
+
         if limit is not None:
-            cursor.execute("""
-                SELECT COUNT(*)
-                FROM pagos p
-                WHERE TO_CHAR(COALESCE(p.fecha, p.fecha_pago::timestamp), 'YYYY-MM') = %s
-            """, (mes,))
-            total = cursor.fetchone()[0]
-
-            cursor.execute("""
-                SELECT
-                    p.id,
-                    e.nombre,
-                    e.apellido,
-                    p.monto,
-                    COALESCE(p.fecha, p.fecha_pago::timestamp) AS fecha,
-                    p.descripcion,
-                    p.tipo_pago,
-                    COALESCE(p.estado, 'Pagado') AS estado,
-                    p.motivo_anulacion,
-                    p.fecha_anulacion
-                FROM pagos p
-                LEFT JOIN estudiantes e ON p.estudiante_id = e.id
-                WHERE TO_CHAR(COALESCE(p.fecha, p.fecha_pago::timestamp), 'YYYY-MM') = %s
-                ORDER BY COALESCE(p.fecha, p.fecha_pago::timestamp) DESC
-                LIMIT %s OFFSET %s
-            """, (mes, limit, offset))
-
-            resultados = cursor.fetchall()
             return {
                 "total": total,
                 "limit": limit,
                 "offset": offset,
-                "items": [_formatear_ingreso(row) for row in resultados]
+                "items": items,
             }
 
-        cursor.execute("""
-            SELECT
-                p.id,
-                e.nombre,
-                e.apellido,
-                p.monto,
-                COALESCE(p.fecha, p.fecha_pago::timestamp) AS fecha,
-                p.descripcion,
-                p.tipo_pago,
-                COALESCE(p.estado, 'Pagado') AS estado,
-                p.motivo_anulacion,
-                p.fecha_anulacion
-            FROM pagos p
-            LEFT JOIN estudiantes e ON p.estudiante_id = e.id
-            WHERE TO_CHAR(COALESCE(p.fecha, p.fecha_pago::timestamp), 'YYYY-MM') = %s
-            ORDER BY COALESCE(p.fecha, p.fecha_pago::timestamp) DESC
-        """, (mes,))
-
-        resultados = cursor.fetchall()
-
-        return [_formatear_ingreso(row) for row in resultados]
+        return items
     except Exception as e:
         print(f"Error en reporte_ingresos_mes_controller: {e}")
         return []
@@ -360,65 +267,24 @@ def reporte_ingresos_rango_controller(fecha_inicio: str, fecha_fin: str, limit=N
     cursor = conn.cursor()
 
     try:
+        total, resultados = consultar_ingresos_rango(
+            cursor,
+            fecha_inicio,
+            fecha_fin,
+            limit,
+            offset,
+        )
+        items = [_formatear_ingreso(row) for row in resultados]
+
         if limit is not None:
-            cursor.execute("""
-                SELECT COUNT(*)
-                FROM pagos p
-                WHERE COALESCE(p.fecha, p.fecha_pago::timestamp) >= %s::date
-                  AND COALESCE(p.fecha, p.fecha_pago::timestamp) < %s::date + interval '1 day'
-            """, (fecha_inicio, fecha_fin))
-            total = cursor.fetchone()[0]
-
-            cursor.execute("""
-                SELECT
-                    p.id,
-                    e.nombre,
-                    e.apellido,
-                    p.monto,
-                    COALESCE(p.fecha, p.fecha_pago::timestamp) AS fecha,
-                    p.descripcion,
-                    p.tipo_pago,
-                    COALESCE(p.estado, 'Pagado') AS estado,
-                    p.motivo_anulacion,
-                    p.fecha_anulacion
-                FROM pagos p
-                LEFT JOIN estudiantes e ON p.estudiante_id = e.id
-                WHERE COALESCE(p.fecha, p.fecha_pago::timestamp) >= %s::date
-                  AND COALESCE(p.fecha, p.fecha_pago::timestamp) < %s::date + interval '1 day'
-                ORDER BY COALESCE(p.fecha, p.fecha_pago::timestamp) DESC
-                LIMIT %s OFFSET %s
-            """, (fecha_inicio, fecha_fin, limit, offset))
-
-            resultados = cursor.fetchall()
             return {
                 "total": total,
                 "limit": limit,
                 "offset": offset,
-                "items": [_formatear_ingreso(row) for row in resultados]
+                "items": items,
             }
 
-        cursor.execute("""
-            SELECT
-                p.id,
-                e.nombre,
-                e.apellido,
-                p.monto,
-                COALESCE(p.fecha, p.fecha_pago::timestamp) AS fecha,
-                p.descripcion,
-                p.tipo_pago,
-                COALESCE(p.estado, 'Pagado') AS estado,
-                p.motivo_anulacion,
-                p.fecha_anulacion
-            FROM pagos p
-            LEFT JOIN estudiantes e ON p.estudiante_id = e.id
-            WHERE COALESCE(p.fecha, p.fecha_pago::timestamp) >= %s::date
-              AND COALESCE(p.fecha, p.fecha_pago::timestamp) < %s::date + interval '1 day'
-            ORDER BY COALESCE(p.fecha, p.fecha_pago::timestamp) DESC
-        """, (fecha_inicio, fecha_fin))
-
-        resultados = cursor.fetchall()
-
-        return [_formatear_ingreso(row) for row in resultados]
+        return items
     except Exception as e:
         print(f"Error en reporte_ingresos_rango_controller: {e}")
         return []
@@ -432,42 +298,24 @@ def reporte_egresos_rango_controller(fecha_inicio: str, fecha_fin: str, limit=No
     cursor = conn.cursor()
 
     try:
+        total, resultados = consultar_egresos_rango(
+            cursor,
+            fecha_inicio,
+            fecha_fin,
+            limit,
+            offset,
+        )
+        items = [_formatear_egreso(row) for row in resultados]
+
         if limit is not None:
-            cursor.execute("""
-                SELECT COUNT(*)
-                FROM egresos
-                WHERE fecha::date >= %s::date
-                  AND fecha::date < %s::date + interval '1 day'
-            """, (fecha_inicio, fecha_fin))
-            total = cursor.fetchone()[0]
-
-            cursor.execute("""
-                SELECT id, concepto, monto, fecha, categoria, notas, COALESCE(origen, 'manual') AS origen
-                FROM egresos
-                WHERE fecha::date >= %s::date
-                  AND fecha::date < %s::date + interval '1 day'
-                ORDER BY fecha DESC, id DESC
-                LIMIT %s OFFSET %s
-            """, (fecha_inicio, fecha_fin, limit, offset))
-
-            resultados = cursor.fetchall()
             return {
                 "total": total,
                 "limit": limit,
                 "offset": offset,
-                "items": [_formatear_egreso(row) for row in resultados],
+                "items": items,
             }
 
-        cursor.execute("""
-            SELECT id, concepto, monto, fecha, categoria, notas, COALESCE(origen, 'manual') AS origen
-            FROM egresos
-            WHERE fecha::date >= %s::date
-              AND fecha::date < %s::date + interval '1 day'
-            ORDER BY fecha DESC, id DESC
-        """, (fecha_inicio, fecha_fin))
-
-        resultados = cursor.fetchall()
-        return [_formatear_egreso(row) for row in resultados]
+        return items
     except Exception as e:
         print(f"Error en reporte_egresos_rango_controller: {e}")
         return []

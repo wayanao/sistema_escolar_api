@@ -38,7 +38,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 1 | Fundación de base de datos | Conexiones, transacciones, timeouts y pool definidos | **Cerrada**; primera medición hecha, valor operativo final pendiente | [01_FUNDACION_BASE_DATOS.md](./01_FUNDACION_BASE_DATOS.md) |
 | 2 | Concurrencia | DB síncrona fuera del event loop preservando `ContextVar` | **Cerrada** y publicada; CI posterior al cierre no verificada | [02_CONCURRENCIA.md](./02_CONCURRENCIA.md) |
 | 3 | Migraciones y tenants | Todos los tenants versionados, runner bloqueado y alta reproducible | **Cerrada**; reparó producción y verificó en uso | [03_MIGRACIONES_TENANTS.md](./03_MIGRACIONES_TENANTS.md) |
-| 4 | Reportes financieros | Dominio modular, N+1 eliminado y consultas medidas | **Activa**; 4.0 cerrada, 4.1 pendiente | [04_REPORTES_FINANCIEROS.md](./04_REPORTES_FINANCIEROS.md) |
+| 4 | Reportes financieros | Dominio modular, N+1 eliminado y consultas medidas | **Activa**; 4.0 y 4.1 cerradas, 4.2 pendiente | [04_REPORTES_FINANCIEROS.md](./04_REPORTES_FINANCIEROS.md) |
 | 5 | Pagos y tipos de pago | Dominio financiero modularizado y protegido | En espera | Se crea al activarla |
 | 6 | Asignaciones y estudiantes | Dominios grandes separados con contratos estables | En espera | Se crea al activarla |
 | 7 | Resto de dominios | Migración individual con contratos y pruebas | En espera | Una bitácora por dominio al activarlo |
@@ -49,10 +49,11 @@ cierre y el usuario ordene continuar, se crea su sucesora desde
 tabla.
 
 Las capas 0, 1, 2 y 3 están cerradas. La capa 4 está **activa** desde el
-2026-08-14, cerró 4.0 y su primera subcapa pendiente es 4.1. La capa 3 se abrió
-y se cerró el 2026-08-13, y es la única del programa que modificó la base de datos real,
-con autorización explícita del usuario para cada paso. No se atribuye ningún
-resultado de GitHub Actions sin evidencia del run correspondiente.
+2026-08-14, cerró 4.0 y 4.1, y su primera subcapa pendiente es 4.2. La capa 3
+se abrió y se cerró el 2026-08-13, y es la única del programa que modificó la
+base de datos real, con autorización explícita del usuario para cada paso. No
+se atribuye ningún resultado de GitHub Actions sin evidencia del run
+correspondiente.
 
 ## Alcance de cada capa
 
@@ -269,7 +270,13 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   estado de cuenta de reportes, `1 + 12N` en el consumidor de cuentas y 12
   constantes en cartera. La compuerta local terminó con 585 pruebas, Ruff y
   dependencias correctas. No se modificó producto ni configuración.
-- Capa activa: **4, reportes financieros**. Primera subcapa pendiente: **4.1**.
+- Resultado de 4.1: la persistencia de general, ingresos por mes/rango y
+  egresos por rango quedó extraída a funciones que reciben el cursor existente.
+  Se conservaron byte por byte las 13 cadenas SQL, sus conteos y parámetros,
+  además de respuestas, fallbacks y lifecycle. La compuerta local terminó con
+  598 pruebas, Ruff y dependencias correctas. No se tocó el N+1 ni la base de
+  datos.
+- Capa activa: **4, reportes financieros**. Primera subcapa pendiente: **4.2**.
 - Resultado de 3.5: el alta construye el schema desde la migración base en vez de
   copiar la plantilla. Un tenant nuevo nace con **37 claves foráneas y 30
   secuencias propias**, donde el camino anterior producía **0 y 0**. Ensayado
@@ -359,8 +366,8 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   romper una base sin historial. Se verificó que las pruebas nuevas fallan
   contra el controlador anterior, que es la señal esperada. La compuerta cerró
   en exit 0 con **529 pruebas**.
-- Capa 4 activa; 4.0 cerrada y primera subcapa pendiente: 4.1, extracción de
-  persistencia de los reportes simples.
+- Capa 4 activa; 4.0 y 4.1 cerradas y primera subcapa pendiente: 4.2,
+  eliminación agrupada del N+1 de `/reportes/estado-cuenta/{curso_id}`.
 - Código de producto modificado durante la capa 0: ninguno.
 - Código de producto modificado durante la capa 1: el ciclo de vida de las
   conexiones en 20 archivos de `app/`, más los timeouts. Sin cambios en rutas,
@@ -383,8 +390,9 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
 - [04_REPORTES_FINANCIEROS.md](./04_REPORTES_FINANCIEROS.md): **bitácora
   activa** de la capa 4 y fuente de continuidad. Registra el commit base, las
   verificaciones heredadas aceptadas como pendientes y el trabajo exacto de
-  4.1, además del inventario, N+1 y medición no productiva cerrados en 4.0. Es
-  el documento que un chat nuevo debe leer después de este índice.
+  4.2, además de 4.1 cerrada y del inventario, N+1 y medición no productiva
+  registrados en 4.0. Es el documento que un chat nuevo debe leer después de
+  este índice.
 - [03_MIGRACIONES_TENANTS.md](./03_MIGRACIONES_TENANTS.md): **bitácora cerrada**
   de la capa 3. Conserva el inventario, las tres
   reparaciones aplicadas a producción con su rollback, el ensayo sobre una rama

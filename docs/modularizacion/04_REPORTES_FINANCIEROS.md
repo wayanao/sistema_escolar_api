@@ -9,9 +9,9 @@
 - Rama acordada: `main`.
 - Estado al activar: árbol limpio; `HEAD` coincidente con la referencia local
   `origin/main`.
-- Primera subcapa pendiente: **4.1**.
-- Progreso: **4.0 cerrada**; inventario, contratos, caracterización y línea
-  base de consultas terminados sin modificar producto.
+- Primera subcapa pendiente: **4.2**.
+- Progreso: **4.0 y 4.1 cerradas**; la persistencia de los cuatro reportes
+  simples quedó extraída sin cambiar SQL, contratos HTTP ni lifecycle.
 - Código de producto modificado al activar: **ninguno**.
 - Autorización: orden explícita del usuario el 2026-08-14 para corregir la
   continuidad documental y activar la capa 4. La activación no autoriza iniciar
@@ -98,7 +98,7 @@ archivos, consultas o pruebas forman el dominio.
 - Toda medición que dependa del volumen de datos se hace fuera de producción y
   declara el conjunto de datos y las limitaciones de la evidencia.
 
-## Línea base
+## Línea base registrada en 4.0
 
 | Comprobación | Comando | Resultado |
 |---|---|---|
@@ -112,8 +112,8 @@ archivos, consultas o pruebas forman el dominio.
 | Subcapa | Resultado | Estado |
 |---:|---|---|
 | 4.0 | Inventario, contratos, caracterización y línea base de consultas | **Cerrada** |
-| 4.1 | Extraer la persistencia de los reportes simples sin cambiar SQL ni respuestas | **Pendiente** |
-| 4.2 | Sustituir el N+1 de `/reportes/estado-cuenta/{curso_id}` por lecturas agrupadas equivalentes | En espera |
+| 4.1 | Extraer la persistencia de los reportes simples sin cambiar SQL ni respuestas | **Cerrada** |
+| 4.2 | Sustituir el N+1 de `/reportes/estado-cuenta/{curso_id}` por lecturas agrupadas equivalentes | **Pendiente** |
 | 4.3 | Separar reglas financieras de sus consumidores y cerrar medición/retirada heredada | En espera |
 
 El desglose se deriva del inventario de 4.0. Cada subcapa deberá volver a
@@ -294,7 +294,7 @@ schema actual, egresos y pagos representativos, y el deadline HTTP/proxy más
 corto. `30000` permanece efectivo y el pendiente operativo no se marca como
 cumplido.
 
-## Primera subcapa pendiente: 4.1 — trabajo exacto
+## Subcapa 4.1 — alcance ejecutado
 
 1. Revalidar Git y limitar la inspección a rutas, controlador, pruebas y SQL de
    reporte general, ingresos por mes/rango y egresos por rango.
@@ -311,6 +311,28 @@ cumplido.
    operativo explícito.
 6. Ejecutar pruebas específicas, Ruff, compuerta global y `git diff --check`;
    documentar y detenerse antes de 4.2.
+
+Los seis puntos se cumplieron en 4.1. El cierre y sus verificaciones están en
+el registro de ejecución; no se inició el trabajo de 4.2.
+
+## Primera subcapa pendiente: 4.2 — trabajo exacto
+
+1. Revalidar Git y limitar el alcance a
+   `/reportes/estado-cuenta/{curso_id}`, su controlador, persistencia y pruebas.
+2. Partir de la caracterización `10 + 5N` de 4.0 y añadir casos discriminantes
+   de pagos por `concepto_id`, nombre, aplicaciones maduras, valores
+   personalizados y «Otros Pagos».
+3. Sustituir únicamente el término `5N` por lecturas agrupadas para todos los
+   estudiantes del curso, manteniendo las mismas reglas y la misma respuesta.
+4. Conservar permisos admin, tenant por `search_path`, una sola conexión,
+   orden, importes, mora, nulos, fallback `[]` y manejo de errores.
+5. No mezclar ni corregir el `1 + 12N` del consumidor de cuentas; no modificar
+   cartera, pagos, timeouts ni otras funciones de producto.
+6. Medir herméticamente el conteo antes/después y documentar el nuevo valor
+   fijo. No afirmar equivalencia real con la rama Neon anterior, cuyo schema
+   carecía de `pagos.concepto_id`.
+7. Ejecutar pruebas específicas, Ruff, compuerta global y `git diff --check`;
+   documentar y detenerse antes de 4.3.
 
 ## Criterios de cierre de la capa
 
@@ -352,14 +374,27 @@ cumplido.
   queda visible, pero no se mezcla automáticamente en la misma extracción.
 - La medición autorizada fue exclusivamente no productiva y READ ONLY. La rama
   entregada permite proponer `15000` ms, no adoptarlo ni cerrar la calibración.
-- 4.1 extraerá primero las lecturas simples sin cambiar SQL. El N+1 no se aborda
-  en esa misma subcapa.
+- 4.1 creó una frontera de persistencia específica de reportes mediante cuatro
+  funciones que reciben el cursor existente. El controlador conserva la
+  propiedad de conexión, cursor, cierre y fallback de errores.
+- La extracción conservó byte por byte las 13 cadenas SQL anteriores: cuatro
+  consultas para el reporte general y una o dos para cada listado según
+  `limit is not None`. También conservó parámetros, orden, nulos, fechas,
+  anulación y lista heredada frente a sobre paginado.
+- Las rarezas caracterizadas —`offset` sin `limit`, `[]` ante error paginado,
+  comparación SQL exacta de `Anulado` y ausencia de desempate en ingresos— se
+  preservaron deliberadamente; corregirlas no pertenecía a 4.1.
+- No se tocaron estados de cuenta, cartera, cobros, pagos, N+1 ni timeouts.
 
 ## Riesgos
 
 - Un reporte financiero puede parecer equivalente y aun cambiar importes,
   filtros, nulos, redondeos u orden. La mitigación es caracterizar respuestas y
   cálculos antes de separar o agrupar consultas.
+- La frontera extraída en 4.1 depende de recibir el cursor del controlador.
+  Abrir una conexión dentro de ella cambiaría snapshot, tenant, timeouts,
+  conteo de consultas y lifecycle; las pruebas de caracterización protegen esa
+  propiedad.
 - Una consulta agrupada puede romper permisos, ownership o aislamiento entre
   tenants aunque reduzca el número de consultas. La equivalencia debe incluir
   esos límites, no solo los totales.
@@ -479,18 +514,76 @@ cumplido.
 - Siguiente acción exacta: ejecutar solo 4.1, extracción de persistencia de los
   reportes simples, y detenerse antes de 4.2.
 
+### 2026-08-14 — cierre de 4.1
+
+- Modo de acceso: mismo checkout local en
+  `C:\Users\David\Documents\sistema_escolar_api`; Git fue validado directamente
+  y no se usó GitHub para inferir el estado local.
+- Precondición Git: rama `main`, árbol inicialmente limpio, `HEAD`
+  `5a55b8637f62ffa3df327adb186f26d7542f967c`, dos commits por delante de la
+  referencia local `origin/main`. El commit base
+  `46fad2c4c12482830cc58ac28ea2512f96155fb8` existe y es ancestro; los dos
+  commits posteriores corresponden a la activación y al cierre de 4.0, ambos
+  explicados en esta bitácora.
+- Alcance inspeccionado y modificado: únicamente reporte general, ingresos por
+  mes/rango y egresos por rango, sus pruebas y continuidad documental. No se
+  inspeccionó ni inició el estado de cuenta de 4.2.
+- Archivos de producto: `app/controllers/reportes_controller.py` y el nuevo
+  `app/repositories/reportes_repository.py`. Prueba nueva:
+  `tests/test_reportes_simple_controllers.py`. Continuidad actualizada: esta
+  bitácora, `docs/modularizacion/README.md` y
+  `docs/modularizacion/PROMPT_CONTINUACION.md`.
+- Caracterización previa: antes de mover producto,
+  `.\venv\Scripts\python.exe -m pytest -q -p no:cacheprovider
+  tests\test_reportes_simple_controllers.py` terminó con 12 pruebas pasadas;
+  Ruff del archivo nuevo terminó correcto.
+- Implementación: cuatro funciones reciben el cursor existente y devuelven
+  filas crudas. El controlador continúa abriendo y cerrando conexión/cursor,
+  formateando respuestas y conservando los mismos `try/except/finally` y
+  fallbacks.
+- Contratos conservados: payloads, lista frente a sobre paginado, nulos,
+  formatos de fecha, anulación, orden, parámetros y conteos de consultas
+  4/1-2/1-2/1-2. Un comparador AST contra
+  `git show HEAD:app/controllers/reportes_controller.py` confirmó 13 consultas
+  antes y después, sin diferencias byte por byte.
+- Pruebas específicas finales:
+  `.\venv\Scripts\python.exe -m pytest -q -p no:cacheprovider
+  tests\test_reportes_simple_controllers.py tests\test_reportes_pagination.py
+  tests\test_anulaciones_financieras.py tests\test_reportes_query_counts.py`;
+  **47 pasaron** en 0,51 s.
+- Ruff del alcance:
+  `.\venv\Scripts\python.exe -m ruff check
+  app\controllers\reportes_controller.py
+  app\repositories\reportes_repository.py
+  tests\test_reportes_simple_controllers.py`; resultado **correcto**.
+- Compuerta global final: `.\venv\Scripts\python.exe scripts\verify.py`;
+  **598 pruebas pasaron** en 1,81 s, 5 warnings heredadas, Ruff correcto,
+  `pip check` íntegro y exit 0. Un primer intento dentro del sandbox encontró
+  29 errores de permiso en el directorio temporal de pytest; se repitió fuera
+  del sandbox sin red ni base de datos y pasó.
+- Revisión final: `git diff --check` en exit 0; los chequeos equivalentes
+  `git diff --no-index --check` de los dos archivos nuevos no emitieron errores
+  de whitespace. El diff es exclusivo de los seis archivos declarados. No
+  hubo cambios en rutas, estado de cuenta, cartera, cobros, pagos,
+  configuración, timeouts ni dependencias.
+- PostgreSQL, migraciones, producción, commit, push y deploy: **ninguno**. La
+  evidencia de GitHub Actions posterior a la capa 0 continúa pendiente y no se
+  atribuye CI remota.
+- Estado: 4.1 **cerrada**; 4.2 **pendiente y no iniciada**.
+- Siguiente acción exacta: ejecutar únicamente 4.2 y detenerse antes de 4.3.
+
 ## Entrega al próximo chat
 
 - Capa activa: **4, reportes financieros**.
-- Última subcapa terminada: **4.0**, inventario, contratos, caracterización y
-  línea base de consultas.
-- Primera subcapa pendiente: **4.1**, extracción de persistencia de los reportes
-  simples con SQL y contratos idénticos.
+- Última subcapa terminada: **4.1**, extracción de persistencia de los reportes
+  simples con SQL y contratos conservados.
+- Primera subcapa pendiente: **4.2**, eliminación agrupada del `5N` de
+  `/reportes/estado-cuenta/{curso_id}`.
 - Commit base: `46fad2c4c12482830cc58ac28ea2512f96155fb8`, rama `main`.
 - Riesgos abiertos: candidato de timeout 15000 ms no aplicado; rama de prueba no
   equivalente por ausencia de `pagos.concepto_id`; credencial privilegiada por
   rotar; evidencia de GitHub Actions posterior a la capa 0 aún ausente.
-- Precondición antes de 4.1: el usuario debe revisar y dejar limpio este cambio;
+- Precondición antes de 4.2: el usuario debe revisar y dejar limpio este cambio;
   después se reaudita todo commit posterior al base.
-- Siguiente acción exacta: ejecutar únicamente el trabajo exacto de 4.1 y
-  detenerse sin iniciar 4.2.
+- Siguiente acción exacta: ejecutar únicamente el trabajo exacto de 4.2 y
+  detenerse sin iniciar 4.3.

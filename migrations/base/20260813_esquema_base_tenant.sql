@@ -1,24 +1,48 @@
--- Esquema base de un tenant.
+-- Esquema base de un tenant. ARCHIVO GENERADO, no editar a mano.
 --
--- Extraido del catalogo real de tenant_colegio_1 el 2026-08-13 y verificado
--- creando un schema desde este archivo y comparandolo contra la plantilla.
+-- Extraido de tenant_colegio_1 el 2026-08-13 con
+-- scripts/generar_esquema_base.py. Para rehacerlo, aplica antes la
+-- migracion nueva a ese schema y vuelve a ejecutar el script.
 --
--- Se aplica con el search_path apuntando al schema destino, igual que hacen las
--- migraciones de migrations/. No usar apply_migration.py con este archivo: esta
--- pensado para dar de alta un tenant nuevo, no para aplicarse a los existentes,
--- que ya tienen estas tablas.
+-- Se aplica con el search_path apuntando SOLO al schema destino. Sus
+-- nombres no van cualificados: con otro schema en el camino, las claves
+-- foraneas naceran apuntando alli.
 --
--- Vive en migrations/base/ y no en migrations/ a proposito: asi no entra en el
--- corpus que audita scripts/auditar_migraciones_tenants.py, que reportaria a
--- todos los tenants como si les faltara.
+-- No usar apply_migration.py con este archivo: es para dar de alta un
+-- tenant nuevo, no para los existentes, que ya tienen estas tablas.
 --
--- Diferencias deliberadas frente a la plantilla, ambas mejoras:
---   * las columnas id se declaran SERIAL, de modo que cada schema crea su PROPIA
---     secuencia. La copia por LIKE INCLUDING ALL las hacia apuntar a las de la
---     plantilla, que es el defecto reparado en 3.4b;
---   * no se reproduce unique_documento_identidad en profesor, que duplicaba
---     exactamente a profesor_documento_identidad_key. PostgreSQL descarta la
---     segunda al declararlas juntas.
+-- MIGRACIONES INCORPORADAS (30):
+--   20260429_pagos_tipo_pago_largo.sql
+--   20260429_plan_de_clases_reportes.sql
+--   20260509_branding_plantillas_impresion.sql
+--   20260517_tipos_pagos_avanzado.sql
+--   20260526_cursos_solo_academicos.sql
+--   20260527_pagos_anulacion.sql
+--   20260527_pagos_venta_id.sql
+--   20260527_ventas_anulacion.sql
+--   20260601_usuarios_password_obligatorio.sql
+--   20260602_asignaciones_activo.sql
+--   20260604_cursos_estado.sql
+--   20260604_egresos_origen.sql
+--   20260604_inventario_estado.sql
+--   20260604_materias_estado.sql
+--   20260604_profesor_estado.sql
+--   20260623_admin_nombres_mayuscula.sql
+--   20260623_admin_unicos_academicos.sql
+--   20260623_asignaciones_horarios_historial_unico.sql
+--   20260623_asignaciones_unicas_activas.sql
+--   20260623_institucion_branding_codigo_dane.sql
+--   20260624_asignaciones_orden_boletin.sql
+--   20260713_tipos_pagos_estudiantes.sql
+--   20260715_plan_de_clases_estandar_dba_text.sql
+--   20260715_plan_de_clases_textos_largos.sql
+--   20260715_reparar_asignacion_academica_invalida.sql
+--   20260716_pagos_adelantados.sql
+--   20260716_pagos_aplicaciones_parciales.sql
+--   20260722_plan_de_clases_integridad.sql
+--   20260722_plan_de_clases_notificaciones.sql
+--   20260722_plan_de_clases_revision.sql
+-- FIN MIGRACIONES INCORPORADAS
 
 CREATE TABLE IF NOT EXISTS asignaciones (
     id SERIAL,
@@ -501,7 +525,7 @@ CREATE INDEX IF NOT EXISTS idx_tipos_pagos_estudiantes_tipo ON tipos_pagos_estud
 CREATE INDEX IF NOT EXISTS idx_ventas_estado ON ventas USING btree (estado);
 CREATE INDEX IF NOT EXISTS tenant_colegio_1_idx_ventas_estudiante_estado ON ventas USING btree (estudiante_id, estado);
 
--- Claves foraneas, al final para no depender del orden
+-- Claves foraneas, al final para no depender del orden de creacion
 ALTER TABLE asignaciones ADD CONSTRAINT asignaciones_asignacion_academica_id_fkey FOREIGN KEY (asignacion_academica_id) REFERENCES asignaciones(id);
 ALTER TABLE asignaciones ADD CONSTRAINT asignaciones_curso_id_fkey FOREIGN KEY (curso_id) REFERENCES cursos(id);
 ALTER TABLE asignaciones ADD CONSTRAINT asignaciones_materia_id_fkey FOREIGN KEY (materia_id) REFERENCES materias(id);

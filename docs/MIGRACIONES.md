@@ -208,9 +208,64 @@ Flujo oficial:
 Estado actual:
 
 - crea tenants desde el panel super admin;
-- copia tablas desde `DEFAULT_TENANT_SCHEMA`;
+- **construye el schema aplicando `migrations/base/20260813_esquema_base_tenant.sql`**,
+  ya no copiando tablas desde `DEFAULT_TENANT_SCHEMA`;
 - inserta admin inicial con password hasheada y cambio obligatorio;
+- copia las plantillas de impresion predefinidas desde `DEFAULT_TENANT_SCHEMA`;
+- siembra en `public.schema_migrations` lo que la plantilla tiene registrado;
 - registra suscripcion y auditoria de creacion.
+
+Hasta agosto de 2026 el schema se copiaba con `CREATE TABLE (LIKE … INCLUDING
+ALL)`. Esa copia **no reproduce las claves foraneas** y hace que las columnas
+`serial` sigan usando las secuencias del schema origen. Los tenants creados asi
+nacian sin integridad referencial y compartiendo los contadores de id de la
+plantilla. Ver `docs/modularizacion/03_MIGRACIONES_TENANTS.md`.
+
+## Anadir una migracion nueva
+
+El esquema de un tenant esta descrito en dos sitios: las migraciones
+incrementales de `migrations/`, que se aplican a los tenants existentes, y el
+archivo base de `migrations/base/`, que se aplica a los nuevos. **Hay que
+actualizar los dos.**
+
+1. **Escribe la migracion** en `migrations/AAAAMMDD_nombre.sql`, con nombres sin
+   cualificar: el runner fija el `search_path` a cada tenant.
+
+2. **Pruebala en una rama de Neon**, no en produccion. Apunta `DATABASE_URL` al
+   endpoint de la rama y ejecuta el runner ahi. Si algo sale mal, se borra la
+   rama y no ha pasado nada.
+
+3. **Aplicala a los tenants existentes**:
+
+   ```powershell
+   .\venv\Scripts\python.exe apply_migration.py migrations/AAAAMMDD_nombre.sql --dry-run
+   .\venv\Scripts\python.exe apply_migration.py migrations/AAAAMMDD_nombre.sql
+   ```
+
+   `DATABASE_URL` debe apuntar al **endpoint directo**, sin `-pooler`: el runner
+   se niega sobre el agrupado porque alli su lock de sesion no impide dos
+   ejecuciones simultaneas.
+
+4. **Regenera el archivo base**, despues del paso 3 y nunca antes:
+
+   ```powershell
+   .\venv\Scripts\python.exe scripts\generar_esquema_base.py --schema tenant_colegio_1
+   ```
+
+   El script lee la estructura real de ese schema, asi que si todavia no tiene
+   la migracion capturara el esquema anterior sin avisar.
+
+5. **Ejecuta la compuerta**. `tests/test_esquema_base.py` compara las
+   migraciones que el archivo base declara incorporar con las que hay en
+   `migrations/`, y falla si anadiste una y no regeneraste.
+
+6. **Commitea la migracion y la base juntas**, para que el repositorio nunca
+   quede diciendo dos cosas distintas.
+
+Entre los pasos 3 y 4 hay una ventana en la que la plantilla ya tiene la
+migracion y el archivo base todavia no. Un alta de colegio en ese rato nacera
+con la estructura vieja y el historial nuevo. Son minutos y las altas son raras,
+pero conviene hacer los dos pasos seguidos.
 
 ## Riesgos pendientes documentados
 

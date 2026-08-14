@@ -4,7 +4,9 @@
 
 ## Control
 
-- Estado: **Activa**.
+- Estado: **Cerrada** el 2026-08-13, con dos puntos abiertos y registrados: los
+  dos schemas demo sin reparar y el enlace ausente entre la migración base y
+  `migrations/`.
 - Commit base: `81882f3b1ee9e3b50076b0fc1fd93dcd9fd5ac70`.
 - Rama acordada: `main`.
 - Estado al activar: árbol limpio; `HEAD` coincidente con la referencia local
@@ -150,7 +152,7 @@ del repositorio sin acceso a datos.
 | 3.4e | Siembra del historial ya aplicado de `tenant_2005` | **Cerrada y aplicada en producción** |
 | 3.4f | Reposición de las 26 claves foráneas de `tenant_2005` | **Cerrada y aplicada en producción** |
 | 3.5 | Alta reproducible desde la migración base versionada | **Cerrada** |
-| 3.6 | Rollback, verificación manual, compuerta global y cierre | Pendiente |
+| 3.6 | Rollback, verificación manual, compuerta global y cierre | **Cerrada** |
 
 El ensayo se dividió al ejecutarlo. 3.4a resultó ser una subcapa completa por sí
 sola: sus hallazgos cambian qué debe contener la migración base, así que
@@ -1637,6 +1639,256 @@ usuario admin, y 30 migraciones registradas. El schema de prueba y sus filas en
 Compuerta global en **exit 0 con 570 pruebas**, Ruff correcto, ningún archivo de
 `migrations/` modificado y el diff limitado a un controller y sus pruebas.
 
+## Subcapa 3.6: resultado y cierre
+
+### Estado de producción al cerrar
+
+| Schema | Papel | Claves foráneas | Secuencias | Ajenas | Migraciones |
+|---|---|---:|---:|---:|---:|
+| `tenant_2005` | **Producción** | **37** | **30** | **0** | **30** |
+| `tenant_colegio_1` | Plantilla y demo | 37 | 30 | 0 | 30 |
+| `tenant_3333` | Demo | 14 | 7 | 23 | 30 |
+| `tenant_4444` | Demo | 11 | 4 | 26 | 21 |
+
+El único colegio real iguala a la plantilla en todo. Los dos demos conservan los
+tres defectos originales.
+
+### Qué cambió en producción
+
+Tres reparaciones, cada una con su `--dry-run` revisado antes de aplicarla:
+
+1. **3.4b**: 26 columnas de `tenant_2005` pasaron a usar secuencias propias
+   posicionadas en su `MAX(id)`. Desbloqueó ocho tablas que no admitían
+   inserciones.
+2. **3.4e**: 15 registros de historial sembrados. El informe de 3.3a da el
+   tenant como `OK`.
+3. **3.4f**: 26 claves foráneas repuestas y validadas contra los datos.
+
+Es la única vez en todo el programa que se modificó la base real, y solo con
+autorización explícita para cada paso.
+
+### Rollback
+
+A diferencia de las capas anteriores, aquí el rollback no es solo de aplicación.
+Hay dos planos y se revierten en orden inverso.
+
+**Plano de código**, si hubiera que volver atrás:
+
+1. revertir los commits de la capa hasta `81882f3`;
+2. el alta vuelve a copiar la plantilla con `LIKE INCLUDING ALL` y los tenants
+   nuevos vuelven a nacer sin claves foráneas ni secuencias propias;
+3. `apply_migration.py` vuelve a admitir el endpoint agrupado, donde su lock no
+   sirve.
+
+**Plano de datos**, cada reparación por separado y solo ante un problema
+concreto:
+
+- claves foráneas: `ALTER TABLE <tabla> DROP CONSTRAINT <nombre>` para las 26.
+  El `--dry-run` de `reponer_claves_foraneas_tenant.py` las lista;
+- historial: `DELETE FROM public.schema_migrations WHERE target_schema =
+  'tenant_2005' AND migration_name IN (…las 15…)`;
+- secuencias: devolver los 26 `DEFAULT` a las secuencias de la plantilla y
+  `DROP SEQUENCE` las creadas. El `--dry-run` de
+  `reparar_secuencias_tenant.py` imprime el `DEFAULT anterior` de cada columna,
+  y esa salida es el guion.
+
+Revertir cualquiera de las tres **reintroduce el defecto que reparó**. La de
+secuencias, además, devolvería al colegio a no poder insertar. Solo tienen
+sentido ante un problema causado por la propia reparación.
+
+Ninguna de las tres borra ni transforma datos del colegio: cambian metadatos de
+esquema y registros de historial.
+
+### Staging
+
+No se usó un entorno de staging convencional. Se usó una **rama de Neon creada
+desde producción**, que resultó mejor para este trabajo: contiene la estructura
+y los datos reales, y es desechable. Todo lo que se aplicó a producción se
+ejecutó antes ahí, con el ciclo completo incluido el rollback.
+
+Para repetirlo en el futuro: crear una rama, apuntar `DATABASE_URL` a su
+endpoint **directo** —no el `-pooler`—, ejecutar el `--dry-run`, aplicar,
+verificar, y destruir la rama al terminar.
+
+### Verificación manual
+
+**Hecha por el usuario el 2026-08-13, con resultado correcto.** Lo informó tras
+ejercitar la aplicación contra la base ya reparada. No se detalla aquí qué
+pantallas recorrió, así que conviene leerlo como «el sistema respondió bien en
+uso normal», no como una comprobación exhaustiva punto por punto.
+
+La verificación automatizada que sí consta es de catálogo, más una inserción
+controlada revertida que devolvió el id 686 en `estudiantes` y el 49 en
+`profesor`.
+
+Lista que se propuso comprobar:
+
+- matricular un estudiante y que reciba un id por encima de 685;
+- registrar un profesor, una asignación, asistencia, notas y un pago: las seis
+  operaciones que estaban bloqueadas;
+- que un intento de borrado que antes pasaba en silencio ahora falle donde debe;
+- que el alta de un colegio nuevo funcione de extremo a extremo por el camino de
+  3.5, cosa que se ensayó en la rama pero no en producción;
+- que los reportes y el estado de cuenta sigan mostrando los mismos importes.
+
+### Criterios de cierre: estado real
+
+Se cumplen todos menos uno, y ese se declara en vez de darse por bueno:
+
+| Criterio | Estado |
+|---|---|
+| Subcapas cerradas | Cumplido: 3.0 a 3.6 |
+| Tenants del alcance versionados y verificables | **Parcial**: `tenant_2005` sí; `tenant_4444` sigue con 21 de 30 |
+| Runner protegido contra ejecuciones simultáneas | Cumplido, con matiz: el lock funciona en el endpoint directo y el runner se niega sobre el agrupado |
+| Alta reproducible y equivalente | Cumplido y ensayado |
+| Contratos, permisos, tenant y SQL conservados | Cumplido |
+| Ensayo fuera de producción | Cumplido, sobre una rama de Neon |
+| Staging, rollback y verificación manual documentados | Cumplido |
+| Compuerta global, Ruff, dependencias, `git diff --check` | Cumplido |
+| Capa 4 en espera | Cumplido |
+
+**El criterio parcial es deliberado y necesita una decisión.** `tenant_3333` y
+`tenant_4444` son demo: conservan secuencias prestadas, faltan claves foráneas y
+a uno le falta historial. Repararlos es un comando por script y por schema, con
+las herramientas ya ensayadas. La capa se cierra con ese punto **abierto y
+registrado**, no resuelto por inferencia.
+
+### Riesgos que quedan abiertos
+
+- Los dos schemas demo conservan los tres defectos. Mientras compartan
+  secuencias con `tenant_colegio_1`, el script de limpieza de la demo sigue
+  siendo peligroso **para ellos**.
+- La migración base y `migrations/` no están enlazados: añadir una migración sin
+  regenerar la base haría que un tenant nuevo declarara tener algo que no tiene.
+- `apply_migration.py` ya no arranca con el `.env` actual. Es lo buscado, pero
+  cambia una herramienta operativa.
+- `tenant_2005` tiene 13 índices duplicados, sin función nueva.
+- La calibración de `DB_STATEMENT_TIMEOUT_MS` sigue pendiente desde la capa 1.
+- GitHub Actions no se ha verificado en ningún momento del programa desde la
+  capa 0.
+- La rama de Neon sigue viva y su credencial probablemente sirva también contra
+  producción, porque las ramas heredan el rol del padre.
+
+## Mantenimiento posterior al cierre — 2026-08-13
+
+### Eliminación de los dos schemas demo
+
+Tras cerrar la capa, el usuario decidió **eliminar `tenant_3333` y
+`tenant_4444`** en lugar de repararlos. Ambos eran demo; sus datos no tenían
+valor y arrastraban los tres defectos originales. `tenant_3333` tenía además 27
+filas huérfanas —hijas de asignaciones borradas—, que son la demostración
+concreta de lo que permite la ausencia de claves foráneas.
+
+Antes de tocar nada se comprobó que **nada fuera de esos schemas dependía de
+ellos**: 0 claves foráneas apuntándoles, 0 defaults usando sus secuencias, 0
+vistas y 0 funciones mencionándolos.
+
+La operación se hizo desde un script puntual del scratchpad, **no** añadiendo
+una herramienta de borrado al repositorio: la capa estaba cerrada y no procede
+dejar disponible algo así. Sus protecciones: lista blanca cerrada con los dos
+nombres, lista negra explícita para `tenant_2005`, `tenant_colegio_1` y
+`public`, exigencia de que el schema estuviera registrado en `public.colegios`,
+todo en una transacción, y una verificación **dentro** de esa transacción que
+revierte si los dos intocables no siguen presentes al terminar.
+
+Se borraron los dos schemas y sus filas asociadas: 2 en `colegios`, 51 en
+`schema_migrations`, 1 en `tenant_suscripciones`, 1 en
+`tenant_eventos_auditoria` y 2 en `tenant_estado_auditoria`.
+
+Ensayo previo en la rama: el ciclo completo, y después un alta de tenant nuevo
+que salió correcta —281 columnas, 37 claves, 30 secuencias—, comprobando que
+eliminar los demos no rompe el aprovisionamiento, que ya no depende de ellos.
+
+**No consta que se hiciera copia de seguridad previa.** Se recomendó crear una
+rama de Neon antes de ejecutar; el usuario ordenó aplicar sin confirmarla. Los
+datos borrados no son recuperables desde la base.
+
+### Estado de producción resultante
+
+| Schema | Papel | Claves foráneas | Secuencias | Prestadas | Migraciones |
+|---|---|---:|---:|---:|---:|
+| `tenant_2005` | Producción | 37 | 30 | 0 | 30 |
+| `tenant_colegio_1` | Plantilla y demo | 37 | 30 | 0 | 30 |
+
+`scripts/auditar_migraciones_tenants.py` terminó por primera vez con
+**«Auditoria finalizada: todos los destinos al dia»** y exit 0.
+
+### Efecto sobre los criterios de cierre
+
+El criterio que quedó **parcial** al cerrar la capa —«todos los tenants del
+alcance versionados y verificables»— queda **cumplido**, por eliminación de los
+tenants incompletos en vez de por reparación. Es una resolución legítima y se
+registra como tal, no como si se hubieran reparado.
+
+Con ello, el punto abierto nº 1 de la entrega desaparece. Siguen abiertos el
+enlace entre la migración base y `migrations/`, la verificación manual, los 13
+índices duplicados y la limpieza de la rama de Neon.
+
+### Enlace entre la migración base y `migrations/`
+
+El punto abierto nº 2 quedó resuelto el 2026-08-13, también tras el cierre.
+
+El problema: el esquema de un tenant estaba descrito en dos sitios que no se
+hablaban. Añadir una migración y olvidar regenerar la base habría hecho que los
+colegios nuevos nacieran con la estructura vieja **y el historial nuevo**,
+declarando tener algo que no tienen. Silencioso hasta que una consulta usara lo
+que falta.
+
+Se añadieron dos piezas, ninguna toca producción ni la base de datos:
+
+- **`scripts/generar_esquema_base.py`**: regenera el archivo base leyendo la
+  estructura real de un schema. Es de solo lectura sobre la base —`READ ONLY` y
+  `rollback`—; lo único que escribe es el `.sql`. Sin esta herramienta el paso
+  de «actualizar la base» era editar a mano 568 líneas, que es tanto como decir
+  que no se haría.
+- **`tests/test_esquema_base.py`**: cinco pruebas que comparan las migraciones
+  que el archivo base **declara incorporar** —una lista en su cabecera, generada
+  automáticamente desde `public.schema_migrations`— con las que hay en
+  `migrations/`. Si falta alguna, la compuerta falla y el mensaje dice qué
+  comando ejecutar.
+
+Se comprobó que la guarda sirve: al añadir un `.sql` de prueba a `migrations/`
+sin regenerar la base, la compuerta falló señalando el archivo por su nombre.
+Retirado el archivo, volvió a pasar.
+
+La regeneración es **idempotente**: ejecutarla dos veces seguidas informa «sin
+cambios respecto al anterior». Al regenerar desde producción, el SQL resultó
+idéntico byte a byte al que se había generado desde la rama; lo único que cambió
+fue la cabecera nueva.
+
+El flujo completo quedó escrito en `docs/MIGRACIONES.md`, sección «Añadir una
+migración nueva», con los seis pasos, el orden entre aplicar y regenerar, y la
+advertencia de que el runner exige el endpoint directo.
+
+### Limpieza final y cierre del trabajo
+
+**Rama de ensayo: eliminada** por el usuario el 2026-08-14. Cumplió su función:
+sobre ella se ensayaron las tres reparaciones aplicadas a producción, el
+borrado de los demos y el alta por el camino nuevo. Borrarla no afecta a
+producción; las ramas de Neon son independientes de su madre.
+
+Con la rama fuera, ya no hay dónde ensayar cambios sobre datos reales. **Si
+hiciera falta otro ensayo, hay que crear una rama nueva**, que es instantáneo.
+
+**Índices duplicados: no se tocan.** `tenant_2005` conserva 14 índices
+redundantes —misma tabla, mismas columnas, misma unicidad, otro nombre—. Se
+midieron uno a uno y se comprobó que ninguno respalda una restricción, así que
+borrarlos sería seguro y reversible. Se decidió **no hacerlo**: sobre tablas de
+como mucho 20.000 filas el ahorro es marginal, y no compensa una operación más
+sobre producción ni crear una rama solo para ensayarla.
+
+Queda registrado como limpieza cosmética disponible, no como defecto. Los 14
+nombres están en el registro de ejecución de esta fecha; el criterio para
+elegir cuál conservar de cada grupo es indiferente al rendimiento, lo único que
+importa es que sobreviva exactamente uno y que ninguno respalde una restricción.
+
+**Rotación de la credencial: pendiente de comprobar por el usuario.** Al intentar
+conectar a la rama tras su borrado, la autenticación falló. Si además se rotó la
+contraseña del rol `neondb_owner` —que es compartido entre ramas y producción—,
+la `DATABASE_URL` de `.env` habrá quedado obsoleta y la aplicación no podrá
+conectarse. La comprobación es arrancar la aplicación: si inicia sesión, no hay
+nada que hacer.
+
 ### Reparaciones que esta capa debe encarar
 
 Se registran aquí para que no se pierdan y para que el usuario decida cuándo
@@ -2466,77 +2718,69 @@ su estructura. Once pruebas herméticas.
 
 ## Entrega al próximo chat
 
-- Capa activa: **3, migraciones y tenants**.
-- Última subcapa terminada: **3.4a**, ensayo no productivo sobre una rama de
-  Neon: primera medición real y las cuatro hipótesis de 3.0 resueltas.
-- Última subcapa cerrada: **3.5**, alta reproducible. Un tenant nuevo se
-  construye desde la migración base y nace con sus 37 claves foráneas y sus 30
-  secuencias propias, donde antes tenía 0 y 0.
-- Primera subcapa pendiente: **3.6**, cierre de capa: rollback, verificación
-  manual, compuerta global e índice maestro.
-- Commit base: `81882f3b1ee9e3b50076b0fc1fd93dcd9fd5ac70`, rama `main`.
-- Hallazgo central: seis puntos de entrada pueden mutar el esquema de un tenant
-  y solo `apply_migration.py` registra lo que aplicó. El alta crea el schema
-  copiando la plantilla sin sembrar historial, y los tenants suspendidos o
-  cancelados quedan fuera del descubrimiento sin recuperar nada al reactivarse.
-- Estado de 3.1: `apply_migration.py` toma un advisory lock de sesión antes de
-  leer o escribir el historial y devuelve exit 2 si otra ejecución lo tiene. El
-  lock **no** cubre los cuatro scripts ad-hoc.
-- Estado de 3.2: existe caracterización ejecutable del runner completo —incluida
-  la rama pública, el aislamiento del fallo por tenant y `--dry-run`— y del alta
-  de tenant, en `tests/test_tenant_provisioning.py`.
-- **Prueba que debe fallar a propósito en 3.3b**:
-  `test_el_alta_todavia_no_siembra_el_historial_de_migraciones`. Fija el defecto
-  actual; su fallo será la señal de que quedó corregido. No borrarla por
-  confusión.
-- Estado de 3.3a: existe `scripts/auditar_migraciones_tenants.py`, un informe de
-  solo lectura que compara `migrations/` con `public.schema_migrations` e
-  incluye a los tenants suspendidos y cancelados que el runner omite. **Nunca se
-  ha ejecutado contra una base de datos**; su primera ejecución real pertenece
-  al ensayo de 3.5.
-- Estado de 3.3b: el alta siembra `public.schema_migrations` copiando las filas
-  del schema plantilla, en su misma transacción y con una guarda `to_regclass`
-  para no romper una base que aún no tiene historial. Si la plantilla está
-  atrasada, el tenant nuevo hereda ese atraso: es lo correcto, pero sembrado no
-  significa al día.
-- Verificación local vigente: compuerta global en exit 0 con **529 pruebas**,
-  Ruff y dependencias correctos; 14 pruebas del alta y 99 dirigidas. Tanto en
-  3.1 como en 3.3b se comprobó contra el código anterior que las pruebas nuevas
-  detectan realmente el cambio.
-- Decisión tomada el 2026-08-13: el esquema base saldrá del DDL real de una base
-  desechable, no de `scripts/legacy/crear_cliente.py`. El ensayo se adelantó a
-  **3.4**, el alta reproducible bajó a 3.5 y el cierre a 3.6.
-- **Lo primero que debe saber quien continúe**: de los cuatro schemas, solo
-  `tenant_2005` es producción real; los otros tres son demo o prueba. Y ocho de
-  sus tablas —`estudiantes`, `profesor`, `asignaciones`, `asistencia`,
-  `notas_detalle`, `pagos`, `boletin_cabecera`, `boletin_detalles`— **no pueden
-  insertar hoy**: su secuencia compartida está por debajo del `MAX(id)` y el
-  próximo valor ya existe. Es una avería en curso, no una deuda.
-- **Detonante adicional**: `scripts/limpiar_tenant_colegio_1_operativo.py` haría
-  `TRUNCATE … RESTART IDENTITY` sobre 19 de las 26 secuencias que usa el colegio
-  real. La demo **no es desechable** mientras dure ese acoplamiento.
-- Otros hallazgos de 3.4a: `tenant_2005` tiene 11 claves foráneas de 37, le
-  faltan 15 registros de historial sin estar estructuralmente atrasado, y el
-  advisory lock de 3.1 **no se sostiene sobre el endpoint agrupado**, que es el
-  que usa `.env`.
-- **Reparación aplicada a producción el 2026-08-13**: `tenant_2005` tiene sus
-  30 secuencias propias y las ocho tablas bloqueadas vuelven a insertar,
-  verificado con una inserción controlada que se revirtió sin dejar filas. Es la
-  única modificación de la base real en todo el programa, hecha con autorización
-  explícita y tras revisar el `--dry-run`.
-- **Estado de 3.4c**: existe `migrations/base/20260813_esquema_base_tenant.sql`,
-  extraído del catálogo real y verificado contra la plantilla: 281 columnas
-  idénticas y **cero** defaults apuntando a la plantilla, porque las columnas se
-  declaran `SERIAL` y cada schema crea sus propias secuencias.
-- **Requisito para 3.5**: una rama desechable para el ensayo comparativo del
-  alta. La usada hasta ahora sirve para la plantilla, pero su `tenant_2005` ya
-  está reparado. Permanece además pendiente y aceptada la calibración de
-  `DB_STATEMENT_TIMEOUT_MS` de la capa 1, y GitHub Actions sigue sin evidencia
-  de run.
-- Siguiente acción exacta: ejecutar únicamente **3.5** según su «trabajo
-  exacto», cuando el usuario lo ordene: sustituir
-  en `crear_tenant_controller` la copia por `LIKE INCLUDING ALL` por la
-  aplicación de la migración base, decidir qué ocurre con la siembra de datos y
-  con `public.schema_migrations`, y ensayar en una rama comparando un tenant
-  nuevo contra la plantilla. Sin tocar los 34 archivos existentes de
-  `migrations/` ni el runner.
+- Capa activa: **ninguna**. La capa 3 quedó **cerrada** el 2026-08-13; la capa 4
+  sigue en espera y no fue activada.
+- Última subcapa terminada: **3.6**, cierre. Primera subcapa pendiente: ninguna.
+- Commit base: `81882f3b1ee9e3b50076b0fc1fd93dcd9fd5ac70`, rama `main`, con 11
+  commits posteriores, todos explicados en esta bitácora.
+- Compuerta al cerrar: **exit 0 con 570 pruebas**, Ruff correcto y dependencias
+  íntegras. La suite pasó de 477 al empezar la capa a 570.
+### Lo primero que debe saber quien continúe
+
+Quedan **dos schemas de tenant**: `tenant_2005`, el único de producción, y
+`tenant_colegio_1`, que es a la vez plantilla y demo. Los dos demos anteriores,
+`tenant_3333` y `tenant_4444`, se eliminaron el 2026-08-13 tras cerrar la capa.
+
+`tenant_colegio_1` **no se puede borrar**: el alta sigue copiando de él las
+`plantilla_impresion` predefinidas y los registros de `schema_migrations`.
+
+### Qué dejó la capa
+
+- El alta construye el schema desde `migrations/base/20260813_esquema_base_tenant.sql`.
+  Un tenant nuevo nace con 37 claves foráneas y 30 secuencias propias; el camino
+  anterior producía 0 y 0.
+- `apply_migration.py` toma un advisory lock de sesión y **se niega a correr
+  sobre el endpoint agrupado**, donde ese lock no se sostiene.
+- Cuatro herramientas nuevas en `scripts/`: auditoría de migraciones faltantes,
+  reparación de secuencias, siembra de historial y reposición de claves
+  foráneas. Todas con `--dry-run`, idempotentes y transaccionales.
+- Tres reparaciones **aplicadas a producción** sobre `tenant_2005`: secuencias
+  propias, 15 registros de historial y 26 claves foráneas. Es la única
+  modificación de la base real en todo el programa.
+
+### Qué quedó abierto
+
+1. ~~Los dos schemas demo sin reparar.~~ **Resuelto el 2026-08-13**: el usuario
+   decidió eliminarlos en vez de repararlos. Quedan `tenant_2005` y
+   `tenant_colegio_1`, ambos completos, y la auditoría termina en exit 0. Ver
+   «Mantenimiento posterior al cierre».
+2. ~~La migración base y `migrations/` no están enlazados.~~ **Resuelto el
+   2026-08-13** con `scripts/generar_esquema_base.py` y
+   `tests/test_esquema_base.py`. Ver «Enlace entre la migración base y
+   `migrations/`».
+3. ~~Verificación manual sin hacer.~~ **Hecha el 2026-08-13** por el usuario,
+   con resultado correcto tras ejercitar la aplicación contra la base reparada.
+4. **14 índices duplicados** en `tenant_2005`. Medidos y descartados
+   deliberadamente: el ahorro no compensa otra operación sobre producción.
+   Disponible como limpieza cosmética, no es un defecto.
+5. ~~La rama de Neon sigue viva.~~ **Eliminada** por el usuario el 2026-08-14.
+   Queda por confirmar si se rotó también la contraseña de `neondb_owner`: si
+   así fue, hay que actualizar `DATABASE_URL` en `.env` y en el despliegue.
+6. Heredados: `DB_STATEMENT_TIMEOUT_MS` sin calibrar desde la capa 1 y GitHub
+   Actions sin verificar desde la capa 0.
+
+### Lecciones que se pagaron caro
+
+- `setval()` **no** se revierte con un `ROLLBACK`; `ALTER SEQUENCE … RESTART`
+  sí. Lo detectó el usuario antes de aplicar nada.
+- `pg_get_constraintdef` y el propio archivo base devuelven nombres **sin
+  cualificar**: se resuelven con el `search_path`. Cualquier script que copie
+  estructura entre schemas debe apuntarlo al destino, o creará referencias
+  cruzadas. Ocurrió en 3.4f y falló por casualidad.
+- Comparar índices por su **nombre** da falsos positivos: la plantilla y los
+  tenants siguen convenciones distintas. Hay que comparar por función.
+
+### Siguiente acción exacta
+
+Esperar una decisión del usuario sobre los puntos abiertos y sobre si activar la
+capa 4. **Una instrucción genérica de continuar no autoriza activarla.**

@@ -37,7 +37,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 0 | Línea base y calidad | Pruebas deterministas, compuerta global y CI | **Cerrada**; CI verificada en remoto | [00_LINEA_BASE_CALIDAD.md](./00_LINEA_BASE_CALIDAD.md) |
 | 1 | Fundación de base de datos | Conexiones, transacciones, timeouts y pool definidos | **Cerrada**; calibración de `statement_timeout` pendiente y aceptada | [01_FUNDACION_BASE_DATOS.md](./01_FUNDACION_BASE_DATOS.md) |
 | 2 | Concurrencia | DB síncrona fuera del event loop preservando `ContextVar` | **Cerrada** y publicada; CI posterior al cierre no verificada | [02_CONCURRENCIA.md](./02_CONCURRENCIA.md) |
-| 3 | Migraciones y tenants | Todos los tenants versionados, runner bloqueado y alta reproducible | **Activa**; 3.0–3.5 cerradas, falta 3.6 | [03_MIGRACIONES_TENANTS.md](./03_MIGRACIONES_TENANTS.md) |
+| 3 | Migraciones y tenants | Todos los tenants versionados, runner bloqueado y alta reproducible | **Cerrada**; dos puntos abiertos registrados | [03_MIGRACIONES_TENANTS.md](./03_MIGRACIONES_TENANTS.md) |
 | 4 | Reportes financieros | Dominio modular, N+1 eliminado y consultas medidas | En espera | Se crea al activarla |
 | 5 | Pagos y tipos de pago | Dominio financiero modularizado y protegido | En espera | Se crea al activarla |
 | 6 | Asignaciones y estudiantes | Dominios grandes separados con contratos estables | En espera | Se crea al activarla |
@@ -48,12 +48,11 @@ cierre y el usuario ordene continuar, se crea su sucesora desde
 `PLANTILLA_CAPA.md`, se registra el commit base vigente y se actualiza esta
 tabla.
 
-La capa 2 se cerró el 2026-08-13 después de completar sus siete subcapas. Las
-capas 0, 1 y 2 están cerradas. La capa 3 se activó el 2026-08-13 por orden
-explícita del usuario, con alcance limitado a la activación documental: es la
-única capa marcada como Activa y su primera subcapa pendiente es 3.0. El commit
-documental de cierre de la capa 2 fue publicado en `origin/main`; no se atribuye
-un resultado nuevo de GitHub Actions sin evidencia del run correspondiente.
+Las capas 0, 1, 2 y 3 están cerradas. **No existe una capa activa**: la capa 4
+permanece en espera y no fue activada. La capa 3 se abrió y se cerró el
+2026-08-13, y es la única del programa que modificó la base de datos real, con
+autorización explícita del usuario para cada paso. No se atribuye ningún
+resultado de GitHub Actions sin evidencia del run correspondiente.
 
 ## Alcance de cada capa
 
@@ -236,9 +235,24 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   al base de la capa 2 quedaron auditados y explicados en su bitácora. La
   activación creó únicamente la bitácora nueva y este índice; no inspeccionó ni
   modificó código, migraciones, esquemas, pruebas ni configuración.
-- Capa activa: **3, migraciones y tenants**. Subcapas **3.0, 3.1, 3.2, 3.3a y
-  3.3b, 3.4a–3.4f y 3.5 cerradas** el 2026-08-13. Primera subcapa pendiente:
-  **3.6**, cierre de capa.
+- Capa 3 **cerrada** el 2026-08-13, con sus subcapas 3.0 a 3.6 completas.
+  Compuerta al cerrar: **exit 0 con 570 pruebas**, Ruff correcto y `pip check`
+  correcto. La suite pasó de 477 al empezar la capa a 570.
+- **Estado de los tenants**: quedan dos, `tenant_2005` —el único de producción—
+  y `tenant_colegio_1` —plantilla y demo—, ambos con 37 claves foráneas, 30
+  secuencias propias, ninguna prestada y las 30 migraciones registradas. Los
+  demos `tenant_3333` y `tenant_4444` se **eliminaron** el 2026-08-13, tras
+  cerrar la capa, por decisión del usuario y en vez de repararlos.
+  `scripts/auditar_migraciones_tenants.py` termina en exit 0 con todos los
+  destinos al día.
+- **Punto abierto resuelto** el 2026-08-13, tras el cierre: la migración base y
+  `migrations/` ya están enlazados. `scripts/generar_esquema_base.py` regenera
+  la base en un comando y `tests/test_esquema_base.py` hace fallar la compuerta
+  si alguien añade una migración y no la regenera. El flujo completo está en
+  `docs/MIGRACIONES.md`, sección «Añadir una migración nueva».
+- **Verificación manual hecha** el 2026-08-13 por el usuario, con resultado
+  correcto tras ejercitar la aplicación contra la base ya reparada.
+- Capa activa: **ninguna**. Siguiente capa: 4, reportes financieros, en espera.
 - Resultado de 3.5: el alta construye el schema desde la migración base en vez de
   copiar la plantilla. Un tenant nuevo nace con **37 claves foráneas y 30
   secuencias propias**, donde el camino anterior producía **0 y 0**. Ensayado
@@ -329,19 +343,24 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   conexiones en 20 archivos de `app/`, más los timeouts. Sin cambios en rutas,
   payloads, status codes, permisos, tenant, ownership ni SQL observable.
 - Código de producto modificado al activar la capa 3: ninguno.
-- Código de producto modificado durante la capa 3 hasta ahora: solo
+- Limpieza final, 2026-08-14: la rama de ensayo de Neon quedó **eliminada**. Los
+  14 índices duplicados de `tenant_2005` se midieron y se decidió **no
+  borrarlos**: el ahorro no compensa otra operación sobre producción. Queda por
+  confirmar si se rotó la contraseña de `neondb_owner`; si así fue, hay que
+  actualizar `DATABASE_URL` en `.env` y en el despliegue.
+- Código de producto modificado durante la capa 3: solo
   `apply_migration.py`, en la subcapa 3.1. Sin cambios en rutas, payloads,
   status codes, permisos, tenant, ownership, SQL de dominio ni en los archivos
   existentes de `migrations/`.
 
 ## Archivos de continuidad
 
-- [03_MIGRACIONES_TENANTS.md](./03_MIGRACIONES_TENANTS.md): **bitácora activa**
-  de la capa 3; define el alcance autorizado, los invariantes, el inventario
-  cerrado en 3.0, el bloqueo cerrado en 3.1, la caracterización cerrada en 3.2,
-  el informe cerrado en 3.3a, la siembra cerrada en 3.3b, la decisión sobre el
-  esquema base y el trabajo exacto de 3.4. Es el documento que un chat nuevo
-  debe leer después de este índice.
+- [03_MIGRACIONES_TENANTS.md](./03_MIGRACIONES_TENANTS.md): **bitácora cerrada**
+  de la capa 3 y **fuente de continuidad**. Conserva el inventario, las tres
+  reparaciones aplicadas a producción con su rollback, el ensayo sobre una rama
+  de Neon, la verificación manual pendiente, los dos puntos abiertos y las
+  lecciones sobre `setval`, el `search_path` y la comparación de índices. Es el
+  documento que un chat nuevo debe leer después de este índice.
 - [02_CONCURRENCIA.md](./02_CONCURRENCIA.md): bitácora cerrada de la capa 2;
   conserva la medición, el límite de capacidad, staging, rollback, verificación
   manual y riesgos residuales.

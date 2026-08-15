@@ -134,32 +134,25 @@ No existe ahora una autorización puntual de uso inmediato. Cuando la capa 4 se
 cierre, la siguiente seguirá en espera hasta que el usuario decida de forma
 explícita si activarla.
 
-## Estado del programa al 2026-08-15
+## Estado del programa al 2026-08-15 (capa 4 cerrada)
 
 Lo que sigue es un resumen para orientarse; **el estado vivo está en
 `docs/modularizacion/README.md`**, que es lo que manda si algo no coincide.
 
-- Capas 0, 1, 2 y 3 **cerradas**.
-- Capa activa: **4, reportes financieros**. Commit base:
-  `46fad2c4c12482830cc58ac28ea2512f96155fb8`; 4.0 a 4.2 cerradas y 4.3 en
-  verificación.
+- Capas 0, 1, 2, 3 y 4 **cerradas**. **No hay capa activa.**
 - Siguiente capa: **5, pagos y tipos de pago, en espera**.
-- 4.0 inventarió nueve entradas, fijó la línea base `10 + 5N`/`1 + 12N` y añadió
-  diez pruebas de caracterización. No modificó producto, SQL ni configuración.
-- 4.1 extrajo la persistencia de los cuatro reportes simples a funciones que
-  reciben el cursor existente, conservando SQL, contratos, fallbacks y
-  lifecycle. No abordó el N+1 ni modificó la base de datos.
-- 4.2 sustituyó solo el `5N` del estado de cuenta de reportes por cinco lecturas
-  agrupadas fijas. El conteo hermético quedó en 6 para curso vacío y 15 para
-  cualquier `N > 0`; no se tocó el `1 + 12N` del consumidor de cuentas ni se
-  accedió a la base de datos.
-- En 4.3, la separación local y la corrección de compatibilidad con el schema
-  canónico están completas: el último SQL inline pasó al repositorio, el
-  ensamblado financiero a un servicio puro y se eliminó la dependencia de la
-  columna inexistente `pagos.concepto_id` sin modificar el schema. La compuerta
-  pasó con 606 pruebas. Faltan medir el SQL final con `EXPLAIN ANALYZE` y
-  ejecutar la verificación manual sobre un schema no productivo equivalente,
-  por lo que la capa 4 sigue activa.
+- La capa 4 cerró el 2026-08-15 cumpliendo sus tres objetivos: la persistencia y
+  las reglas de los reportes salieron del controller a
+  `app/repositories/reportes_repository.py` y `app/services/reportes_financieros.py`;
+  el N+1 del estado de cuenta pasó de **5N consultas por estudiante a 15
+  constantes**; y las tres consultas se midieron con `EXPLAIN ANALYZE` sobre
+  producción en **menos de 1 ms** juntas. Compuerta al cerrar: 606 pruebas.
+- Hallazgo de la capa 4 que conviene recordar: el estado de cuenta **estaba
+  roto**. Referenciaba `pagos.concepto_id`, una columna que no existe en el
+  schema, y fallaba con `42703` en cada llamada. El usuario verificó a mano que
+  las cifras nuevas cuadran.
+- La capa 4 **no modificó la base de datos**: todo lo ejecutado contra
+  PostgreSQL fue lectura en transacciones `READ ONLY` con `rollback`.
 - La capa 3 es la única del programa que **modificó la base de datos real**, con
   autorización explícita del usuario para cada paso. Dejó tres reparaciones
   aplicadas a producción, dos schemas demo eliminados y el alta de tenants
@@ -172,7 +165,7 @@ Lo que sigue es un resumen para orientarse; **el estado vivo está en
   comprobó cancelación y obtuvo una primera medición READ ONLY, y que GitHub
   Actions no se ha verificado desde la capa 0.
 
-### Tres cosas que quien continúe debe saber antes de tocar la base
+### Lo que quien continúe debe saber antes de tocar la base
 
 1. **`apply_migration.py` se niega sobre el endpoint `-pooler`.** Allí su lock de
    sesión no impide dos ejecuciones simultáneas: se comprobó. Para migrar hay
@@ -181,22 +174,106 @@ Lo que sigue es un resumen para orientarse; **el estado vivo está en
    nombres sin cualificar**, que se resuelven con el `search_path`. Cualquier
    cosa que copie estructura entre schemas debe fijarlo al destino, o creará
    referencias cruzadas. Ya pasó una vez y falló por casualidad.
-3. **Los ensayos necesitan schema canónico y datos representativos**, no datos
-   de producción. Puede usarse una rama desechable creada solo con el schema
-   versionado y datos sintéticos, siempre que se audite su firma estructural y
-   se mida luego con un rol dedicado `READ ONLY`. La rama usada antes ya fue
-   eliminada y no contiene evidencia del SQL final.
+3. **Validar el SQL contra el schema real es barato y encuentra cosas.** Basta
+   envolver el cursor para convertir cada `execute()` en su `EXPLAIN` y llamar a
+   las funciones reales del repositorio: valida lo que el código ejecuta, no una
+   transcripción. Así se demostró que el SQL anterior fallaba con `42703`. Sirve
+   incluso sobre una rama **sin datos**.
+4. **Para medir, producción en solo lectura es la mejor opción**, y esto corrige
+   una recomendación anterior de este mismo archivo. `EXPLAIN ANALYZE` sobre
+   `SELECT` no escribe y devuelve solo plan y tiempos, **sin ningún dato
+   personal**. Una rama sin datos no mide nada —el planificador siempre elige
+   recorridos secuenciales—, y una rama con datos reales expone información de
+   menores sin añadir fidelidad. Si hace falta conectar, usar `service=` y
+   `SET TRANSACTION READ ONLY` con `rollback`.
+5. **No aceptar el resumen de otro asistente como estado.** Al retomar la capa 4
+   desde otro chat, el resumen recibido decía «nueve archivos modificados, cinco
+   commits» y la realidad era árbol limpio y seis commits. Validar siempre
+   `git status`, el base y la continuidad por cuenta propia.
+6. **Cuando se repara algo roto no hay un “antes” con el que comparar.** Las
+   pruebas fijan lo que decidió quien escribió el código. En ese caso la
+   verificación manual del usuario contra importes que conoce **es la evidencia
+   decisiva** y no puede delegarse.
 
-## Autorización consumida: capa 4
+## Trabajo disponible que no requiere activar ninguna capa
 
-La autorización puntual para activar la capa 4 se consumió el 2026-08-14 con
-una orden explícita del usuario. Quedó registrada en
-`04_REPORTES_FINANCIEROS.md` y **no puede reutilizarse**.
+Registrado y sin hacer. Nada de esto es urgente ni bloquea a la capa 5.
 
-La continuidad vigente es completar únicamente la medición y la verificación
-manual pendientes de 4.3 en un staging con schema canónico, datos sintéticos
-representativos y rol dedicado READ ONLY, o registrar una decisión explícita
-del usuario de cerrar la capa aceptando ambas evidencias pendientes. Solo
-después puede cerrarse la capa 4. La capa 5 debe quedar en espera: no existe
-autorización para activarla, hacer commit, push, deploy, migraciones reales ni
-acceso a producción.
+- **Colisión de mayúsculas en el servicio de reportes.**
+  `app/services/reportes_financieros.py` indexa por `str(nombre).lower()` con
+  asignación simple, mientras el SQL agrupa respetando mayúsculas. Si un
+  estudiante tuviera dos pagos cuyo concepto solo difiera en el caso, un importe
+  **desaparecería del informe en silencio**. Se midió sobre producción: **0
+  casos hoy**, así que es latente. El arreglo limpio es agrupar por
+  `LOWER(...)` en las dos consultas del repositorio, una línea cada una, y hoy
+  sería un no-op verificable por comparación.
+- **`/estado-cuenta/curso`**, consumidor distinto del de reportes, sigue
+  repitiendo el cálculo y llega a doce consultas por estudiante.
+- **14 índices duplicados** en `tenant_2005`, medidos y descartados
+  deliberadamente en la capa 3.
+- Heredados: valor operativo final de `DB_STATEMENT_TIMEOUT_MS` y ausencia de
+  evidencia de GitHub Actions desde la capa 0.
+
+## Autorización de uso inmediato: activar la capa 5
+
+Válida **solo mientras el índice maestro siga indicando que no existe una capa
+activa y que la capa 5 está en espera**. Si el estado ya cambió, no la
+reutilices: vuelve a determinarlo desde el índice.
+
+Se copia el bloque universal del principio y se añade inmediatamente después:
+
+```text
+Autorizo activar únicamente la capa 5, Pagos y tipos de pago.
+
+Acepto continuar manteniendo pendientes las verificaciones heredadas: el valor
+operativo final de DB_STATEMENT_TIMEOUT_MS de la capa 1 y la ausencia de
+evidencia de GitHub Actions desde la capa 0. Regístralas como pendientes,
+conserva su riesgo y no las marques como cumplidas.
+
+Esta autorización permite solamente la activación documental. No autoriza
+inspeccionar código de la capa 5, implementar 5.0, tocar la base de datos,
+hacer deploy, commit o push. Después de activar la capa, detente.
+
+En el mismo checkout local:
+
+1. Lee y aplica completamente el protocolo universal anterior.
+2. Valida `main`, `git status`, el HEAD limpio vigente, `origin/main` y la
+   continuidad desde el commit base de la capa 4,
+   `46fad2c4c12482830cc58ac28ea2512f96155fb8`, comprobando que todo commit
+   posterior esté explicado en 04_REPORTES_FINANCIEROS.md.
+3. Confirma que la capa 4 está cerrada, que la capa 5 sigue en espera y que no
+   existe otra capa activa. Si hay divergencia o un commit sin explicar,
+   detente.
+4. No uses ningún hash de memoria: comprueba primero el HEAD limpio real.
+5. No declares GitHub Actions verificada solo porque HEAD coincida con
+   origin/main; exige evidencia del run asociado.
+6. Crea `docs/modularizacion/05_PAGOS_TIPOS_PAGO.md` partiendo de
+   `docs/modularizacion/PLANTILLA_CAPA.md`.
+7. Registra el HEAD limpio vigente como commit base, rama `main`, estado
+   `Activa`, primera subcapa pendiente `5.0` y código de producto modificado al
+   activar: ninguno.
+8. Define el objetivo solo desde el índice maestro: modularizar y proteger el
+   dominio financiero cuidando montos, saldos, comprobantes, idempotencia y
+   transacciones, y conservando los contratos del frontend y de la base.
+9. Deja 5.0 como inventario, contratos y caracterización. No inventes detalles
+   de implementación sin inspeccionarlos en un turno posterior.
+10. Ten presente que esta capa escribe donde las anteriores solo leían, y que
+    eso cambia el perfil de riesgo:
+    - la capa 3 añadió 26 claves foráneas a tenant_2005, así que inserciones y
+      borrados pueden fallar donde antes pasaban en silencio;
+    - la capa 4 fijó los contratos de lectura de `pagos`; cambiar cómo se
+      escriben puede romperlos;
+    - `pagos.concepto_id` no existe: el concepto vive en `descripcion` y el
+      medio en `tipo_pago`, y las aplicaciones enlazan por `tipo_pago_id`.
+11. Actualiza `docs/modularizacion/README.md` para marcar únicamente la capa 5
+    como Activa, enlazar su bitácora y dejar 5.0 pendiente.
+12. Ejecuta `git diff --check`, comprueba el whitespace del archivo nuevo y
+    verifica que el alcance contenga exclusivamente `README.md` y
+    `05_PAGOS_TIPOS_PAGO.md`.
+13. Informa el commit base, la primera subcapa pendiente, las verificaciones
+    heredadas y cualquier evidencia remota disponible. Detente sin inspeccionar
+    ni implementar 5.0.
+
+No hagas commit, push, deploy, migraciones reales ni acceso a producción. Yo
+revisaré los cambios y controlaré su publicación.
+```

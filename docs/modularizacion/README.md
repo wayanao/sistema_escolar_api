@@ -38,7 +38,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 1 | Fundación de base de datos | Conexiones, transacciones, timeouts y pool definidos | **Cerrada**; primera medición hecha, valor operativo final pendiente | [01_FUNDACION_BASE_DATOS.md](./01_FUNDACION_BASE_DATOS.md) |
 | 2 | Concurrencia | DB síncrona fuera del event loop preservando `ContextVar` | **Cerrada** y publicada; CI posterior al cierre no verificada | [02_CONCURRENCIA.md](./02_CONCURRENCIA.md) |
 | 3 | Migraciones y tenants | Todos los tenants versionados, runner bloqueado y alta reproducible | **Cerrada**; reparó producción y verificó en uso | [03_MIGRACIONES_TENANTS.md](./03_MIGRACIONES_TENANTS.md) |
-| 4 | Reportes financieros | Dominio modular, N+1 eliminado y consultas medidas | **Activa**; 4.0 a 4.2 cerradas, 4.3 en verificación | [04_REPORTES_FINANCIEROS.md](./04_REPORTES_FINANCIEROS.md) |
+| 4 | Reportes financieros | Dominio modular, N+1 eliminado y consultas medidas | **Cerrada**; N+1 de 5N a 15 constantes, medido en producción | [04_REPORTES_FINANCIEROS.md](./04_REPORTES_FINANCIEROS.md) |
 | 5 | Pagos y tipos de pago | Dominio financiero modularizado y protegido | En espera | Se crea al activarla |
 | 6 | Asignaciones y estudiantes | Dominios grandes separados con contratos estables | En espera | Se crea al activarla |
 | 7 | Resto de dominios | Migración individual con contratos y pruebas | En espera | Una bitácora por dominio al activarlo |
@@ -48,12 +48,11 @@ cierre y el usuario ordene continuar, se crea su sucesora desde
 `PLANTILLA_CAPA.md`, se registra el commit base vigente y se actualiza esta
 tabla.
 
-Las capas 0, 1, 2 y 3 están cerradas. La capa 4 está **activa** desde el
-2026-08-14, cerró 4.0 a 4.2, y 4.3 está en verificación. La capa 3
-se abrió y se cerró el 2026-08-13, y es la única del programa que modificó la
-base de datos real, con autorización explícita del usuario para cada paso. No
-se atribuye ningún resultado de GitHub Actions sin evidencia del run
-correspondiente.
+Las capas 0, 1, 2, 3 y 4 están cerradas. **No existe una capa activa**: la capa
+5 permanece en espera y no fue activada. La capa 3 es la única del programa que
+modificó la base de datos real, con autorización explícita del usuario para cada
+paso; la capa 4 solo la leyó. No se atribuye ningún resultado de GitHub Actions
+sin evidencia del run correspondiente.
 
 ## Alcance de cada capa
 
@@ -291,8 +290,19 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   SQL final con `EXPLAIN ANALYZE` y ejecutar la verificación manual sobre un
   schema no productivo equivalente; la ejecución de 4.0 no midió ese SQL porque
   el código de entonces falló antes por esa referencia.
-- Capa activa: **4, reportes financieros**. Primera subcapa pendiente: **4.3,
-  en verificación**.
+- Capa 4 **cerrada** el 2026-08-15, con sus subcapas 4.0 a 4.3 completas.
+  Compuerta al cerrar: **exit 0 con 606 pruebas**. Cumplió sus tres objetivos: la
+  persistencia y las reglas quedaron separadas del controller, el N+1 pasó de
+  **5N consultas por estudiante a 15 constantes**, y las tres consultas del
+  estado de cuenta se midieron sobre producción en **menos de 1 ms** juntas.
+- Hallazgo adicional de la capa 4: el estado de cuenta **estaba roto**.
+  Referenciaba `pagos.concepto_id`, una columna que no existe, y fallaba con
+  `42703` en cada llamada. Se comprobó midiendo el SQL anterior contra el schema
+  real. El usuario verificó a mano que las cifras nuevas cuadran.
+- La capa 4 **no modificó la base de datos**: todo lo ejecutado contra
+  PostgreSQL fue lectura en transacciones `READ ONLY` con `rollback`. Su rollback
+  es puramente de código.
+- Capa activa: **ninguna**. Siguiente capa: 5, pagos y tipos de pago, en espera.
 - Resultado de 3.5: el alta construye el schema desde la migración base en vez de
   copiar la plantilla. Un tenant nuevo nace con **37 claves foráneas y 30
   secuencias propias**, donde el camino anterior producía **0 y 0**. Ensayado

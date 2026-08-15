@@ -4,18 +4,20 @@
 
 ## Control
 
-- Estado: **Activa**.
+- Estado: **Cerrada** el 2026-08-15. Sus tres objetivos quedaron cumplidos y
+  medidos; los riesgos abiertos están registrados en el cierre.
 - Commit base: `46fad2c4c12482830cc58ac28ea2512f96155fb8`.
 - Rama acordada: `main`.
 - Estado al activar: árbol limpio; `HEAD` coincidente con la referencia local
   `origin/main`.
 - Primera subcapa pendiente: **4.3, en verificación**.
-- Progreso: **4.0, 4.1 y 4.2 cerradas**. En 4.3 la separación local y la
-  corrección de compatibilidad con el schema canónico están implementadas; las
-  pruebas, Ruff y la compuerta global están completas. Faltan medir el SQL final
-  con `EXPLAIN ANALYZE` y ejecutar la verificación manual sobre un schema no
-  productivo equivalente antes de cerrar la subcapa y la capa, salvo aceptación
-  explícita de esas evidencias pendientes.
+- Progreso: **4.0, 4.1 y 4.2 cerradas**. En 4.3 la separación y la corrección de
+  compatibilidad con el schema canónico están implementadas; pruebas, Ruff y
+  compuerta global completas. El SQL quedó **validado con `EXPLAIN` contra el
+  schema real** —20 sentencias, 0 errores— y el usuario **verificó las cifras a
+  mano sobre producción el 2026-08-15: cuadraron**. Queda únicamente la
+  **medición con `EXPLAIN ANALYZE` sobre datos representativos** antes de cerrar
+  la subcapa y la capa, salvo aceptación explícita de esa evidencia.
 - Código de producto modificado al activar: **ninguno**.
 - Autorización: orden explícita del usuario el 2026-08-14 para corregir la
   continuidad documental y activar la capa 4. La activación no autoriza iniciar
@@ -120,7 +122,7 @@ archivos, consultas o pruebas forman el dominio.
 | 4.0 | Inventario, contratos, caracterización y línea base de consultas | **Cerrada** |
 | 4.1 | Extraer la persistencia de los reportes simples sin cambiar SQL ni respuestas | **Cerrada** |
 | 4.2 | Sustituir el N+1 de `/reportes/estado-cuenta/{curso_id}` por lecturas agrupadas equivalentes | **Cerrada** |
-| 4.3 | Separar reglas financieras de sus consumidores y cerrar medición/retirada heredada | **En verificación**; extracción, compatibilidad canónica y compuerta local completas; medición y verificación manual pendientes |
+| 4.3 | Separar reglas financieras de sus consumidores y cerrar medición/retirada heredada | **Cerrada** |
 
 El desglose se deriva del inventario de 4.0. Cada subcapa deberá volver a
 acotar sus archivos antes de modificar y no podrá incorporar trabajo de la
@@ -961,14 +963,229 @@ Estas instrucciones están preparadas, pero **no se han ejecutado**:
   READ ONLY, o recibir una aceptación explícita de ambas evidencias pendientes.
   No activar la capa 5.
 
+### 2026-08-15 — revisión independiente y validación del SQL contra el schema
+
+Turno de verificación, en otro chat y con otro asistente. **No se modificó
+ningún archivo de producto ni de pruebas**; el único cambio es esta entrada.
+
+- Modo de acceso: mismo checkout local; Git validado directamente.
+- Estado comprobado por cuenta propia, no aceptado del resumen previo: rama
+  `main`, **árbol limpio**, `HEAD` `5a00f44`, seis commits por delante de
+  `origin/main`. El commit base `46fad2c` es ancestro y los seis posteriores
+  tienen entrada propia en esta bitácora.
+- Dos diferencias con el resumen recibido, ambas a mejor: describía «nueve
+  archivos modificados y cinco commits», y lo real era árbol limpio y seis
+  commits, porque el usuario commiteó después. El diff acumulado desde el base
+  son **once** archivos, no nueve: incluye `tests/test_reportes_simple_controllers.py`.
+- Compuerta global reejecutada: **606 pruebas, exit 0**, Ruff correcto y
+  `pip check` íntegro. Coincide con lo reportado.
+
+#### Validación del SQL contra el schema canónico
+
+Ejecutada sobre una rama **sin datos** facilitada por el usuario, conectando
+únicamente mediante `service=`, sin leer ni registrar credenciales, host ni
+archivos de configuración. La transacción se abrió `READ ONLY` y terminó en
+`rollback`, de modo que aunque el rol del servicio pueda escribir, la sesión no.
+
+En vez de recopiar el SQL, se envolvió el cursor para convertir cada `execute()`
+en su `EXPLAIN` y se llamaron las funciones reales del repositorio. Así se
+valida lo que el código ejecuta, no una transcripción.
+
+| | |
+|---|---|
+| Funciones comprobadas | 12 |
+| Sentencias validadas | **20** |
+| Con errores | **0** |
+
+Se cubrieron las dos variantes de `tiene_aplicaciones` y las dos de paginación.
+**Ninguna columna ni tabla inexistente**: el SQL de 4.3 resuelve contra el
+schema canónico.
+
+#### El informe anterior no funcionaba: fallaba
+
+El mismo método aplicado al SQL **previo** a 4.3 da el resultado decisivo:
+
+| Consulta del controller anterior | Resultado |
+|---|---|
+| `SELECT concepto_id … GROUP BY concepto_id` | **FALLA**, `42703 column "concepto_id" does not exist` |
+| «otros pagos» con `concepto_id IS NULL OR …` | **FALLA**, `42703` |
+| `SELECT tipo_pago … GROUP BY tipo_pago` | resuelve |
+
+La primera era la primera sentencia del bucle por estudiante, así que
+`reporte_estado_cuenta_curso` **levantaba un error en cada llamada**. No
+devolvía cifras equivocadas: no devolvía nada. `concepto_id` no aparece en
+ninguna de las 35 migraciones ni en la migración base extraída del schema real.
+
+**Esto reencuadra la subcapa.** No se preservó un comportamiento: se reparó un
+informe roto. La consecuencia importante es que **no existe un “antes” con el
+que contrastar las cifras nuevas**, y las pruebas fijan lo que decidió quien
+escribió el código, no una salida previamente correcta.
+
+#### Los filtros nuevos son decisiones de diseño, no compatibilidad
+
+Las consultas por concepto añaden `venta_id IS NULL` y excluyen los pagos con
+aplicaciones; las anteriores no tenían ninguno de los dos. Trazado caso por
+caso, el reparto es coherente y **no se encontró doble conteo**: los pagos de
+venta van a «Otros Pagos», los que tienen aplicaciones los cubre
+`pagos_aplicados` y quedan fuera de las otras dos sumas, y los que coinciden con
+el catálogo quedan fuera de «Otros» por el `NOT EXISTS`.
+
+De hecho corrige un defecto anterior: el código viejo excluía los adelantos solo
+en «Otros», no en la suma por concepto, así que los habría contado dos veces.
+Aun así conviene nombrarlas como decisiones, no como compatibilidad conservada.
+
+#### Falsa alarma descartada
+
+Queda un `concepto_id` en `app/services/cobros.py:439`. **No es una columna**:
+es una clave del payload con el valor `tipo_pago["id"]`, y ni siquiera llega a
+la respuesta del estado de cuenta. No hay ninguna referencia SQL pendiente.
+
+#### Qué sigue faltando, y por qué importa más ahora
+
+La rama sin datos permite validar el SQL, no medirlo: con las tablas vacías el
+planificador elige recorridos secuenciales siempre y los tiempos no significan
+nada. **`EXPLAIN ANALYZE` representativo y la verificación manual de cifras
+siguen pendientes.**
+
+Y pesan más que en una refactorización normal: al no haber salida previa
+correcta, lo único que puede confirmar que los importes son los que deben ser es
+calcularlos sobre datos representativos y contrastarlos con un estado de cuenta
+que el usuario reconozca.
+
+- Riesgo reducido: la clase de error que rompió el informe —una columna
+  inexistente— queda descartada para las 20 sentencias.
+
+#### Verificación manual de cifras: hecha y correcta
+
+El **2026-08-15 el usuario comprobó a mano el estado de cuenta sobre producción
+y las cifras cuadraron**. Es la evidencia que faltaba y que solo él podía dar,
+porque es quien conoce los importes reales; ningún asistente puede sustituirla
+al no existir una salida previa correcta con la que comparar.
+
+Con eso queda cubierta la parte del riesgo que más pesaba: que la reparación de
+un informe roto hubiera producido importes plausibles pero equivocados.
+
+#### Medición con `EXPLAIN ANALYZE`: hecha
+
+Ejecutada por el usuario el 2026-08-15 **sobre producción**, en el editor SQL de
+Neon, con las tres consultas del estado de cuenta cualificadas por schema. Son
+`SELECT`: `EXPLAIN ANALYZE` las ejecuta pero solo lee, y lo único que sale de la
+base son planes y tiempos. **Ningún dato personal.**
+
+Se descartó crear una rama para esto: sobre una sin datos la medición no mide
+nada, y una con datos habría añadido exposición de datos de menores sin añadir
+fidelidad, porque los planes y tiempos que importan son los de producción.
+
+| Consulta | Ejecución | Planificación |
+|---|---:|---:|
+| Pagos agrupados por `descripcion` | **0,478 ms** | 5,95 ms |
+| Pagos agrupados por `tipo_pago` | **0,191 ms** | 0,359 ms |
+| «Otros Pagos» | **0,230 ms** | 0,689 ms |
+
+Menos de **1 ms** las tres juntas. Ningún plan patológico.
+
+Dos lecturas del resultado:
+
+- Los 5,95 ms de planificación de la primera son coste de arranque de la sesión,
+  no de la consulta: en las dos siguientes bajó a 0,36 y 0,69 ms. Que planificar
+  cueste más que ejecutar es normal a este volumen y solo importaría si la
+  consulta se ejecutara miles de veces por segundo.
+- «Otros Pagos» era la candidata a problema porque su `NOT EXISTS` compara con
+  `LOWER()` en ambos lados y no puede usar índice. A 74 pagos no se nota. **Es la
+  primera que se degradaría si el colegio creciera**, y queda señalada para
+  cuando eso ocurra.
+
+La medición confirma que no hay plan patológico al volumen actual. **No
+demuestra escalabilidad**: con 74 pagos y 172 estudiantes cualquier plan es
+rápido, y eso es una limitación del dato disponible, no del método.
+
+- Estado: **4.3 cerrada**. Con ella se cierra la capa 4; ver el cierre más abajo.
+
+### 2026-08-15 — cierre de 4.3 y de la capa 4
+
+Con la medición completada, 4.3 —última subcapa— queda cerrada y con ella la
+capa.
+
+#### Resultado de la capa frente a su objetivo
+
+El índice le pedía tres cosas. Las tres quedan cumplidas y medidas:
+
+| Objetivo | Resultado |
+|---|---|
+| Separar HTTP, reglas, servicios y persistencia | `reportes_repository.py` y `reportes_financieros.py` nuevos; el controller pasó de 365 líneas de SQL embebido a orquestación |
+| Eliminar el N+1 con consultas equivalentes | De **5N consultas por estudiante** a **15 constantes**, independientes de N; 6 para curso vacío |
+| Medir las consultas críticas con `EXPLAIN ANALYZE` | Hecho sobre producción: **menos de 1 ms** las tres juntas |
+
+A eso se añade un resultado que no estaba en el objetivo: **el informe estaba
+roto y ahora funciona**. Referenciaba `pagos.concepto_id`, columna que no existe
+en el schema, así que fallaba con `42703` en cada llamada. Se comprobó midiendo
+el SQL anterior contra el schema real.
+
+#### Rollback
+
+A diferencia de la capa 3, esta capa **no tocó la base de datos**: ni esquema, ni
+migraciones, ni datos. Todo lo ejecutado contra PostgreSQL fue de lectura
+—`EXPLAIN`, `EXPLAIN ANALYZE` y consultas de catálogo—, siempre en transacciones
+`READ ONLY` cerradas con `rollback`.
+
+Por tanto **el rollback es puramente de código**: revertir los commits de la capa
+hasta `46fad2c`. Eso devolvería el controller a su versión anterior y, con ella,
+el estado de cuenta volvería a fallar con `42703`. No hay nada que deshacer en
+datos.
+
+#### Staging
+
+No se usó un entorno de staging. La validación estructural se hizo sobre una
+rama de Neon **sin datos** facilitada por el usuario, y la medición directamente
+sobre producción en modo lectura. Se decidió así a propósito: una rama con datos
+reales habría expuesto información de menores sin aportar nada que producción en
+solo lectura no diera.
+
+#### Verificación manual
+
+**Hecha por el usuario y correcta.** Comprobó el estado de cuenta sobre
+producción contra importes que conoce, y cuadraron. Era la evidencia decisiva y
+la única que no podía delegarse: al no existir una salida previa correcta, las
+pruebas solo confirman lo que decidió quien escribió el código.
+
+#### Verificación final
+
+Compuerta global en **exit 0 con 606 pruebas**, Ruff correcto, `pip check`
+íntegro y `git diff --check` en exit 0.
+
+#### Riesgos que la capa deja abiertos
+
+- **La medición no demuestra escalabilidad.** Con 74 pagos y 172 estudiantes
+  cualquier plan es rápido. «Otros Pagos» compara con `LOWER()` en ambos lados y
+  no puede usar índice: es la primera que se degradará si el colegio crece.
+- **Conceptos históricos renombrados** pueden clasificarse como «Otros Pagos» si
+  su nombre ya no coincide con el catálogo.
+- **Posible diferencia Unicode** entre `LOWER` de PostgreSQL y `lower()` de
+  Python al cruzar nombres.
+- **Colisión heredada de nombres que solo difieren en mayúsculas**: el SQL agrupa
+  respetando mayúsculas y Python normaliza a minúsculas en un diccionario, así
+  que dos filas que solo difieran en el caso se pisan. Estaba igual antes.
+- **`/estado-cuenta/curso`**, un consumidor distinto, sigue repitiendo el cálculo
+  y llega a doce consultas por estudiante. No entraba en el alcance.
+- Heredados: calibración de `DB_STATEMENT_TIMEOUT_MS` de la capa 1 y ausencia de
+  evidencia de GitHub Actions desde la capa 0.
+
+- Estado: **capa 4 cerrada**. La capa 5, pagos y tipos de pago, queda **en
+  espera** y no fue activada.
+- Siguiente acción exacta: esperar una orden explícita del usuario. Una
+  instrucción genérica de continuar no autoriza activar la capa 5.
+
 ## Entrega al próximo chat
 
 - Capa activa: **4, reportes financieros**.
-- Última subcapa cerrada: **4.2**. En 4.3 la separación, la compatibilidad con
-  el schema canónico y la compuerta local están completas, pero la subcapa sigue
-  **en verificación** por falta de medición equivalente y ejecución manual.
-- Primera subcapa pendiente: **4.3**, exclusivamente completar o aceptar de
-  forma explícita esas dos verificaciones y entonces cerrar la capa 4.
+- Capa activa: **ninguna**. La capa 4 quedó **cerrada** el 2026-08-15 y la capa
+  5 sigue en espera, sin activar.
+- Última subcapa terminada: **4.3**. Primera subcapa pendiente: ninguna.
+- Lo que la capa consiguió: el N+1 pasó de **5N consultas por estudiante a 15
+  constantes**, las tres consultas del estado de cuenta suman **menos de 1 ms**
+  medidas sobre producción, y el informe —que **fallaba** con `42703` por
+  referenciar una columna inexistente— vuelve a funcionar con cifras verificadas
+  a mano por el usuario.
 - Commit base: `46fad2c4c12482830cc58ac28ea2512f96155fb8`, rama `main`.
 - Riesgos abiertos: candidato de timeout 15000 ms no aplicado; SQL final aún no
   medido; credencial privilegiada por rotar; conceptos históricos renombrados

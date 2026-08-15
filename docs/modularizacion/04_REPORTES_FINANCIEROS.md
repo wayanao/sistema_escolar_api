@@ -1,6 +1,6 @@
 # Capa 4: reportes financieros
 
-Última revisión: 2026-08-14.
+Última revisión: 2026-08-15.
 
 ## Control
 
@@ -10,10 +10,12 @@
 - Estado al activar: árbol limpio; `HEAD` coincidente con la referencia local
   `origin/main`.
 - Primera subcapa pendiente: **4.3, en verificación**.
-- Progreso: **4.0, 4.1 y 4.2 cerradas**. En 4.3 la separación local, pruebas,
-  Ruff y compuerta global están completas; falta medir el SQL final con
-  `EXPLAIN ANALYZE` sobre un schema no productivo equivalente antes de cerrar la
-  subcapa y la capa.
+- Progreso: **4.0, 4.1 y 4.2 cerradas**. En 4.3 la separación local y la
+  corrección de compatibilidad con el schema canónico están implementadas; las
+  pruebas, Ruff y la compuerta global están completas. Faltan medir el SQL final
+  con `EXPLAIN ANALYZE` y ejecutar la verificación manual sobre un schema no
+  productivo equivalente antes de cerrar la subcapa y la capa, salvo aceptación
+  explícita de esas evidencias pendientes.
 - Código de producto modificado al activar: **ninguno**.
 - Autorización: orden explícita del usuario el 2026-08-14 para corregir la
   continuidad documental y activar la capa 4. La activación no autoriza iniciar
@@ -41,9 +43,11 @@ archivos, consultas o pruebas forman el dominio.
 - Ciclo de vida de conexiones, transacciones y timeouts definido en la capa 1.
   La cancelación real y una primera medición no productiva de
   `DB_STATEMENT_TIMEOUT_MS` quedaron comprobadas en 4.0. El valor operativo
-  definitivo sigue **pendiente y aceptado** porque la rama entregada no es
-  estructuralmente equivalente al código actual, tiene poco volumen financiero
-  y no se conoce el deadline HTTP externo.
+  definitivo sigue **pendiente y aceptado** porque aquella medición no pudo
+  ejecutar el estado de cuenta que existía entonces, tuvo poco volumen
+  financiero y no se conoce el deadline HTTP externo. La dependencia inválida
+  que causó ese fallo se corrigió localmente el 2026-08-15, pero el SQL final
+  todavía no se ha medido en staging.
 - DB síncrona fuera del event loop y limitador compartido de capacidad
   establecidos en la capa 2. Esta capa no puede reintroducir trabajo bloqueante
   en el event loop ni cambiar esa capacidad sin una nueva auditoría.
@@ -116,7 +120,7 @@ archivos, consultas o pruebas forman el dominio.
 | 4.0 | Inventario, contratos, caracterización y línea base de consultas | **Cerrada** |
 | 4.1 | Extraer la persistencia de los reportes simples sin cambiar SQL ni respuestas | **Cerrada** |
 | 4.2 | Sustituir el N+1 de `/reportes/estado-cuenta/{curso_id}` por lecturas agrupadas equivalentes | **Cerrada** |
-| 4.3 | Separar reglas financieras de sus consumidores y cerrar medición/retirada heredada | **En verificación**; extracción y compuerta local completas, medición equivalente pendiente |
+| 4.3 | Separar reglas financieras de sus consumidores y cerrar medición/retirada heredada | **En verificación**; extracción, compatibilidad canónica y compuerta local completas; medición y verificación manual pendientes |
 
 El desglose se deriva del inventario de 4.0. Cada subcapa deberá volver a
 acotar sus archivos antes de modificar y no podrá incorporar trabajo de la
@@ -263,7 +267,7 @@ Condiciones y límites del conjunto:
   la salida;
 - `public.schema_migrations` tiene 64 filas globales; ese total no se usó como
   prueba de equivalencia. Ninguno de los dos tenants contiene
-  `pagos.concepto_id`, aunque el código actual sí consulta esa columna, y
+  `pagos.concepto_id`, aunque el código de ese momento sí consultaba esa columna, y
   `/reportes/estado-cuenta/{curso_id}` cayó en su fallback por
   `UndefinedColumn`. No se alteró la rama para ocultar la incompatibilidad.
 
@@ -324,8 +328,8 @@ el registro de ejecución; no se inició el trabajo de 4.2.
 1. Revalidar Git y limitar el alcance a
    `/reportes/estado-cuenta/{curso_id}`, su controlador, persistencia y pruebas.
 2. Partir de la caracterización `10 + 5N` de 4.0 y añadir casos discriminantes
-   de pagos por `concepto_id`, nombre, aplicaciones maduras, valores
-   personalizados y «Otros Pagos».
+   del supuesto heredado `pagos.concepto_id`, nombre, aplicaciones maduras,
+   valores personalizados y «Otros Pagos».
 3. Sustituir únicamente el término `5N` por lecturas agrupadas para todos los
    estudiantes del curso, manteniendo las mismas reglas y la misma respuesta.
 4. Conservar permisos admin, tenant por `search_path`, una sola conexión,
@@ -367,11 +371,18 @@ el registro de ejecución; no se inspeccionó ni inició el trabajo de 4.3.
    satisfecha. Dejar la capa 5 en espera y detenerse.
 
 Estado de ejecución: los puntos 1 a 4 y 6 están completos; staging, rollback y
-verificación manual del punto 7 están documentados abajo. El punto 5 no está
-satisfecho porque no está disponible para este turno un entorno no productivo
-con schema vigente, datos representativos y rol dedicado de solo lectura. Por
-ello 4.3 sigue **en verificación**, la capa 4 permanece activa y la capa 5
-continúa en espera.
+el procedimiento de verificación manual del punto 7 están documentados abajo.
+La medición del punto 5 y la ejecución manual no están satisfechas porque no se
+autorizaron para este turno sobre un entorno no productivo con schema vigente,
+datos representativos y rol dedicado de solo lectura. Por ello 4.3 sigue **en
+verificación**, la capa 4 permanece activa y la capa 5 continúa en espera.
+
+Durante la verificación de 4.3 se demostró que la caracterización de 4.2 había
+perpetuado una referencia huérfana a `pagos.concepto_id`: la columna no existe
+en el schema base, en las migraciones incrementales, en los modelos ni en los
+escritores. Con autorización explícita del usuario, el 2026-08-15 se corrigió
+solo esa incompatibilidad y se reforzó su caracterización, sin modificar el
+schema ni ampliar la subcapa.
 
 ## Criterios de cierre de la capa
 
@@ -387,7 +398,9 @@ continúa en espera.
   transacciones y comportamiento observable permanecen conservados.
 - La compuerta global, Ruff, dependencias y `git diff --check` terminan
   correctamente.
-- Staging, rollback y verificación manual están documentados.
+- Staging y rollback están documentados; la verificación manual fue definida y
+  debe ejecutarse o quedar aceptada explícitamente como pendiente antes del
+  cierre.
 - La capa 5 queda en espera y no se activa sin orden explícita del usuario.
 
 ## Decisiones
@@ -434,13 +447,29 @@ continúa en espera.
 - Los dos primeros mapas de `obtener_pagos_por_concepto_estudiantes` no se
   reutilizan porque excluyen pagos con aplicaciones y no son equivalentes a las
   lecturas heredadas; solo se conserva su tercer mapa de aplicaciones maduras.
-- La prioridad sigue siendo presencia del nombre —incluso con importe cero— y
-  luego `concepto_id` como fallback. El nombre se normaliza con `lower()` sin
-  `strip`, «Otros Pagos» conserva su forma irregular y el filtro de anulados
-  continúa siendo exacto.
+- En 4.2 se preservó provisionalmente la prioridad del nombre —incluso con
+  importe cero— y el supuesto `pagos.concepto_id` como fallback. La revisión
+  local de 4.3 demostró que ese segundo campo nunca formó parte del contrato
+  persistido y que las pruebas lo habían simulado sin contrastarlo con el DDL.
+- El ID de concepto que sí forma parte del dominio es `tipos_de_pagos.id`: se
+  expone como `concepto_id` en las deudas calculadas y se persiste como
+  `pagos_aplicaciones.tipo_pago_id` cuando existe una aplicación. Los pagos
+  normales guardan el nombre académico en `pagos.descripcion` y el medio de
+  pago en `pagos.tipo_pago`; no se añadió columna, migración ni payload.
+- La corrección autorizada mantiene dos agregados fijos: `tipo_pago` conserva
+  la precedencia heredada por presencia —incluso con importe cero— y
+  `descripcion` completa únicamente los conceptos ausentes. Ambos usan
+  `lower()` sin `strip`, excluyen ventas y cualquier pago con una aplicación;
+  las aplicaciones maduras se agregan una sola vez por su lectura propia.
+- «Otros Pagos» incluye ventas o pagos no anulados que no coinciden por
+  `descripcion` ni por `tipo_pago` con el catálogo completo, y excluye cualquier
+  pago aplicado. Conserva su forma irregular y no añade una consulta: el
+  conteo sigue en 6 para curso vacío y 15 para cualquier `N > 0` en el fixture.
 - 4.3 movió el último `SELECT` inline del estado de cuenta de reportes a una
-  función específica del repositorio que recibe el cursor existente. El valor
-  runtime del SQL, sus parámetros, su posición y `fetchall()` son idénticos.
+  función específica del repositorio que recibe el cursor existente. Ese
+  `SELECT` trasladado conserva idénticos su valor runtime, parámetros, posición
+  y `fetchall()`. La corrección posterior cambió únicamente las otras tres
+  lecturas agrupadas de pagos descritas arriba.
 - El ensamblado de mapas, precedencias, cálculo, «Otros Pagos» y payload pasó a
   `app/services/reportes_financieros.py`, un servicio puro que no abre ni cierra
   recursos. El controlador conserva conexión, secuencia de lecturas,
@@ -474,9 +503,10 @@ continúa en espera.
 - El timeout por sentencia no limita un endpoint entero: el camino medido de
   229 consultas tardó hasta 16,371 s aunque ninguna sentencia llegó a 143 ms.
   La mitigación primaria es eliminar el N+1, no aumentar el timeout.
-- La rama de prueba carece de `pagos.concepto_id` en ambos tenants. El endpoint
-  de estado de cuenta financiero conserva hoy un fallback silencioso a lista
-  vacía; no se corrige ni se toma esa rama como staging equivalente.
+- La rama medida en 4.0 carecía de `pagos.concepto_id`, igual que el schema
+  canónico. En aquel momento el endpoint cayó silenciosamente a lista vacía;
+  la dependencia inválida ya está corregida localmente, pero esa ejecución
+  histórica no contiene planes del SQL final y no valida la corrección.
 - La credencial compartida puede crear objetos y roles. Aunque la sonda forzó
   READ ONLY, debe rotarse y sustituirse por un rol dedicado antes de repetirla.
 - No hay evidencia de GitHub Actions para los cambios posteriores a la capa 0.
@@ -487,10 +517,18 @@ continúa en espera.
   inferencia.
 - `EXPLAIN ANALYZE` ejecuta la consulta. Debe usarse solo en un entorno no
   productivo confirmado y con datos adecuados; nunca contra producción.
-- La evidencia real de 4.0 no cubre las consultas agrupadas de 4.2: el schema
-  carecía de `pagos.concepto_id` y el endpoint terminó en fallback. Sin una rama
-  equivalente no puede afirmarse que los planes finales estén medidos ni
-  cerrarse 4.3 solo con la compuerta hermética.
+- La evidencia real de 4.0 no cubre las consultas agrupadas finales: el código
+  de entonces dependía de la columna inexistente y el endpoint terminó en
+  fallback. Sin un staging con schema canónico y datos representativos no puede
+  afirmarse que los planes finales estén medidos ni cerrarse 4.3 solo con la
+  compuerta hermética.
+- La asociación de pagos normales depende de texto histórico. Si un concepto
+  se renombra, una descripción antigua sin aplicación puede clasificarse como
+  «Otros Pagos»; resolver renombres o hacer backfill pertenece a una decisión
+  de producto posterior, no a esta corrección mínima.
+- Los mapas Python usan `str.lower()` y la clasificación SQL usa `LOWER`. Una
+  collation Unicode inusual podría tratarlos de forma distinta; debe observarse
+  en staging, sin cambiar normalización dentro de esta subcapa.
 
 ## Staging, rollback y verificación manual de 4.3
 
@@ -506,26 +544,34 @@ Estas instrucciones están preparadas, pero **no se han ejecutado**:
    transacción `READ ONLY`, fijar `search_path` al tenant más `public`, mantener
    `statement_timeout=30000` y `lock_timeout=10000`, y terminar con `ROLLBACK`.
 3. Preparar datos financieros sintéticos representativos: curso vacío y
-   poblado, pagos por nombre y `concepto_id`, anulados, valores personalizados,
-   aplicaciones maduras/futuras y «Otros Pagos». Registrar solo cardinalidades,
-   nunca URI, credenciales ni filas de negocio.
-4. Comparar payload, status, orden y totales del artefacto final contra
-   `5f9035d565c8b6366b9d6674db439d1d4c0e5cd6` sobre snapshots idénticos y
-   confirmar los conteos 6 para vacío y 15 para cualquier `N > 0`.
+   poblado, pago académico por `descripcion`, fallback heredado por
+   `tipo_pago`, pago con aplicación madura/futura, anulado, venta, concepto
+   desconocido, valor personalizado y «Otros Pagos». El schema esperado no
+   contiene `pagos.concepto_id`. Registrar solo cardinalidades, nunca URI,
+   credenciales ni filas de negocio.
+4. Comparar payload, status, orden y totales del artefacto final con los
+   contratos caracterizados. El commit pre-4.2 no es un oráculo válido para
+   este endpoint sobre el schema canónico porque su SQL falla por la columna
+   inexistente. Confirmar también los conteos 6 para vacío y 15 para cualquier
+   `N > 0`.
 5. Ejecutar tres corridas calientes de `EXPLAIN (ANALYZE, BUFFERS, TIMING OFF,
    SUMMARY ON, FORMAT JSON)` sobre el SQL final exacto: estudiantes, agregados
-   por concepto/nombre, aplicaciones maduras, valores personalizados y
-   «Otros». Conservar solo tiempos, filas, loops, buffers y forma del plan.
+   por `descripcion`/`tipo_pago`, aplicaciones maduras, valores personalizados
+   y «Otros». Conservar solo tiempos, filas, loops, buffers y forma del plan.
 6. No usar esa medición para adoptar el candidato de timeout de 15000 ms: la
    calibración sigue necesitando volumen/carga representativos y el deadline
    HTTP/proxy externo.
 
 ### Rollback
 
-- Si falla solo 4.3, volver al artefacto previo
-  `5cb76d6e186a9ebaea0edba978aa7bee43b3d6c1` y repetir los smokes financieros.
-- Si se revierte toda la capa 4, volver al commit base
-  `46fad2c4c12482830cc58ac28ea2512f96155fb8`.
+- Los artefactos previos `12870215116568117d5ff2bf2c01a6ee579bfd67`,
+  `5cb76d6e186a9ebaea0edba978aa7bee43b3d6c1` y el commit base de la capa no son
+  un rollback funcional seguro para este endpoint sobre el schema canónico:
+  reintroducen la lectura de `pagos.concepto_id` y su fallback a `[]`.
+- Si falla la separación de 4.3, volver a la orquestación anterior conservando
+  o reaplicando simultáneamente las tres consultas compatibles con el schema.
+  El primer artefacto publicado que incluya esta corrección deberá registrarse
+  como nuevo punto de rollback antes de staging o deploy.
 - 4.3 no contiene migraciones ni escrituras de datos; no requiere rollback de
   schema ni reparación de información. No cambiar los timeouts durante el
   rollback.
@@ -535,8 +581,10 @@ Estas instrucciones están preparadas, pero **no se han ejecutado**:
 - Probar admin válido y rechazo de no-admin, al menos en dos tenants sin mezclar
   datos.
 - Probar general; estado de cuenta de curso vacío y poblado con los casos
-  financieros anteriores; ingresos por mes/rango y egresos por rango con y sin
-  `limit`; comparar JSON, status, orden, formatos y totales.
+  financieros anteriores, incluida la distinción entre `descripcion`, fallback
+  heredado por `tipo_pago`, aplicaciones sin duplicación y «Otros Pagos»;
+  ingresos por mes/rango y egresos por rango con y sin `limit`; comparar JSON,
+  status, orden, formatos y totales.
 - Ejecutar smokes de `/estado-cuenta/*` y `/cartera/*` y confirmar que conservan
   contratos y conteos, sin presentar el `1 + 12N` como corregido.
 - Registrar el artefacto, firma de schema, cardinalidades y resultado. Hasta
@@ -843,22 +891,94 @@ Estas instrucciones están preparadas, pero **no se han ejecutado**:
   recibir una decisión explícita del usuario de cerrar la capa aceptando que esa
   evidencia permanezca pendiente. Ninguna opción activa la capa 5.
 
+### 2026-08-15 — corrección de compatibilidad del schema durante 4.3
+
+- Modo de acceso: mismo checkout local en
+  `C:\Users\David\Documents\sistema_escolar_api`; no se usó GitHub para inferir
+  el estado local y no se conectó a PostgreSQL, Neon ni otra base de datos.
+- Precondición Git: rama `main`, árbol inicialmente limpio y `HEAD`
+  `12870215116568117d5ff2bf2c01a6ee579bfd67`, cinco commits por delante de la
+  referencia local `origin/main`. El commit base
+  `46fad2c4c12482830cc58ac28ea2512f96155fb8` existe y es ancestro; los cinco
+  commits posteriores forman una historia lineal y están explicados en esta
+  bitácora. No existen instrucciones locales adicionales.
+- Punto de partida: el usuario informó que una verificación estructural previa
+  confirmó que `pagos.concepto_id` no existe en los dos schemas conservados. La
+  investigación local encontró la misma ausencia en la migración base y todas
+  las incrementales, modelos y escritores. `tipos_de_pagos.id` es el ID lógico;
+  las aplicaciones persisten ese vínculo como `tipo_pago_id`, mientras los
+  pagos normales persisten concepto en `descripcion` y medio en `tipo_pago`.
+- Autorización: el usuario ordenó eliminar únicamente esa dependencia, añadir
+  primero caracterización, conservar contratos y conteos 6/15, no modificar
+  schema, migraciones, modelos, payloads ni frontend, no acceder a bases y no
+  hacer commit ni push.
+- Evidencia test-first: tras añadir el cursor que rechaza
+  `pagos.concepto_id`, los casos de schema/descripcion/fallback/aplicaciones y
+  los asserts de conteo, el comando dirigido inicial terminó con **7 fallos y
+  12 pasadas** contra el producto anterior. Los fallos señalaron la referencia
+  inexistente y las firmas/consultas todavía no adaptadas.
+- Producto modificado: `app/repositories/reportes_repository.py` agrupa pagos
+  académicos por `descripcion` y por `tipo_pago`, excluye ventas y cualquier
+  aplicación, y clasifica «Otros Pagos» por venta o ausencia de coincidencia con
+  el catálogo. `app/controllers/reportes_controller.py` transmite el indicador
+  de aplicaciones y las filas renombradas; `app/services/reportes_financieros.py`
+  consume descripción como reemplazo del fallback huérfano y conserva la
+  precedencia heredada de `tipo_pago`. No se añadió ninguna consulta.
+- Caracterización modificada: `tests/test_reportes_estado_cuenta.py`,
+  `tests/test_reportes_query_counts.py` y `tests/test_pagos_adelantados.py`
+  prueban el DDL canónico sin la columna, descripción, fallback heredado —incluido
+  cero y ausencia de `strip`—, exclusión de cualquier aplicación sin filtros de
+  activo/periodo, clasificación booleana de «Otros», payload, orden, totales y
+  los conteos 6/15.
+- Pruebas dirigidas finales:
+  `.\venv\Scripts\python.exe -m pytest -q -p no:cacheprovider
+  tests\test_reportes_estado_cuenta.py tests\test_reportes_query_counts.py
+  tests\test_reportes_pagination.py tests\test_pagos_adelantados.py
+  tests\test_anulaciones_financieras.py
+  tests\test_reportes_simple_controllers.py`; **67 pasaron** en 0,63 s.
+- Ruff dirigido sobre los tres archivos de producto y las tres pruebas
+  modificadas: **correcto**.
+- Compuerta global: `.\venv\Scripts\python.exe scripts\verify.py`; **606
+  pruebas pasaron** en 1,68 s, 5 warnings heredadas, Ruff correcto, `pip check`
+  íntegro y exit 0. Dos intentos sandboxed previos fueron inconclusos por
+  permisos del directorio temporal de pytest; la repetición autoritativa se
+  ejecutó fuera del sandbox, sin red ni base de datos, y el directorio temporal
+  local creado para el diagnóstico se retiró.
+- Diff final: nueve archivos, limitados a los tres de producto, tres pruebas y
+  tres documentos de continuidad declarados. No se modificaron migraciones,
+  schema, modelos, rutas, payloads, frontend, cuentas, cartera, pagos, permisos,
+  tenant, timeouts ni configuración; tampoco hubo commit, push o deploy.
+- `git diff --check`: exit 0, sin errores de whitespace; Git solo informó sus
+  avisos locales de conversión futura entre LF y CRLF.
+- Resultado: la dependencia de `pagos.concepto_id` queda eliminada localmente y
+  los conteos siguen en 6 para curso vacío y 15 para el fixture con estudiantes.
+  La medición `EXPLAIN ANALYZE` y la ejecución de la verificación manual
+  continúan pendientes; por eso 4.3 sigue **en verificación**, la capa 4
+  permanece **activa** y la capa 5 sigue **en espera**.
+- Siguiente acción exacta: después de que el usuario revise y deje limpio este
+  cambio, medir únicamente el SQL final y ejecutar la verificación manual en un
+  staging con schema canónico, datos sintéticos representativos y rol dedicado
+  READ ONLY, o recibir una aceptación explícita de ambas evidencias pendientes.
+  No activar la capa 5.
+
 ## Entrega al próximo chat
 
 - Capa activa: **4, reportes financieros**.
-- Última subcapa cerrada: **4.2**. En 4.3 la separación y compuerta local están
-  completas, pero la subcapa sigue **en verificación** por falta de medición
-  equivalente.
+- Última subcapa cerrada: **4.2**. En 4.3 la separación, la compatibilidad con
+  el schema canónico y la compuerta local están completas, pero la subcapa sigue
+  **en verificación** por falta de medición equivalente y ejecución manual.
 - Primera subcapa pendiente: **4.3**, exclusivamente completar o aceptar de
-  forma explícita esa verificación y entonces cerrar la capa 4.
+  forma explícita esas dos verificaciones y entonces cerrar la capa 4.
 - Commit base: `46fad2c4c12482830cc58ac28ea2512f96155fb8`, rama `main`.
-- Riesgos abiertos: candidato de timeout 15000 ms no aplicado; rama de prueba no
-  equivalente por ausencia de `pagos.concepto_id`; credencial privilegiada por
-  rotar; colisión heredada de nombres que solo difieren en mayúsculas; evidencia
-  de GitHub Actions posterior a la capa 0 aún ausente.
+- Riesgos abiertos: candidato de timeout 15000 ms no aplicado; SQL final aún no
+  medido; credencial privilegiada por rotar; conceptos históricos renombrados
+  que pueden caer en «Otros»; posible diferencia Unicode entre `LOWER` SQL y
+  `lower()` Python; colisión heredada de nombres que solo difieren en
+  mayúsculas; evidencia de GitHub Actions posterior a la capa 0 aún ausente.
 - Precondición antes de continuar 4.3: el usuario debe revisar y dejar limpio
   este cambio;
   después se reaudita todo commit posterior al base.
-- Siguiente acción exacta: medir en staging equivalente con rol dedicado READ
-  ONLY, o registrar una aceptación explícita del pendiente; cerrar la capa 4
-  solo después de esa decisión y mantener la capa 5 en espera.
+- Siguiente acción exacta: medir y ejecutar la verificación manual en staging
+  equivalente con rol dedicado READ ONLY, o registrar una aceptación explícita
+  de ambos pendientes; cerrar la capa 4 solo después de esa decisión y mantener
+  la capa 5 en espera.

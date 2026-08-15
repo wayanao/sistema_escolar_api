@@ -154,10 +154,11 @@ def reporte_estado_cuenta_curso_controller(curso_id):
         )
         tiene_aplicaciones = tabla_pagos_aplicaciones_existe(cursor)
 
-        pagos_concepto_rows, pagos_nombre_rows = (
+        pagos_descripcion_rows, pagos_nombre_rows = (
             consultar_pagos_estado_cuenta_por_estudiantes(
                 cursor,
                 estudiante_ids,
+                tiene_aplicaciones,
             )
         )
         valores_por_estudiante = obtener_valores_personalizados_por_estudiantes(
@@ -173,7 +174,7 @@ def reporte_estado_cuenta_curso_controller(curso_id):
             estudiantes=estudiantes,
             tipos_pago=tipos_list,
             asignaciones_curso=valor_por_tipo_en_curso,
-            pagos_concepto_rows=pagos_concepto_rows,
+            pagos_descripcion_rows=pagos_descripcion_rows,
             pagos_nombre_rows=pagos_nombre_rows,
             pagos_aplicados_por_estudiante=pagos_aplicados_por_estudiante,
             valores_por_estudiante=valores_por_estudiante,

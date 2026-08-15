@@ -6,16 +6,19 @@ def construir_estado_cuenta_curso(
     estudiantes,
     tipos_pago,
     asignaciones_curso,
-    pagos_concepto_rows,
+    pagos_descripcion_rows,
     pagos_nombre_rows,
     pagos_aplicados_por_estudiante,
     valores_por_estudiante,
     pagos_otros_rows,
 ):
     """Construye el payload financiero con datos ya precargados."""
-    pagos_por_concepto = {}
-    for estudiante_id, concepto_id, monto in pagos_concepto_rows:
-        pagos_por_concepto.setdefault(estudiante_id, {})[concepto_id] = float(monto)
+    pagos_por_descripcion = {}
+    for estudiante_id, descripcion, monto in pagos_descripcion_rows:
+        if descripcion:
+            pagos_por_descripcion.setdefault(estudiante_id, {})[
+                str(descripcion).lower()
+            ] = float(monto)
 
     pagos_por_nombre = {}
     for estudiante_id, tipo_pago, monto in pagos_nombre_rows:
@@ -31,12 +34,17 @@ def construir_estado_cuenta_curso(
 
     resultados = []
     for estudiante_id, nombre, apellido in estudiantes:
-        pagos_dict = pagos_por_concepto.get(estudiante_id, {})
+        pagos_descripcion_estudiante = pagos_por_descripcion.get(estudiante_id, {})
         pagos_nombre_estudiante = dict(pagos_por_nombre.get(estudiante_id, {}))
         for tipo in tipos_pago:
             nombre_tipo = str(tipo["nombre"]).lower()
-            if nombre_tipo not in pagos_nombre_estudiante and tipo["id"] in pagos_dict:
-                pagos_nombre_estudiante[nombre_tipo] = pagos_dict[tipo["id"]]
+            if (
+                nombre_tipo not in pagos_nombre_estudiante
+                and nombre_tipo in pagos_descripcion_estudiante
+            ):
+                pagos_nombre_estudiante[nombre_tipo] = (
+                    pagos_descripcion_estudiante[nombre_tipo]
+                )
 
         resumen = calcular_deudas_desde_contexto(
             tipos_pago=tipos_pago,

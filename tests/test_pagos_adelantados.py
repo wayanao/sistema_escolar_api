@@ -117,7 +117,15 @@ def test_registrar_adelanto_crea_un_pago_y_una_aplicacion_por_mes(monkeypatch):
     inserts_pago = [item for item in cursor.executed if "INSERT INTO pagos (" in item[0]]
     inserts_aplicacion = [item for item in cursor.executed if "INSERT INTO pagos_aplicaciones" in item[0]]
     assert len(inserts_pago) == 1
+    insert_pago_sql, insert_pago_params = inserts_pago[0]
+    assert (
+        "INSERT INTO pagos (estudiante_id, monto, descripcion, fecha, tipo_pago)"
+        in insert_pago_sql
+    )
+    assert "concepto_id" not in insert_pago_sql
     assert inserts_pago[0][1][1] == 600000.0
+    assert insert_pago_params[2].startswith("Pensión · Pago adelantado:")
+    assert insert_pago_params[4] == "transferencia - Banco"
     assert len(inserts_aplicacion) == 2
     assert [item[1][3] for item in inserts_aplicacion] == [
         datetime.date(2026, 8, 1),
@@ -378,9 +386,21 @@ def test_reporte_curso_aplica_solo_adelantos_maduros_y_no_los_duplica(monkeypatc
     resultado = reportes_controller.reporte_estado_cuenta_curso_controller(3)
 
     consulta_otros = next(
-        query for query, _params in cursor.executed if "concepto_id IS NULL" in query
+        query for query, _params in cursor.executed if "venta_id IS NOT NULL" in query
     )
     assert "NOT EXISTS" in consulta_otros
+    consultas_academicas = [
+        query for query, _params in cursor.executed
+        if "GROUP BY estudiante_id, descripcion" in query
+        or "GROUP BY estudiante_id, tipo_pago" in query
+    ]
+    assert len(consultas_academicas) == 2
+    assert all("NOT EXISTS" in query for query in consultas_academicas)
+    consultas_pagos = [consulta_otros, *consultas_academicas]
+    assert all("FROM pagos_aplicaciones pa" in query for query in consultas_pagos)
+    assert all("pa.activo" not in query for query in consultas_pagos)
+    assert all("pa.periodo" not in query for query in consultas_pagos)
+    assert all("concepto_id" not in query for query in consultas_pagos)
     assert resultado[0]["pagado"] == 100
     assert resultado[0]["deudas_detalle"] == [{
         "concepto": "Pensión",

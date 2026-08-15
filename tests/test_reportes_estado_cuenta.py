@@ -1,4 +1,6 @@
 import datetime
+import re
+from pathlib import Path
 
 from app.controllers import reportes_controller
 from app.repositories import reportes_repository
@@ -14,9 +16,9 @@ ESTUDIANTES = [
     (8, "Beto", "Álvarez"),
     (7, "Ana", "Zuluaga"),
 ]
-PAGOS_CONCEPTO = {
-    7: [(10, 80), (20, 60)],
-    8: [(10, 40), (20, 50)],
+PAGOS_DESCRIPCION = {
+    7: [("Matrícula", 80), ("Pensión", 60)],
+    8: [("Matrícula", 40), ("Pensión", 50)],
 }
 PAGOS_NOMBRE = {
     7: [("MATRÍCULA", 30)],
@@ -49,21 +51,26 @@ class EstadoCuentaCursor:
         self.rows = self._dispatch(normalized, params)
 
     def _dispatch(self, query, params):
+        if "from pagos" in query and re.search(r"\bconcepto_id\b", query):
+            raise AssertionError(
+                "El schema canónico de pagos no contiene concepto_id"
+            )
+
         if (
             "select e.id, e.nombre, e.apellido" in query
             and "where e.curso_id = %s" in query
         ):
             return ESTUDIANTES
 
-        if "select estudiante_id, concepto_id" in query:
+        if "select estudiante_id, descripcion" in query:
             return [
-                (7, 10, 80),
-                (8, 20, 50),
-                (7, 20, 60),
-                (8, 10, 40),
+                (7, "Matrícula", 80),
+                (8, "Pensión", 50),
+                (7, "Pensión", 60),
+                (8, "Matrícula", 40),
             ]
-        if "select concepto_id, coalesce(sum(monto), 0)" in query:
-            return PAGOS_CONCEPTO[params[0]]
+        if "select descripcion, coalesce(sum(monto), 0)" in query:
+            return PAGOS_DESCRIPCION[params[0]]
 
         if "select estudiante_id, tipo_pago" in query:
             return [
@@ -74,7 +81,7 @@ class EstadoCuentaCursor:
         if "select tipo_pago, coalesce(sum(monto), 0)" in query:
             return PAGOS_NOMBRE[params[0]]
 
-        if "concepto_id is null" in query:
+        if "venta_id is not null" in query:
             if "select estudiante_id," in query:
                 return [(7, 15)]
             return [(OTROS_PAGOS[params[0]],)]
@@ -319,29 +326,59 @@ def test_estado_cuenta_preserva_reglas_orden_totales_y_aislamiento(monkeypatch):
         "coalesce(estado, 'pagado') <> 'anulado'" in query
         for query in payment_queries
     )
-    concept_query = next(
+    description_query = next(
         query for query in payment_queries
-        if "group by estudiante_id, concepto_id" in query
+        if "group by estudiante_id, descripcion" in query
     )
-    assert "not exists" not in concept_query
+    assert "descripcion is not null" in description_query
+    assert "venta_id is null" in description_query
+    assert "not exists" in description_query
     name_query = next(
         query for query in payment_queries
         if "group by estudiante_id, tipo_pago" in query
     )
     assert "lower(tipo_pago)" not in name_query
-    assert "not exists" not in name_query
+    assert "venta_id is null" in name_query
+    assert "not exists" in name_query
     others_queries = [
         query for query in payment_queries
-        if "concepto_id is null" in query
+        if "venta_id is not null" in query
     ]
-    assert others_queries
+    assert len(others_queries) == 1
+    others_query = others_queries[0]
+    expected_other_classification = (
+        "and ( venta_id is not null or not exists ( select 1 "
+        "from tipos_de_pagos tp where ( pagos.tipo_pago is not null "
+        "and pagos.tipo_pago <> '' "
+        "and lower(pagos.tipo_pago) = lower(tp.nombre) ) or ( "
+        "pagos.descripcion is not null and pagos.descripcion <> '' "
+        "and lower(pagos.descripcion) = lower(tp.nombre) ) ) )"
+    )
+    assert expected_other_classification in others_query
     assert all("not exists" in query for query in others_queries)
     assert all("from pagos_aplicaciones pa" in query for query in others_queries)
     assert all(
-        "concepto_id is null or concepto_id not in" in query
+        "not exists ( select 1 from tipos_de_pagos tp" in query
+        for query in others_queries
+    )
+    assert all(
+        "pagos.descripcion is not null" in query
+        and "pagos.descripcion <> ''" in query
+        and "lower(pagos.descripcion) = lower(tp.nombre)" in query
+        for query in others_queries
+    )
+    assert all(
+        "pagos.tipo_pago is not null" in query
+        and "pagos.tipo_pago <> ''" in query
+        and "lower(pagos.tipo_pago) = lower(tp.nombre)" in query
         for query in others_queries
     )
     assert all("pa.pago_id = pagos.id" in query for query in others_queries)
+    assert "tp.activo" not in others_query
+    assert all("pa.activo" not in query for query in payment_queries)
+    assert all("pa.periodo" not in query for query in payment_queries)
+    assert all("trim(" not in query for query in payment_queries)
+    assert all("concepto_id" not in query for query in payment_queries)
 
     assert cursor.closed is True
     assert connection.closed is True
@@ -351,7 +388,7 @@ def test_estado_cuenta_preserva_reglas_orden_totales_y_aislamiento(monkeypatch):
 
 def test_estado_cuenta_error_conserva_fallback_y_cierres(monkeypatch):
     cursor = EstadoCuentaCursor(
-        fail_pattern="concepto_id, coalesce(sum(monto), 0)",
+        fail_pattern="descripcion, coalesce(sum(monto), 0)",
     )
     connection, _contexts = _instalar_dependencias(monkeypatch, cursor)
 
@@ -398,11 +435,20 @@ def test_estado_cuenta_propaga_ausencia_de_tabla_de_aplicaciones(monkeypatch):
     result = reportes_controller.reporte_estado_cuenta_curso_controller(3)
 
     assert result
-    others_query = next(
+    payment_queries = [
         query for query, _params in cursor.executed
-        if "concepto_id is null" in query
+        if "from pagos" in query
+    ]
+    assert len(payment_queries) == 3
+    assert all(
+        "from pagos_aplicaciones pa" not in query
+        for query in payment_queries
     )
-    assert "not exists" not in others_query
+    others_query = next(
+        query for query in payment_queries
+        if "venta_id is not null" in query
+    )
+    assert "from tipos_de_pagos tp" in others_query
     assert connection.closed is True
 
 
@@ -493,6 +539,41 @@ def test_otros_pagos_no_referencia_aplicaciones_si_la_tabla_no_existe():
 
     assert result == [(7, 15)]
     query, params = cursor.executed[-1]
-    assert "not exists" not in query
+    assert "from pagos_aplicaciones pa" not in query
+    assert "from tipos_de_pagos tp" in query
     assert "group by estudiante_id" in query
     assert params == ((7, 8),)
+
+
+def test_estado_cuenta_no_requiere_concepto_id_en_schema_canonico():
+    schema_path = (
+        Path(__file__).resolve().parents[1]
+        / "migrations"
+        / "base"
+        / "20260813_esquema_base_tenant.sql"
+    )
+    schema = schema_path.read_text(encoding="utf-8")
+    pagos_ddl = schema.split(
+        "CREATE TABLE IF NOT EXISTS pagos (",
+        maxsplit=1,
+    )[1].split(");", maxsplit=1)[0]
+    assert "concepto_id" not in pagos_ddl
+
+    cursor = EstadoCuentaCursor()
+    pagos_descripcion, pagos_legacy = (
+        reportes_repository.consultar_pagos_estado_cuenta_por_estudiantes(
+            cursor,
+            (7, 8),
+            True,
+        )
+    )
+    otros = reportes_repository.consultar_otros_pagos_por_estudiantes(
+        cursor,
+        (7, 8),
+        True,
+    )
+
+    assert pagos_descripcion
+    assert pagos_legacy
+    assert otros == [(7, 15)]
+    assert all("concepto_id" not in query for query, _params in cursor.executed)

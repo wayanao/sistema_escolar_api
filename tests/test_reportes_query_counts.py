@@ -1,4 +1,5 @@
 import inspect
+import re
 
 import pytest
 from fastapi.routing import APIRoute
@@ -47,6 +48,11 @@ class QueryCountingCursor:
         self.rows = self._dispatch(normalized)
 
     def _dispatch(self, query):
+        if "from pagos" in query and re.search(r"\bconcepto_id\b", query):
+            raise AssertionError(
+                "El schema canónico de pagos no contiene concepto_id"
+            )
+
         if "from information_schema.columns" in query:
             return [(column,) for column in TIPOS_PAGO_COLUMNS]
         if "from information_schema.tables" in query:
@@ -75,7 +81,7 @@ class QueryCountingCursor:
             return [(3,)]
         if "string_agg(distinct descripcion" in query:
             return [(0, None)]
-        if "select concepto_id, coalesce(sum(monto), 0)" in query:
+        if "select descripcion, coalesce(sum(monto), 0)" in query:
             return []
         if "select tipo_pago, coalesce(sum(monto), 0)" in query:
             return []
@@ -83,7 +89,7 @@ class QueryCountingCursor:
             return []
         if "from pagos" in query and "group by" in query:
             return []
-        if "concepto_id is null" in query:
+        if "venta_id is not null" in query:
             return [(0,)]
         if "from ventas" in query:
             return []
@@ -175,6 +181,11 @@ def test_financial_report_account_keeps_grouped_query_count_constant(
     assert cursor.closed is True
     assert connection.closed is True
     assert connection.committed is False
+    assert not any(
+        re.search(r"\bconcepto_id\b", query)
+        for query, _params in cursor.executed
+        if "from pagos" in query
+    )
     if student_count == 0:
         assert not any(
             "estudiante_id in %s" in query

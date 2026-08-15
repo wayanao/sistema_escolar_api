@@ -134,7 +134,7 @@ No existe ahora una autorización puntual de uso inmediato. Cuando la capa 4 se
 cierre, la siguiente seguirá en espera hasta que el usuario decida de forma
 explícita si activarla.
 
-## Estado del programa al 2026-08-14
+## Estado del programa al 2026-08-15
 
 Lo que sigue es un resumen para orientarse; **el estado vivo está en
 `docs/modularizacion/README.md`**, que es lo que manda si algo no coincide.
@@ -153,11 +153,13 @@ Lo que sigue es un resumen para orientarse; **el estado vivo está en
   agrupadas fijas. El conteo hermético quedó en 6 para curso vacío y 15 para
   cualquier `N > 0`; no se tocó el `1 + 12N` del consumidor de cuentas ni se
   accedió a la base de datos.
-- En 4.3, la separación local y la compuerta están completas: el último SQL
-  inline pasó al repositorio, el ensamblado financiero a un servicio puro y 605
-  pruebas pasaron. Falta medir el SQL final con `EXPLAIN ANALYZE` sobre un schema
-  no productivo equivalente; la evidencia anterior carecía de
-  `pagos.concepto_id`, por lo que la capa 4 sigue activa.
+- En 4.3, la separación local y la corrección de compatibilidad con el schema
+  canónico están completas: el último SQL inline pasó al repositorio, el
+  ensamblado financiero a un servicio puro y se eliminó la dependencia de la
+  columna inexistente `pagos.concepto_id` sin modificar el schema. La compuerta
+  pasó con 606 pruebas. Faltan medir el SQL final con `EXPLAIN ANALYZE` y
+  ejecutar la verificación manual sobre un schema no productivo equivalente,
+  por lo que la capa 4 sigue activa.
 - La capa 3 es la única del programa que **modificó la base de datos real**, con
   autorización explícita del usuario para cada paso. Dejó tres reparaciones
   aplicadas a producción, dos schemas demo eliminados y el alta de tenants
@@ -179,9 +181,11 @@ Lo que sigue es un resumen para orientarse; **el estado vivo está en
    nombres sin cualificar**, que se resuelven con el `search_path`. Cualquier
    cosa que copie estructura entre schemas debe fijarlo al destino, o creará
    referencias cruzadas. Ya pasó una vez y falló por casualidad.
-3. **Los ensayos se hacen sobre una rama de Neon creada desde producción**, no
-   sobre una base vacía: la estructura real solo existe en la base. La rama que
-   se usó en la capa 3 ya fue eliminada; hace falta crear una nueva.
+3. **Los ensayos necesitan schema canónico y datos representativos**, no datos
+   de producción. Puede usarse una rama desechable creada solo con el schema
+   versionado y datos sintéticos, siempre que se audite su firma estructural y
+   se mida luego con un rol dedicado `READ ONLY`. La rama usada antes ya fue
+   eliminada y no contiene evidencia del SQL final.
 
 ## Autorización consumida: capa 4
 
@@ -189,9 +193,10 @@ La autorización puntual para activar la capa 4 se consumió el 2026-08-14 con
 una orden explícita del usuario. Quedó registrada en
 `04_REPORTES_FINANCIEROS.md` y **no puede reutilizarse**.
 
-La continuidad vigente es completar únicamente la verificación pendiente de
-4.3 en un staging equivalente con rol dedicado READ ONLY, o registrar una
-decisión explícita del usuario de cerrar la capa aceptando ese pendiente. Solo
+La continuidad vigente es completar únicamente la medición y la verificación
+manual pendientes de 4.3 en un staging con schema canónico, datos sintéticos
+representativos y rol dedicado READ ONLY, o registrar una decisión explícita
+del usuario de cerrar la capa aceptando ambas evidencias pendientes. Solo
 después puede cerrarse la capa 4. La capa 5 debe quedar en espera: no existe
 autorización para activarla, hacer commit, push, deploy, migraciones reales ni
 acceso a producción.

@@ -1,6 +1,6 @@
 # Guía maestra de evolución segura del backend
 
-Última revisión: 2026-08-14.
+Última revisión: 2026-08-15.
 
 ## Propósito
 
@@ -282,11 +282,15 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   local terminó con **604 pruebas**, Ruff y dependencias correctas. No se tocó
   el `1 + 12N` del consumidor de cuentas ni se accedió a la base de datos.
 - Avance de 4.3: el último SQL inline del estado de cuenta pasó al repositorio y
-  el ensamblado financiero a un servicio puro. Reportes conservan 6/15,
-  cuentas 1/13/37 y cartera 5/12/12; la compuerta local terminó con **605
-  pruebas**, Ruff y dependencias correctas. Falta `EXPLAIN ANALYZE` del SQL
-  final sobre un schema no productivo equivalente; la evidencia de 4.0 no sirve
-  para eso porque carecía de `pagos.concepto_id`.
+  el ensamblado financiero a un servicio puro. La revisión posterior demostró
+  que `pagos.concepto_id` nunca existió en el schema ni en sus escritores; se
+  eliminó esa dependencia usando `descripcion`, el fallback heredado por
+  `tipo_pago` y `pagos_aplicaciones`, sin migraciones ni consultas adicionales.
+  Reportes conservan 6/15, cuentas 1/13/37 y cartera 5/12/12; la compuerta local
+  terminó con **606 pruebas**, Ruff y dependencias correctas. Faltan medir el
+  SQL final con `EXPLAIN ANALYZE` y ejecutar la verificación manual sobre un
+  schema no productivo equivalente; la ejecución de 4.0 no midió ese SQL porque
+  el código de entonces falló antes por esa referencia.
 - Capa activa: **4, reportes financieros**. Primera subcapa pendiente: **4.3,
   en verificación**.
 - Resultado de 3.5: el alta construye el schema desde la migración base en vez de
@@ -378,9 +382,10 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   romper una base sin historial. Se verificó que las pruebas nuevas fallan
   contra el controlador anterior, que es la señal esperada. La compuerta cerró
   en exit 0 con **529 pruebas**.
-- Capa 4 activa; 4.0 a 4.2 cerradas y 4.3 en verificación. La separación y
-  compuerta local están completas; falta medición equivalente o aceptación
-  explícita del pendiente. La capa 5 continúa en espera.
+- Capa 4 activa; 4.0 a 4.2 cerradas y 4.3 en verificación. La separación, la
+  compatibilidad con el schema canónico y la compuerta local están completas;
+  faltan la medición equivalente y la verificación manual, o una aceptación
+  explícita de esas evidencias pendientes. La capa 5 continúa en espera.
 - Código de producto modificado durante la capa 0: ninguno.
 - Código de producto modificado durante la capa 1: el ciclo de vida de las
   conexiones en 20 archivos de `app/`, más los timeouts. Sin cambios en rutas,
@@ -403,10 +408,11 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
 - [04_REPORTES_FINANCIEROS.md](./04_REPORTES_FINANCIEROS.md): **bitácora
   activa** de la capa 4 y fuente de continuidad. Registra el commit base, las
   verificaciones heredadas aceptadas como pendientes y el estado en verificación
-  de 4.3, incluidos staging, rollback y medición faltante. Conserva también el
-  cierre de 4.2 con su conteo fijo 6/15, la extracción de 4.1 y el inventario y
-  medición limitada de 4.0. Es el documento que un chat nuevo debe leer después
-  de este índice.
+  de 4.3, incluidos la corrección local de la referencia inexistente
+  `pagos.concepto_id`, staging, rollback, medición y verificación manual
+  faltantes. Conserva también el cierre de 4.2 con su conteo fijo 6/15, la
+  extracción de 4.1 y el inventario y medición limitada de 4.0. Es el documento
+  que un chat nuevo debe leer después de este índice.
 - [03_MIGRACIONES_TENANTS.md](./03_MIGRACIONES_TENANTS.md): **bitácora cerrada**
   de la capa 3. Conserva el inventario, las tres
   reparaciones aplicadas a producción con su rollback, el ensayo sobre una rama
@@ -427,6 +433,7 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   iniciar o continuar en otro chat, más un resumen del estado del programa. La
   autorización puntual para activar la capa 4 fue consumida y retirada. Incluye
   las tres trampas que dejó la capa 3: el endpoint `-pooler`, los nombres sin
-  cualificar que resuelve el `search_path`, y que los ensayos necesitan una rama
-  de Neon creada desde producción.
+  cualificar que resuelve el `search_path`, y que los ensayos necesitan schema
+  canónico, datos representativos y aislamiento no productivo; no requieren
+  copiar datos de producción.
 - [PLANTILLA_CAPA.md](./PLANTILLA_CAPA.md): estructura de la siguiente bitácora.

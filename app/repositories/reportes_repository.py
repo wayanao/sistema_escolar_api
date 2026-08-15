@@ -216,35 +216,50 @@ def consultar_estudiantes_estado_cuenta_curso(cursor, curso_id):
     return cursor.fetchall()
 
 
-def consultar_pagos_estado_cuenta_por_estudiantes(cursor, estudiante_ids):
+def consultar_pagos_estado_cuenta_por_estudiantes(
+    cursor,
+    estudiante_ids,
+    tiene_aplicaciones,
+):
     if not estudiante_ids:
         return [], []
 
+    excluir_aplicaciones = """
+          AND NOT EXISTS (
+              SELECT 1 FROM pagos_aplicaciones pa
+              WHERE pa.pago_id = pagos.id
+          )
+    """ if tiene_aplicaciones else ""
     cursor.execute(
-        """
-        SELECT estudiante_id, concepto_id, COALESCE(SUM(monto), 0)
+        f"""
+        SELECT estudiante_id, descripcion, COALESCE(SUM(monto), 0)
         FROM pagos
         WHERE estudiante_id IN %s
+          AND venta_id IS NULL
+          AND descripcion IS NOT NULL
           AND COALESCE(estado, 'Pagado') <> 'Anulado'
-        GROUP BY estudiante_id, concepto_id
+          {excluir_aplicaciones}
+        GROUP BY estudiante_id, descripcion
         """,
         (estudiante_ids,),
     )
-    pagos_por_concepto = cursor.fetchall()
+    pagos_por_descripcion = cursor.fetchall()
 
     cursor.execute(
-        """
+        f"""
         SELECT estudiante_id, tipo_pago, COALESCE(SUM(monto), 0)
         FROM pagos
         WHERE estudiante_id IN %s
+          AND venta_id IS NULL
           AND COALESCE(estado, 'Pagado') <> 'Anulado'
+          {excluir_aplicaciones}
         GROUP BY estudiante_id, tipo_pago
         """,
         (estudiante_ids,),
     )
     pagos_por_nombre = cursor.fetchall()
 
-    return pagos_por_concepto, pagos_por_nombre
+    return pagos_por_descripcion, pagos_por_nombre
 
 
 def consultar_otros_pagos_por_estudiantes(
@@ -266,7 +281,23 @@ def consultar_otros_pagos_por_estudiantes(
         SELECT estudiante_id, COALESCE(SUM(monto), 0)
         FROM pagos
         WHERE estudiante_id IN %s
-          AND (concepto_id IS NULL OR concepto_id NOT IN (SELECT id FROM tipos_de_pagos))
+          AND (
+              venta_id IS NOT NULL
+              OR NOT EXISTS (
+                  SELECT 1
+                  FROM tipos_de_pagos tp
+                  WHERE (
+                      pagos.tipo_pago IS NOT NULL
+                      AND pagos.tipo_pago <> ''
+                      AND LOWER(pagos.tipo_pago) = LOWER(tp.nombre)
+                  )
+                  OR (
+                      pagos.descripcion IS NOT NULL
+                      AND pagos.descripcion <> ''
+                      AND LOWER(pagos.descripcion) = LOWER(tp.nombre)
+                  )
+              )
+          )
           AND COALESCE(estado, 'Pagado') <> 'Anulado'
           {excluir_adelantos}
         GROUP BY estudiante_id

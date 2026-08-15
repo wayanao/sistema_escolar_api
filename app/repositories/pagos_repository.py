@@ -104,3 +104,137 @@ def marcar_pago_anulado(cursor, motivo, fecha_anulacion, admin_id, pago_id):
         admin_id,
         pago_id,
     ))
+
+
+# ---------------------------------------------------------------------------
+# Lecturas de `pagos`
+# ---------------------------------------------------------------------------
+
+def leer_pago_para_anular(cursor, pago_id):
+    """Bloquea el pago con `FOR UPDATE` y devuelve la fila cruda.
+
+    Quien decide si existe, si ya estaba anulado y que hacer con su venta es el
+    controlador. Aqui solo se toma el bloqueo y se leen las cinco columnas.
+    """
+    cursor.execute("""
+            SELECT id, COALESCE(estado, 'Pagado'), monto, venta_id, descripcion
+            FROM pagos
+            WHERE id = %s
+            FOR UPDATE
+        """, (pago_id,))
+    return cursor.fetchone()
+
+
+def listar_pagos_de_estudiante(cursor, estudiante_id):
+    """Historial completo, mas reciente primero."""
+    cursor.execute("""
+            SELECT
+                id,
+                estudiante_id,
+                monto,
+                fecha,
+                descripcion,
+                tipo_pago,
+                COALESCE(estado, 'Pagado') AS estado,
+                motivo_anulacion,
+                fecha_anulacion,
+                anulado_por
+            FROM pagos
+            WHERE estudiante_id = %s
+            ORDER BY id DESC
+        """, (estudiante_id,))
+    return cursor.fetchall()
+
+
+def contar_pagos_de_estudiante(cursor, estudiante_id):
+    """Total de pagos del estudiante, sin filtrar por estado."""
+    cursor.execute("""
+            SELECT COUNT(*)
+            FROM pagos
+            WHERE estudiante_id = %s
+        """, (estudiante_id,))
+    return cursor.fetchone()[0]
+
+
+def listar_pagos_de_estudiante_paginado(cursor, estudiante_id, limit, offset):
+    """Una pagina del historial, con el mismo orden que la version completa."""
+    cursor.execute("""
+            SELECT
+                id,
+                estudiante_id,
+                monto,
+                fecha,
+                descripcion,
+                tipo_pago,
+                COALESCE(estado, 'Pagado') AS estado,
+                motivo_anulacion,
+                fecha_anulacion,
+                anulado_por
+            FROM pagos
+            WHERE estudiante_id = %s
+            ORDER BY id DESC
+            LIMIT %s OFFSET %s
+        """, (estudiante_id, limit, offset))
+    return cursor.fetchall()
+
+
+# ---------------------------------------------------------------------------
+# Efecto de un pago sobre una venta
+#
+# `ventas` pertenece al dominio de inventario y `venta_controller.py` conserva
+# su propio SQL. Estas cinco sentencias no son persistencia general de ventas:
+# son el efecto que un pago tiene sobre un cargo de inventario, y por eso viven
+# aqui. Si alguna vez existe un `ventas_repository` con dos consumidores reales,
+# este es el bloque que se mueve.
+# ---------------------------------------------------------------------------
+
+def leer_saldo_de_venta(cursor, venta_id):
+    """Total, pagado y estado del cargo, para validar antes de cobrar."""
+    cursor.execute("""
+        SELECT total, COALESCE(pagado, 0), estado
+        FROM ventas
+        WHERE id = %s
+    """, (venta_id,))
+    return cursor.fetchone()
+
+
+def leer_venta_para_anular(cursor, venta_id):
+    """Bloquea la venta con `FOR UPDATE` antes de devolverle el saldo."""
+    cursor.execute("""
+                SELECT id, total, COALESCE(pagado, 0)
+                FROM ventas
+                WHERE id = %s
+                FOR UPDATE
+            """, (venta_id,))
+    return cursor.fetchone()
+
+
+def abonar_a_venta(cursor, monto, venta_id):
+    """Acumula el abono y devuelve `(total, pagado)` ya actualizados.
+
+    Sirve a las dos ramas de `registrar_pago_controller`. Eran dos literales
+    identicos salvo la sangria; se unificaron siguiendo la decision tomada en
+    5.1 para `insertar_pago`. El espacio final tras el parametro se conserva
+    mediante un escape explicito, para no alterar el valor en tiempo de
+    ejecucion y que `git diff --check` siga limpio.
+    """
+    cursor.execute("""
+                    UPDATE ventas SET pagado = COALESCE(pagado, 0) + %s\x20
+                    WHERE id = %s RETURNING total, pagado
+                """, (monto, venta_id))
+    return cursor.fetchone()
+
+
+def marcar_venta_pagada(cursor, venta_id):
+    """Cierra el cargo cuando lo abonado alcanza el total."""
+    cursor.execute("UPDATE ventas SET estado = 'Pagado' WHERE id = %s", (venta_id,))
+
+
+def ajustar_venta_tras_anulacion(cursor, nuevo_pagado, nuevo_estado, venta_id):
+    """Devuelve el saldo y recalcula el estado del cargo al anular un pago."""
+    cursor.execute("""
+                UPDATE ventas
+                SET pagado = %s,
+                    estado = %s
+                WHERE id = %s
+            """, (nuevo_pagado, nuevo_estado, venta_id))

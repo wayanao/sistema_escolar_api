@@ -59,13 +59,17 @@ class CursorFalso:
         *,
         tipo_cobro="unico",
         venta=None,
+        venta_estado="Pendiente",
         pago_existente=None,
         nombre_duplicado=False,
+        historial=(),
     ):
         self.tipo_cobro = tipo_cobro
         self.venta = venta
+        self.venta_estado = venta_estado
         self.pago_existente = pago_existente
         self.nombre_duplicado = nombre_duplicado
+        self.historial = list(historial)
         self.ejecutadas = []
         self.filas = []
         self.cerrado = False
@@ -164,7 +168,11 @@ class CursorFalso:
             if self.venta is None:
                 return []
             total, pagado = self.venta
-            return [(total, pagado, "Pendiente")]
+            return [(total, pagado, self.venta_estado)]
+        if "select count(*)" in query and "from pagos" in query:
+            return [(len(self.historial),)]
+        if "from pagos" in query and "order by id desc" in query:
+            return list(self.historial)
         if "string_agg(distinct descripcion" in query:
             return [(0, None)]
         if "select descripcion, coalesce(sum(monto), 0)" in query:
@@ -882,3 +890,159 @@ def test_el_upsert_de_valores_personalizados_tambien_abre_dos_conexiones(conexio
     assert len(cursor.ejecutadas) == 8
     assert len(cursor.escrituras) == 1
     assert conn.commits == 1
+
+
+# ---------------------------------------------------------------------------
+# 7. Lecturas de `pagos` y contacto con `ventas`, caracterizados antes de 5.2
+# ---------------------------------------------------------------------------
+
+FILA_HISTORIAL = (
+    7, 11, 150000, datetime(2026, 8, 3, 14, 30), "Pension agosto",
+    "Efectivo", "Pagado", None, None, None,
+)
+
+
+def test_el_historial_paginado_cuenta_primero_y_luego_lee_la_pagina(conexion):
+    conn, cursor = conexion(historial=[FILA_HISTORIAL])
+
+    resultado = pagos_controller.historial_pagos_paginado_controller(
+        11, limit=25, offset=50
+    )
+
+    assert len(cursor.ejecutadas) == 2
+    conteo, pagina = cursor.ejecutadas
+    assert conteo[0].startswith("select count(*)")
+    assert conteo[1] == (11,)
+    assert "limit %s offset %s" in pagina[0]
+    assert pagina[1] == (11, 25, 50)
+    assert resultado["total"] == 1
+    assert resultado["limit"] == 25
+    assert resultado["offset"] == 50
+    assert resultado["items"][0]["pago_id"] == 7
+
+
+def test_el_historial_paginado_es_lector_y_no_confirma_ni_revierte(conexion):
+    conn, cursor = conexion(historial=[FILA_HISTORIAL])
+
+    pagos_controller.historial_pagos_paginado_controller(11, limit=10, offset=0)
+
+    assert cursor.escrituras == []
+    assert conn.commits == 0
+    assert conn.rollbacks == 0
+    assert conn.cerrada is True
+    assert cursor.cerrado is True
+
+
+def test_las_dos_lecturas_del_paginado_ordenan_igual_que_el_historial(conexion):
+    _conn, cursor = conexion(historial=[FILA_HISTORIAL])
+
+    pagos_controller.historial_pagos_paginado_controller(11, limit=10, offset=0)
+
+    _conteo, pagina = cursor.ejecutadas
+    assert "order by id desc" in pagina[0]
+    assert "coalesce(estado, 'pagado') as estado" in pagina[0]
+
+
+def test_el_saldo_de_venta_se_lee_antes_de_insertar_el_pago(conexion):
+    _conn, cursor = conexion(venta=(100, 40))
+
+    pagos_controller.registrar_pago_controller(
+        PagoCreate(estudiante_id=1, monto=60, venta_id=7, descripcion="Cargo #7")
+    )
+
+    lectura, params = cursor.ejecutadas[0]
+    assert lectura.startswith("select total, coalesce(pagado, 0), estado from ventas")
+    assert params == (7,)
+
+
+def test_un_cargo_de_inventario_inexistente_se_rechaza_sin_escribir(conexion):
+    conn, cursor = conexion(venta=None)
+
+    with pytest.raises(ValueError, match="no existe"):
+        pagos_controller.registrar_pago_controller(
+            PagoCreate(estudiante_id=1, monto=60, venta_id=7, descripcion="Cargo #7")
+        )
+
+    assert cursor.escrituras == []
+    assert conn.rollbacks == 1
+
+
+def test_un_cargo_ya_pagado_se_rechaza_sin_escribir(conexion):
+    conn, cursor = conexion(venta=(100, 100), venta_estado="Pagado")
+
+    with pytest.raises(ValueError, match="ya no tiene saldo pendiente"):
+        pagos_controller.registrar_pago_controller(
+            PagoCreate(estudiante_id=1, monto=10, venta_id=7, descripcion="Cargo #7")
+        )
+
+    assert cursor.escrituras == []
+    assert conn.rollbacks == 1
+
+
+def test_pagar_de_mas_un_cargo_de_inventario_se_rechaza_sin_escribir(conexion):
+    conn, cursor = conexion(venta=(100, 40))
+
+    with pytest.raises(ValueError, match="no puede ser mayor al saldo pendiente"):
+        pagos_controller.registrar_pago_controller(
+            PagoCreate(estudiante_id=1, monto=61, venta_id=7, descripcion="Cargo #7")
+        )
+
+    assert cursor.escrituras == []
+    assert conn.rollbacks == 1
+
+
+def test_el_abono_a_la_venta_no_la_cierra_si_queda_saldo(conexion):
+    _conn, cursor = conexion(venta=(100, 0))
+
+    pagos_controller.registrar_pago_controller(
+        PagoCreate(estudiante_id=1, monto=40, venta_id=7, descripcion="Cargo #7")
+    )
+
+    actualizaciones = cursor.escrituras_contra("update ventas")
+    assert len(actualizaciones) == 1
+    assert "pagado = coalesce(pagado, 0) + %s" in actualizaciones[0]
+    assert not any("estado = 'pagado'" in q for q in actualizaciones)
+
+
+def test_la_anulacion_bloquea_la_venta_con_for_update_antes_de_devolver_el_saldo(conexion):
+    _conn, cursor = conexion(
+        pago_existente=(5, "Pagado", 100.0, 7, "Cargo #7"),
+        venta=(100, 100),
+    )
+
+    pagos_controller.anular_pago_controller(5, "Motivo valido", 99)
+
+    indice_lock = next(
+        i for i, (q, _) in enumerate(cursor.ejecutadas)
+        if "from ventas" in q and "for update" in q
+    )
+    indice_update = next(
+        i for i, (q, _) in enumerate(cursor.ejecutadas) if "update ventas" in q
+    )
+    assert indice_lock < indice_update
+
+
+def test_la_lectura_de_bloqueo_del_pago_trae_las_cinco_columnas_que_usa(conexion):
+    _conn, cursor = conexion(pago_existente=(5, "Pagado", 100.0, None, "Pension"))
+
+    pagos_controller.anular_pago_controller(5, "Motivo valido", 99)
+
+    lectura, params = cursor.ejecutadas[0]
+    assert "select id, coalesce(estado, 'pagado'), monto, venta_id, descripcion" in lectura
+    assert "from pagos where id = %s for update" in lectura
+    assert params == (5,)
+
+
+def test_un_pago_heredado_con_cargo_solo_en_el_texto_recupera_su_venta_id(conexion):
+    _conn, cursor = conexion(
+        pago_existente=(5, "Pagado", 100.0, None, "Abono Cargo #42"),
+        venta=(100, 100),
+    )
+
+    pagos_controller.anular_pago_controller(5, "Motivo valido", 99)
+
+    asignaciones = [
+        params for query, params in cursor.escrituras
+        if "update pagos set venta_id" in query
+    ]
+    assert asignaciones == [(42, 5)]

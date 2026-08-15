@@ -6,12 +6,21 @@ from zoneinfo import ZoneInfo
 from psycopg2 import IntegrityError
 
 from app.repositories.pagos_repository import (
+    abonar_a_venta,
+    ajustar_venta_tras_anulacion,
     asignar_venta_a_pago,
+    contar_pagos_de_estudiante,
     desactivar_aplicaciones_de_pago,
     insertar_aplicacion,
     insertar_pago,
     insertar_pago_adelantado,
+    leer_pago_para_anular,
+    leer_saldo_de_venta,
+    leer_venta_para_anular,
+    listar_pagos_de_estudiante,
+    listar_pagos_de_estudiante_paginado,
     marcar_pago_anulado,
+    marcar_venta_pagada,
 )
 from app.services.cobros import (
     obtener_conceptos_mensuales_estudiante,
@@ -426,12 +435,7 @@ def _formatear_pago(row):
 
 
 def _obtener_saldo_venta(cursor, venta_id):
-    cursor.execute("""
-        SELECT total, COALESCE(pagado, 0), estado
-        FROM ventas
-        WHERE id = %s
-    """, (venta_id,))
-    venta = cursor.fetchone()
+    venta = leer_saldo_de_venta(cursor, venta_id)
     if not venta:
         raise ValueError("El cargo de inventario seleccionado no existe.")
 
@@ -500,15 +504,11 @@ def registrar_pago_controller(pago):
 
                 # Si se envía un venta_id, acumular abono a la venta (cargo de inventario)
                 if getattr(pago, 'venta_id', None):
-                    cursor.execute("""
-                        UPDATE ventas SET pagado = COALESCE(pagado, 0) + %s 
-                        WHERE id = %s RETURNING total, pagado
-                    """, (metodo.monto, pago.venta_id))
-                    venta = cursor.fetchone()
+                    venta = abonar_a_venta(cursor, metodo.monto, pago.venta_id)
                     if venta:
                         total_venta, total_pagado = venta
                         if total_pagado >= total_venta:
-                            cursor.execute("UPDATE ventas SET estado = 'Pagado' WHERE id = %s", (pago.venta_id,))
+                            marcar_venta_pagada(cursor, pago.venta_id)
         else:
             # Caso compatibilidad: pago simple
             pago_id = insertar_pago(
@@ -524,15 +524,11 @@ def registrar_pago_controller(pago):
             pagos_creados.append((pago_id, float(pago.monto or 0)))
 
             if getattr(pago, 'venta_id', None):
-                cursor.execute("""
-                    UPDATE ventas SET pagado = COALESCE(pagado, 0) + %s 
-                    WHERE id = %s RETURNING total, pagado
-                """, (pago.monto, pago.venta_id))
-                venta = cursor.fetchone()
+                venta = abonar_a_venta(cursor, pago.monto, pago.venta_id)
                 if venta:
                     total_venta, total_pagado = venta
                     if total_pagado >= total_venta:
-                        cursor.execute("UPDATE ventas SET estado = 'Pagado' WHERE id = %s", (pago.venta_id,))
+                        marcar_venta_pagada(cursor, pago.venta_id)
 
         if aplicaciones_preparadas:
             aplicaciones_con_estudiante = [
@@ -560,24 +556,7 @@ def registrar_pago_controller(pago):
 def historial_pagos_controller(estudiante_id):
 
     with get_cursor() as cursor:
-        cursor.execute("""
-            SELECT
-                id,
-                estudiante_id,
-                monto,
-                fecha,
-                descripcion,
-                tipo_pago,
-                COALESCE(estado, 'Pagado') AS estado,
-                motivo_anulacion,
-                fecha_anulacion,
-                anulado_por
-            FROM pagos
-            WHERE estudiante_id = %s
-            ORDER BY id DESC
-        """, (estudiante_id,))
-
-        resultado = cursor.fetchall()
+        resultado = listar_pagos_de_estudiante(cursor, estudiante_id)
 
     return [_formatear_pago(row) for row in resultado]
 
@@ -587,31 +566,10 @@ def historial_pagos_paginado_controller(estudiante_id, limit=50, offset=0):
     cursor = conn.cursor()
 
     try:
-        cursor.execute("""
-            SELECT COUNT(*)
-            FROM pagos
-            WHERE estudiante_id = %s
-        """, (estudiante_id,))
-        total = cursor.fetchone()[0]
-
-        cursor.execute("""
-            SELECT
-                id,
-                estudiante_id,
-                monto,
-                fecha,
-                descripcion,
-                tipo_pago,
-                COALESCE(estado, 'Pagado') AS estado,
-                motivo_anulacion,
-                fecha_anulacion,
-                anulado_por
-            FROM pagos
-            WHERE estudiante_id = %s
-            ORDER BY id DESC
-            LIMIT %s OFFSET %s
-        """, (estudiante_id, limit, offset))
-        resultado = cursor.fetchall()
+        total = contar_pagos_de_estudiante(cursor, estudiante_id)
+        resultado = listar_pagos_de_estudiante_paginado(
+            cursor, estudiante_id, limit, offset
+        )
 
         return {
             "total": total,
@@ -633,13 +591,7 @@ def anular_pago_controller(pago_id, motivo, admin_id):
     cursor = conn.cursor()
 
     try:
-        cursor.execute("""
-            SELECT id, COALESCE(estado, 'Pagado'), monto, venta_id, descripcion
-            FROM pagos
-            WHERE id = %s
-            FOR UPDATE
-        """, (pago_id,))
-        pago = cursor.fetchone()
+        pago = leer_pago_para_anular(cursor, pago_id)
 
         if not pago:
             raise ValueError("El pago no existe.")
@@ -658,13 +610,7 @@ def anular_pago_controller(pago_id, motivo, admin_id):
                 asignar_venta_a_pago(cursor, venta_id, pago_id)
 
         if venta_id is not None:
-            cursor.execute("""
-                SELECT id, total, COALESCE(pagado, 0)
-                FROM ventas
-                WHERE id = %s
-                FOR UPDATE
-            """, (venta_id,))
-            venta = cursor.fetchone()
+            venta = leer_venta_para_anular(cursor, venta_id)
             if not venta:
                 raise ValueError("La venta asociada a este pago ya no existe.")
 
@@ -673,12 +619,9 @@ def anular_pago_controller(pago_id, motivo, admin_id):
             nuevo_pagado = max(0.0, pagado_actual - monto_pago)
             nuevo_estado = "Pagado" if nuevo_pagado >= total_venta and total_venta > 0 else "Pendiente"
 
-            cursor.execute("""
-                UPDATE ventas
-                SET pagado = %s,
-                    estado = %s
-                WHERE id = %s
-            """, (nuevo_pagado, nuevo_estado, venta_id))
+            ajustar_venta_tras_anulacion(
+                cursor, nuevo_pagado, nuevo_estado, venta_id
+            )
 
         if _tabla_pagos_aplicaciones_existe(cursor):
             desactivar_aplicaciones_de_pago(cursor, pago_id)

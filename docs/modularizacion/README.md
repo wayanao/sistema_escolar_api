@@ -39,7 +39,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 2 | Concurrencia | DB síncrona fuera del event loop preservando `ContextVar` | **Cerrada** y publicada; CI posterior al cierre no verificada | [02_CONCURRENCIA.md](./02_CONCURRENCIA.md) |
 | 3 | Migraciones y tenants | Todos los tenants versionados, runner bloqueado y alta reproducible | **Cerrada**; reparó producción y verificó en uso | [03_MIGRACIONES_TENANTS.md](./03_MIGRACIONES_TENANTS.md) |
 | 4 | Reportes financieros | Dominio modular, N+1 eliminado y consultas medidas | **Cerrada**; N+1 de 5N a 15 constantes, medido en producción | [04_REPORTES_FINANCIEROS.md](./04_REPORTES_FINANCIEROS.md) |
-| 5 | Pagos y tipos de pago | Dominio financiero modularizado y protegido | **Activa**; 5.0 y 5.1 cerradas, 5.2 pendiente | [05_PAGOS_TIPOS_PAGO.md](./05_PAGOS_TIPOS_PAGO.md) |
+| 5 | Pagos y tipos de pago | Dominio financiero modularizado y protegido | **Activa**; 5.0 a 5.2 cerradas, 5.3 pendiente | [05_PAGOS_TIPOS_PAGO.md](./05_PAGOS_TIPOS_PAGO.md) |
 | 6 | Asignaciones y estudiantes | Dominios grandes separados con contratos estables | En espera | Se crea al activarla |
 | 7 | Resto de dominios | Migración individual con contratos y pruebas | En espera | Una bitácora por dominio al activarlo |
 
@@ -49,8 +49,8 @@ cierre y el usuario ordene continuar, se crea su sucesora desde
 tabla.
 
 Las capas 0, 1, 2, 3 y 4 están cerradas. La **capa 5 está activa** desde el
-2026-08-15, activada por orden explícita del usuario; sus subcapas 5.0 y 5.1
-quedaron cerradas y 5.2 está pendiente. La capa 3 es la única del programa que modificó la base
+2026-08-15, activada por orden explícita del usuario; sus subcapas 5.0, 5.1 y 5.2
+quedaron cerradas y 5.3, la última, está pendiente. La capa 3 es la única del programa que modificó la base
 de datos real, con autorización explícita del usuario para cada paso; la capa 4
 solo la leyó. La capa 5 será la primera que **escriba**, y ese cambio de perfil
 de riesgo está registrado en su bitácora. No se atribuye ningún resultado de
@@ -362,10 +362,27 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   recibe PostgreSQL no cambia y quedó verificado. Las sentencias que tocan
   `ventas` **no se movieron**: son de otro dominio y su ubicación se decide en
   5.2 con evidencia.
-- Capa activa: **5, pagos y tipos de pago**. 5.0 y 5.1 **cerradas**; primera
-  subcapa pendiente: **5.2**, completar la frontera de persistencia de
-  `pagos_controller` con sus lecturas y el contacto con `ventas`, no iniciada.
-  Siguiente capa: 6, asignaciones y estudiantes, en espera.
+- Resultado de 5.2: las cuatro lecturas de `pagos` y las cinco sentencias que
+  tocan `ventas` salieron del controlador. El repositorio llega a **15
+  funciones** y el controlador baja de **717 líneas al activar la capa a 644**,
+  con solo **cuatro sentencias inline**: tres guardas de esquema y la lectura de
+  `_periodos_disponibles`. El comparador AST **contra el commit base de la
+  capa** confirmó 19 sentencias distintas antes y después, conjunto idéntico, con
+  **19 de 21** literales byte a byte. Compuerta local: **657 pruebas**, Ruff y
+  dependencias correctas.
+- Decisión de 5.2, tomada con evidencia: el contacto con `ventas` vive en
+  `pagos_repository.py`, en un bloque rotulado como **el efecto de un pago sobre
+  un cargo**, no como persistencia general de ventas. `venta_controller.py` ya
+  tiene su propio SQL inline y no existe un `ventas_repository`; crear uno
+  tendría un solo consumidor real, y migrar `venta_controller` está fuera del
+  alcance de esta capa.
+- 5.2 amplió la caracterización **antes** de mover producto, de 40 a 51 casos: el
+  historial paginado solo tenía prueba de ruta y la lectura de saldo de venta no
+  tenía ninguna.
+- Capa activa: **5, pagos y tipos de pago**. 5.0, 5.1 y 5.2 **cerradas**; primera
+  subcapa pendiente: **5.3**, guardas de migración restantes, retiro heredado y
+  **cierre de la capa**, no iniciada. Siguiente capa: 6, asignaciones y
+  estudiantes, en espera.
 - Resultado de 3.5: el alta construye el schema desde la migración base en vez de
   copiar la plantilla. Un tenant nuevo nace con **37 claves foráneas y 30
   secuencias propias**, donde el camino anterior producía **0 y 0**. Ensayado
@@ -482,9 +499,11 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   aceptadas como pendientes, el perfil de riesgo propio de la primera capa que
   escribe, el cierre de 5.0 con su inventario de 19 entradas, seis tablas
   escritas, contratos, idempotencia y línea base de consultas, los cuatro
-  hallazgos registrados sin corregir, el cierre de 5.1 con su extracción y la
-  unificación SQL autorizada, y el trabajo exacto de 5.2. Es el documento que un
-  chat nuevo debe leer después de este índice.
+  hallazgos registrados sin corregir, los cierres de 5.1 y 5.2 con sus
+  extracciones, la unificación SQL autorizada y la decisión sobre dónde vive el
+  contacto con `ventas`, y el trabajo exacto de 5.3, que es la última subcapa y
+  debe cerrar la capa. Es el documento que un chat nuevo debe leer después de
+  este índice.
 - [04_REPORTES_FINANCIEROS.md](./04_REPORTES_FINANCIEROS.md): **bitácora
   cerrada** de la capa 4. Conserva el cierre de 4.3 con su medición sobre
   producción y la verificación manual del usuario, el hallazgo de que el informe

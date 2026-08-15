@@ -205,6 +205,17 @@ def consultar_egresos_rango(
     return None, cursor.fetchall()
 
 
+def consultar_estudiantes_estado_cuenta_curso(cursor, curso_id):
+    cursor.execute('''
+            SELECT e.id, e.nombre, e.apellido
+            FROM estudiantes e\x20
+            JOIN cursos c ON e.curso_id = c.id\x20
+            WHERE e.curso_id = %s\x20
+            ORDER BY e.apellido, e.nombre
+        ''', (curso_id,))
+    return cursor.fetchall()
+
+
 def consultar_pagos_estado_cuenta_por_estudiantes(cursor, estudiante_ids):
     if not estudiante_ids:
         return [], []

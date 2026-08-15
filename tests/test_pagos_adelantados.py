@@ -7,6 +7,7 @@ from pydantic import ValidationError
 from app.controllers import pagos_controller, reportes_controller
 from app.schemas.pago import PagoAdelantadoCreate
 from app.services.cobros import _calcular_deudas
+from app.services import reportes_financieros
 
 
 class FakeCursor:
@@ -369,7 +370,7 @@ def test_reporte_curso_aplica_solo_adelantos_maduros_y_no_los_duplica(monkeypatc
         }
 
     monkeypatch.setattr(
-        reportes_controller,
+        reportes_financieros,
         "calcular_deudas_desde_contexto",
         calcular_resumen,
     )

@@ -9,10 +9,11 @@
 - Rama acordada: `main`.
 - Estado al activar: árbol limpio; `HEAD` coincidente con la referencia local
   `origin/main`.
-- Primera subcapa pendiente: **4.3**.
-- Progreso: **4.0, 4.1 y 4.2 cerradas**; el N+1 de estado de cuenta de reportes
-  pasó de `10 + 5N` a 15 consultas fijas para `N > 0`, sin cambiar contratos ni
-  reglas financieras.
+- Primera subcapa pendiente: **4.3, en verificación**.
+- Progreso: **4.0, 4.1 y 4.2 cerradas**. En 4.3 la separación local, pruebas,
+  Ruff y compuerta global están completas; falta medir el SQL final con
+  `EXPLAIN ANALYZE` sobre un schema no productivo equivalente antes de cerrar la
+  subcapa y la capa.
 - Código de producto modificado al activar: **ninguno**.
 - Autorización: orden explícita del usuario el 2026-08-14 para corregir la
   continuidad documental y activar la capa 4. La activación no autoriza iniciar
@@ -115,7 +116,7 @@ archivos, consultas o pruebas forman el dominio.
 | 4.0 | Inventario, contratos, caracterización y línea base de consultas | **Cerrada** |
 | 4.1 | Extraer la persistencia de los reportes simples sin cambiar SQL ni respuestas | **Cerrada** |
 | 4.2 | Sustituir el N+1 de `/reportes/estado-cuenta/{curso_id}` por lecturas agrupadas equivalentes | **Cerrada** |
-| 4.3 | Separar reglas financieras de sus consumidores y cerrar medición/retirada heredada | **Pendiente** |
+| 4.3 | Separar reglas financieras de sus consumidores y cerrar medición/retirada heredada | **En verificación**; extracción y compuerta local completas, medición equivalente pendiente |
 
 El desglose se deriva del inventario de 4.0. Cada subcapa deberá volver a
 acotar sus archivos antes de modificar y no podrá incorporar trabajo de la
@@ -365,6 +366,13 @@ el registro de ejecución; no se inspeccionó ni inició el trabajo de 4.3.
    cerrar la capa y actualizar el índice solo si toda la compuerta queda
    satisfecha. Dejar la capa 5 en espera y detenerse.
 
+Estado de ejecución: los puntos 1 a 4 y 6 están completos; staging, rollback y
+verificación manual del punto 7 están documentados abajo. El punto 5 no está
+satisfecho porque no está disponible para este turno un entorno no productivo
+con schema vigente, datos representativos y rol dedicado de solo lectura. Por
+ello 4.3 sigue **en verificación**, la capa 4 permanece activa y la capa 5
+continúa en espera.
+
 ## Criterios de cierre de la capa
 
 - Todas las subcapas necesarias están cerradas o marcadas `No aplica` con
@@ -430,6 +438,16 @@ el registro de ejecución; no se inspeccionó ni inició el trabajo de 4.3.
   luego `concepto_id` como fallback. El nombre se normaliza con `lower()` sin
   `strip`, «Otros Pagos» conserva su forma irregular y el filtro de anulados
   continúa siendo exacto.
+- 4.3 movió el último `SELECT` inline del estado de cuenta de reportes a una
+  función específica del repositorio que recibe el cursor existente. El valor
+  runtime del SQL, sus parámetros, su posición y `fetchall()` son idénticos.
+- El ensamblado de mapas, precedencias, cálculo, «Otros Pagos» y payload pasó a
+  `app/services/reportes_financieros.py`, un servicio puro que no abre ni cierra
+  recursos. El controlador conserva conexión, secuencia de lecturas,
+  `try/except/finally`, fallback `[]` y cierres.
+- `calcular_deudas_desde_contexto` no se movió ni rediseñó: mantiene dos usos
+  reales, el servicio de reportes y cartera. No se encontraron helpers de
+  cobros verdaderamente huérfanos y no se retiró ninguno por inferencia.
 
 ## Riesgos
 
@@ -469,6 +487,60 @@ el registro de ejecución; no se inspeccionó ni inició el trabajo de 4.3.
   inferencia.
 - `EXPLAIN ANALYZE` ejecuta la consulta. Debe usarse solo en un entorno no
   productivo confirmado y con datos adecuados; nunca contra producción.
+- La evidencia real de 4.0 no cubre las consultas agrupadas de 4.2: el schema
+  carecía de `pagos.concepto_id` y el endpoint terminó en fallback. Sin una rama
+  equivalente no puede afirmarse que los planes finales estén medidos ni
+  cerrarse 4.3 solo con la compuerta hermética.
+
+## Staging, rollback y verificación manual de 4.3
+
+Estas instrucciones están preparadas, pero **no se han ejecutado**:
+
+### Staging y medición pendiente
+
+1. Crear una rama de base desechable y explícitamente no productiva con el
+   schema vigente; verificar al menos columnas, tipos, constraints e índices de
+   `pagos`, `pagos_aplicaciones`, `tipos_de_pagos`,
+   `tipos_pagos_estudiantes`, `tipos_pagos_cursos`, estudiantes y cursos.
+2. Usar endpoint directo y un rol rotado dedicado a solo lectura. Abrir una
+   transacción `READ ONLY`, fijar `search_path` al tenant más `public`, mantener
+   `statement_timeout=30000` y `lock_timeout=10000`, y terminar con `ROLLBACK`.
+3. Preparar datos financieros sintéticos representativos: curso vacío y
+   poblado, pagos por nombre y `concepto_id`, anulados, valores personalizados,
+   aplicaciones maduras/futuras y «Otros Pagos». Registrar solo cardinalidades,
+   nunca URI, credenciales ni filas de negocio.
+4. Comparar payload, status, orden y totales del artefacto final contra
+   `5f9035d565c8b6366b9d6674db439d1d4c0e5cd6` sobre snapshots idénticos y
+   confirmar los conteos 6 para vacío y 15 para cualquier `N > 0`.
+5. Ejecutar tres corridas calientes de `EXPLAIN (ANALYZE, BUFFERS, TIMING OFF,
+   SUMMARY ON, FORMAT JSON)` sobre el SQL final exacto: estudiantes, agregados
+   por concepto/nombre, aplicaciones maduras, valores personalizados y
+   «Otros». Conservar solo tiempos, filas, loops, buffers y forma del plan.
+6. No usar esa medición para adoptar el candidato de timeout de 15000 ms: la
+   calibración sigue necesitando volumen/carga representativos y el deadline
+   HTTP/proxy externo.
+
+### Rollback
+
+- Si falla solo 4.3, volver al artefacto previo
+  `5cb76d6e186a9ebaea0edba978aa7bee43b3d6c1` y repetir los smokes financieros.
+- Si se revierte toda la capa 4, volver al commit base
+  `46fad2c4c12482830cc58ac28ea2512f96155fb8`.
+- 4.3 no contiene migraciones ni escrituras de datos; no requiere rollback de
+  schema ni reparación de información. No cambiar los timeouts durante el
+  rollback.
+
+### Verificación manual pendiente
+
+- Probar admin válido y rechazo de no-admin, al menos en dos tenants sin mezclar
+  datos.
+- Probar general; estado de cuenta de curso vacío y poblado con los casos
+  financieros anteriores; ingresos por mes/rango y egresos por rango con y sin
+  `limit`; comparar JSON, status, orden, formatos y totales.
+- Ejecutar smokes de `/estado-cuenta/*` y `/cartera/*` y confirmar que conservan
+  contratos y conteos, sin presentar el `1 + 12N` como corregido.
+- Registrar el artefacto, firma de schema, cardinalidades y resultado. Hasta
+  entonces esta comprobación se mantiene **pendiente**, no «realizada».
 
 ## Registro de ejecución
 
@@ -699,20 +771,94 @@ el registro de ejecución; no se inspeccionó ni inició el trabajo de 4.3.
 - Siguiente acción exacta: ejecutar únicamente 4.3 y, por ser la última
   subcapa, aplicar su compuerta de cierre sin activar la capa 5.
 
+### 2026-08-14 — avance de 4.3; cierre pendiente de medición equivalente
+
+- Modo de acceso: mismo checkout local en
+  `C:\Users\David\Documents\sistema_escolar_api`; Git fue validado directamente
+  y no se usó GitHub para inferir el estado local.
+- Precondición Git: rama `main`, árbol inicialmente limpio, `HEAD`
+  `5cb76d6e186a9ebaea0edba978aa7bee43b3d6c1`, cuatro commits por delante de la
+  referencia local `origin/main`. El commit base
+  `46fad2c4c12482830cc58ac28ea2512f96155fb8` existe y es ancestro; la historia
+  es lineal y los cuatro commits corresponden a activación, 4.0, 4.1 y 4.2. El
+  cuarto modifica exactamente los ocho archivos declarados por el cierre de
+  4.2. No existen instrucciones locales adicionales.
+- Caracterización previa conservada: antes de mover producto,
+  `.\venv\Scripts\python.exe -m pytest -q -p no:cacheprovider
+  tests\test_reportes_estado_cuenta.py tests\test_reportes_query_counts.py
+  tests\test_reportes_pagination.py tests\test_pagos_adelantados.py
+  tests\test_anulaciones_financieras.py tests\test_reportes_simple_controllers.py`;
+  **65 pasaron** en 0,63 s.
+- Producto modificado: `app/controllers/reportes_controller.py`,
+  `app/repositories/reportes_repository.py` y el nuevo
+  `app/services/reportes_financieros.py`. Pruebas modificadas:
+  `tests/test_reportes_estado_cuenta.py` y
+  `tests/test_pagos_adelantados.py`. Continuidad actualizada: esta bitácora,
+  `docs/modularizacion/README.md` y
+  `docs/modularizacion/PROMPT_CONTINUACION.md`.
+- Implementación: el repositorio recibe el cursor y ejecuta la lectura de
+  estudiantes; el servicio puro recibe todos los datos precargados y construye
+  mapas, contextos, conceptos, totales y payload. El controlador conserva una
+  sola conexión/cursor, el orden de lecturas, manejo de errores, fallback y
+  cierres.
+- Equivalencia: un comparador AST contra el `HEAD` inicial confirmó
+  `sql_runtime_identico=True` para el `SELECT` trasladado. Las pruebas mantienen
+  reportes 6/15/15 para 0/1/3 estudiantes, cuentas 1/13/37 (`1 + 12N`) y
+  cartera 5/12/12. No se modificaron cuentas, cartera, `cobros.py`, pagos,
+  rutas, permisos, tenant, timeouts ni configuración.
+- Caracterización añadida: una excepción producida por la regla después de las
+  precargas sigue devolviendo `[]`, cierra cursor/conexión y no hace
+  `commit`/`rollback` explícito. La lectura trasladada queda fijada con `JOIN`,
+  filtro, orden y parámetros `(3,)`.
+- Pruebas específicas finales: el mismo comando de seis archivos terminó con
+  **66 pasadas** en 0,53 s.
+- Ruff del alcance:
+  `.\venv\Scripts\python.exe -m ruff check
+  app\controllers\reportes_controller.py
+  app\repositories\reportes_repository.py
+  app\services\reportes_financieros.py
+  tests\test_reportes_estado_cuenta.py tests\test_reportes_query_counts.py
+  tests\test_pagos_adelantados.py`; resultado **correcto**.
+- Compuerta global: `.\venv\Scripts\python.exe scripts\verify.py`;
+  **605 pruebas pasaron** en 2,14 s, 5 warnings heredadas, Ruff correcto,
+  `pip check` íntegro y exit 0. Se ejecutó fuera del sandbox por la restricción
+  conocida del directorio temporal de pytest, sin red ni base de datos.
+- Revisión: tres auditorías independientes no encontraron regresiones; una
+  detectó los espacios finales heredados del SQL movido. Se reemplazaron en el
+  fuente por `\x20`, manteniendo idéntico el valor runtime y permitiendo que
+  `git diff --check` termine en exit 0. El chequeo equivalente del servicio
+  nuevo no emitió diagnósticos de whitespace.
+- Medición real: **pendiente y no satisfecha**. La evidencia de 4.0 procede de
+  un schema sin `pagos.concepto_id`, por lo que no contiene planes post-4.2. No
+  hay PostgreSQL/Docker local ni `DATABASE_URL` de proceso; no se reutilizó la
+  credencial privilegiada compartida ni se leyó el `.env`. Completarla requiere
+  el staging equivalente y el rol dedicado descritos arriba.
+- PostgreSQL, migraciones, producción, commit, push y deploy: **ninguno**. La
+  verificación manual y GitHub Actions posterior a la capa 0 siguen pendientes;
+  no se atribuye evidencia remota.
+- Estado: extracción y compuerta local de 4.3 **completas**; 4.3 permanece **en
+  verificación**, la capa 4 sigue **activa** y la capa 5 queda **en espera**.
+- Siguiente acción exacta: obtener una rama no productiva equivalente y un rol
+  dedicado de solo lectura para ejecutar la medición y verificación manual, o
+  recibir una decisión explícita del usuario de cerrar la capa aceptando que esa
+  evidencia permanezca pendiente. Ninguna opción activa la capa 5.
+
 ## Entrega al próximo chat
 
 - Capa activa: **4, reportes financieros**.
-- Última subcapa terminada: **4.2**, eliminación agrupada del `5N` de
-  `/reportes/estado-cuenta/{curso_id}`; conteo hermético 6 para curso vacío y 15
-  fijo para `N > 0`.
-- Primera subcapa pendiente: **4.3**, separación final de reglas y cierre de
-  medición/retirada heredada.
+- Última subcapa cerrada: **4.2**. En 4.3 la separación y compuerta local están
+  completas, pero la subcapa sigue **en verificación** por falta de medición
+  equivalente.
+- Primera subcapa pendiente: **4.3**, exclusivamente completar o aceptar de
+  forma explícita esa verificación y entonces cerrar la capa 4.
 - Commit base: `46fad2c4c12482830cc58ac28ea2512f96155fb8`, rama `main`.
 - Riesgos abiertos: candidato de timeout 15000 ms no aplicado; rama de prueba no
   equivalente por ausencia de `pagos.concepto_id`; credencial privilegiada por
   rotar; colisión heredada de nombres que solo difieren en mayúsculas; evidencia
   de GitHub Actions posterior a la capa 0 aún ausente.
-- Precondición antes de 4.3: el usuario debe revisar y dejar limpio este cambio;
+- Precondición antes de continuar 4.3: el usuario debe revisar y dejar limpio
+  este cambio;
   después se reaudita todo commit posterior al base.
-- Siguiente acción exacta: ejecutar únicamente el trabajo exacto de 4.3, cerrar
-  la capa 4 solo si pasa su compuerta y dejar la capa 5 en espera.
+- Siguiente acción exacta: medir en staging equivalente con rol dedicado READ
+  ONLY, o registrar una aceptación explícita del pendiente; cerrar la capa 4
+  solo después de esa decisión y mantener la capa 5 en espera.

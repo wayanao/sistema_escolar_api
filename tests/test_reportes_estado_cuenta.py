@@ -2,7 +2,7 @@ import datetime
 
 from app.controllers import reportes_controller
 from app.repositories import reportes_repository
-from app.services import cobros
+from app.services import cobros, reportes_financieros
 
 
 TIPOS_PAGO = [
@@ -223,7 +223,7 @@ def _instalar_dependencias(monkeypatch, cursor):
         }
 
     monkeypatch.setattr(
-        reportes_controller,
+        reportes_financieros,
         "calcular_deudas_desde_contexto",
         calcular_resumen,
     )
@@ -298,11 +298,14 @@ def test_estado_cuenta_preserva_reglas_orden_totales_y_aislamiento(monkeypatch):
     ]
     assert len(contexts) == 2
 
-    students_query = next(
-        query for query, _params in cursor.executed
+    students_query, students_params = next(
+        (query, params) for query, params in cursor.executed
         if "select e.id, e.nombre, e.apellido" in query
     )
+    assert "join cursos c on e.curso_id = c.id" in students_query
+    assert "where e.curso_id = %s" in students_query
     assert "order by e.apellido, e.nombre" in students_query
+    assert students_params == (3,)
 
     payment_executions = [
         (query, params) for query, params in cursor.executed
@@ -351,6 +354,28 @@ def test_estado_cuenta_error_conserva_fallback_y_cierres(monkeypatch):
         fail_pattern="concepto_id, coalesce(sum(monto), 0)",
     )
     connection, _contexts = _instalar_dependencias(monkeypatch, cursor)
+
+    result = reportes_controller.reporte_estado_cuenta_curso_controller(3)
+
+    assert result == []
+    assert cursor.closed is True
+    assert connection.closed is True
+    assert connection.committed is False
+    assert connection.rolled_back is False
+
+
+def test_estado_cuenta_error_de_regla_conserva_fallback_y_cierres(monkeypatch):
+    cursor = EstadoCuentaCursor()
+    connection, _contexts = _instalar_dependencias(monkeypatch, cursor)
+
+    def fallar_calculo(**_contexto):
+        raise RuntimeError("fallo-controlado-de-regla")
+
+    monkeypatch.setattr(
+        reportes_financieros,
+        "calcular_deudas_desde_contexto",
+        fallar_calculo,
+    )
 
     result = reportes_controller.reporte_estado_cuenta_curso_controller(3)
 

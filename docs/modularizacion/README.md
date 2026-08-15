@@ -38,7 +38,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 1 | Fundación de base de datos | Conexiones, transacciones, timeouts y pool definidos | **Cerrada**; primera medición hecha, valor operativo final pendiente | [01_FUNDACION_BASE_DATOS.md](./01_FUNDACION_BASE_DATOS.md) |
 | 2 | Concurrencia | DB síncrona fuera del event loop preservando `ContextVar` | **Cerrada** y publicada; CI posterior al cierre no verificada | [02_CONCURRENCIA.md](./02_CONCURRENCIA.md) |
 | 3 | Migraciones y tenants | Todos los tenants versionados, runner bloqueado y alta reproducible | **Cerrada**; reparó producción y verificó en uso | [03_MIGRACIONES_TENANTS.md](./03_MIGRACIONES_TENANTS.md) |
-| 4 | Reportes financieros | Dominio modular, N+1 eliminado y consultas medidas | **Activa**; 4.0 a 4.2 cerradas, 4.3 pendiente | [04_REPORTES_FINANCIEROS.md](./04_REPORTES_FINANCIEROS.md) |
+| 4 | Reportes financieros | Dominio modular, N+1 eliminado y consultas medidas | **Activa**; 4.0 a 4.2 cerradas, 4.3 en verificación | [04_REPORTES_FINANCIEROS.md](./04_REPORTES_FINANCIEROS.md) |
 | 5 | Pagos y tipos de pago | Dominio financiero modularizado y protegido | En espera | Se crea al activarla |
 | 6 | Asignaciones y estudiantes | Dominios grandes separados con contratos estables | En espera | Se crea al activarla |
 | 7 | Resto de dominios | Migración individual con contratos y pruebas | En espera | Una bitácora por dominio al activarlo |
@@ -49,7 +49,7 @@ cierre y el usuario ordene continuar, se crea su sucesora desde
 tabla.
 
 Las capas 0, 1, 2 y 3 están cerradas. La capa 4 está **activa** desde el
-2026-08-14, cerró 4.0 a 4.2, y su primera subcapa pendiente es 4.3. La capa 3
+2026-08-14, cerró 4.0 a 4.2, y 4.3 está en verificación. La capa 3
 se abrió y se cerró el 2026-08-13, y es la única del programa que modificó la
 base de datos real, con autorización explícita del usuario para cada paso. No
 se atribuye ningún resultado de GitHub Actions sin evidencia del run
@@ -281,7 +281,14 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   hermético pasó de 6/15/25 a **6/15/15** para 0/1/3 estudiantes; la compuerta
   local terminó con **604 pruebas**, Ruff y dependencias correctas. No se tocó
   el `1 + 12N` del consumidor de cuentas ni se accedió a la base de datos.
-- Capa activa: **4, reportes financieros**. Primera subcapa pendiente: **4.3**.
+- Avance de 4.3: el último SQL inline del estado de cuenta pasó al repositorio y
+  el ensamblado financiero a un servicio puro. Reportes conservan 6/15,
+  cuentas 1/13/37 y cartera 5/12/12; la compuerta local terminó con **605
+  pruebas**, Ruff y dependencias correctas. Falta `EXPLAIN ANALYZE` del SQL
+  final sobre un schema no productivo equivalente; la evidencia de 4.0 no sirve
+  para eso porque carecía de `pagos.concepto_id`.
+- Capa activa: **4, reportes financieros**. Primera subcapa pendiente: **4.3,
+  en verificación**.
 - Resultado de 3.5: el alta construye el schema desde la migración base en vez de
   copiar la plantilla. Un tenant nuevo nace con **37 claves foráneas y 30
   secuencias propias**, donde el camino anterior producía **0 y 0**. Ensayado
@@ -371,8 +378,9 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   romper una base sin historial. Se verificó que las pruebas nuevas fallan
   contra el controlador anterior, que es la señal esperada. La compuerta cerró
   en exit 0 con **529 pruebas**.
-- Capa 4 activa; 4.0 a 4.2 cerradas y primera subcapa pendiente: 4.3,
-  separación final de reglas y cierre de medición/retirada heredada.
+- Capa 4 activa; 4.0 a 4.2 cerradas y 4.3 en verificación. La separación y
+  compuerta local están completas; falta medición equivalente o aceptación
+  explícita del pendiente. La capa 5 continúa en espera.
 - Código de producto modificado durante la capa 0: ninguno.
 - Código de producto modificado durante la capa 1: el ciclo de vida de las
   conexiones en 20 archivos de `app/`, más los timeouts. Sin cambios en rutas,
@@ -394,10 +402,11 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
 
 - [04_REPORTES_FINANCIEROS.md](./04_REPORTES_FINANCIEROS.md): **bitácora
   activa** de la capa 4 y fuente de continuidad. Registra el commit base, las
-  verificaciones heredadas aceptadas como pendientes y el trabajo exacto de
-  4.3, además del cierre de 4.2 con su conteo fijo 6/15, la extracción de 4.1 y
-  el inventario y medición no productiva de 4.0. Es el documento que un chat
-  nuevo debe leer después de este índice.
+  verificaciones heredadas aceptadas como pendientes y el estado en verificación
+  de 4.3, incluidos staging, rollback y medición faltante. Conserva también el
+  cierre de 4.2 con su conteo fijo 6/15, la extracción de 4.1 y el inventario y
+  medición limitada de 4.0. Es el documento que un chat nuevo debe leer después
+  de este índice.
 - [03_MIGRACIONES_TENANTS.md](./03_MIGRACIONES_TENANTS.md): **bitácora cerrada**
   de la capa 3. Conserva el inventario, las tres
   reparaciones aplicadas a producción con su rollback, el ensayo sobre una rama

@@ -1,6 +1,7 @@
 from app.database import get_connection
 from app.repositories.reportes_repository import (
     consultar_egresos_rango,
+    consultar_estudiantes_estado_cuenta_curso,
     consultar_ingresos_mes,
     consultar_ingresos_rango,
     consultar_otros_pagos_por_estudiantes,
@@ -8,13 +9,13 @@ from app.repositories.reportes_repository import (
     consultar_reporte_general,
 )
 from app.services.cobros import (
-    calcular_deudas_desde_contexto,
     obtener_asignaciones_cobro_por_curso,
     obtener_pagos_por_concepto_estudiantes,
     obtener_tipos_pago,
     obtener_valores_personalizados_por_estudiantes,
     tabla_pagos_aplicaciones_existe,
 )
+from app.services.reportes_financieros import construir_estado_cuenta_curso
 
 
 def _formatear_ingreso(row):
@@ -145,15 +146,7 @@ def reporte_estado_cuenta_curso_controller(curso_id):
         tipos_list = obtener_tipos_pago(cursor)
         valor_por_tipo_en_curso = obtener_asignaciones_cobro_por_curso(cursor, curso_id)
 
-        # 2. Obtener los estudiantes del curso
-        cursor.execute('''
-            SELECT e.id, e.nombre, e.apellido
-            FROM estudiantes e 
-            JOIN cursos c ON e.curso_id = c.id 
-            WHERE e.curso_id = %s 
-            ORDER BY e.apellido, e.nombre
-        ''', (curso_id,))
-        estudiantes = cursor.fetchall()
+        estudiantes = consultar_estudiantes_estado_cuenta_curso(cursor, curso_id)
         estudiante_ids = tuple(estudiante[0] for estudiante in estudiantes)
         _, _, pagos_aplicados_por_estudiante = obtener_pagos_por_concepto_estudiantes(
             cursor,
@@ -167,17 +160,6 @@ def reporte_estado_cuenta_curso_controller(curso_id):
                 estudiante_ids,
             )
         )
-        pagos_por_concepto = {}
-        for estudiante_id, concepto_id, monto in pagos_concepto_rows:
-            pagos_por_concepto.setdefault(estudiante_id, {})[concepto_id] = float(monto)
-
-        pagos_por_nombre = {}
-        for estudiante_id, tipo_pago, monto in pagos_nombre_rows:
-            if tipo_pago:
-                pagos_por_nombre.setdefault(estudiante_id, {})[
-                    str(tipo_pago).lower()
-                ] = float(monto)
-
         valores_por_estudiante = obtener_valores_personalizados_por_estudiantes(
             cursor,
             estudiante_ids,
@@ -187,76 +169,16 @@ def reporte_estado_cuenta_curso_controller(curso_id):
             estudiante_ids,
             tiene_aplicaciones,
         )
-        pagos_otros_por_estudiante = {
-            estudiante_id: float(monto) if monto else 0.0
-            for estudiante_id, monto in pagos_otros_rows
-        }
-
-        resultados = []
-
-        # 3. Calcular la deuda detallada para cada estudiante
-        for est in estudiantes:
-            est_id, nombre, apellido = est
-
-            # Pagos por concepto_id y tambien por nombre/desc (fallback)
-            pagos_dict = pagos_por_concepto.get(est_id, {})
-            pagos_nombre_estudiante = dict(pagos_por_nombre.get(est_id, {}))
-            for tipo in tipos_list:
-                nombre_tipo = str(tipo["nombre"]).lower()
-                if nombre_tipo not in pagos_nombre_estudiante and tipo["id"] in pagos_dict:
-                    pagos_nombre_estudiante[nombre_tipo] = pagos_dict[tipo["id"]]
-
-            resumen = calcular_deudas_desde_contexto(
-                tipos_pago=tipos_list,
-                asignaciones_curso=valor_por_tipo_en_curso,
-                pagos_nombre=pagos_nombre_estudiante,
-                pagos_descripcion={},
-                pagos_aplicados=pagos_aplicados_por_estudiante.get(est_id, {}),
-                valores_estudiante=valores_por_estudiante.get(est_id, {}),
-            )
-
-            deudas_detalle = []
-            total_adeudado = 0.0
-            total_pagado_general = 0.0
-
-            for deuda in resumen["deudas"]:
-                pagado = deuda["pagado"]
-                total_adeudado += deuda["deuda"]
-                total_pagado_general += pagado
-
-                deudas_detalle.append({
-                    "concepto": deuda["concepto"],
-                    "valor_total": deuda["valor_total"],
-                    "pagado": pagado,
-                    "deuda": deuda["deuda"],
-                    "mora": deuda["mora"],
-                    "cuotas_vencidas": deuda["cuotas_vencidas"],
-                })
-
-            # Considerar pagos sin concepto especifico o conceptos eliminados
-            pagos_otros = pagos_otros_por_estudiante.get(est_id, 0.0)
-            
-            if pagos_otros > 0:
-                total_pagado_general += pagos_otros
-                deudas_detalle.append({
-                    "concepto": "Otros Pagos",
-                    "valor_total": 0,
-                    "pagado": pagos_otros,
-                    "deuda": -pagos_otros
-                })
-
-            # Esto mantiene retrocompatibilidad y añade el detalle de columnas dinámicas
-            resultados.append({
-                "id": est_id,
-                "nombre": nombre,
-                "apellido": apellido,
-                "pagado": float(total_pagado_general),
-                "total": float(total_adeudado + total_pagado_general),
-                "deuda": float(total_adeudado),
-                "deudas_detalle": deudas_detalle
-            })
-
-        return resultados
+        return construir_estado_cuenta_curso(
+            estudiantes=estudiantes,
+            tipos_pago=tipos_list,
+            asignaciones_curso=valor_por_tipo_en_curso,
+            pagos_concepto_rows=pagos_concepto_rows,
+            pagos_nombre_rows=pagos_nombre_rows,
+            pagos_aplicados_por_estudiante=pagos_aplicados_por_estudiante,
+            valores_por_estudiante=valores_por_estudiante,
+            pagos_otros_rows=pagos_otros_rows,
+        )
 
     except Exception as e:
         print(f"Error en reporte_estado_cuenta_curso_controller: {e}")

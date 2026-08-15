@@ -5,6 +5,14 @@ from zoneinfo import ZoneInfo
 
 from psycopg2 import IntegrityError
 
+from app.repositories.pagos_repository import (
+    asignar_venta_a_pago,
+    desactivar_aplicaciones_de_pago,
+    insertar_aplicacion,
+    insertar_pago,
+    insertar_pago_adelantado,
+    marcar_pago_anulado,
+)
 from app.services.cobros import (
     obtener_conceptos_mensuales_estudiante,
     obtener_cuotas_vencidas_estudiante,
@@ -294,19 +302,13 @@ def _insertar_aplicaciones_distribuidas(cursor, pagos_creados, aplicaciones):
         while disponibles > 0 and indice < len(pendientes):
             aplicacion = pendientes[indice]
             usado = min(disponibles, aplicacion["centavos"])
-            cursor.execute(
-                """
-                INSERT INTO pagos_aplicaciones
-                    (pago_id, estudiante_id, tipo_pago_id, periodo, monto)
-                VALUES (%s, %s, %s, %s, %s)
-                """,
-                (
-                    pago_id,
-                    aplicacion["estudiante_id"],
-                    aplicacion["tipo_pago_id"],
-                    aplicacion["periodo"],
-                    usado / 100,
-                ),
+            insertar_aplicacion(
+                cursor,
+                pago_id,
+                aplicacion["estudiante_id"],
+                aplicacion["tipo_pago_id"],
+                aplicacion["periodo"],
+                usado / 100,
             )
             disponibles -= usado
             aplicacion["centavos"] -= usado
@@ -359,30 +361,23 @@ def registrar_pago_adelantado_controller(pago, hoy=None):
         resumen_metodos = " + ".join(_formatear_tipo_pago(metodo) for metodo in pago.metodos)[:100]
         fecha_registro = _fecha_pago_local(getattr(pago, "fecha", None))
 
-        cursor.execute(
-            """
-            INSERT INTO pagos (estudiante_id, monto, descripcion, fecha, tipo_pago)
-            VALUES (%s, %s, %s, %s, %s)
-            RETURNING id
-            """,
-            (pago.estudiante_id, total, descripcion, fecha_registro, resumen_metodos),
+        pago_id = insertar_pago_adelantado(
+            cursor,
+            pago.estudiante_id,
+            total,
+            descripcion,
+            fecha_registro,
+            resumen_metodos,
         )
-        pago_id = cursor.fetchone()[0]
 
         for item in periodos:
-            cursor.execute(
-                """
-                INSERT INTO pagos_aplicaciones
-                    (pago_id, estudiante_id, tipo_pago_id, periodo, monto)
-                VALUES (%s, %s, %s, %s, %s)
-                """,
-                (
-                    pago_id,
-                    pago.estudiante_id,
-                    concepto["id"],
-                    item["periodo"],
-                    item["monto_aplicado"],
-                ),
+            insertar_aplicacion(
+                cursor,
+                pago_id,
+                pago.estudiante_id,
+                concepto["id"],
+                item["periodo"],
+                item["monto_aplicado"],
             )
 
         conn.commit()
@@ -491,12 +486,15 @@ def registrar_pago_controller(pago):
         metodos = getattr(pago, 'metodos', None)
         if metodos and isinstance(metodos, list) and len(metodos) > 0:
             for metodo in metodos:
-                cursor.execute("""
-                    INSERT INTO pagos (estudiante_id, venta_id, monto, descripcion, fecha, tipo_pago)
-                    VALUES (%s, %s, %s, %s, %s, %s)
-                    RETURNING id
-                """, (pago.estudiante_id, getattr(pago, 'venta_id', None), metodo.monto, descripcion_registro, fecha_registro, _formatear_tipo_pago(metodo)))
-                pago_id = cursor.fetchone()[0]
+                pago_id = insertar_pago(
+                    cursor,
+                    pago.estudiante_id,
+                    getattr(pago, 'venta_id', None),
+                    metodo.monto,
+                    descripcion_registro,
+                    fecha_registro,
+                    _formatear_tipo_pago(metodo),
+                )
                 pago_ids.append(pago_id)
                 pagos_creados.append((pago_id, float(metodo.monto or 0)))
 
@@ -513,12 +511,15 @@ def registrar_pago_controller(pago):
                             cursor.execute("UPDATE ventas SET estado = 'Pagado' WHERE id = %s", (pago.venta_id,))
         else:
             # Caso compatibilidad: pago simple
-            cursor.execute("""
-                INSERT INTO pagos (estudiante_id, venta_id, monto, descripcion, fecha, tipo_pago)
-                VALUES (%s, %s, %s, %s, %s, %s)
-                RETURNING id
-            """, (pago.estudiante_id, getattr(pago, 'venta_id', None), pago.monto, descripcion_registro, fecha_registro, getattr(pago, 'tipo_pago', None)))
-            pago_id = cursor.fetchone()[0]
+            pago_id = insertar_pago(
+                cursor,
+                pago.estudiante_id,
+                getattr(pago, 'venta_id', None),
+                pago.monto,
+                descripcion_registro,
+                fecha_registro,
+                getattr(pago, 'tipo_pago', None),
+            )
             pago_ids.append(pago_id)
             pagos_creados.append((pago_id, float(pago.monto or 0)))
 
@@ -654,10 +655,7 @@ def anular_pago_controller(pago_id, motivo, admin_id):
             match = VENTA_ID_PATTERN.search(descripcion)
             if match:
                 venta_id = int(match.group(1))
-                cursor.execute(
-                    "UPDATE pagos SET venta_id = %s WHERE id = %s",
-                    (venta_id, pago_id),
-                )
+                asignar_venta_a_pago(cursor, venta_id, pago_id)
 
         if venta_id is not None:
             cursor.execute("""
@@ -683,29 +681,15 @@ def anular_pago_controller(pago_id, motivo, admin_id):
             """, (nuevo_pagado, nuevo_estado, venta_id))
 
         if _tabla_pagos_aplicaciones_existe(cursor):
-            cursor.execute(
-                """
-                UPDATE pagos_aplicaciones
-                SET activo = FALSE
-                WHERE pago_id = %s AND activo = TRUE
-                """,
-                (pago_id,),
-            )
+            desactivar_aplicaciones_de_pago(cursor, pago_id)
 
-        cursor.execute("""
-            UPDATE pagos
-            SET estado = 'Anulado',
-                motivo_anulacion = %s,
-                fecha_anulacion = %s,
-                anulado_por = %s
-            WHERE id = %s
-            RETURNING id
-        """, (
+        marcar_pago_anulado(
+            cursor,
             motivo_limpio,
             datetime.datetime.now(ZONA_HORARIA_LOCAL).replace(tzinfo=None),
             admin_id,
             pago_id,
-        ))
+        )
 
         conn.commit()
         return {"mensaje": "Pago anulado correctamente", "pago_id": pago_id}

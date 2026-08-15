@@ -10,9 +10,12 @@
 - Estado al activar: árbol limpio; `HEAD` coincidente con la referencia local
   `origin/main`, que el reflog registra como publicada por push el 2026-08-15 a
   las 13:20:16.
-- Primera subcapa pendiente: **5.1, no iniciada**. 5.0 quedó **cerrada** el
-  2026-08-15.
-- Código de producto modificado hasta ahora: **ninguno**.
+- Primera subcapa pendiente: **5.2, no iniciada**. 5.0 y 5.1 quedaron
+  **cerradas** el 2026-08-15.
+- Código de producto modificado hasta ahora: `app/controllers/pagos_controller.py`
+  y el nuevo `app/repositories/pagos_repository.py`, ambos en 5.1. Sin cambios en
+  rutas, payloads, status codes, permisos, tenant, ownership, transacciones ni
+  SQL observable.
 - Autorización: orden explícita del usuario el 2026-08-15 para corregir la
   continuidad documental de la capa 4 y activar la capa 5, aceptando que las
   verificaciones heredadas sigan pendientes. La activación **no** autoriza
@@ -136,12 +139,12 @@ pruebas, exit 0. La suite pasó de **606 a 646** con la caracterización de 5.0.
 | Subcapa | Resultado | Estado |
 |---:|---|---|
 | 5.0 | Inventario, contratos, caracterización y línea base de consultas y escrituras | **Cerrada** |
-| 5.1 | Extraer la persistencia de las escrituras de `pagos` sin cambiar SQL, conteos ni transacción | **Pendiente, no iniciada** |
-| 5.2 | Segunda extracción o integración | Pendiente, se define al cerrar 5.1 |
+| 5.1 | Extraer la persistencia de las escrituras de `pagos` sin cambiar SQL, conteos ni transacción | **Cerrada** |
+| 5.2 | Completar la frontera de persistencia de `pagos_controller`: lecturas y contacto con `ventas` | **Pendiente, no iniciada** |
 | 5.3 | Retiro heredado y cierre | Pendiente, se define al cerrar 5.2 |
 
-5.1 quedó definida desde el inventario de 5.0. El desglose de 5.2 en adelante
-**sigue sin decidir**: se deriva de lo que 5.1 encuentre y no se inventa antes de
+5.2 quedó definida desde lo que 5.1 dejó fuera. El contenido de 5.3 **sigue sin
+decidir**: se deriva de lo que 5.2 encuentre y no se inventa antes de
 inspeccionar. Las subcapas innecesarias se marcarán `No aplica` con explicación.
 
 Nunca se ejecutan dos subcapas en el mismo turno.
@@ -317,7 +320,7 @@ Lo que esta capa escribe es exactamente lo que la capa 4 lee:
 Comprobado además que los conteos de la capa 4 siguen intactos: reportes 6/15/15,
 cuentas 1/13/37 y cartera 5/12/12.
 
-## Primera subcapa pendiente: 5.1 — trabajo exacto
+## Subcapa 5.1 — alcance ejecutado
 
 1. Revalidar Git y limitar la inspección a las escrituras de `pagos` y
    `pagos_aplicaciones` en `pagos_controller.py`, sus pruebas y el SQL implicado.
@@ -339,6 +342,34 @@ cuentas 1/13/37 y cartera 5/12/12.
    intactos.
 7. Ejecutar pruebas específicas, Ruff del alcance, compuerta global y
    `git diff --check`; documentar y detenerse antes de 5.2.
+
+Los siete puntos se cumplieron. El punto 4 requirió una autorización explícita
+del usuario, registrada en Decisiones: dos literales idénticos salvo sangría se
+unificaron en una sola constante.
+
+## Primera subcapa pendiente: 5.2 — trabajo exacto
+
+1. Revalidar Git y limitar la inspección a lo que 5.1 dejó fuera de
+   `pagos_controller.py`: las tres lecturas de `pagos` —la de bloqueo con
+   `FOR UPDATE`, el historial y el historial paginado— y las cuatro sentencias
+   que tocan `ventas` desde este controlador.
+2. Conservar la caracterización de 5.0 y ampliarla antes de mover producto para
+   los caminos que hoy no cubre: historial paginado con su `COUNT(*)` y la
+   lectura de saldo de venta.
+3. Decidir **con evidencia, no por inferencia**, dónde vive el contacto con
+   `ventas`. Es una tabla de otro dominio escrita desde pagos: puede quedarse en
+   `pagos_repository`, ir a una frontera propia o permanecer en el controlador.
+   Registrar la decisión y su motivo antes de mover nada.
+4. Extraer las lecturas conservando el texto SQL, sus parámetros, su orden y el
+   `FOR UPDATE`. Mantener en el controlador la propiedad de conexión, cursor,
+   `commit`, `rollback`, cierres y traducción de errores.
+5. No tocar `tipos_pagos_controller`, `cobros.py`, cartera, cuentas, reportes,
+   timeouts ni la base de datos. No corregir ninguno de los cuatro hallazgos de
+   5.0.
+6. Verificar que los conteos de 5.0 y de la capa 4 no cambian, y volver a
+   ejecutar el comparador de SQL exigiendo conjunto idéntico.
+7. Ejecutar pruebas específicas, Ruff del alcance, compuerta global y
+   `git diff --check`; documentar y detenerse antes de 5.3.
 
 ## Criterios de cierre de la capa
 
@@ -376,6 +407,32 @@ cuentas 1/13/37 y cartera 5/12/12.
   alcanzable, no solo local.
 - El desglose de subcapas posteriores a 5.0 se deja explícitamente sin decidir
   para no inventar detalles de implementación antes de inspeccionar el código.
+- **Unificación autorizada en 5.1.** Las dos sentencias
+  `INSERT INTO pagos (estudiante_id, venta_id, …)` de la rama de métodos y de la
+  rama simple eran idénticas salvo cuatro espacios de sangría, heredados de estar
+  una dentro del bucle y la otra fuera. Conservar el byte a byte habría exigido
+  dos constantes en el repositorio cuya única diferencia sería la sangría del
+  código viejo. El usuario autorizó explícitamente unificarlas en una sola
+  constante; el flujo de tokens que recibe PostgreSQL es el mismo y quedó
+  verificado. Es el único cambio de texto SQL de la subcapa.
+- 5.1 creó `app/repositories/pagos_repository.py` con **seis funciones** que
+  cubren **ocho puntos de llamada**. Dos tienen dos consumidores reales
+  —`insertar_pago` e `insertar_aplicacion`—; las otras cuatro tienen uno solo,
+  pero no son abstracciones compartidas: son la sentencia concreta de su tabla.
+  No se creó ningún helper genérico.
+- Las funciones reciben el cursor y no abren, cierran, confirman ni revierten
+  nada, igual que la frontera de 4.1. El advisory lock, las guardas de
+  migración, la validación de deuda, el reparto en centavos, el
+  `try/except/finally` y la traducción de `IntegrityError` siguen en el
+  controlador.
+- `marcar_pago_anulado` conserva su `RETURNING id` aunque el controlador no lo
+  consuma. Retirarlo habría cambiado el SQL sin necesidad.
+- Las sentencias que tocan `ventas` **no se movieron** en 5.1 pese a vivir en
+  este controlador: son de otro dominio y su ubicación se decide en 5.2 con
+  evidencia.
+- 5.1 **no modificó ninguna prueba**. La caracterización de 5.0 fue suficiente
+  para demostrar que payloads, conteos, transacción y ciclo de vida no cambiaron.
+  Es la señal de que caracterizar antes de extraer funcionó.
 
 ## Riesgos
 
@@ -529,17 +586,80 @@ la subcapa. Corregir cualquiera exige una decisión explícita del usuario.
   atribuye CI remota.
 - Estado: 5.0 **cerrada**; 5.1 **pendiente y no iniciada**.
 - Siguiente acción exacta: ejecutar únicamente 5.1, extracción de la persistencia
-  de las escrituras de `pagos`, y detenerse antes de 5.2.
+  de las escrituras de `pagos`, y detenerse antes de 5.2. *(Ejecutada en el turno
+  siguiente; ver el cierre de 5.1 más abajo.)*
+
+### 2026-08-15 — cierre de 5.1
+
+- Modo de acceso: mismo checkout local en
+  `C:\Users\David\Documents\sistema_escolar_api`; Git validado directamente y no
+  se usó GitHub para inferir el estado local.
+- Precondición Git: rama `main`, árbol inicialmente limpio, `HEAD`
+  `7718c3758646abe396c3c0d5bbcf1ba6535a53b4`, dos commits por delante de la
+  referencia local `origin/main`. El commit base `f4d0913` existe y es ancestro;
+  los dos commits posteriores son la activación de la capa y el cierre de 5.0,
+  ambos explicados en esta bitácora. El segundo modifica exactamente los tres
+  archivos que declaró.
+- Alcance inspeccionado y modificado: únicamente las escrituras de `pagos` y
+  `pagos_aplicaciones` de `pagos_controller.py`. No se inspeccionó
+  `tipos_pagos_controller`, cartera, cuentas ni reportes.
+- Archivos de producto: `app/controllers/pagos_controller.py` y el nuevo
+  `app/repositories/pagos_repository.py`. **Pruebas modificadas: ninguna.**
+- Autorización previa: el usuario decidió explícitamente unificar los dos
+  literales `INSERT INTO pagos` que solo diferían en sangría, tras exponerle las
+  tres opciones. Sin esa autorización la subcapa se habría detenido.
+- Implementación: seis funciones que reciben el cursor existente cubren los ocho
+  puntos de llamada de escritura. El controlador pasó de **717 a 701 líneas** y
+  ya no contiene SQL de escritura contra esas dos tablas.
+- Equivalencia SQL verificada con un comparador AST contra
+  `git show HEAD:app/controllers/pagos_controller.py`: **19 sentencias distintas
+  antes y 19 después, conjunto idéntico**, ninguna perdida y ninguna nueva.
+  **20 de 21** literales distintos se conservan **byte a byte**; el único
+  reindentado es el `INSERT INTO pagos` autorizado. Dos sentencias pasaron de dos
+  puntos de llamada a una constante compartida.
+- Conteos conservados: pago simple 12, dos métodos 13, cargo de inventario 4,
+  adelanto 12, anulación 4 y 6. De la capa 4, reportes 6/15/15, cuentas 1/13/37 y
+  cartera 5/12/12. Todos los verifica la caracterización de 5.0 sin cambios.
+- Pruebas específicas:
+  `.\venv\Scripts\python.exe -m pytest -q -p no:cacheprovider
+  tests\test_pagos_escrituras_caracterizacion.py tests\test_pagos_adelantados.py
+  tests\test_pagos_historial.py tests\test_pagos_meses_vencidos.py
+  tests\test_pagos_pagination.py tests\test_anulaciones_financieras.py
+  tests\test_reportes_query_counts.py`; **81 pasaron** en 0,61 s, el mismo
+  resultado que antes de extraer.
+- Ruff del alcance:
+  `.\venv\Scripts\python.exe -m ruff check app\controllers\pagos_controller.py
+  app\repositories\pagos_repository.py`; **correcto**.
+- Compuerta global final: `.\venv\Scripts\python.exe scripts\verify.py`;
+  **646 pruebas pasaron** en 2,10 s, 5 warnings heredadas, Ruff correcto,
+  `pip check` íntegro y exit 0. El total no cambia porque 5.1 no añadió pruebas.
+- Revisión final: `git diff --check` en exit 0 y el chequeo equivalente del
+  archivo nuevo sin diagnósticos de whitespace. El diff contiene exactamente dos
+  archivos de producto. No hubo cambios en rutas, payloads, status codes,
+  permisos, tenant, ownership, transacciones, timeouts, dependencias ni
+  configuración.
+- PostgreSQL, migraciones, producción, commit, push y deploy: **ninguno**. La
+  evidencia de GitHub Actions posterior a la capa 0 continúa pendiente y no se
+  atribuye CI remota.
+- Estado: 5.1 **cerrada**; 5.2 **pendiente y no iniciada**.
+- Siguiente acción exacta: ejecutar únicamente 5.2 y detenerse antes de 5.3.
 
 ## Entrega al próximo chat
 
 - Capa activa: **5, pagos y tipos de pago**.
-- Última subcapa terminada: **5.0**. Primera subcapa pendiente: **5.1,
-  extracción de la persistencia de las escrituras de `pagos`**.
+- Última subcapa terminada: **5.1**. Primera subcapa pendiente: **5.2,
+  completar la frontera de persistencia de `pagos_controller`** con sus lecturas
+  y el contacto con `ventas`.
 - Commit base: `f4d091329f84bcdd100b1bf0c70c02a0e32ee138`, rama `main`, ya
-  publicado. Al cerrar 5.0, `HEAD` es `42c9960` más un archivo de prueba nuevo
-  sin commitear.
-- Bloqueos: ninguno para iniciar 5.1.
+  publicado. Al cerrar 5.1, `HEAD` es `7718c37` más dos archivos de producto sin
+  commitear.
+- Bloqueos: ninguno para iniciar 5.2.
+- Precondición antes de continuar: el usuario debe revisar y dejar limpio el
+  cambio de 5.1; después se reaudita todo commit posterior al base.
+- Lo que 5.1 dejó decidido y no debe rehacerse: las escrituras de `pagos` y
+  `pagos_aplicaciones` viven en `app/repositories/pagos_repository.py` y reciben
+  el cursor. Las sentencias que tocan `ventas` siguen en el controlador **a
+  propósito**: dónde viven se decide en 5.2 con evidencia.
 - Lo que 5.0 dejó medido: 19 entradas HTTP, seis tablas escritas, 40 pruebas de
   caracterización y los conteos de once caminos. Un pago simple cuesta **12
   consultas, once de ellas lecturas de validación**; un cargo de inventario
@@ -555,4 +675,4 @@ la subcapa. Corregir cualquiera exige una decisión explícita del usuario.
 - Lo que esta capa debe recordar antes de tocar nada: **escribe donde las
   anteriores solo leían**. Claves foráneas repuestas en la capa 3, contratos de
   lectura de `pagos` fijados en la capa 4, y `pagos.concepto_id` inexistente.
-- Siguiente acción exacta: ejecutar solo 5.1 y detenerse antes de 5.2.
+- Siguiente acción exacta: ejecutar solo 5.2 y detenerse antes de 5.3.

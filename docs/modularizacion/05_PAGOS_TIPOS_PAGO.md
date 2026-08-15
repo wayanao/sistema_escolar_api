@@ -10,8 +10,9 @@
 - Estado al activar: árbol limpio; `HEAD` coincidente con la referencia local
   `origin/main`, que el reflog registra como publicada por push el 2026-08-15 a
   las 13:20:16.
-- Primera subcapa pendiente: **5.0, no iniciada**.
-- Código de producto modificado al activar: **ninguno**.
+- Primera subcapa pendiente: **5.1, no iniciada**. 5.0 quedó **cerrada** el
+  2026-08-15.
+- Código de producto modificado hasta ahora: **ninguno**.
 - Autorización: orden explícita del usuario el 2026-08-15 para corregir la
   continuidad documental de la capa 4 y activar la capa 5, aceptando que las
   verificaciones heredadas sigan pendientes. La activación **no** autoriza
@@ -118,37 +119,34 @@ riesgo respecto a la capa 4:
 - El SQL de dominio se conserva hasta que una subcapa autorice, con
   caracterización previa, un cambio concreto.
 
-## Línea base
-
-Pendiente: se establece en 5.0. La activación es documental y no ejecutó
-pruebas, lint ni compuerta.
+## Línea base registrada en 5.0
 
 | Comprobación | Comando | Resultado |
 |---|---|---|
-| Pruebas específicas | Se determinan en 5.0 | Pendiente |
-| Suite global | `.\venv\Scripts\python.exe scripts\verify.py` | Pendiente |
-| Ruff | Ejecutado por la compuerta global y sobre el alcance | Pendiente |
-| Dependencias | Ejecutado por la compuerta global | Pendiente |
+| Pruebas específicas | `.\venv\Scripts\python.exe -m pytest -q -p no:cacheprovider tests\test_pagos_escrituras_caracterizacion.py tests\test_pagos_adelantados.py tests\test_pagos_historial.py tests\test_pagos_meses_vencidos.py tests\test_pagos_pagination.py tests\test_anulaciones_financieras.py tests\test_reportes_query_counts.py` | **81 pasaron** en 0,59 s |
+| Suite global | `.\venv\Scripts\python.exe scripts\verify.py` | **646 pasaron**, 5 warnings heredadas, exit 0 |
+| Ruff | Ejecutado por la compuerta global y sobre la prueba nueva | **Correcto** |
+| Dependencias | Ejecutado por la compuerta global | **Íntegras** |
 
-Referencia heredada: la compuerta al cerrar la capa 4 terminó en exit 0 con 606
-pruebas.
+La compuerta heredada de la capa 4 se reprodujo antes de tocar nada: 606
+pruebas, exit 0. La suite pasó de **606 a 646** con la caracterización de 5.0.
 
 ## Subcapas
 
 | Subcapa | Resultado | Estado |
 |---:|---|---|
-| 5.0 | Inventario, contratos, caracterización y línea base de consultas y escrituras | **Pendiente, no iniciada** |
-| 5.1 | Primera extracción protegida | Pendiente, se define desde 5.0 |
-| 5.2 | Segunda extracción o integración | Pendiente, se define desde 5.0 |
-| 5.3 | Retiro heredado y cierre | Pendiente, se define desde 5.0 |
+| 5.0 | Inventario, contratos, caracterización y línea base de consultas y escrituras | **Cerrada** |
+| 5.1 | Extraer la persistencia de las escrituras de `pagos` sin cambiar SQL, conteos ni transacción | **Pendiente, no iniciada** |
+| 5.2 | Segunda extracción o integración | Pendiente, se define al cerrar 5.1 |
+| 5.3 | Retiro heredado y cierre | Pendiente, se define al cerrar 5.2 |
 
-El desglose de 5.1 en adelante **no está decidido**: se deriva del inventario de
-5.0 y no se inventa antes de inspeccionar. Las subcapas innecesarias se marcarán
-`No aplica` con explicación.
+5.1 quedó definida desde el inventario de 5.0. El desglose de 5.2 en adelante
+**sigue sin decidir**: se deriva de lo que 5.1 encuentre y no se inventa antes de
+inspeccionar. Las subcapas innecesarias se marcarán `No aplica` con explicación.
 
 Nunca se ejecutan dos subcapas en el mismo turno.
 
-## Subcapa activa: 5.0 — trabajo exacto
+## Subcapa 5.0 — alcance ejecutado
 
 1. Confirmar `main`, árbol limpio y que todo commit posterior al base
    `f4d091329f84bcdd100b1bf0c70c02a0e32ee138` esté explicado en esta bitácora.
@@ -187,6 +185,160 @@ Nunca se ejecutan dos subcapas en el mismo turno.
 - Pruebas específicas, Ruff, compuerta global y `git diff --check` terminan
   correctamente, y el diff es exclusivo de 5.0.
 - La subcapa 5.1 queda definida y no iniciada.
+
+Los siete criterios se cumplieron. El diff de 5.0 contiene **un solo archivo
+nuevo** y ningún archivo rastreado modificado.
+
+## Inventario y contratos fijados en 5.0
+
+La frontera son **19 entradas HTTP**, todas protegidas por
+`get_current_active_admin` a nivel de router y ejecutadas por FastAPI en el
+threadpool. Ninguna declara `response_model` ni `status_code` explícito.
+
+| Entrada | Contrato observable que debe conservarse |
+|---|---|
+| `POST /pagos` | `{mensaje, pago_id}`. `pago_id` es **int** con un pago y **lista** con varios métodos |
+| `GET /pagos/vencidos/opciones/{estudiante_id}` | `{estudiante_id, opciones}` con cuotas vencidas y saldo por periodo |
+| `GET /pagos/adelanto/opciones/{estudiante_id}` | `{estudiante_id, opciones}` con periodos futuros, `max_meses` y `total_disponible` |
+| `POST /pagos/adelanto` | `{mensaje, pago_id, monto, descripcion, periodos}` |
+| `GET /pagos/{estudiante_id}` | Lista heredada sin `limit`; con `limit`, sobre `{total,limit,offset,items}` |
+| `POST /pagos/{pago_id}/anular` | `{mensaje, pago_id}` |
+| `POST /tipos-pagos` | `{id, nombre, valor}` |
+| `GET /tipos-pagos` | Lista `{id, nombre, valor}` ordenada por nombre |
+| `PUT /tipos-pagos/{id}` | `{message}`; no toca las columnas avanzadas |
+| `DELETE /tipos-pagos/{id}` | **Siempre 405**, con texto fijo. No toca la base |
+| `GET /tipos-pagos/detallado` | Lista con configuración avanzada y `cursos` |
+| `GET /tipos-pagos/{id}/detalle` | Tipo con `cursos`; inexistente da 404 |
+| `PUT /tipos-pagos/{id}/configuracion` | `{message, tipo_pago}`; solo columnas avanzadas |
+| `GET /tipos-pagos/{id}/cursos` | Lista de asignaciones; `[]` si falta la tabla puente |
+| `PUT /tipos-pagos/{id}/cursos` | `{message, cursos}`; **reemplaza** el estado completo |
+| `DELETE /tipos-pagos/{id}/cursos/{curso_id}` | `{message}`; inexistente da 404 |
+| `GET /estudiantes/{id}/valores-pago-personalizados` | Lista con `valor`, `valor_base` y `valor_curso` |
+| `PUT /estudiantes/{id}/valores-pago-personalizados/{tipo_pago_id}` | `{message, valores}` |
+| `DELETE /estudiantes/{id}/valores-pago-personalizados/{tipo_pago_id}` | `{message}`; **desactiva**, no borra |
+
+- Exactamente **ocho** entradas reciben body. Éxito normal: 200; validación
+  FastAPI: 422; autenticación inválida: 401; admin o tenant no
+  autorizado/suspendido: 403.
+- Traducción de errores: `ValueError` → **400**;
+  `MigracionPagosAdelantadosPendienteError`, `MigracionPendienteError` y
+  `TipoPagoDuplicadoError` → **409**; `DELETE /tipos-pagos/{id}` → **405** fijo.
+- **Rareza conservada**: siete funciones de `tipos_pagos_controller` capturan
+  `Exception` a secas y devuelven `None`/`False`. Un fallo de infraestructura se
+  presenta al cliente como **400 o 404**, no como 500. No se unifica.
+- El orden de declaración de `pagos.py` importa: `/pagos/adelanto`,
+  `/pagos/adelanto/opciones/{id}` y `/pagos/vencidos/opciones/{id}` se declaran
+  **antes** que `/pagos/{estudiante_id}`, que si no las capturaría.
+- Tenant por `search_path` desde el JWT. **No hay un segundo filtro de ownership**
+  por estudiante, curso o pago dentro del tenant: `anular_pago_controller` recibe
+  un `pago_id` y lo anula sin comprobar a qué estudiante pertenece.
+
+### Tablas escritas y propiedad transaccional
+
+Seis tablas reciben escritura: `pagos`, `pagos_aplicaciones`, `ventas`,
+`tipos_de_pagos`, `tipos_pagos_cursos` y `tipos_pagos_estudiantes`.
+
+- Todos los escritores abren su conexión con `get_connection()`, crean el cursor,
+  hacen `commit` explícito, `rollback` en `except` y cierran cursor y conexión en
+  `finally`. `historial_pagos_controller` es el único que usa `get_cursor()`.
+- `historial_pagos_paginado_controller` es lector y **no** hace `commit` ni
+  `rollback`; la devolución al pool revierte la transacción abierta.
+- **Rareza de ciclo de vida**: `upsert_cursos_asignados` y
+  `upsert_valor_personalizado_estudiante` releen el estado **después** del
+  `commit` llamando a funciones que abren **su propia conexión**. Una petición
+  HTTP consume por tanto **dos conexiones del pool en serie**, y la relectura
+  ocurre fuera de la transacción confirmada.
+
+### Idempotencia y concurrencia
+
+| Camino | Protección actual |
+|---|---|
+| `POST /pagos` | **Ninguna.** No hay clave de idempotencia: dos envíos idénticos crean dos pagos mientras no superen la deuda |
+| `POST /pagos/adelanto` | `pg_advisory_xact_lock` por `(estudiante_id, tipo_pago_id)` antes de leer disponibles y escribir |
+| Cuotas dentro de `POST /pagos` | Mismo advisory lock, más el índice parcial único `uq_pagos_aplicaciones_pago_periodo_activas`, exigido antes de escribir |
+| `POST /pagos/{id}/anular` | `SELECT … FOR UPDATE` sobre `pagos` y sobre `ventas` |
+| `PUT /tipos-pagos/{id}/cursos` | `ON CONFLICT (tipo_pago_id, curso_id) DO UPDATE`, idempotente |
+| `PUT …/valores-pago-personalizados/{tipo_pago_id}` | `ON CONFLICT (tipo_pago_id, estudiante_id) DO UPDATE`, idempotente |
+
+Una colisión en `pagos_aplicaciones` sube como `IntegrityError` y se traduce a
+`ValueError` con el mensaje «Uno de los meses seleccionados ya tiene un pago
+adelantado».
+
+## Línea base de consultas y escrituras
+
+Medida herméticamente con el doble de 5.0. Los conteos excluyen autenticación,
+`search_path` y la sentencia de timeouts de cada checkout de conexión.
+
+| Camino | Consultas | de ellas escrituras |
+|---|---:|---:|
+| `POST /pagos`, pago simple | **12** | 1 |
+| `POST /pagos`, dos métodos | 13 | 2 |
+| `POST /pagos`, cargo de inventario | **4** | 3 |
+| `POST /pagos/adelanto`, un mes | 12 | 2 |
+| `POST /pagos/{id}/anular`, sin venta | 4 | 2 |
+| `POST /pagos/{id}/anular`, con venta | 6 | 3 |
+| `GET /pagos/adelanto/opciones/{id}` | 9 | 0 |
+| `PUT /tipos-pagos/{id}/cursos`, un curso | 5 | 2 |
+| `PUT …/valores-pago-personalizados/{id}` | 8 | 1 |
+| `POST /tipos-pagos` | 2 | 1 |
+| `DELETE …/valores-pago-personalizados/{id}` | 2 | 1 |
+
+Lectura del resultado, sin optimizar todavía:
+
+- **Once de las doce consultas de un pago simple son lecturas**: recalcular la
+  deuda académica completa del estudiante para validar que el monto no la excede.
+  Cada método adicional añade exactamente una escritura, no una lectura.
+- El pago de un cargo de inventario cuesta **4** porque sale antes por la rama de
+  `venta_id` y no recalcula deuda. Es la misma entrada HTTP con dos costes muy
+  distintos.
+- Ninguno de estos conteos depende del número de estudiantes: no hay un N+1 como
+  el que corrigió la capa 4. El coste está en la profundidad por petición.
+
+## Dependencia con los contratos de lectura de la capa 4
+
+Lo que esta capa escribe es exactamente lo que la capa 4 lee:
+
+- `pagos.descripcion` recibe el concepto en un pago normal, y en un pago con
+  cuotas o adelanto recibe una **cadena compuesta** —`«Pension · Pago adelantado:
+  Enero 2026: $100,00»`— que **no** coincide con el nombre del catálogo. Por eso
+  la capa 4 excluye de sus agregados por `descripcion` y `tipo_pago` cualquier
+  pago con aplicaciones y los cuenta por su lectura propia. Cambiar ese texto
+  cambia el informe.
+- `pagos.tipo_pago` recibe el **medio de pago**, no el concepto:
+  `«Efectivo»` o `«Transferencia - Nequi»` cuando hay nota. El fallback heredado
+  de la capa 4 que agrupa por `tipo_pago` solo acierta cuando un medio coincide
+  por casualidad con un nombre del catálogo.
+- `pagos.venta_id` decide que un pago vaya a «Otros Pagos».
+- `pagos.estado = 'Anulado'` con `motivo_anulacion`, `fecha_anulacion` y
+  `anulado_por` es lo que excluye el pago de todos los totales.
+- **Ninguna escritura menciona `pagos.concepto_id`**, la columna inexistente que
+  rompía el informe antes de la capa 4. Queda congelado por prueba.
+
+Comprobado además que los conteos de la capa 4 siguen intactos: reportes 6/15/15,
+cuentas 1/13/37 y cartera 5/12/12.
+
+## Primera subcapa pendiente: 5.1 — trabajo exacto
+
+1. Revalidar Git y limitar la inspección a las escrituras de `pagos` y
+   `pagos_aplicaciones` en `pagos_controller.py`, sus pruebas y el SQL implicado.
+2. Conservar la caracterización de 5.0 y ampliarla solo si una extracción
+   concreta lo exige, antes de mover producto.
+3. Extraer únicamente las sentencias SQL de escritura de esos dos destinos a una
+   frontera de persistencia específica de pagos, siguiendo el patrón de 4.1:
+   funciones que **reciben el cursor existente** y no abren, cierran, confirman
+   ni revierten recursos.
+4. Conservar byte por byte las cadenas SQL, sus parámetros y su orden. El
+   controlador sigue siendo dueño de conexión, cursor, `commit`, `rollback`,
+   cierres, advisory lock, validaciones y traducción de errores.
+5. No tocar `tipos_pagos_controller`, `cobros.py`, ventas, cartera, cuentas,
+   reportes, timeouts ni la base de datos. No corregir la ausencia de
+   idempotencia de `POST /pagos`, las once lecturas de validación, la rareza de
+   las dos conexiones ni los errores absorbidos: están registrados y pertenecen a
+   una decisión posterior.
+6. Verificar que los conteos de 5.0 no cambian y que los de la capa 4 siguen
+   intactos.
+7. Ejecutar pruebas específicas, Ruff del alcance, compuerta global y
+   `git diff --check`; documentar y detenerse antes de 5.2.
 
 ## Criterios de cierre de la capa
 
@@ -254,6 +406,32 @@ Nunca se ejecutan dos subcapas en el mismo turno.
   `str(nombre).lower()` mientras el SQL agrupa respetando mayúsculas. Hoy hay 0
   casos en producción. No se corrige dentro de esta capa por inferencia.
 
+### Encontrados en 5.0, registrados y sin corregir
+
+Ninguno se corrige por inferencia: son hallazgos del inventario, no defectos de
+la subcapa. Corregir cualquiera exige una decisión explícita del usuario.
+
+- **`POST /pagos` no tiene clave de idempotencia.** Un doble clic o un reintento
+  del frontend crea dos pagos mientras la suma no supere la deuda. Es el riesgo
+  financiero más directo del dominio y hoy solo lo contiene la validación de
+  saldo, que no distingue un reintento de un segundo pago legítimo.
+- **No hay filtro de ownership dentro del tenant.** `anular_pago_controller`
+  anula cualquier `pago_id` que reciba sin comprobar a qué estudiante pertenece.
+  El aislamiento entre colegios sí está garantizado por `search_path`.
+- **Siete funciones absorben `Exception` a secas** y devuelven `None`/`False`;
+  un fallo de infraestructura llega al cliente como 400 o 404. Enmascara
+  incidentes reales y una extracción podría cambiar qué queda absorbido.
+- **Dos conexiones por petición** en los dos upsert de tipos de pago, con la
+  relectura fuera de la transacción confirmada. Consume el doble de pool y puede
+  devolver un estado distinto del que se acaba de escribir.
+- **Once lecturas para validar un pago simple.** No es un N+1 —no depende del
+  número de estudiantes— pero es el camino de escritura más caro y recalcula la
+  deuda entera para una sola comparación.
+- **`actualizar_configuracion_tipo_pago` compone SQL con f-string.** Los nombres
+  de columna salen de la lista fija `_ADVANCED_COLUMNS` intersecada con el schema
+  real, así que hoy **no es inyectable**. Queda anotado para que ninguna
+  extracción futura abra esa lista a entrada del cliente.
+
 ## Registro de ejecución
 
 ### 2026-08-15 — activación de la capa
@@ -302,16 +480,74 @@ Nunca se ejecutan dos subcapas en el mismo turno.
 - Estado al cerrar el turno de activación: capa 5 **activa**; 5.0 **pendiente y
   no iniciada**.
 - Siguiente acción exacta: ejecutar únicamente 5.0 conforme al trabajo exacto
-  anterior y detenerse antes de 5.1.
+  anterior y detenerse antes de 5.1. *(Ejecutada en el turno siguiente; ver el
+  cierre de 5.0 más abajo.)*
+
+### 2026-08-15 — cierre de 5.0
+
+- Modo de acceso: mismo checkout local en
+  `C:\Users\David\Documents\sistema_escolar_api`; Git validado directamente y no
+  se usó GitHub para inferir el estado local.
+- Precondición Git: rama `main`, árbol inicialmente limpio, `HEAD`
+  `42c99600fcc895be3995ebf214827cf4a5e9433f`, un commit por delante de la
+  referencia local `origin/main`. El commit base
+  `f4d091329f84bcdd100b1bf0c70c02a0e32ee138` existe y es ancestro; el único
+  commit posterior es la activación documental de esta capa, que modifica
+  exactamente los cuatro documentos que declara. No existen instrucciones
+  locales del repositorio.
+- Compuerta heredada reproducida antes de tocar nada: **606 pruebas, exit 0**,
+  Ruff correcto y `pip check` íntegro. Coincide con el cierre de la capa 4.
+- Inventario dirigido: `app/routes/pagos.py`, `app/routes/tipos_pagos.py`,
+  `app/controllers/pagos_controller.py`,
+  `app/controllers/tipos_pagos_controller.py`, `app/schemas/pago.py` y, solo como
+  dependencia directa ya inventariada por la capa 4, las funciones de
+  `app/services/cobros.py` que consumen. No se leyó historia global ni código de
+  las capas 6 y 7.
+- Caracterización añadida: `tests/test_pagos_escrituras_caracterizacion.py`,
+  **40 casos** sobre la frontera HTTP, el contrato transaccional de cada
+  escritura, idempotencia, concurrencia, ciclo de vida y las columnas que lee la
+  capa 4. Código de producto y configuración modificados: **ninguno**.
+- Pruebas específicas: **81 pasaron** en 0,59 s sobre los siete archivos del
+  dominio y de la capa 4. La prueba nueva aislada: 40 pasaron en 0,54 s. Ruff del
+  archivo nuevo: **correcto**.
+- Compuerta global final: `.\venv\Scripts\python.exe scripts\verify.py`;
+  **646 pruebas pasaron** en 2,05 s, 5 warnings heredadas, Ruff correcto,
+  `pip check` sin dependencias rotas, exit 0. La suite pasó de 606 a 646. No hizo
+  falta salir del sandbox: la restricción del directorio temporal de pytest que
+  registraron las subcapas 4.x no se reprodujo en este turno.
+- Medición: hermética, con un doble de cursor. Se registraron los conteos de once
+  caminos. Tres del inventario no se midieron con el doble actual —historial
+  paginado, listado simple de tipos de pago y un pago con cuotas vencidas
+  reales— porque exigen fixtures de fila que 5.0 no necesitaba; queda anotado.
+- Diff final: `git diff --check` en exit 0 y el chequeo equivalente del archivo
+  nuevo sin diagnósticos de whitespace. El alcance es **un solo archivo nuevo** y
+  **ningún archivo rastreado modificado**: no se tocó producto, rutas, payloads,
+  status codes, permisos, tenant, ownership, SQL, transacciones, configuración ni
+  dependencias.
+- PostgreSQL, migraciones, producción, commit, push y deploy: **ninguno**. La
+  evidencia de GitHub Actions posterior a la capa 0 continúa pendiente y no se
+  atribuye CI remota.
+- Estado: 5.0 **cerrada**; 5.1 **pendiente y no iniciada**.
+- Siguiente acción exacta: ejecutar únicamente 5.1, extracción de la persistencia
+  de las escrituras de `pagos`, y detenerse antes de 5.2.
 
 ## Entrega al próximo chat
 
 - Capa activa: **5, pagos y tipos de pago**.
-- Última subcapa terminada: ninguna. Primera subcapa pendiente: **5.0,
-  inventario, contratos y caracterización**.
+- Última subcapa terminada: **5.0**. Primera subcapa pendiente: **5.1,
+  extracción de la persistencia de las escrituras de `pagos`**.
 - Commit base: `f4d091329f84bcdd100b1bf0c70c02a0e32ee138`, rama `main`, ya
-  publicado.
-- Bloqueos: ninguno para iniciar 5.0.
+  publicado. Al cerrar 5.0, `HEAD` es `42c9960` más un archivo de prueba nuevo
+  sin commitear.
+- Bloqueos: ninguno para iniciar 5.1.
+- Lo que 5.0 dejó medido: 19 entradas HTTP, seis tablas escritas, 40 pruebas de
+  caracterización y los conteos de once caminos. Un pago simple cuesta **12
+  consultas, once de ellas lecturas de validación**; un cargo de inventario
+  cuesta **4**. No hay N+1 en este dominio.
+- Hallazgos registrados y **sin corregir**: `POST /pagos` no es idempotente, no
+  hay filtro de ownership por pago dentro del tenant, siete funciones absorben
+  `Exception` y devuelven 400/404, y los dos upsert de tipos de pago abren dos
+  conexiones por petición.
 - Verificaciones heredadas pendientes y aceptadas: valor operativo final de
   `DB_STATEMENT_TIMEOUT_MS` (capa 1) y evidencia de GitHub Actions posterior a
   la capa 0. Además, la credencial privilegiada compartida en la capa 4 sigue
@@ -319,4 +555,4 @@ Nunca se ejecutan dos subcapas en el mismo turno.
 - Lo que esta capa debe recordar antes de tocar nada: **escribe donde las
   anteriores solo leían**. Claves foráneas repuestas en la capa 3, contratos de
   lectura de `pagos` fijados en la capa 4, y `pagos.concepto_id` inexistente.
-- Siguiente acción exacta: ejecutar solo 5.0 y detenerse antes de 5.1.
+- Siguiente acción exacta: ejecutar solo 5.1 y detenerse antes de 5.2.

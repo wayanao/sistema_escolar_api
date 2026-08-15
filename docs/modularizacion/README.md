@@ -39,7 +39,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 2 | Concurrencia | DB síncrona fuera del event loop preservando `ContextVar` | **Cerrada** y publicada; CI posterior al cierre no verificada | [02_CONCURRENCIA.md](./02_CONCURRENCIA.md) |
 | 3 | Migraciones y tenants | Todos los tenants versionados, runner bloqueado y alta reproducible | **Cerrada**; reparó producción y verificó en uso | [03_MIGRACIONES_TENANTS.md](./03_MIGRACIONES_TENANTS.md) |
 | 4 | Reportes financieros | Dominio modular, N+1 eliminado y consultas medidas | **Cerrada**; N+1 de 5N a 15 constantes, medido en producción | [04_REPORTES_FINANCIEROS.md](./04_REPORTES_FINANCIEROS.md) |
-| 5 | Pagos y tipos de pago | Dominio financiero modularizado y protegido | **Activa**; 5.0 pendiente y no iniciada | [05_PAGOS_TIPOS_PAGO.md](./05_PAGOS_TIPOS_PAGO.md) |
+| 5 | Pagos y tipos de pago | Dominio financiero modularizado y protegido | **Activa**; 5.0 cerrada, 5.1 pendiente | [05_PAGOS_TIPOS_PAGO.md](./05_PAGOS_TIPOS_PAGO.md) |
 | 6 | Asignaciones y estudiantes | Dominios grandes separados con contratos estables | En espera | Se crea al activarla |
 | 7 | Resto de dominios | Migración individual con contratos y pruebas | En espera | Una bitácora por dominio al activarlo |
 
@@ -49,8 +49,8 @@ cierre y el usuario ordene continuar, se crea su sucesora desde
 tabla.
 
 Las capas 0, 1, 2, 3 y 4 están cerradas. La **capa 5 está activa** desde el
-2026-08-15, activada por orden explícita del usuario; su subcapa 5.0 sigue
-pendiente y no iniciada. La capa 3 es la única del programa que modificó la base
+2026-08-15, activada por orden explícita del usuario; su subcapa 5.0 quedó
+cerrada y 5.1 está pendiente. La capa 3 es la única del programa que modificó la base
 de datos real, con autorización explícita del usuario para cada paso; la capa 4
 solo la leyó. La capa 5 será la primera que **escriba**, y ese cambio de perfil
 de riesgo está registrado en su bitácora. No se atribuye ningún resultado de
@@ -330,9 +330,25 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   hacer fallar inserciones que antes pasaban en silencio, los contratos de
   lectura de `pagos` fijados en la capa 4 pueden romperse desde la escritura, y
   `pagos.concepto_id` no existe.
-- Capa activa: **5, pagos y tipos de pago**. Primera subcapa pendiente: **5.0**,
-  inventario, contratos y caracterización, no iniciada. Siguiente capa: 6,
-  asignaciones y estudiantes, en espera.
+- Resultado de 5.0: el dominio quedó inventariado en **19 entradas HTTP** y
+  **seis tablas escritas** —`pagos`, `pagos_aplicaciones`, `ventas`,
+  `tipos_de_pagos`, `tipos_pagos_cursos` y `tipos_pagos_estudiantes`—, protegido
+  por **40 pruebas nuevas**. Línea base: un pago simple cuesta **12 consultas,
+  once de ellas lecturas** para validar que no excede la deuda; un cargo de
+  inventario cuesta **4** porque sale antes; anular cuesta 4 o 6. **No hay N+1**
+  en este dominio: ningún conteo depende del número de estudiantes. La compuerta
+  local terminó con **646 pruebas**, Ruff y dependencias correctas. No se
+  modificó producto ni configuración: el diff es un solo archivo nuevo.
+- Hallazgos de 5.0, **registrados y sin corregir** porque exigen decisión
+  explícita: `POST /pagos` **no tiene clave de idempotencia** y dos envíos
+  idénticos crean dos pagos; no existe filtro de ownership por pago dentro del
+  tenant, así que una anulación no comprueba a qué estudiante pertenece; siete
+  funciones de tipos de pago absorben `Exception` y presentan un fallo de
+  infraestructura como 400 o 404; y los dos upsert de tipos de pago abren **dos
+  conexiones por petición**, releyendo fuera de la transacción confirmada.
+- Capa activa: **5, pagos y tipos de pago**. 5.0 **cerrada**; primera subcapa
+  pendiente: **5.1**, extracción de la persistencia de las escrituras de `pagos`,
+  no iniciada. Siguiente capa: 6, asignaciones y estudiantes, en espera.
 - Resultado de 3.5: el alta construye el schema desde la migración base en vez de
   copiar la plantilla. Un tenant nuevo nace con **37 claves foráneas y 30
   secuencias propias**, donde el camino anterior producía **0 y 0**. Ensayado
@@ -447,8 +463,10 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
 - [05_PAGOS_TIPOS_PAGO.md](./05_PAGOS_TIPOS_PAGO.md): **bitácora activa** de la
   capa 5. Registra el commit base `f4d0913`, las verificaciones heredadas
   aceptadas como pendientes, el perfil de riesgo propio de la primera capa que
-  escribe, y el trabajo exacto de 5.0. Es el documento que un chat nuevo debe
-  leer después de este índice.
+  escribe, el cierre de 5.0 con su inventario de 19 entradas, seis tablas
+  escritas, contratos, idempotencia y línea base de consultas, los cuatro
+  hallazgos registrados sin corregir, y el trabajo exacto de 5.1. Es el documento
+  que un chat nuevo debe leer después de este índice.
 - [04_REPORTES_FINANCIEROS.md](./04_REPORTES_FINANCIEROS.md): **bitácora
   cerrada** de la capa 4. Conserva el cierre de 4.3 con su medición sobre
   producción y la verificación manual del usuario, el hallazgo de que el informe

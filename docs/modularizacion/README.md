@@ -39,7 +39,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 2 | Concurrencia | DB síncrona fuera del event loop preservando `ContextVar` | **Cerrada** y publicada; CI posterior al cierre no verificada | [02_CONCURRENCIA.md](./02_CONCURRENCIA.md) |
 | 3 | Migraciones y tenants | Todos los tenants versionados, runner bloqueado y alta reproducible | **Cerrada**; reparó producción y verificó en uso | [03_MIGRACIONES_TENANTS.md](./03_MIGRACIONES_TENANTS.md) |
 | 4 | Reportes financieros | Dominio modular, N+1 eliminado y consultas medidas | **Cerrada**; N+1 de 5N a 15 constantes, medido en producción | [04_REPORTES_FINANCIEROS.md](./04_REPORTES_FINANCIEROS.md) |
-| 5 | Pagos y tipos de pago | Dominio financiero modularizado y protegido | En espera | Se crea al activarla |
+| 5 | Pagos y tipos de pago | Dominio financiero modularizado y protegido | **Activa**; 5.0 pendiente y no iniciada | [05_PAGOS_TIPOS_PAGO.md](./05_PAGOS_TIPOS_PAGO.md) |
 | 6 | Asignaciones y estudiantes | Dominios grandes separados con contratos estables | En espera | Se crea al activarla |
 | 7 | Resto de dominios | Migración individual con contratos y pruebas | En espera | Una bitácora por dominio al activarlo |
 
@@ -48,11 +48,13 @@ cierre y el usuario ordene continuar, se crea su sucesora desde
 `PLANTILLA_CAPA.md`, se registra el commit base vigente y se actualiza esta
 tabla.
 
-Las capas 0, 1, 2, 3 y 4 están cerradas. **No existe una capa activa**: la capa
-5 permanece en espera y no fue activada. La capa 3 es la única del programa que
-modificó la base de datos real, con autorización explícita del usuario para cada
-paso; la capa 4 solo la leyó. No se atribuye ningún resultado de GitHub Actions
-sin evidencia del run correspondiente.
+Las capas 0, 1, 2, 3 y 4 están cerradas. La **capa 5 está activa** desde el
+2026-08-15, activada por orden explícita del usuario; su subcapa 5.0 sigue
+pendiente y no iniciada. La capa 3 es la única del programa que modificó la base
+de datos real, con autorización explícita del usuario para cada paso; la capa 4
+solo la leyó. La capa 5 será la primera que **escriba**, y ese cambio de perfil
+de riesgo está registrado en su bitácora. No se atribuye ningún resultado de
+GitHub Actions sin evidencia del run correspondiente.
 
 ## Alcance de cada capa
 
@@ -302,7 +304,35 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
 - La capa 4 **no modificó la base de datos**: todo lo ejecutado contra
   PostgreSQL fue lectura en transacciones `READ ONLY` con `rollback`. Su rollback
   es puramente de código.
-- Capa activa: **ninguna**. Siguiente capa: 5, pagos y tipos de pago, en espera.
+- Capa 4 **publicada**: el reflog de `origin/main` registra `update by push` de
+  `f4d0913` el 2026-08-15 a las 13:20:16. Ese commit es el punto de rollback
+  vigente de la capa 4 y el commit base de la capa 5. La bitácora de la capa 4
+  describía todavía el estado anterior, «seis commits por delante»; quedó
+  corregida.
+- Corrección de continuidad del 2026-08-15, autorizada explícitamente: el índice
+  y la bitácora de la capa 4 conservaban líneas obsoletas que aún la declaraban
+  activa y a 4.3 «en verificación», junto a las que las declaraban cerradas.
+  Incluían una línea «Capa activa: 4» seguida en el renglón siguiente por «Capa
+  activa: ninguna». Se eliminaron los residuos y se conservaron intactas las
+  entradas de registro fechadas, que describen el estado de su momento.
+- Capa 5 **activada** el 2026-08-15 por orden explícita del usuario. Commit
+  base: `f4d091329f84bcdd100b1bf0c70c02a0e32ee138`, el `HEAD` limpio vigente en
+  `main` y coincidente con la referencia local `origin/main`. Los siete commits
+  posteriores al base de la capa 4 fueron auditados y están explicados en su
+  bitácora. La activación es únicamente documental: no inspeccionó ni modificó
+  código, pruebas, consultas, configuración o base de datos.
+- Decisión al activar la capa 5: continuar aceptando que sigan pendientes la
+  calibración operativa final de `DB_STATEMENT_TIMEOUT_MS` y la evidencia de
+  GitHub Actions posterior a la capa 0. Ninguna se marca como cumplida.
+  La credencial privilegiada compartida en la capa 4 sigue **sin rotar**.
+- La capa 5 **escribe** donde las anteriores solo leían. Su bitácora registra el
+  perfil de riesgo propio: las 26 claves foráneas repuestas en la capa 3 pueden
+  hacer fallar inserciones que antes pasaban en silencio, los contratos de
+  lectura de `pagos` fijados en la capa 4 pueden romperse desde la escritura, y
+  `pagos.concepto_id` no existe.
+- Capa activa: **5, pagos y tipos de pago**. Primera subcapa pendiente: **5.0**,
+  inventario, contratos y caracterización, no iniciada. Siguiente capa: 6,
+  asignaciones y estudiantes, en espera.
 - Resultado de 3.5: el alta construye el schema desde la migración base en vez de
   copiar la plantilla. Un tenant nuevo nace con **37 claves foráneas y 30
   secuencias propias**, donde el camino anterior producía **0 y 0**. Ensayado
@@ -392,10 +422,9 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   romper una base sin historial. Se verificó que las pruebas nuevas fallan
   contra el controlador anterior, que es la señal esperada. La compuerta cerró
   en exit 0 con **529 pruebas**.
-- Capa 4 activa; 4.0 a 4.2 cerradas y 4.3 en verificación. La separación, la
-  compatibilidad con el schema canónico y la compuerta local están completas;
-  faltan la medición equivalente y la verificación manual, o una aceptación
-  explícita de esas evidencias pendientes. La capa 5 continúa en espera.
+- Subcapas de la capa 4: 4.0, 4.1, 4.2 y 4.3 **cerradas**. La separación, la
+  compatibilidad con el schema canónico, la compuerta local, la medición y la
+  verificación manual quedaron completas.
 - Código de producto modificado durante la capa 0: ninguno.
 - Código de producto modificado durante la capa 1: el ciclo de vida de las
   conexiones en 20 archivos de `app/`, más los timeouts. Sin cambios en rutas,
@@ -415,14 +444,17 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
 
 ## Archivos de continuidad
 
+- [05_PAGOS_TIPOS_PAGO.md](./05_PAGOS_TIPOS_PAGO.md): **bitácora activa** de la
+  capa 5. Registra el commit base `f4d0913`, las verificaciones heredadas
+  aceptadas como pendientes, el perfil de riesgo propio de la primera capa que
+  escribe, y el trabajo exacto de 5.0. Es el documento que un chat nuevo debe
+  leer después de este índice.
 - [04_REPORTES_FINANCIEROS.md](./04_REPORTES_FINANCIEROS.md): **bitácora
-  activa** de la capa 4 y fuente de continuidad. Registra el commit base, las
-  verificaciones heredadas aceptadas como pendientes y el estado en verificación
-  de 4.3, incluidos la corrección local de la referencia inexistente
-  `pagos.concepto_id`, staging, rollback, medición y verificación manual
-  faltantes. Conserva también el cierre de 4.2 con su conteo fijo 6/15, la
-  extracción de 4.1 y el inventario y medición limitada de 4.0. Es el documento
-  que un chat nuevo debe leer después de este índice.
+  cerrada** de la capa 4. Conserva el cierre de 4.3 con su medición sobre
+  producción y la verificación manual del usuario, el hallazgo de que el informe
+  estaba roto por `pagos.concepto_id`, el punto de rollback vigente `f4d0913`,
+  el cierre de 4.2 con su conteo fijo 6/15, la extracción de 4.1 y el inventario
+  y medición limitada de 4.0. Sus riesgos abiertos siguen vigentes.
 - [03_MIGRACIONES_TENANTS.md](./03_MIGRACIONES_TENANTS.md): **bitácora cerrada**
   de la capa 3. Conserva el inventario, las tres
   reparaciones aplicadas a producción con su rollback, el ensayo sobre una rama
@@ -440,8 +472,9 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   la capa 0, sin verificaciones pendientes; conserva la compuerta, la CI y el
   inventario de contratos que la capa 1 debe preservar.
 - [PROMPT_CONTINUACION.md](./PROMPT_CONTINUACION.md): texto universal para
-  iniciar o continuar en otro chat, más un resumen del estado del programa. La
-  autorización puntual para activar la capa 4 fue consumida y retirada. Incluye
+  iniciar o continuar en otro chat, más un resumen del estado del programa. Las
+  autorizaciones puntuales para activar las capas 3, 4 y 5 fueron consumidas y
+  retiradas; no queda ninguna vigente. Incluye
   las tres trampas que dejó la capa 3: el endpoint `-pooler`, los nombres sin
   cualificar que resuelve el `search_path`, y que los ensayos necesitan schema
   canónico, datos representativos y aislamiento no productivo; no requieren

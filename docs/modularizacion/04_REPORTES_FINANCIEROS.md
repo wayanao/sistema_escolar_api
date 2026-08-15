@@ -10,14 +10,18 @@
 - Rama acordada: `main`.
 - Estado al activar: árbol limpio; `HEAD` coincidente con la referencia local
   `origin/main`.
-- Primera subcapa pendiente: **4.3, en verificación**.
-- Progreso: **4.0, 4.1 y 4.2 cerradas**. En 4.3 la separación y la corrección de
+- Primera subcapa pendiente: **ninguna**. Las cuatro subcapas, 4.0 a 4.3, están
+  cerradas.
+- Progreso: **4.0, 4.1, 4.2 y 4.3 cerradas**. La separación y la corrección de
   compatibilidad con el schema canónico están implementadas; pruebas, Ruff y
   compuerta global completas. El SQL quedó **validado con `EXPLAIN` contra el
-  schema real** —20 sentencias, 0 errores— y el usuario **verificó las cifras a
-  mano sobre producción el 2026-08-15: cuadraron**. Queda únicamente la
-  **medición con `EXPLAIN ANALYZE` sobre datos representativos** antes de cerrar
-  la subcapa y la capa, salvo aceptación explícita de esa evidencia.
+  schema real** —20 sentencias, 0 errores—, el usuario **verificó las cifras a
+  mano sobre producción el 2026-08-15: cuadraron**, y la **medición con
+  `EXPLAIN ANALYZE`** se ejecutó sobre producción en lectura: menos de 1 ms las
+  tres consultas juntas. El cierre está en el registro de ejecución.
+- Estado remoto: el trabajo de la capa quedó **publicado** en `f4d0913` el
+  2026-08-15 a las 13:20:16, según el reflog de `origin/main`. Ese commit es el
+  punto de rollback vigente y el commit base de la capa 5.
 - Código de producto modificado al activar: **ninguno**.
 - Autorización: orden explícita del usuario el 2026-08-14 para corregir la
   continuidad documental y activar la capa 4. La activación no autoriza iniciar
@@ -347,7 +351,7 @@ el registro de ejecución; no se inició el trabajo de 4.2.
 Los siete puntos se cumplieron en 4.2. El cierre y sus verificaciones están en
 el registro de ejecución; no se inspeccionó ni inició el trabajo de 4.3.
 
-## Primera subcapa pendiente: 4.3 — trabajo exacto
+## Subcapa 4.3 — alcance ejecutado
 
 1. Revalidar Git y limitar la inspección a las reglas financieras de reportes,
    su orquestación, los consumidores directos ya inventariados en 4.0 y sus
@@ -372,12 +376,12 @@ el registro de ejecución; no se inspeccionó ni inició el trabajo de 4.3.
    cerrar la capa y actualizar el índice solo si toda la compuerta queda
    satisfecha. Dejar la capa 5 en espera y detenerse.
 
-Estado de ejecución: los puntos 1 a 4 y 6 están completos; staging, rollback y
-el procedimiento de verificación manual del punto 7 están documentados abajo.
-La medición del punto 5 y la ejecución manual no están satisfechas porque no se
-autorizaron para este turno sobre un entorno no productivo con schema vigente,
-datos representativos y rol dedicado de solo lectura. Por ello 4.3 sigue **en
-verificación**, la capa 4 permanece activa y la capa 5 continúa en espera.
+Estado de ejecución: **los siete puntos quedaron satisfechos**. Los puntos 1 a 4
+y 6 se completaron el 2026-08-14 y el 2026-08-15; el punto 5 se resolvió por una
+vía distinta a la prevista —medición sobre producción en lectura en vez de
+staging, decisión razonada en el cierre— y el punto 7 quedó cubierto con
+staging, rollback, verificación manual y compuerta global. El detalle de cada
+uno está en el registro de ejecución.
 
 Durante la verificación de 4.3 se demostró que la caracterización de 4.2 había
 perpetuado una referencia huérfana a `pagos.concepto_id`: la columna no existe
@@ -404,6 +408,13 @@ schema ni ampliar la subcapa.
   debe ejecutarse o quedar aceptada explícitamente como pendiente antes del
   cierre.
 - La capa 5 queda en espera y no se activa sin orden explícita del usuario.
+  Criterio cumplido: siguió en espera al cerrar y se activó después, el
+  2026-08-15, por orden explícita.
+
+Los ocho criterios quedaron satisfechos. Las dos entradas de registro fechadas
+el 2026-08-14 y el 2026-08-15 que declaran 4.3 «en verificación» describen el
+estado de aquel momento y están superadas por el cierre posterior; se conservan
+como historia, no como estado vigente.
 
 ## Decisiones
 
@@ -534,7 +545,14 @@ schema ni ampliar la subcapa.
 
 ## Staging, rollback y verificación manual de 4.3
 
-Estas instrucciones están preparadas, pero **no se han ejecutado**:
+**Nota de cierre.** El plan de staging que sigue se conserva como registro
+histórico y **no se ejecutó tal cual**. La capa se cerró por una vía distinta y
+razonada: la validación estructural se hizo sobre una rama sin datos y la
+medición directamente sobre producción en lectura, porque una rama con datos
+reales habría expuesto información de menores sin aportar fidelidad. La
+verificación manual sí se ejecutó, la hizo el usuario y fue correcta. El
+resultado real está en «cierre de 4.3 y de la capa 4»; lo de abajo es lo que se
+había previsto.
 
 ### Staging y medición pendiente
 
@@ -572,8 +590,11 @@ Estas instrucciones están preparadas, pero **no se han ejecutado**:
   reintroducen la lectura de `pagos.concepto_id` y su fallback a `[]`.
 - Si falla la separación de 4.3, volver a la orquestación anterior conservando
   o reaplicando simultáneamente las tres consultas compatibles con el schema.
-  El primer artefacto publicado que incluya esta corrección deberá registrarse
-  como nuevo punto de rollback antes de staging o deploy.
+- **Punto de rollback vigente, registrado el 2026-08-15**: el primer artefacto
+  publicado que incluye esta corrección es `f4d0913`, publicado ese día a las
+  13:20:16. La corrección de código llegó en `5a00f44`; `f4d0913` solo añade
+  documentación sobre él. Revertir por debajo de `5a00f44` reintroduce la
+  lectura de `pagos.concepto_id` y con ella el fallo `42703`.
 - 4.3 no contiene migraciones ni escrituras de datos; no requiere rollback de
   schema ni reparación de información. No cambiar los timeouts durante el
   rollback.
@@ -1175,27 +1196,69 @@ Compuerta global en **exit 0 con 606 pruebas**, Ruff correcto, `pip check`
 - Siguiente acción exacta: esperar una orden explícita del usuario. Una
   instrucción genérica de continuar no autoriza activar la capa 5.
 
+### 2026-08-15 — corrección de continuidad tras el cierre
+
+Turno posterior al cierre. **No se modificó ningún archivo de producto ni de
+pruebas**; el cambio es exclusivamente documental.
+
+- Modo de acceso: mismo checkout local; Git validado directamente. No se
+  conectó a PostgreSQL ni a ninguna base de datos.
+- Estado comprobado por cuenta propia: rama `main`, **árbol limpio**, `HEAD`
+  `f4d0913`, **coincidente con la referencia local `origin/main`**. El commit
+  base `46fad2c` es ancestro y los **siete** commits posteriores tienen entrada
+  propia en esta bitácora. No hay divergencia ni commits ajenos.
+- Diferencia con lo que la bitácora describía: el reflog registra `update by
+  push` de `f4d0913` el 2026-08-15 a las 13:20:16. El trabajo de la capa está
+  **publicado**; la bitácora aún describía el estado anterior, «seis commits por
+  delante de `origin/main`».
+- **Problema encontrado**: tanto el índice como esta bitácora conservaban líneas
+  obsoletas que declaraban la capa 4 activa y 4.3 en verificación, sin borrar,
+  junto a las que las declaraban cerradas. En esta bitácora: el bloque de
+  Control, el estado de ejecución de 4.3, una línea «Capa activa: 4» seguida en
+  el renglón siguiente por «Capa activa: ninguna», el riesgo «SQL final aún no
+  medido» —contradicho por la medición registrada— y la precondición y siguiente
+  acción del cierre. En el índice: un punto de estado y la descripción de este
+  archivo como «bitácora activa».
+- Resolución: el estado real es **capa 4 cerrada**. Lo sostienen las dos tablas
+  de estado, la entrada fechada más reciente y las declaraciones explícitas; los
+  residuos son anteriores a la edición de cierre. Se informó al usuario, que
+  autorizó explícitamente corregirlos.
+- Archivos modificados: esta bitácora, `docs/modularizacion/README.md`,
+  `docs/modularizacion/PROMPT_CONTINUACION.md` y el nuevo
+  `docs/modularizacion/05_PAGOS_TIPOS_PAGO.md`.
+- Registro añadido: el punto de rollback vigente `f4d0913`, que la sección de
+  rollback pedía anotar en cuanto existiera un artefacto publicado.
+- Evidencia remota: **no se consultó ni se atribuye ningún run de GitHub
+  Actions**. Hubo push, pero `gh` no está disponible en este entorno y la
+  evidencia del run sigue sin obtenerse. La verificación permanece pendiente.
+- Pruebas, compuerta, PostgreSQL, migraciones, producción, commit, push y
+  deploy: **ninguno**.
+- Estado: capa 4 **cerrada** y su continuidad corregida. En el mismo turno, y
+  por orden explícita del usuario, se activó la capa 5.
+- Siguiente acción exacta: ninguna en esta capa. El trabajo continúa en
+  `05_PAGOS_TIPOS_PAGO.md`, subcapa 5.0.
+
 ## Entrega al próximo chat
 
-- Capa activa: **4, reportes financieros**.
-- Capa activa: **ninguna**. La capa 4 quedó **cerrada** el 2026-08-15 y la capa
-  5 sigue en espera, sin activar.
+- Capa activa: **ninguna en este documento**. La capa 4 quedó **cerrada** el
+  2026-08-15 y la **capa 5 fue activada** ese mismo día por orden explícita del
+  usuario; su bitácora es
+  [05_PAGOS_TIPOS_PAGO.md](./05_PAGOS_TIPOS_PAGO.md).
 - Última subcapa terminada: **4.3**. Primera subcapa pendiente: ninguna.
 - Lo que la capa consiguió: el N+1 pasó de **5N consultas por estudiante a 15
   constantes**, las tres consultas del estado de cuenta suman **menos de 1 ms**
   medidas sobre producción, y el informe —que **fallaba** con `42703` por
   referenciar una columna inexistente— vuelve a funcionar con cifras verificadas
   a mano por el usuario.
-- Commit base: `46fad2c4c12482830cc58ac28ea2512f96155fb8`, rama `main`.
-- Riesgos abiertos: candidato de timeout 15000 ms no aplicado; SQL final aún no
-  medido; credencial privilegiada por rotar; conceptos históricos renombrados
+- Commit base de esta capa: `46fad2c4c12482830cc58ac28ea2512f96155fb8`, rama
+  `main`. Commit de cierre y punto de rollback vigente: `f4d0913`, publicado.
+- Riesgos abiertos: candidato de timeout 15000 ms no aplicado; **la medición no
+  demuestra escalabilidad**, porque a 74 pagos y 172 estudiantes cualquier plan
+  es rápido y «Otros Pagos» compara con `LOWER()` en ambos lados sin poder usar
+  índice; credencial privilegiada por rotar; conceptos históricos renombrados
   que pueden caer en «Otros»; posible diferencia Unicode entre `LOWER` SQL y
   `lower()` Python; colisión heredada de nombres que solo difieren en
-  mayúsculas; evidencia de GitHub Actions posterior a la capa 0 aún ausente.
-- Precondición antes de continuar 4.3: el usuario debe revisar y dejar limpio
-  este cambio;
-  después se reaudita todo commit posterior al base.
-- Siguiente acción exacta: medir y ejecutar la verificación manual en staging
-  equivalente con rol dedicado READ ONLY, o registrar una aceptación explícita
-  de ambos pendientes; cerrar la capa 4 solo después de esa decisión y mantener
-  la capa 5 en espera.
+  mayúsculas; `/estado-cuenta/curso` conserva su `1 + 12N`; evidencia de GitHub
+  Actions posterior a la capa 0 aún ausente.
+- Siguiente acción exacta: ninguna en esta capa, que está cerrada. Continuar en
+  `05_PAGOS_TIPOS_PAGO.md` ejecutando únicamente la subcapa 5.0.

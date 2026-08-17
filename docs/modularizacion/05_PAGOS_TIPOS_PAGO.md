@@ -672,9 +672,16 @@ la subcapa. Corregir cualquiera exige una decisión explícita del usuario.
   caracteres y guarda `motivo_anulacion`, `fecha_anulacion` y `anulado_por`. Un
   filtro de ownership aquí no protegería de nada y rompería el caso normal. Se
   deja anotado para que nadie vuelva a levantarlo.
-- **Siete funciones absorben `Exception` a secas** y devuelven `None`/`False`;
-  un fallo de infraestructura llega al cliente como 400 o 404. Enmascara
-  incidentes reales y una extracción podría cambiar qué queda absorbido.
+- **Siete funciones absorben `Exception` a secas** y devuelven `None`/`False`.
+  Confirmado y detallado el 2026-08-17: cinco acaban en **400** —crear,
+  actualizar, configuración, asignar cursos y guardar valor personalizado— y dos
+  en **404** —desasignar curso y eliminar valor personalizado—, y esos dos
+  mienten activamente, porque dicen «no encontrado» cuando la base está caída.
+  Los errores de dominio sí se propagan: cinco de las siete tienen un `except`
+  específico antes que vuelve a lanzar. **Se corrigió a medias el 2026-08-17**:
+  ahora registran la excepción con su traceback. Cambiar los status codes a 500
+  sigue **pendiente** y exige comprobar antes qué hace `frontend-react` con esos
+  400 y 404.
 - **Dos conexiones por petición** en los dos upsert de tipos de pago, con la
   relectura fuera de la transacción confirmada. Consume el doble de pool y puede
   devolver un estado distinto del que se acaba de escribir.
@@ -1089,6 +1096,41 @@ hallazgos que la capa dejó registrados, hecha fuera de toda capa.
 - PostgreSQL, migraciones, producción, commit, push y deploy: **ninguno**.
 - Siguiente paso acordado: la **clave de idempotencia**, descrita abajo. No se
   inició.
+
+### 2026-08-17 — corrección puntual posterior al cierre: registro de fallos absorbidos
+
+**La capa 5 sigue cerrada.** Segunda corrección puntual autorizada sobre un
+hallazgo de la capa, fuera de toda capa.
+
+- Autorización: el usuario pidió revisar el hallazgo, se confirmó función por
+  función, y autorizó explícitamente **solo la primera de las dos opciones**:
+  registrar el error sin cambiar los status codes.
+- Hallazgo confirmado, con dos precisiones que no estaban anotadas: el reparto
+  exacto es **cinco 400 y dos 404**, y **no había ningún logging** —ni en el
+  módulo ni un manejador global en `app/main.py`, donde el único registrado es el
+  del rate limit—. El `except Exception` destruía el traceback y el fallo
+  desaparecía sin dejar rastro, así que no había forma de diagnosticarlo después.
+  Esa era la consecuencia más grave, por encima de los códigos equivocados.
+- Producto modificado: `app/controllers/tipos_pagos_controller.py`. Se añadió
+  `logger = logging.getLogger(__name__)`, siguiendo la convención de
+  `app/main.py`, y un `logger.exception(...)` en los siete manejadores, con
+  formato perezoso y los identificadores relevantes. No se registran payloads.
+- **Contrato intacto**: ningún status code, payload, ruta ni firma cambia. Las
+  siete funciones siguen devolviendo `None`/`False` y las rutas siguen
+  traduciendo a 400 y 404. El diff es **puramente aditivo**: 120 líneas añadidas
+  y **ninguna eliminada**.
+- Pruebas añadidas: cuatro. Tres comprueban que el fallo absorbido queda en el
+  log con su `exc_info`, que identifica el recurso afectado, y que un error de
+  dominio —nombre duplicado— **no** se registra porque no es un incidente. La
+  cuarta es una **guardia estructural** que recorre el AST del módulo y falla si
+  aparece un `except Exception` que ni registra ni relanza. Se comprobó contra el
+  código anterior: la guardia detectaba las siete funciones mudas, así que
+  habría fallado antes del cambio.
+- Compuerta global: **668 pruebas, exit 0**, Ruff correcto y `pip check` íntegro.
+  La suite pasó de 664 a 668.
+- PostgreSQL, migraciones, producción, commit, push y deploy: **ninguno**.
+- Pendiente y no iniciado: **cambiar los códigos a 500**. Es un cambio de
+  contrato observable y exige revisar antes `frontend-react`.
 
 ### Paso 2 acordado y no iniciado: clave de idempotencia
 

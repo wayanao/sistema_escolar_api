@@ -1202,3 +1202,87 @@ def test_registrar_pago_toma_un_advisory_lock_por_estudiante_antes_de_leer_la_de
     )
     assert indice_lock < indice_insert
     assert indice_lock == 0, "el lock debe tomarse antes de leer la deuda"
+
+
+# ---------------------------------------------------------------------------
+# 10. Los fallos que se absorben quedan registrados
+#
+# Las siete funciones de tipos de pago siguen capturando `Exception` y
+# devolviendo None/False, y las rutas siguen traduciendo eso a 400 o 404: el
+# contrato no cambia. Lo que cambia es que la excepcion ya no desaparece sin
+# rastro. Sin estas pruebas, quitar el registro no rompe nada visible.
+# ---------------------------------------------------------------------------
+
+def _romper_en(cursor, prefijo):
+    """Hace fallar la primera sentencia que empiece por `prefijo`."""
+    original = cursor.execute
+
+    def execute(query, params=None):
+        if " ".join(str(query).lower().split()).startswith(prefijo):
+            raise RuntimeError("conexion perdida")
+        return original(query, params)
+
+    cursor.execute = execute
+
+
+def test_un_fallo_absorbido_al_crear_queda_en_el_log_con_traceback(conexion, caplog):
+    conn, cursor = conexion(modulo=tipos_pagos_controller)
+    _romper_en(cursor, "insert into tipos_de_pagos")
+
+    with caplog.at_level("ERROR", logger="app.controllers.tipos_pagos_controller"):
+        resultado = tipos_pagos_controller.crear_tipo_pago("Matricula", 100)
+
+    assert resultado is None
+    assert conn.rollbacks == 1
+    registro = caplog.records[-1]
+    assert registro.levelname == "ERROR"
+    assert registro.exc_info is not None, "el traceback debe conservarse"
+    assert "crear el tipo de pago" in registro.getMessage()
+
+
+def test_un_fallo_absorbido_al_asignar_cursos_identifica_el_tipo_de_pago(conexion, caplog):
+    _conn, cursor = conexion(modulo=tipos_pagos_controller)
+    _romper_en(cursor, "delete from tipos_pagos_cursos")
+
+    with caplog.at_level("ERROR", logger="app.controllers.tipos_pagos_controller"):
+        resultado = tipos_pagos_controller.upsert_cursos_asignados(
+            4, [{"curso_id": 3, "valor": 100}]
+        )
+
+    assert resultado is None
+    assert "4" in caplog.records[-1].getMessage()
+
+
+def test_el_error_de_dominio_no_se_registra_porque_no_es_un_fallo(conexion, caplog):
+    """Un nombre duplicado es una respuesta valida, no un incidente."""
+    conexion(modulo=tipos_pagos_controller, nombre_duplicado=True)
+
+    with caplog.at_level("ERROR", logger="app.controllers.tipos_pagos_controller"):
+        with pytest.raises(tipos_pagos_controller.TipoPagoDuplicadoError):
+            tipos_pagos_controller.crear_tipo_pago("Pension", 100)
+
+    assert caplog.records == []
+
+
+def test_las_siete_funciones_que_absorben_excepciones_registran_el_fallo():
+    """Guardia estructural: si alguien anade un `except Exception` mudo, falla."""
+    import ast
+    import inspect
+
+    fuente = inspect.getsource(tipos_pagos_controller)
+    mudos = []
+    for nodo in ast.walk(ast.parse(fuente)):
+        if not isinstance(nodo, ast.FunctionDef):
+            continue
+        for manejador in [h for h in ast.walk(nodo) if isinstance(h, ast.ExceptHandler)]:
+            captura_todo = manejador.type is None or (
+                isinstance(manejador.type, ast.Name) and manejador.type.id == "Exception"
+            )
+            registra = any(
+                "logger." in ast.unparse(sentencia) for sentencia in manejador.body
+            )
+            relanza = any(isinstance(s, ast.Raise) for s in manejador.body)
+            if captura_todo and not registra and not relanza:
+                mudos.append(nodo.name)
+
+    assert mudos == [], f"absorben excepciones sin registrarlas: {sorted(set(mudos))}"

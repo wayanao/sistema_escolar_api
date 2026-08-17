@@ -251,8 +251,12 @@ de esto entra en ella por inferencia: requiere una orden explícita.
   anulación queda auditada con motivo, fecha y responsable. No lo vuelvas a
   levantar.
 - **Siete funciones de `tipos_pagos_controller` capturan `Exception` a secas** y
-  devuelven `None`/`False`; un fallo de infraestructura llega al cliente como 400
-  o 404 en vez de 500.
+  devuelven `None`/`False`: cinco acaban en 400 y dos en 404, y esos dos dicen
+  «no encontrado» cuando la base está caída. El 2026-08-17 se corrigió la mitad:
+  ya **registran la excepción con su traceback**, que antes desaparecía sin
+  rastro, y una guardia estructural en las pruebas impide que alguien vuelva a
+  dejar un `except Exception` mudo. **Sigue pendiente** cambiar los status codes
+  a 500, que es contrato observable y exige revisar antes `frontend-react`.
 - **Los dos upsert de tipos de pago abren dos conexiones por petición**, porque
   releen el estado después del `commit` con una conexión propia.
 - **Código duplicado byte a byte**: `pagos_controller._tabla_pagos_aplicaciones_existe`

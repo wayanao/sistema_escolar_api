@@ -1,4 +1,15 @@
+import logging
+
 from app.database import get_connection
+
+logger = logging.getLogger(__name__)
+
+# Las siete funciones de este modulo capturan `Exception` a secas y devuelven
+# None/False, que las rutas traducen a 400 o 404. Eso oculta un fallo de
+# infraestructura tras un codigo de error del cliente. Cambiar esos status codes
+# tocaria el contrato del frontend, asi que de momento se conserva el
+# comportamiento y solo se registra la excepcion con su traceback: antes
+# desaparecia sin dejar rastro y no habia forma de diagnosticarla despues.
 
 
 class TipoPagoDuplicadoError(Exception):
@@ -28,6 +39,7 @@ def crear_tipo_pago(nombre, valor=0):
         conn.rollback()
         raise
     except Exception:
+        logger.exception("Fallo inesperado al crear el tipo de pago")
         conn.rollback()
         return None
     finally:
@@ -71,6 +83,7 @@ def actualizar_tipo_pago(id, nombre, valor=0):
         conn.rollback()
         raise
     except Exception:
+        logger.exception("Fallo inesperado al actualizar el tipo de pago %s", id)
         conn.rollback()
         return False
     finally:
@@ -292,6 +305,9 @@ def actualizar_configuracion_tipo_pago(id, config):
         conn.rollback()
         raise
     except Exception:
+        logger.exception(
+            "Fallo inesperado al actualizar la configuracion del tipo de pago %s", id
+        )
         conn.rollback()
         return False
     finally:
@@ -391,6 +407,9 @@ def upsert_cursos_asignados(tipo_pago_id, asignaciones):
         conn.commit()
         return listar_cursos_asignados(tipo_pago_id)
     except Exception:
+        logger.exception(
+            "Fallo inesperado al asignar cursos al tipo de pago %s", tipo_pago_id
+        )
         conn.rollback()
         return None
     finally:
@@ -411,6 +430,11 @@ def eliminar_curso_asignado(tipo_pago_id, curso_id):
             return True
         return False
     except Exception:
+        logger.exception(
+            "Fallo inesperado al desasignar el curso %s del tipo de pago %s",
+            curso_id,
+            tipo_pago_id,
+        )
         conn.rollback()
         return False
     finally:
@@ -557,6 +581,12 @@ def upsert_valor_personalizado_estudiante(
         conn.rollback()
         raise
     except Exception:
+        logger.exception(
+            "Fallo inesperado al guardar el valor personalizado del tipo de pago %s "
+            "para el estudiante %s",
+            tipo_pago_id,
+            estudiante_id,
+        )
         conn.rollback()
         return None
     finally:
@@ -590,6 +620,12 @@ def eliminar_valor_personalizado_estudiante(estudiante_id, tipo_pago_id):
         conn.rollback()
         raise
     except Exception:
+        logger.exception(
+            "Fallo inesperado al eliminar el valor personalizado del tipo de pago %s "
+            "del estudiante %s",
+            tipo_pago_id,
+            estudiante_id,
+        )
         conn.rollback()
         return False
     finally:

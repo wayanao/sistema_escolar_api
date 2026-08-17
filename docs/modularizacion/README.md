@@ -345,7 +345,9 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   estudiante que cierra el hueco concurrente; el duplicado parcial separado en el
   tiempo sigue abierto y necesita la clave, que es el paso 2 acordado y no
   iniciado—; siete funciones de tipos de pago absorben `Exception` y presentan un
-  fallo de infraestructura como 400 o 404; y los dos upsert de tipos de pago
+  fallo de infraestructura como 400 o 404 —el 2026-08-17 se corrigió la mitad:
+  ya registran el traceback, que antes se perdía; cambiar los códigos a 500 sigue
+  pendiente—; y los dos upsert de tipos de pago
   abren **dos conexiones por petición**, releyendo fuera de la transacción
   confirmada.
 - Hallazgo **retirado** el 2026-08-17: el «filtro de ownership por pago» que la

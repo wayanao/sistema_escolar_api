@@ -257,8 +257,18 @@ de esto entra en ella por inferencia: requiere una orden explícita.
   rastro, y una guardia estructural en las pruebas impide que alguien vuelva a
   dejar un `except Exception` mudo. **Sigue pendiente** cambiar los status codes
   a 500, que es contrato observable y exige revisar antes `frontend-react`.
-- **Los dos upsert de tipos de pago abren dos conexiones por petición**, porque
-  releen el estado después del `commit` con una conexión propia.
+- ~~Los dos upsert de tipos de pago abren dos conexiones por petición.~~
+  **Corregido el 2026-08-17**: releen con su propio cursor antes de confirmar.
+  Eso cerró además una ventana peor que no se había visto: si la relectura
+  fallaba tras el `commit`, la ruta respondía 400 sobre una escritura ya
+  guardada.
+- **Pendiente para una auditoría de la capa 2**: al corregir lo anterior,
+  `MAX_DB_CONNECTIONS_PER_THREADPOOL_WORKER = 2` —de donde salen los 5 workers
+  para el pool de 10— **se quedó sin ningún ejemplo real que la respalde**. Un
+  barrido de `app/` no encontró ya ningún camino que anide conexiones, pero es
+  estático y solo ve anidamiento dentro del mismo módulo, así que no es garantía.
+  La constante **se conserva como margen** y subirla exigiría auditar de nuevo la
+  capacidad, no inferirlo.
 - **Código duplicado byte a byte**: `pagos_controller._tabla_pagos_aplicaciones_existe`
   y `cobros.tabla_pagos_aplicaciones_existe` son la misma función. La pública ya
   tiene dos consumidores reales, así que deduplicar no crearía una abstracción

@@ -154,7 +154,7 @@ class CursorFalso:
         if "select c.id" in query and "where e.id" in query:
             return [(3,)]
         if "from estudiantes" in query:
-            return [(3,)]
+            return [{"curso_id": 3}]
 
         # --- pagos y ventas ---
         if "for update" in query and "from pagos" in query:
@@ -867,29 +867,46 @@ def test_las_lecturas_de_opciones_no_escriben_ni_confirman(conexion):
     assert conn.cerrada is True
 
 
-def test_los_upsert_de_tipos_pago_abren_una_segunda_conexion_tras_confirmar(conexion):
-    """Rareza de ciclo de vida: releen el estado con `get_connection` propio.
+def test_el_upsert_de_cursos_usa_una_sola_conexion(conexion):
+    """Antes releia el estado con `get_connection` propio, sosteniendo dos.
 
-    Una peticion HTTP consume por tanto dos conexiones del pool en serie, y la
-    relectura ocurre fuera de la transaccion que acaba de confirmarse.
+    Las dos se solapaban, porque el `return` se evalua antes del `finally`. Peor
+    aun: si la relectura fallaba tras el `commit`, el `except` devolvia None y la
+    ruta respondia 400 sobre una escritura ya guardada.
     """
     conn, _cursor = conexion(modulo=tipos_pagos_controller)
 
     tipos_pagos_controller.upsert_cursos_asignados(4, [{"curso_id": 3, "valor": 100}])
 
-    assert conn.aperturas == 2
+    assert conn.aperturas == 1
     assert conn.commits == 1
 
 
-def test_el_upsert_de_valores_personalizados_tambien_abre_dos_conexiones(conexion):
+def test_el_upsert_de_valores_personalizados_usa_una_sola_conexion(conexion):
     conn, cursor = conexion(modulo=tipos_pagos_controller)
 
     tipos_pagos_controller.upsert_valor_personalizado_estudiante(1, 4, 80)
 
-    assert conn.aperturas == 2
-    assert len(cursor.ejecutadas) == 8
+    assert conn.aperturas == 1
     assert len(cursor.escrituras) == 1
     assert conn.commits == 1
+
+
+def test_la_relectura_del_upsert_ocurre_antes_del_commit(conexion):
+    """Asi devuelve lo que esta peticion escribio, no lo que haya despues."""
+    _conn, cursor = conexion(modulo=tipos_pagos_controller)
+
+    tipos_pagos_controller.upsert_cursos_asignados(4, [{"curso_id": 3, "valor": 100}])
+
+    indice_insert = next(
+        i for i, (q, _) in enumerate(cursor.ejecutadas)
+        if q.startswith("insert into tipos_pagos_cursos")
+    )
+    indice_relectura = next(
+        i for i, (q, _) in enumerate(cursor.ejecutadas)
+        if "c.nombre as curso_nombre" in q
+    )
+    assert indice_insert < indice_relectura
 
 
 # ---------------------------------------------------------------------------

@@ -347,9 +347,10 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   iniciado—; siete funciones de tipos de pago absorben `Exception` y presentan un
   fallo de infraestructura como 400 o 404 —el 2026-08-17 se corrigió la mitad:
   ya registran el traceback, que antes se perdía; cambiar los códigos a 500 sigue
-  pendiente—; y los dos upsert de tipos de pago
-  abren **dos conexiones por petición**, releyendo fuera de la transacción
-  confirmada.
+  pendiente—; y los dos upsert de tipos de pago abrían **dos
+  conexiones por petición** —corregido el 2026-08-17: ahora releen con su propio
+  cursor antes de confirmar, lo que cerró además una ventana en la que un
+  `commit` correcto se reportaba como 400—.
 - Hallazgo **retirado** el 2026-08-17: el «filtro de ownership por pago» que la
   capa 5 había anotado **no era un hueco**. Solo alcanza el endpoint quien tiene
   `rol == 'admin'` estricto, el `search_path` impide cruzar de colegio, dentro de
@@ -425,6 +426,13 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   despliegue**. Los cinco commits viven solo en el checkout local y producción
   sigue corriendo `f4d0913`. Publicar es decisión del usuario, y en este
   repositorio un push a `main` dispara el despliegue.
+- **Pendiente heredado que apareció el 2026-08-17**: al quitar el anidamiento de
+  conexiones de los dos upsert, la constante
+  `MAX_DB_CONNECTIONS_PER_THREADPOOL_WORKER = 2` de la capa 2 —de donde salen los
+  5 workers para el pool de 10— **se quedó sin ningún ejemplo real que la
+  respalde**. Se conserva como margen y **no se tocó**: cambiarla exige una
+  auditoría de capacidad propia, no una inferencia. El barrido que lo detectó es
+  estático y solo ve anidamiento dentro del mismo módulo.
 - Capa activa: **ninguna**. Siguiente capa: 6, asignaciones y estudiantes, en
   espera.
 - Resultado de 3.5: el alta construye el schema desde la migración base en vez de

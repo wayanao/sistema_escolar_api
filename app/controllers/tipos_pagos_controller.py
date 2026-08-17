@@ -319,18 +319,19 @@ def actualizar_configuracion_tipo_pago(id, config):
 # Asignación de tipos de pago a cursos (tabla puente)
 # =============================================================================
 
-def listar_cursos_asignados(tipo_pago_id):
-    from psycopg2.extras import RealDictCursor
+def _consultar_cursos_asignados(cursor, tipo_pago_id):
+    """Lee las asignaciones con el cursor que ya abrio quien llama.
 
-    conn = get_connection()
-    cursor = conn.cursor(cursor_factory=RealDictCursor)
-    try:
-        # Si la tabla puente todavía no existe (migración no aplicada),
-        # devolvemos lista vacía en lugar de explotar.
-        if "tipos_pagos_cursos" not in _table_names(cursor):
-            return []
+    Extraida para que `upsert_cursos_asignados` pueda devolver el estado sin
+    abrir una segunda conexion. Exige un cursor tipo dict, como el que usan sus
+    dos consumidores.
+    """
+    # Si la tabla puente todavía no existe (migración no aplicada),
+    # devolvemos lista vacía en lugar de explotar.
+    if "tipos_pagos_cursos" not in _table_names(cursor):
+        return []
 
-        cursor.execute(
+    cursor.execute(
             """
             SELECT tpc.id, tpc.tipo_pago_id, tpc.curso_id, tpc.valor, tpc.activo,
                    c.nombre AS curso_nombre
@@ -339,19 +340,28 @@ def listar_cursos_asignados(tipo_pago_id):
             WHERE tpc.tipo_pago_id = %s
             ORDER BY c.nombre
             """,
-            (tipo_pago_id,),
-        )
-        return [
-            {
-                "id": r["id"],
-                "tipo_pago_id": r["tipo_pago_id"],
-                "curso_id": r["curso_id"],
-                "curso_nombre": r["curso_nombre"],
-                "valor": float(r["valor"]) if r["valor"] is not None else 0,
-                "activo": r["activo"],
-            }
-            for r in cursor.fetchall()
-        ]
+        (tipo_pago_id,),
+    )
+    return [
+        {
+            "id": r["id"],
+            "tipo_pago_id": r["tipo_pago_id"],
+            "curso_id": r["curso_id"],
+            "curso_nombre": r["curso_nombre"],
+            "valor": float(r["valor"]) if r["valor"] is not None else 0,
+            "activo": r["activo"],
+        }
+        for r in cursor.fetchall()
+    ]
+
+
+def listar_cursos_asignados(tipo_pago_id):
+    from psycopg2.extras import RealDictCursor
+
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        return _consultar_cursos_asignados(cursor, tipo_pago_id)
     finally:
         cursor.close()
         conn.close()
@@ -362,9 +372,16 @@ def upsert_cursos_asignados(tipo_pago_id, asignaciones):
 
     `asignaciones`: lista de {curso_id, valor, activo?}
     Reemplaza el estado: cursos no incluidos se eliminan.
+
+    Usa un cursor tipo dict porque devuelve el estado releyendolo con el mismo
+    cursor, antes de confirmar. Antes abria una segunda conexion despues del
+    `commit`: las dos se solapaban y, si esa relectura fallaba, la ruta
+    respondia 400 sobre una escritura ya guardada.
     """
+    from psycopg2.extras import RealDictCursor
+
     conn = get_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     try:
         cursor.execute(
             "SELECT 1 FROM tipos_de_pagos WHERE id = %s", (tipo_pago_id,)
@@ -404,8 +421,9 @@ def upsert_cursos_asignados(tipo_pago_id, asignaciones):
                 ),
             )
 
+        asignados = _consultar_cursos_asignados(cursor, tipo_pago_id)
         conn.commit()
-        return listar_cursos_asignados(tipo_pago_id)
+        return asignados
     except Exception:
         logger.exception(
             "Fallo inesperado al asignar cursos al tipo de pago %s", tipo_pago_id
@@ -454,14 +472,14 @@ def _exigir_tabla_valores_estudiantes(cursor):
         )
 
 
-def listar_valores_personalizados_estudiante(estudiante_id):
-    from psycopg2.extras import RealDictCursor
+def _consultar_valores_personalizados(cursor, estudiante_id):
+    """Lee los valores personalizados con el cursor que ya abrio quien llama.
 
-    conn = get_connection()
-    cursor = conn.cursor(cursor_factory=RealDictCursor)
-    try:
-        _exigir_tabla_valores_estudiantes(cursor)
-        cursor.execute(
+    Extraida por el mismo motivo que `_consultar_cursos_asignados`. Exige un
+    cursor tipo dict.
+    """
+    _exigir_tabla_valores_estudiantes(cursor)
+    cursor.execute(
             """
             SELECT
                 tpe.id,
@@ -486,24 +504,33 @@ def listar_valores_personalizados_estudiante(estudiante_id):
               AND tpe.activo = TRUE
             ORDER BY t.nombre
             """,
-            (estudiante_id,),
-        )
-        return [
-            {
-                "id": r["id"],
-                "tipo_pago_id": r["tipo_pago_id"],
-                "estudiante_id": r["estudiante_id"],
-                "tipo_pago_nombre": r["tipo_pago_nombre"],
-                "valor": float(r["valor"] or 0),
-                "valor_base": float(r["valor_base"] or 0),
-                "valor_curso": float(r["valor_curso"] or 0) if r["valor_curso"] is not None else None,
-                "motivo": r["motivo"] or "",
-                "activo": r["activo"],
-                "created_at": r["created_at"].isoformat() if r["created_at"] else None,
-                "updated_at": r["updated_at"].isoformat() if r["updated_at"] else None,
-            }
-            for r in cursor.fetchall()
-        ]
+        (estudiante_id,),
+    )
+    return [
+        {
+            "id": r["id"],
+            "tipo_pago_id": r["tipo_pago_id"],
+            "estudiante_id": r["estudiante_id"],
+            "tipo_pago_nombre": r["tipo_pago_nombre"],
+            "valor": float(r["valor"] or 0),
+            "valor_base": float(r["valor_base"] or 0),
+            "valor_curso": float(r["valor_curso"] or 0) if r["valor_curso"] is not None else None,
+            "motivo": r["motivo"] or "",
+            "activo": r["activo"],
+            "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+            "updated_at": r["updated_at"].isoformat() if r["updated_at"] else None,
+        }
+        for r in cursor.fetchall()
+    ]
+
+
+def listar_valores_personalizados_estudiante(estudiante_id):
+    from psycopg2.extras import RealDictCursor
+
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        return _consultar_valores_personalizados(cursor, estudiante_id)
     finally:
         cursor.close()
         conn.close()
@@ -516,8 +543,12 @@ def upsert_valor_personalizado_estudiante(
     motivo=None,
     activo=True,
 ):
+    """Igual que `upsert_cursos_asignados`: relee con el mismo cursor y solo
+    despues confirma, en vez de abrir una segunda conexion tras el `commit`."""
+    from psycopg2.extras import RealDictCursor
+
     conn = get_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     try:
         _exigir_tabla_valores_estudiantes(cursor)
 
@@ -529,7 +560,7 @@ def upsert_valor_personalizado_estudiante(
         if not estudiante:
             raise ValueError("Estudiante no encontrado.")
 
-        curso_id = estudiante[0]
+        curso_id = estudiante["curso_id"]
         cursor.execute(
             "SELECT 1 FROM tipos_de_pagos WHERE id = %s",
             (tipo_pago_id,),
@@ -575,8 +606,9 @@ def upsert_valor_personalizado_estudiante(
             ),
         )
         cursor.fetchone()
+        valores = _consultar_valores_personalizados(cursor, estudiante_id)
         conn.commit()
-        return listar_valores_personalizados_estudiante(estudiante_id)
+        return valores
     except (MigracionPendienteError, ValueError):
         conn.rollback()
         raise

@@ -682,9 +682,16 @@ la subcapa. Corregir cualquiera exige una decisión explícita del usuario.
   ahora registran la excepción con su traceback. Cambiar los status codes a 500
   sigue **pendiente** y exige comprobar antes qué hace `frontend-react` con esos
   400 y 404.
-- **Dos conexiones por petición** en los dos upsert de tipos de pago, con la
-  relectura fuera de la transacción confirmada. Consume el doble de pool y puede
-  devolver un estado distinto del que se acaba de escribir.
+- **~~Dos conexiones por petición~~ en los dos upsert de tipos de pago.
+  Corregido el 2026-08-17.** Al revisarlo se comprobó que las dos conexiones **se
+  solapaban** —el `return` se evalúa antes del `finally`— y que la parte de
+  «consume el doble de pool» que se había anotado **estaba mal planteada**: la
+  capa 2 dimensionó su limitador con `MAX_DB_CONNECTIONS_PER_THREADPOOL_WORKER =
+  2`, o sea 5 workers para un pool de 10, exactamente sobre el supuesto de que
+  una petición puede sostener dos. No había riesgo de agotamiento. El problema
+  real era otro y no se había visto: la relectura estaba **dentro del `try`**,
+  así que si fallaba después del `commit`, el `except` devolvía `None` y la ruta
+  respondía **400 sobre una escritura ya guardada**. Ver el registro del cierre.
 - **Once lecturas para validar un pago simple.** No es un N+1 —no depende del
   número de estudiantes— pero es el camino de escritura más caro y recalcula la
   deuda entera para una sola comparación.
@@ -1131,6 +1138,59 @@ hallazgo de la capa, fuera de toda capa.
 - PostgreSQL, migraciones, producción, commit, push y deploy: **ninguno**.
 - Pendiente y no iniciado: **cambiar los códigos a 500**. Es un cambio de
   contrato observable y exige revisar antes `frontend-react`.
+
+### 2026-08-17 — corrección puntual posterior al cierre: una sola conexión por upsert
+
+**La capa 5 sigue cerrada.** Tercera corrección puntual autorizada sobre un
+hallazgo de la capa, fuera de toda capa.
+
+- Autorización: el usuario pidió revisar el hallazgo, se confirmó con evidencia y
+  autorizó el arreglo.
+- Evidencia test-first: se invirtieron las dos pruebas que **fijaban el defecto**
+  —afirmaban `aperturas == 2`— para exigir `== 1`, y se añadió una que exige que
+  la relectura ocurra **antes** del `commit`. Las dos primeras fallaron contra el
+  código anterior. Ésa era la señal.
+- Producto modificado: `app/controllers/tipos_pagos_controller.py`. Se
+  extrajeron `_consultar_cursos_asignados(cursor, …)` y
+  `_consultar_valores_personalizados(cursor, …)`, con **dos consumidores reales
+  cada una**: la función pública de listado y su upsert. Los dos upsert releen
+  con su propio cursor y solo después confirman.
+- SQL **byte a byte idéntico**: 22 sentencias antes y 22 después, mismo conjunto,
+  verificado con el comparador AST. El único cambio de lectura es
+  `estudiante[0]` → `estudiante["curso_id"]`, porque los upsert pasaron a
+  `RealDictCursor` para poder compartir las funciones extraídas.
+- **Qué arregla**: una sola conexión por petición, la relectura dentro de la
+  transacción —así devuelve lo que esa petición escribió— y desaparece la ventana
+  en la que un `commit` correcto se reportaba como 400.
+- Compuerta global: **669 pruebas, exit 0**, Ruff correcto y `pip check` íntegro.
+- PostgreSQL, migraciones, producción, commit, push y deploy: **ninguno**.
+
+#### Efecto colateral sobre la capa 2, registrado y NO actuado
+
+El arreglo hizo fallar dos pruebas de `tests/test_threadpool_capacity.py`,
+`test_registered_nested_db_paths_hold_two_connections`. No eran pruebas
+cualquiera: eran **la justificación empírica** de
+`MAX_DB_CONNECTIONS_PER_THREADPOOL_WORKER = 2`, la constante de la que salen los
+5 workers para el pool de 10.
+
+Un barrido de todo `app/` buscando funciones que abran una conexión dentro de
+otra devolvió **ninguna**: esos dos upsert eran los últimos. La constante **se
+queda en 2** y no se tocó, por tres razones:
+
+1. Cambiarla pertenece a la capa 2, que está cerrada, y exige su propia
+   auditoría.
+2. Subirla llevaría de 5 a 10 workers, un riesgo de disponibilidad real si algún
+   camino no detectado sostiene dos conexiones.
+3. **El barrido es estático y solo detecta anidamiento dentro del mismo módulo.**
+   Un controlador que llame a un servicio de otro archivo que abra conexión no
+   habría aparecido. «Ninguna» significa «ninguna de las que este método
+   detecta», no una garantía.
+
+Las dos pruebas se actualizaron a `peak == 1` y se renombraron a
+`test_registered_upsert_paths_no_longer_nest_connections`, con la historia y esta
+advertencia en su docstring. Queda anotado como **trabajo pendiente para una
+auditoría de la capa 2**: la constante conserva su valor como margen, pero ya no
+tiene ejemplo que la respalde.
 
 ### Paso 2 acordado y no iniciado: clave de idempotencia
 

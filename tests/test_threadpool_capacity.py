@@ -282,7 +282,9 @@ class _ControllerCursor:
 
     def fetchone(self):
         if "SELECT curso_id FROM estudiantes" in self.query:
-            return (3,)
+            # Los upsert usan RealDictCursor desde que dejaron de anidar
+            # conexiones, asi que leen la columna por nombre.
+            return {"curso_id": 3}
         return (1,)
 
     def fetchall(self):
@@ -348,12 +350,24 @@ class _ControllerConnectionTracker:
         ),
     ],
 )
-def test_registered_nested_db_paths_hold_two_connections(monkeypatch, call_controller):
+def test_registered_upsert_paths_no_longer_nest_connections(monkeypatch, call_controller):
+    """Estos dos caminos sostenian dos conexiones a la vez y ya no.
+
+    Releian su estado despues del `commit` llamando a una funcion que abria su
+    propia conexion, y el `return` se evaluaba antes del `finally`, asi que las
+    dos se solapaban. Desde 2026-08-17 releen con el mismo cursor antes de
+    confirmar.
+
+    Eran los dos unicos ejemplos registrados que justificaban
+    `MAX_DB_CONNECTIONS_PER_THREADPOOL_WORKER = 2`. La constante **no se toca**:
+    sigue como margen de seguridad y su revision pertenece a una auditoria de la
+    capa 2, no a esta correccion.
+    """
     tracker = _ControllerConnectionTracker()
     monkeypatch.setattr(tipos_pagos_controller, "get_connection", tracker.acquire)
 
     result = call_controller()
 
     assert result == []
-    assert tracker.peak == 2
+    assert tracker.peak == 1
     assert tracker.active == 0

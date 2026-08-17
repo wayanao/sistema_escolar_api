@@ -40,7 +40,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 3 | Migraciones y tenants | Todos los tenants versionados, runner bloqueado y alta reproducible | **Cerrada**; reparó producción y verificó en uso | [03_MIGRACIONES_TENANTS.md](./03_MIGRACIONES_TENANTS.md) |
 | 4 | Reportes financieros | Dominio modular, N+1 eliminado y consultas medidas | **Cerrada**; N+1 de 5N a 15 constantes, medido en producción | [04_REPORTES_FINANCIEROS.md](./04_REPORTES_FINANCIEROS.md) |
 | 5 | Pagos y tipos de pago | Dominio financiero modularizado y protegido | **Cerrada**; SQL inline de 23 a 3, sin tocar la base | [05_PAGOS_TIPOS_PAGO.md](./05_PAGOS_TIPOS_PAGO.md) |
-| 6 | Asignaciones y estudiantes | Dominios grandes separados con contratos estables | **Activa**; 6.0 pendiente y no iniciada | [06_ASIGNACIONES_ESTUDIANTES.md](./06_ASIGNACIONES_ESTUDIANTES.md) |
+| 6 | Asignaciones y estudiantes | Dominios grandes separados con contratos estables | **Activa**; 6.0 cerrada, 6.1 pendiente | [06_ASIGNACIONES_ESTUDIANTES.md](./06_ASIGNACIONES_ESTUDIANTES.md) |
 | 7 | Resto de dominios | Migración individual con contratos y pruebas | En espera | Una bitácora por dominio al activarlo |
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
@@ -454,8 +454,39 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   **sin rotar**. Pendientes también, y fuera de la capa 6 salvo orden explícita:
   la clave de idempotencia de `POST /pagos` (paso 2), los status codes 500 de
   `tipos_pagos_controller` y la auditoría de capacidad de la capa 2.
-- Capa activa: **6, asignaciones y estudiantes**. Primera subcapa pendiente:
-  **6.0**, inventario, contratos y caracterización, **no iniciada**.
+- Resultado de 6.0: el dominio quedó inventariado en **19 entradas HTTP** —12 de
+  asignaciones y 7 de estudiantes— y **dos tablas escritas**, `asignaciones` y
+  `estudiantes`, protegido por **39 pruebas nuevas**. Línea base: un alta de
+  asignación cuesta **12 consultas, diez de ellas de validación**;
+  `asignacion_tiene_historial` cuesta hasta **14**, dos por cada una de sus siete
+  tablas. **No hay N+1** en ninguno de los dos dominios. La compuerta local
+  terminó con **708 pruebas**, Ruff y dependencias correctas. No se modificó
+  producto: el diff es un solo archivo nuevo.
+- **Los tres supuestos que la activación registró sin verificar quedaron
+  resueltos en 6.0.** El de los archivos está **refutado**: ni asignaciones ni
+  estudiantes usan `app/services/storage.py` —solo lo hacen branding y plan de
+  clases—, así que el rollback de esta capa vuelve a ser de código y filas. El
+  consumo de `cobros.calcular_deudas_estudiante` desde estudiantes está
+  **confirmado**, y las claves foráneas también: **7 apuntan a `asignaciones` y
+  9 a `estudiantes`**, inocuas porque ambos dominios desactivan con `UPDATE` y
+  **nunca borran**.
+- Diferencia estructural con la capa 5, registrada en 6.0: `pagos` era un dominio
+  terminal, pero **`asignaciones` es transversal**. Nueve módulos dependen de
+  `resolver_asignacion_academica_id_cursor`. Además los permisos **no son
+  uniformes**: dos de las doce entradas de asignaciones usan
+  `require_profesor_scope` y admiten a un profesor, no solo a un admin.
+- Hallazgos de 6.0, **registrados y sin corregir**: `obtener_clases_profesor_controller`
+  está definida **dos veces y ninguna tiene consumidor**, con SQL divergente
+  entre copias; hay **SQL de dominio inline en la capa de rutas**, en
+  `/mis-clases`; el alta y la edición de asignaciones **no toman ningún lock**,
+  así que dos peticiones simultáneas pueden crear clases solapadas;
+  `GET /estudiantes/{id}` devuelve `SELECT *`, de modo que su contrato es el
+  esquema entero de la tabla; y quedan dos rarezas de status code y varias
+  f-strings en SQL hoy no inyectables.
+- Capa activa: **6, asignaciones y estudiantes**. Subcapa **6.0 cerrada** el
+  2026-08-17. Primera subcapa pendiente: **6.1**, extraer la persistencia de
+  **estudiantes** —el dominio contenido antes que el transversal—, **definida y
+  no iniciada**.
 - Resultado de 3.5: el alta construye el schema desde la migración base en vez de
   copiar la plantilla. Un tenant nuevo nace con **37 claves foráneas y 30
   secuencias propias**, donde el camino anterior producía **0 y 0**. Ensayado

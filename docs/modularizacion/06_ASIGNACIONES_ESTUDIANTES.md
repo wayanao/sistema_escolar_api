@@ -12,9 +12,9 @@
   A diferencia de todas las activaciones anteriores salvo la de la capa 5, el
   commit base **ya está desplegado**: un push a `main` dispara el despliegue en
   este repositorio.
-- Primera subcapa pendiente: **6.0**, inventario, contratos y caracterización.
-  **No iniciada.**
-- Código de producto modificado al activar: **ninguno**.
+- Primera subcapa pendiente: **6.1**. La subcapa **6.0 quedó cerrada** el
+  2026-08-17.
+- Código de producto modificado al activar: **ninguno**. Tampoco en 6.0.
 - Autorización: orden explícita del usuario el 2026-08-17, coincidente con la
   autorización puntual que `PROMPT_CONTINUACION.md` conservaba para la capa 6 y
   cuya condición de caducidad se cumplía. El usuario decidió además, de forma
@@ -70,12 +70,15 @@ determinación es trabajo de 6.0.
 Estos dominios son mayores que los financieros y su perfil de riesgo cambia en
 un punto que ninguna capa anterior tuvo: **tocan archivos, no solo filas**.
 
-- **Un rollback de datos no deshace un archivo ya escrito.** Si el dominio de
-  estudiantes escribe o borra archivos a través de `app/services/storage.py`,
-  el rollback de una subcapa deja de ser puramente de código o de filas, y debe
-  documentarse antes de ejecutarla, no después. Registrado en
-  `PROMPT_CONTINUACION.md`; **no verificado en código**, porque la activación no
-  inspecciona. 6.0 debe comprobarlo.
+- ~~**Un rollback de datos no deshace un archivo ya escrito.**~~ **Refutado en
+  6.0.** La activación anticipó, desde `PROMPT_CONTINUACION.md` y marcándolo
+  como no verificado, que estos dominios escribirían archivos vía
+  `app/services/storage.py`. **No es cierto**: los únicos consumidores de
+  `storage` son `branding_controller.py` y `plan_de_clases_controller.py`.
+  Ni los controladores ni las rutas de asignaciones y estudiantes lo mencionan.
+  El rollback de esta capa vuelve a ser, como en la capa 5, de código y filas.
+  Queda fijado por prueba para que una subcapa futura no lo introduzca sin
+  advertirlo. **Esto no exime a la capa 7**: plan de clases sí escribe archivos.
 - **Las 26 claves foráneas repuestas en la capa 3** pueden hacer fallar
   inserciones y borrados que antes pasaban en silencio. Es más probable aquí que
   en pagos: asignaciones y estudiantes son precisamente las tablas que esas
@@ -147,27 +150,31 @@ un punto que ninguna capa anterior tuvo: **tocan archivos, no solo filas**.
 - Ninguna escritura de archivos cambia de momento, de nombre ni de destino sin
   una decisión explícita y un rollback documentado.
 
-## Línea base
-
-Pendiente: la establece 6.0. No se reprodujo durante la activación documental.
+## Línea base registrada en 6.0
 
 | Comprobación | Comando | Resultado |
 |---|---|---|
-| Pruebas específicas | Por determinar en 6.0 | Pendiente |
-| Suite global | `.\venv\Scripts\python.exe scripts\verify.py` | Pendiente; último registrado 669, exit 0 |
-| Ruff | Ejecutado por la compuerta global y sobre el alcance | Pendiente |
-| Dependencias | Ejecutado por la compuerta global | Pendiente |
+| Pruebas específicas | `.\venv\Scripts\python.exe -m pytest -q -p no:cacheprovider tests\test_asignaciones_estudiantes_caracterizacion.py tests\test_asignaciones_activo.py tests\test_asignaciones_controlador.py tests\test_asignaciones_pagination.py tests\test_estudiantes_controlador.py tests\test_estudiantes_pagination.py tests\test_profesores_controlador.py` | **67 pasaron** en 0,68 s |
+| Suite global | `.\venv\Scripts\python.exe scripts\verify.py` | **708 pasaron**, 5 warnings heredadas, exit 0 |
+| Ruff | Ejecutado por la compuerta global y sobre la prueba nueva | **Correcto** |
+| Dependencias | Ejecutado por la compuerta global | **Íntegras** |
+
+La compuerta heredada se reprodujo antes de tocar nada: **669 pruebas, exit 0**,
+coincidiendo con lo registrado tras las correcciones puntuales de la capa 5. La
+suite pasó de **669 a 708** con la caracterización de 6.0.
 
 ## Subcapas
 
 | Subcapa | Resultado | Estado |
 |---:|---|---|
-| 6.0 | Inventario, contratos, caracterización y línea base de consultas, escrituras y archivos | **Pendiente, no iniciada** |
-| 6.1 en adelante | **Sin decidir.** El desglose se define con la evidencia de 6.0, no antes | Sin definir |
+| 6.0 | Inventario, contratos, caracterización y línea base de consultas y escrituras | **Cerrada** |
+| 6.1 | Extraer la persistencia de **estudiantes** sin cambiar SQL, conteos ni transacción | **Pendiente, no iniciada** |
+| 6.2 en adelante | **Sin decidir.** El dominio de asignaciones se desglosa con la evidencia que deje 6.1 | Sin definir |
 
-El desglose posterior a 6.0 se deja explícitamente sin decidir, igual que en la
-capa 5, para no inventar detalles de implementación antes de inspeccionar el
-código. Las subcapas innecesarias se marcarán `No aplica` con explicación.
+6.1 quedó definida desde lo que 6.0 midió, y toma **estudiantes primero** por la
+razón registrada en Decisiones. El desglose de asignaciones se deja sin decidir
+para no inventar detalles antes de tiempo. Las subcapas innecesarias se marcarán
+`No aplica` con explicación.
 
 Nunca se ejecutan dos subcapas en el mismo turno.
 
@@ -200,6 +207,129 @@ Nunca se ejecutan dos subcapas en el mismo turno.
 10. Actualizar esta bitácora, definir 6.1 con la evidencia obtenida y detenerse
     sin iniciarla.
 
+## Inventario y contratos fijados en 6.0
+
+La frontera son **19 entradas HTTP**: **12 de asignaciones** y **7 de
+estudiantes**. Ninguna declara `response_model` ni `status_code` explícito.
+
+**El modelo de permisos NO es uniforme, a diferencia de pagos.** El router de
+estudiantes exige `get_current_active_admin` a nivel de router, igual que pagos.
+El de asignaciones **no tiene dependencia de router**: cada entrada declara la
+suya, y **dos de las doce** usan `get_current_user` con
+`require_profesor_scope`. Ahí sí hay ownership real: un profesor solo puede
+consultar lo suyo y recibe 403 si pide lo de otro; un admin pasa siempre.
+
+| Entrada | Permiso | Contrato observable que debe conservarse |
+|---|---|---|
+| `GET /asignaciones/lista` | admin | Lista heredada sin `limit`; con `limit`, `{total,limit,offset,items}`. Filtros por profesor, curso, materia y búsqueda |
+| `POST /asignaciones` | admin | `{mensaje, id}`; duplicada **409**, regla de negocio **400** |
+| `PUT /asignaciones/{id}` | admin | `{mensaje}`; duplicada **409**, regla **400** |
+| `DELETE /asignaciones/{id}` | admin | `{mensaje}`; inexistente **404**. **Desactiva, no borra** |
+| `DELETE /asignaciones/{profesor_id}/{curso_id}` | admin | `{mensaje}` siempre 200, incluso si no encuentra nada |
+| `GET /hora/horarios-admin` | admin | Lista ordenada por día de la semana y hora |
+| `GET /profesores/{id}/disponibilidad` | admin | `{profesor_id, dia, jornadas}` con rangos libres calculados |
+| `GET /profesores/{id}/cursos` | **profesor propio o admin** | Lista `{curso_id, nombre}` |
+| `GET /cursos/{id}/profesores` | admin | Lista `{profesor_id, nombre, apellido}` |
+| `GET /cursos/{id}/orden-boletin` | admin | `{curso_id, items}` agrupado por materia |
+| `PUT /cursos/{id}/orden-boletin` | admin | `{mensaje, curso_id, items}`; **reemplaza** el orden completo. Regla **400** |
+| `GET /mis-clases/{profesor_id}` | **profesor propio o admin** | Lista con `id`, `horario_id`, materia, curso, jornada y horario. **SQL inline en la ruta** |
+| `POST /estudiantes` | admin | `{mensaje, id}`. La ruta reescribe el mensaje del controlador |
+| `GET /estudiantes` | admin | Lista heredada sin `limit`; con `limit`, paginado. Filtro `estado`, **422** si es inválido |
+| `GET /estudiantes/{id}` | admin | **Todas las columnas de la tabla** (`SELECT *`); inexistente devuelve `null` con 200 |
+| `GET /estudiantes/{id}/detalles` | admin | `{notas, promedio_general, inasistencias, observaciones, deudas, total_deuda, productos_inventario}` y `errores` por sección fallida |
+| `GET /estudiantes/{id}/deudas` | admin | `{estudiante_id, curso_id, deudas, total_deuda}`; **404** si `ValueError` |
+| `PUT /estudiantes/{id}` | admin | `{mensaje, id}`; inexistente devuelve `{mensaje}` sin `id` y **200** |
+| `PATCH /estudiantes/{id}/estado` | admin | `{mensaje, id, estado}`; inexistente **404** |
+
+- Tenant por `search_path` desde el JWT, igual que en las capas anteriores.
+- El orden de declaración importa en estudiantes: `/estudiantes/{id}/detalles` y
+  `/estudiantes/{id}/deudas` se declaran **antes** que `/estudiantes/{id}`.
+- Estados de estudiante: `activo`, `retirado`, `egresado`, `inactivo`, más
+  `todos` solo como filtro de listado.
+
+### Tablas escritas y propiedad transaccional
+
+**Solo dos tablas reciben escritura**: `asignaciones` y `estudiantes`. Es un
+dominio mucho más contenido de lo que su tamaño en líneas sugiere.
+
+- **Ninguna de las dos se borra nunca.** Desactivar una asignación es
+  `SET activo = FALSE`; retirar a un estudiante es `SET estado = ...`. No existe
+  un solo `DELETE FROM` en ninguno de los dos controladores, y una prueba
+  estructural lo fija.
+- Conviven tres estilos de ciclo de vida: `get_cursor()`,
+  `get_cursor(commit=True)` y `get_connection()` con `try/finally` manual. Los
+  caminos de escritura complejos usan el tercero y son dueños de `commit` y
+  `rollback`.
+- Como en pagos, varios caminos salen con `return {"error": ...}` **sin
+  `rollback` explícito**: confían en que la devolución al pool revierta.
+
+### Claves foráneas que la capa 3 repuso sobre estos dominios
+
+**7 apuntan a `asignaciones`** —una es la autorreferencia
+`asignacion_academica_id`, y las otras seis son `asistencia`,
+`boletin_cabecera`, `notas`, `notas_detalle`, `plan_de_clases` y
+`planeador_anual`, todas con `ON DELETE CASCADE` salvo `plan_de_clases`—.
+**9 apuntan a `estudiantes`**: `asistencia`, `boletin_cabecera`, `matriculas`,
+`notas`, `notas_detalle`, `pagos`, `pagos_aplicaciones`,
+`tipos_pagos_estudiantes` y `ventas`.
+
+Que ambos dominios desactiven en vez de borrar es exactamente lo que hace
+inocuas esas 16 claves. Un `DELETE` introducido por una extracción borraría en
+cascada notas y boletines, o fallaría contra la clave.
+
+### Dependencia con los contratos de la capa 4, verificada
+
+`estudiante_controller` **importa y usa `cobros.calcular_deudas_estudiante`** en
+dos sitios: `obtener_deudas_estudiante_controller` y la sección de deudas de
+`obtener_detalles_estudiante_controller`. El supuesto que la activación registró
+sin verificar queda **confirmado**. Los dos caminos reciben el cursor abierto por
+estudiantes, así que una extracción que cambie la propiedad del cursor afecta al
+cálculo financiero que la capa 4 fijó.
+
+### Asignaciones es una dependencia transversal de todo el sistema académico
+
+Es la diferencia más importante con la capa 5. `pagos` era un dominio terminal;
+`asignaciones` no. `app/services/asignacion_academica.py` expone
+`resolver_asignacion_academica_id_cursor` y lo consumen **nueve módulos**:
+`boletin_controller`, `dashboard_controller`, `asistencia_controller`,
+`notas_controller`, `observacion_controller`, `planilla_controller`,
+`planilla_excel_controller`, `planeador_anual_controller` y
+`plan_de_clases_repository`, además de `routes/observaciones.py`. Cambiar el
+concepto de «asignación académica» afecta a todos.
+
+## Línea base de consultas y escrituras
+
+Medida herméticamente con dobles de cursor y conexión, y **fijada por pruebas**,
+no escrita a mano. Los conteos excluyen autenticación, `search_path` y la
+sentencia de timeouts de cada checkout.
+
+| Camino | Consultas | de ellas escrituras |
+|---|---:|---:|
+| `POST /asignaciones`, con horario, primera del grupo | **12** | 2 |
+| `POST /asignaciones`, heredando asignación académica | 11 | 1 |
+| `POST /asignaciones`, sin horario | 8 | 2 |
+| `PUT /asignaciones/{id}`, solo cambia el horario | 10 | 1 |
+| `PUT /asignaciones/{id}`, bloqueado por historial | 6 | 0 |
+| `PUT /cursos/{id}/orden-boletin`, dos materias | 6 | 3 |
+| `GET /cursos/{id}/orden-boletin` | 1 | 0 |
+| `GET /estudiantes` con `limit` | 2 | 0 |
+| `GET /estudiantes/{id}/detalles` | 4 propias + las de cobros | 0 |
+| `asignacion_tiene_historial`, ninguna tabla con la columna | 7 | 0 |
+| `asignacion_tiene_historial`, todas con la columna | hasta **14** | 0 |
+
+Lectura del resultado, sin optimizar todavía:
+
+- **No hay N+1 por estudiante** en ninguno de los dos dominios, igual que en
+  pagos. El coste está en la profundidad por petición.
+- Sí hay dos costes **proporcionales a otra cosa**: el orden del boletín crece
+  con el número de materias reordenadas —un `UPDATE` por materia—, y
+  `asignacion_tiene_historial` cuesta **dos consultas por cada una de sus siete
+  tablas**, una para preguntar si existe la columna y otra para buscar filas.
+- Un alta de asignación gasta **diez de sus doce consultas en validar**: tres
+  estados activos, dos unicidades, la asignación académica, el orden, la jornada
+  del curso y los dos cruces de horario. Es el mismo perfil que el pago simple
+  de la capa 5.
+
 ## Criterios de cierre de la subcapa 6.0
 
 - Los dos dominios y sus consumidores están inventariados con archivos y puntos
@@ -216,6 +346,103 @@ Nunca se ejecutan dos subcapas en el mismo turno.
 - Pruebas específicas, Ruff, compuerta global y `git diff --check` terminan
   correctamente, y el diff es exclusivo de 6.0.
 - La subcapa 6.1 queda definida y no iniciada.
+
+Los siete criterios se cumplieron. El diff de 6.0 contiene **un solo archivo
+nuevo** y **ningún archivo rastreado modificado**, igual que el de 5.0.
+
+## Hallazgos de 6.0, registrados y sin corregir
+
+Ninguno se corrige por inferencia: son hallazgos del inventario, no defectos de
+la subcapa. Corregir cualquiera exige una decisión explícita del usuario.
+
+- **Código muerto duplicado, y las dos copias divergen.**
+  `obtener_clases_profesor_controller` está definida **dos veces**, en
+  `asignacion_controller.py` y en `profesor_controller.py`, y **ninguna tiene
+  consumidor de producción**: una guardia estructural recorre el AST de todo
+  `app/` y no encuentra una sola llamada. La ruta `/mis-clases/{profesor_id}`,
+  que sería su consumidora natural, lleva su propio SQL inline. Además **no son
+  la misma función**: la de `profesor_controller` no filtra por `activo` ni por
+  el estado del curso o la materia, y devuelve la clave `asignacion_id` donde la
+  otra devuelve `id`. Las dos tienen pruebas propias que las mantienen vivas.
+  Retirarlas exige decisión explícita; la guardia queda para que falle si
+  alguien las conecta sin darse cuenta.
+- **Hay SQL de dominio en la capa de rutas.** `GET /mis-clases/{profesor_id}`
+  ejecuta en `app/routes/asignaciones.py` un `SELECT` de cuarenta líneas con
+  tres `JOIN`, un `LEFT JOIN` reflexivo sobre `asignaciones` y el mismo `CASE`
+  de ordenación por día que usa el controlador. Ningún dominio migrado antes
+  tenía SQL fuera de controlador o repositorio. Qué hacer con él es decisión de
+  una subcapa posterior; 6.0 solo lo fija con una prueba.
+- **El alta y la edición de asignaciones no toman ningún lock.** La validación
+  de cruce de horarios lee, decide y escribe sin `pg_advisory_xact_lock`, sin
+  `FOR UPDATE` y bajo el `READ COMMITTED` por defecto. Dos peticiones
+  simultáneas pueden validar contra el mismo estado y crear **dos clases
+  solapadas** para el mismo profesor o el mismo salón. La restricción `UNIQUE`
+  que existe en la base —cuyo `UNIQUE_VIOLATION` el controlador traduce a 409—
+  solo cubre el duplicado exacto, **no el solapamiento**. Es el mismo patrón que
+  el hueco de idempotencia que la capa 5 encontró en `POST /pagos`, y aquí no se
+  ha corregido ni a medias.
+- **`asignacion_tiene_historial` cuesta hasta catorce consultas** para responder
+  sí o no: por cada una de sus siete tablas pregunta primero a
+  `information_schema.columns` si existe la columna y después busca una fila.
+  Ninguna de las dos se cachea entre tablas ni entre peticiones.
+- **`GET /estudiantes/{id}` devuelve `SELECT *`.** El contrato observable de esa
+  entrada es **el esquema entero de la tabla**: añadir una columna cambia la
+  respuesta de la API sin tocar el código, y quitarla la rompe. Es el único
+  endpoint de los diecinueve cuyo payload no está enumerado en el código.
+- **Dos rarezas de status code**, conservadas: `PUT /estudiantes/{id}` sobre un
+  estudiante inexistente responde **200** con `{"mensaje": "Estudiante no
+  encontrado"}` y sin `id`, mientras que `PATCH .../estado` sobre el mismo
+  estudiante responde **404**. Y `DELETE /asignaciones/{profesor_id}/{curso_id}`
+  responde **200** aunque no encuentre nada, mientras que
+  `DELETE /asignaciones/{id}` responde 404.
+- **`POST /estudiantes` descarta el mensaje del controlador.** El controlador
+  devuelve `{"mensaje": "Estudiante creado correctamente", "id": ...}` y la ruta
+  construye su propia respuesta con `{"mensaje": "Estudiante creado", "id": ...}`.
+  El cliente ve el segundo; el primero solo lo ven las pruebas.
+- **`verificar_cruce_horario` y `verificar_cruce_horario_editar` son casi
+  idénticas**: la segunda solo añade `AND id != %s`. Es el mismo caso de dos
+  literales gemelos que la capa 5 resolvió con autorización explícita, y no se
+  toca sin ella.
+- **f-strings en SQL, hoy no inyectables.** `verificar_cruce_horario` interpola
+  `campo_id`, validado antes contra un conjunto de dos valores;
+  `asignacion_tiene_historial` interpola el nombre de tabla desde una lista fija;
+  y los listados de estudiantes y asignaciones interpolan el `WHERE` construido
+  a partir de literales del propio código, con los valores siempre
+  parametrizados. Queda anotado como guarda: ninguna extracción futura debe
+  abrir esas listas a entrada del cliente.
+- **La comparación de horas es textual.** Los cruces comparan cadenas `HH:MM`
+  con `<` y `>`, lo que funciona solo mientras el formato sea de 24 horas con
+  cero a la izquierda. `normalizar_hora` lo garantiza cortando a cinco
+  caracteres, pero un valor guardado como `7:00` rompería la comparación sin
+  lanzar ningún error.
+
+## Subcapa 6.1 — trabajo exacto, definido y NO iniciado
+
+Extraer la persistencia de **estudiantes**, y solo de estudiantes, siguiendo el
+patrón que la capa 5 dejó probado.
+
+1. Revalidar Git y limitar la inspección a `estudiante_controller.py`, sus rutas
+   y sus pruebas. **No inspeccionar asignaciones**: son de 6.2 en adelante.
+2. Conservar la caracterización de 6.0 y ampliarla solo si una extracción
+   concreta lo exige, antes de mover producto.
+3. Extraer las sentencias SQL de `estudiantes` a
+   `app/repositories/estudiantes_repository.py`, con funciones que **reciben el
+   cursor existente** y no abren, cierran, confirman ni revierten recursos, igual
+   que `pagos_repository`.
+4. Conservar byte por byte las cadenas SQL, sus parámetros y su orden. Si
+   aparecen dos literales idénticos salvo la sangría, **no unificarlos sin
+   autorización explícita**: es una decisión del usuario, no del asistente.
+5. Decidir **con evidencia** qué hacer con las dos consultas que hoy construyen
+   su `WHERE` con f-string, y con el `SELECT *` de `obtener_estudiante_por_id`:
+   moverlos tal cual es lo esperado, cambiarlos no está autorizado.
+6. No tocar asignaciones, `cobros.py`, pagos, reportes, cartera, cuentas,
+   timeouts ni la base de datos. **No corregir ninguno de los diez hallazgos de
+   6.0**, ni las dos rarezas de status code, ni el mensaje que la ruta reescribe.
+7. Verificar que los conteos de 6.0 no cambian y que los de la capa 4 siguen
+   intactos, con el comparador AST contra el commit base de la capa exigiendo
+   conjunto de SQL idéntico.
+8. Ejecutar pruebas específicas, Ruff del alcance, compuerta global y
+   `git diff --check`; documentar y detenerse antes de 6.2.
 
 ## Criterios de cierre de la capa
 
@@ -251,8 +478,26 @@ Nunca se ejecutan dos subcapas en el mismo turno.
 - El commit base **está publicado y desplegado**, no solo local. Es por tanto un
   punto de rollback real, pero revertir a él exigiría otro push y otro
   despliegue, no una operación local.
-- El desglose de subcapas posteriores a 6.0 se deja explícitamente sin decidir
-  para no inventar detalles de implementación antes de inspeccionar el código.
+- El desglose de subcapas posteriores a 6.0 se dejó sin decidir hasta tener la
+  evidencia del inventario. Con ella, 6.1 queda definida y el resto sigue
+  abierto.
+- **6.1 toma estudiantes primero, decidido en 6.0 con evidencia.** Los dos
+  dominios no son comparables en riesgo: estudiantes escribe una sola tabla desde
+  un controlador de 519 líneas y su única dependencia externa es
+  `calcular_deudas_estudiante`; asignaciones escribe una tabla de la que
+  **dependen nueve módulos** a través de `resolver_asignacion_academica_id_cursor`
+  y concentra las reglas de horario, jornada, cruce e historial. Empezar por
+  estudiantes valida el patrón de extracción sobre el dominio contenido antes de
+  tocar el transversal. Alternativa descartada: empezar por asignaciones porque
+  es «el dominio principal», que habría puesto el mayor riesgo en la primera
+  extracción y contra la instrucción del índice de evitar una extracción masiva.
+- **No se retiró el código muerto en 6.0**, aunque esté demostrado que no tiene
+  consumidores. 6.0 es inventario y caracterización, y su diff debe ser un solo
+  archivo nuevo. Retirar las dos copias de `obtener_clases_profesor_controller`
+  toca dos módulos de producto y dos archivos de prueba, y exige una decisión
+  explícita del usuario.
+- **La caracterización se escribió con dobles, sin tocar PostgreSQL.** 6.0 no
+  abrió una sola conexión a la base, igual que toda la capa 5.
 
 ## Riesgos
 
@@ -345,23 +590,92 @@ Nunca se ejecutan dos subcapas en el mismo turno.
 - Estado al cerrar el turno de activación: capa 6 **activa**; 6.0 **pendiente y
   no iniciada**.
 - Siguiente acción exacta: ejecutar únicamente 6.0 conforme al trabajo exacto de
-  arriba y detenerse antes de 6.1.
+  arriba y detenerse antes de 6.1. *(Ejecutada en el turno siguiente; ver el
+  cierre de 6.0 más abajo.)*
+
+### 2026-08-17 — cierre de 6.0
+
+- Modo de acceso: mismo checkout local en
+  `C:\Users\David\Documents\sistema_escolar_api`; Git validado directamente y no
+  se usó GitHub para inferir el estado local.
+- Precondición Git: rama `main`, **árbol limpio**, `HEAD`
+  `2881b033b3d11f639117c84837a02e98060da079`. Entre la activación y este turno
+  el usuario **commiteó** el trabajo documental: ese commit es exactamente la
+  activación, cuatro archivos de `docs/modularizacion/`, y está explicado en
+  esta bitácora. El commit base `589cb6d` existe y es ancestro; `origin/main`
+  sigue en el base, así que hay **un commit local por delante, sin publicar**.
+- Compuerta heredada reproducida antes de tocar nada: **669 pruebas, exit 0**,
+  Ruff correcto y `pip check` íntegro. Coincide con lo registrado tras las
+  correcciones puntuales de la capa 5.
+- Inventario dirigido: `app/routes/asignaciones.py`, `app/routes/estudiantes.py`,
+  `app/controllers/asignacion_controller.py`,
+  `app/controllers/estudiante_controller.py`, `app/schemas/asignacion.py`,
+  `app/services/asignacion_academica.py` y, solo para resolver la duplicación
+  detectada, el fragmento de `app/controllers/profesor_controller.py` que define
+  la función homónima. No se leyó historia global ni código de la capa 7.
+- **Los tres supuestos que la activación registró sin verificar quedaron
+  resueltos**: el de `storage` **refutado**, el de `calcular_deudas_estudiante`
+  **confirmado** y el de las claves foráneas **confirmado y cuantificado** en 7
+  hacia `asignaciones` y 9 hacia `estudiantes`.
+- Caracterización añadida: `tests/test_asignaciones_estudiantes_caracterizacion.py`,
+  **39 casos** sobre las 19 entradas, el historial académico, los conteos de
+  consultas, el ciclo de vida transaccional y cuatro guardias estructurales.
+  Código de producto y configuración modificados: **ninguno**.
+- Las 39 pruebas se escribieron contra el código actual y **dos fallaron en su
+  primera ejecución por un error del modelo de prueba, no del producto**: la
+  secuencia de respuestas del doble no reflejaba que `validar_horario_unico`
+  sale sin consultar cuando no hay horario, ni que la jornada del curso se valida
+  después del rango institucional. Se corrigieron las pruebas, no el producto, y
+  quedó fijado el conteo real de 8 consultas para el alta sin horario.
+- Pruebas específicas: **67 pasaron** en 0,68 s sobre los siete archivos del
+  dominio. La prueba nueva aislada: 39 pasaron en 0,35 s. Ruff del archivo
+  nuevo: **correcto**.
+- Compuerta global final: `.\venv\Scripts\python.exe scripts\verify.py`;
+  **708 pruebas pasaron** en 2,33 s, 5 warnings heredadas, Ruff correcto,
+  `pip check` sin dependencias rotas, exit 0. La suite pasó de 669 a 708.
+- Medición: hermética, con dobles de cursor y conexión. Los conteos de once
+  caminos quedan **fijados por aserciones**, no anotados en prosa. Los caminos
+  que dependen de `cobros` se cuentan solo por sus consultas propias.
+- Diff final: `git diff --check` en exit 0 y sin trailing whitespace en el
+  archivo nuevo. El alcance es **un solo archivo nuevo** y **ningún archivo
+  rastreado modificado**: no se tocó producto, rutas, payloads, status codes,
+  permisos, tenant, ownership, SQL, transacciones, configuración ni
+  dependencias.
+- PostgreSQL, migraciones, producción, commit, push y deploy: **ninguno**. La
+  evidencia de GitHub Actions posterior a la capa 0 continúa pendiente y no se
+  atribuye CI remota.
+- Estado: 6.0 **cerrada**; 6.1 **pendiente y no iniciada**.
+- Siguiente acción exacta: ejecutar únicamente 6.1, extracción de la persistencia
+  de estudiantes, y detenerse antes de 6.2.
 
 ## Entrega al próximo chat
 
 - Capa activa: **6, asignaciones y estudiantes**.
-- Última subcapa terminada: **ninguna**. La capa acaba de activarse.
-- Primera subcapa pendiente: **6.0**, inventario, contratos y caracterización.
-- Commit base: `589cb6d1391161c692a6f24aee9d523317cbb1ce`, rama `main`, árbol
-  limpio y **ya publicado y desplegado**.
+- Última subcapa terminada: **6.0**, cerrada el 2026-08-17.
+- Primera subcapa pendiente: **6.1**, extraer la persistencia de estudiantes.
+  Su trabajo exacto está definido arriba y **no se ha iniciado**.
+- Commit base: `589cb6d1391161c692a6f24aee9d523317cbb1ce`, rama `main`,
+  **publicado y desplegado**. Al cerrar 6.0, `HEAD` es `2881b03` —la activación,
+  commiteada por el usuario y sin publicar— más el archivo de pruebas nuevo sin
+  commitear.
+- Lo que 6.0 dejó medido: **19 entradas HTTP** —12 de asignaciones y 7 de
+  estudiantes—, **dos tablas escritas** y ninguna borrada, **39 pruebas de
+  caracterización** nuevas y los conteos de once caminos. Un alta de asignación
+  cuesta **12 consultas, diez de ellas de validación**; `asignacion_tiene_historial`
+  cuesta hasta **14**. **No hay N+1** en ninguno de los dos dominios.
 - Bloqueos: ninguno. Verificaciones heredadas pendientes y aceptadas: valor
   operativo final de `DB_STATEMENT_TIMEOUT_MS` (capa 1) y evidencia de GitHub
   Actions posterior a la capa 0. La credencial privilegiada de la capa 4 sigue
   sin rotar.
-- Lo que esta capa debe recordar antes de tocar nada: **toca archivos, no solo
-  filas**. Un rollback de datos no deshace un archivo ya escrito. Además, estos
-  dominios los consumen roles distintos de `admin`, las claves foráneas de la
-  capa 3 los relacionan directamente, y los contratos financieros de la capa 4
-  dependen de código que consumen.
-- Siguiente acción exacta: ejecutar únicamente 6.0 y detenerse antes de 6.1. No
+- Lo que esta capa debe recordar antes de tocar nada, **corregido por 6.0**:
+  1. **No toca archivos.** El supuesto de `storage` era falso y quedó refutado
+     con prueba. El rollback vuelve a ser de código y filas.
+  2. **Asignaciones es transversal**: nueve módulos dependen de
+     `resolver_asignacion_academica_id_cursor`. Por eso 6.1 empieza por
+     estudiantes.
+  3. **Los permisos no son uniformes**: dos entradas de asignaciones usan
+     `require_profesor_scope` y admiten a un profesor, no solo a un admin.
+  4. **Nada se borra**: los dos dominios desactivan con `UPDATE`, y eso es lo
+     que hace inocuas las 16 claves foráneas que apuntan a sus tablas.
+- Siguiente acción exacta: ejecutar únicamente 6.1 y detenerse antes de 6.2. No
   iniciar dos subcapas en el mismo turno.

@@ -1037,6 +1037,10 @@ checkout local y producción sigue corriendo `f4d0913`. Publicar es decisión y
 responsabilidad del usuario, y en este repositorio un push a `main` dispara el
 despliegue.
 
+> **Corrección del 2026-08-17.** El párrafo anterior describía el 2026-08-16 y
+> se conserva por eso. **Ya no es el estado vigente**: la capa se publicó el
+> 2026-08-17. Ver «publicación verificada» al final de este registro.
+
 #### Riesgos que la capa deja abiertos
 
 - **`POST /pagos` no tiene clave de idempotencia.** Es el riesgo financiero más
@@ -1192,6 +1196,31 @@ advertencia en su docstring. Queda anotado como **trabajo pendiente para una
 auditoría de la capa 2**: la constante conserva su valor como margen, pero ya no
 tiene ejemplo que la respalde.
 
+### 2026-08-17 — publicación verificada y registro del commit documental
+
+Entrada añadida el 2026-08-17 con autorización explícita del usuario, al detectar
+que esta bitácora y el índice seguían afirmando que la capa no se había
+publicado. **La capa 5 sigue cerrada**; esto no la reabre ni añade una subcapa.
+
+- **La capa 5 está publicada.** El reflog de `origin/main` registra
+  `update by push` de `544bd5c` y después de `589cb6d`, y `HEAD` coincide con esa
+  referencia. El push cubre los cinco commits de la capa y las tres correcciones
+  puntuales posteriores al cierre.
+- **Consecuencia operativa**: en este repositorio un push a `main` dispara el
+  despliegue, así que producción **ya no corre `f4d0913`**. El punto de rollback
+  de la capa deja de ser una operación puramente local. Sigue siendo de código
+  —no hay nada que deshacer en datos ni en esquema—, pero revertirlo exigiría
+  otro push y otro despliegue.
+- **No se atribuye ningún run de GitHub Actions.** Que exista push no es
+  evidencia del run; esa verificación sigue **pendiente** desde la capa 0.
+- **Commit `589cb6d` registrado.** Era el único de los diez posteriores al base
+  sin entrada en esta bitácora. Es documental: modifica exclusivamente
+  `docs/modularizacion/PROMPT_CONTINUACION.md`, +21/−5, para poner al día el
+  resumen de estado y dejar preparada la autorización de activación de la capa 6.
+  No toca producto, pruebas, configuración ni base de datos.
+- Verificado con `git reflog show origin/main`, `git rev-parse HEAD`,
+  `git merge-base --is-ancestor` y `git show --stat 589cb6d`.
+
 ### Paso 2 acordado y no iniciado: clave de idempotencia
 
 Es el único arreglo que cierra también el duplicado parcial separado en el
@@ -1212,8 +1241,11 @@ Forma prevista, a confirmar cuando se aborde:
 4. Toca tres piezas: migración, backend y el repositorio `frontend-react`. Por
    eso es varias veces mayor que el candado y merece su propio alcance acordado.
 
-- Capa activa: **ninguna**. La capa 5 quedó **cerrada** el 2026-08-16 y la capa
-  6 sigue en espera, sin activar.
+- Capa activa: **6, asignaciones y estudiantes**, activada el 2026-08-17 por
+  orden explícita del usuario. La capa 5 quedó **cerrada** el 2026-08-16 y esta
+  bitácora deja de ser la fuente de continuidad: lo es
+  `06_ASIGNACIONES_ESTUDIANTES.md`. Los siete hallazgos sin corregir y el paso 2
+  de idempotencia siguen vivos aquí y **no entran en la capa 6 por inferencia**.
 - Última subcapa terminada: **5.3**. Primera subcapa pendiente: **ninguna**.
 - Verificación manual: **hecha por el usuario y correcta**, en local contra el
   árbol de trabajo. Sin push ni despliegue al cerrar.
@@ -1236,10 +1268,12 @@ Forma prevista, a confirmar cuando se aborde:
   una indirección vacía. Heredados: calibración de `DB_STATEMENT_TIMEOUT_MS`,
   evidencia de GitHub Actions desde la capa 0 y credencial privilegiada sin
   rotar.
-- Siguiente acción exacta: esperar una orden explícita del usuario. La capa 6,
-  asignaciones y estudiantes, sigue **en espera** y no se activa sin ella.
-- Pendiente operativo del usuario: **publicar la capa**. Al cerrarla no había
-  push, y en este repositorio un push a `main` dispara el despliegue.
+- Siguiente acción exacta: continuar en `06_ASIGNACIONES_ESTUDIANTES.md`, cuya
+  primera subcapa pendiente es 6.0. Nada de esta bitácora se retoma sin una orden
+  explícita propia.
+- Pendiente operativo del usuario: **resuelto**. La capa se publicó el
+  2026-08-17; el reflog de `origin/main` lo registra. Como un push a `main`
+  dispara el despliegue, producción ya corre este código.
 - Lo que 5.0 dejó medido: 19 entradas HTTP, seis tablas escritas, 40 pruebas de
   caracterización y los conteos de once caminos. Un pago simple cuesta **12
   consultas, once de ellas lecturas de validación**; un cargo de inventario
@@ -1255,5 +1289,6 @@ Forma prevista, a confirmar cuando se aborde:
 - Lo que esta capa debe recordar antes de tocar nada: **escribe donde las
   anteriores solo leían**. Claves foráneas repuestas en la capa 3, contratos de
   lectura de `pagos` fijados en la capa 4, y `pagos.concepto_id` inexistente.
-- Siguiente acción exacta: esperar una orden explícita. Una instrucción genérica
-  de continuar no autoriza activar la capa 6.
+- Siguiente acción exacta: la capa 6 quedó activada el 2026-08-17 con su propia
+  bitácora; el trabajo continúa allí, en 6.0. Esta bitácora solo se retoma si el
+  usuario ordena expresamente abordar uno de sus hallazgos abiertos.

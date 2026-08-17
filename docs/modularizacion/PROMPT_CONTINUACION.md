@@ -125,27 +125,38 @@ Si dos asistentes indican capas diferentes, prevalece el estado guardado en
 ## Cómo se usan las autorizaciones puntuales
 
 Este archivo llegó a contener autorizaciones de uso inmediato para activar las
-capas 3, 4 y 5. Se consumieron el 2026-08-13, el 2026-08-14 y el 2026-08-15,
-respectivamente, y se retiraron. La lección no fue «no guardar autorizaciones»,
-sino que **una autorización guardada debe llevar su propia condición de
-caducidad**: si el estado documental ya cambió, no debe aplicarse.
+capas 3, 4, 5 y 6. Se consumieron el 2026-08-13, el 2026-08-14, el 2026-08-15 y
+el 2026-08-17, respectivamente, y se retiraron. **No queda ninguna vigente.** La
+lección no fue «no guardar autorizaciones», sino que **una autorización guardada
+debe llevar su propia condición de caducidad**: si el estado documental ya
+cambió, no debe aplicarse.
 
 La de la capa 5 funcionó como estaba previsto: su condición era «válida solo
 mientras el índice siga indicando que no existe una capa activa y que la capa 5
 está en espera», se comprobó que se cumplía y el usuario la confirmó además de
 forma explícita en el turno.
 
-Al final de este archivo hay una preparada para la **capa 6**, con la misma
-condición de caducidad. **No se dispara sola**: es un texto que el usuario decide
-pegar. Si no la pega, la capa 6 sigue en espera.
+La de la capa 6 funcionó igual el 2026-08-17: la condición se cumplía y el
+usuario ordenó activarla de forma explícita. Se comprobó además, antes de
+aplicarla, que uno de sus supuestos había quedado desfasado —el índice seguía
+declarando la capa 5 sin publicar cuando el reflog ya registraba el push—, y esa
+corrección documental se pidió y se autorizó por separado.
 
-## Estado del programa al 2026-08-17 (capa 5 cerrada y publicada)
+## Estado del programa al 2026-08-17 (capa 6 activa, 6.0 sin iniciar)
 
 Lo que sigue es un resumen para orientarse; **el estado vivo está en
 `docs/modularizacion/README.md`**, que es lo que manda si algo no coincide.
 
-- Capas 0, 1, 2, 3, 4 y 5 **cerradas**. **No hay capa activa.**
-- Siguiente capa: **6, asignaciones y estudiantes, en espera**.
+- Capas 0, 1, 2, 3, 4 y 5 **cerradas**.
+- **Capa activa: 6, asignaciones y estudiantes**, activada el 2026-08-17 con
+  commit base `589cb6d1391161c692a6f24aee9d523317cbb1ce`. Su bitácora es
+  `06_ASIGNACIONES_ESTUDIANTES.md` y su primera subcapa pendiente es **6.0**,
+  inventario, contratos y caracterización, **no iniciada**. La activación fue
+  únicamente documental: no se inspeccionó código de esos dominios.
+- Lo nuevo de la capa 6 frente a todas las anteriores: **toca archivos, no solo
+  filas**. Un rollback de datos no deshace un archivo ya escrito, así que el
+  rollback de cada subcapa que toque `storage` debe documentarse antes de
+  ejecutarla.
 - La capa 5 cerró el 2026-08-16 modularizando pagos y tipos de pago:
   `pagos_controller.py` pasó de **717 a 633 líneas** y de **23 sentencias SQL
   inline a 3**; la persistencia vive en `app/repositories/pagos_repository.py`
@@ -302,70 +313,15 @@ de esto entra en ella por inferencia: requiere una orden explícita.
   evidencia de GitHub Actions desde la capa 0, y la credencial privilegiada de la
   capa 4 **sin rotar**.
 
-## Autorización de uso inmediato: activar la capa 6
+## Autorizaciones de uso inmediato
 
-Válida **solo mientras el índice maestro siga indicando que no existe una capa
-activa y que la capa 6 está en espera**. Si el estado ya cambió, no la
-reutilices: vuelve a determinarlo desde el índice.
+**No hay ninguna vigente.** La de la capa 6 se consumió el 2026-08-17 y se
+retiró, igual que las de las capas 3, 4 y 5.
 
-Se copia el bloque universal del principio y se añade inmediatamente después:
+Con la capa 6 activa, el bloque universal del principio basta por sí solo: el
+índice maestro le indicará al asistente que debe ejecutar únicamente 6.0 y
+detenerse antes de 6.1. No hace falta añadir nada.
 
-```text
-Autorizo activar únicamente la capa 6, Asignaciones y estudiantes.
-
-Acepto continuar manteniendo pendientes las verificaciones heredadas: el valor
-operativo final de DB_STATEMENT_TIMEOUT_MS de la capa 1 y la ausencia de
-evidencia de GitHub Actions desde la capa 0. Registralas como pendientes,
-conserva su riesgo y no las marques como cumplidas.
-
-Esta autorizacion permite solamente la activacion documental. No autoriza
-inspeccionar codigo de la capa 6, implementar 6.0, tocar la base de datos, hacer
-deploy, commit o push. Despues de activar la capa, detente.
-
-En el mismo checkout local:
-
-1. Lee y aplica completamente el protocolo universal anterior.
-2. Valida main, git status, el HEAD limpio vigente, origin/main y la continuidad
-   desde el commit base de la capa 5,
-   f4d091329f84bcdd100b1bf0c70c02a0e32ee138, comprobando que todo commit
-   posterior este explicado en 05_PAGOS_TIPOS_PAGO.md.
-3. Confirma que la capa 5 esta cerrada, que la capa 6 sigue en espera y que no
-   existe otra capa activa. Si hay divergencia o un commit sin explicar, detente.
-4. No uses ningun hash de memoria: comprueba primero el HEAD limpio real.
-5. No declares GitHub Actions verificada solo porque HEAD coincida con
-   origin/main; exige evidencia del run.
-6. La capa 5 y sus tres correcciones puntuales se publicaron el 2026-08-17.
-   Comprueba el estado real de origin/main de todas formas e informa lo que
-   encuentres, no lo supongas.
-7. Crea docs/modularizacion/06_ASIGNACIONES_ESTUDIANTES.md partiendo de
-   docs/modularizacion/PLANTILLA_CAPA.md.
-8. Registra el HEAD limpio vigente como commit base, rama main, estado Activa,
-   primera subcapa pendiente 6.0 y codigo de producto modificado al activar:
-   ninguno.
-9. Define el objetivo solo desde el indice maestro: separar los dominios de
-   asignaciones y estudiantes con contratos estables, trabajando cada uno en
-   subcapas, evitando una extraccion conjunta masiva, y protegiendo permisos,
-   relaciones academicas, archivos e historial.
-10. Deja 6.0 como inventario, contratos y caracterizacion. No inventes detalles
-    de implementacion sin inspeccionarlos en un turno posterior. No decidas aun
-    el desglose de 6.1 en adelante.
-11. Ten presente que estos dominios son mas grandes que los financieros y que
-    tocan archivos, no solo filas:
-    - la capa 3 anadio 26 claves foraneas a tenant_2005, asi que inserciones y
-      borrados pueden fallar donde antes pasaban en silencio;
-    - calcular_deudas_estudiante de cobros.py ya se usa desde estudiantes, y la
-      capa 4 fijo contratos de lectura que dependen de el;
-    - app/services/storage.py maneja archivos; un rollback de datos no deshace un
-      archivo ya escrito, y eso cambia como hay que documentar el rollback.
-12. Actualiza docs/modularizacion/README.md para marcar unicamente la capa 6
-    como Activa, enlazar su bitacora y dejar 6.0 pendiente.
-13. Ejecuta git diff --check, comprueba el whitespace del archivo nuevo y
-    verifica que el alcance contenga exclusivamente README.md y
-    06_ASIGNACIONES_ESTUDIANTES.md.
-14. Informa el commit base, la primera subcapa pendiente, las verificaciones
-    heredadas y cualquier evidencia remota disponible. Detente sin inspeccionar
-    ni implementar 6.0.
-
-No hagas commit, push, deploy, migraciones reales ni acceso a produccion. Yo
-revisare los cambios y controlare su publicacion.
-```
+Solo volverá a hacer falta una autorización guardada cuando la capa 6 se cierre y
+haya que activar la 7, y entonces deberá escribirse con su propia condición de
+caducidad.

@@ -1,6 +1,6 @@
 # Guía maestra de evolución segura del backend
 
-Última revisión: 2026-08-16.
+Última revisión: 2026-08-17.
 
 ## Propósito
 
@@ -40,7 +40,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 3 | Migraciones y tenants | Todos los tenants versionados, runner bloqueado y alta reproducible | **Cerrada**; reparó producción y verificó en uso | [03_MIGRACIONES_TENANTS.md](./03_MIGRACIONES_TENANTS.md) |
 | 4 | Reportes financieros | Dominio modular, N+1 eliminado y consultas medidas | **Cerrada**; N+1 de 5N a 15 constantes, medido en producción | [04_REPORTES_FINANCIEROS.md](./04_REPORTES_FINANCIEROS.md) |
 | 5 | Pagos y tipos de pago | Dominio financiero modularizado y protegido | **Cerrada**; SQL inline de 23 a 3, sin tocar la base | [05_PAGOS_TIPOS_PAGO.md](./05_PAGOS_TIPOS_PAGO.md) |
-| 6 | Asignaciones y estudiantes | Dominios grandes separados con contratos estables | **En espera**, siguiente | Se crea al activarla |
+| 6 | Asignaciones y estudiantes | Dominios grandes separados con contratos estables | **Activa**; 6.0 pendiente y no iniciada | [06_ASIGNACIONES_ESTUDIANTES.md](./06_ASIGNACIONES_ESTUDIANTES.md) |
 | 7 | Resto de dominios | Migración individual con contratos y pruebas | En espera | Una bitácora por dominio al activarlo |
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
@@ -48,8 +48,9 @@ cierre y el usuario ordene continuar, se crea su sucesora desde
 `PLANTILLA_CAPA.md`, se registra el commit base vigente y se actualiza esta
 tabla.
 
-Las capas 0, 1, 2, 3, 4 y 5 están cerradas. **No existe una capa activa**: la
-capa 6 permanece en espera y no fue activada. La capa 3 es la única del programa
+Las capas 0, 1, 2, 3, 4 y 5 están cerradas. **La capa activa es la 6**,
+activada el 2026-08-17 por orden explícita del usuario; su subcapa 6.0 está
+pendiente y no iniciada. La capa 3 es la única del programa
 que modificó la base
 de datos real, con autorización explícita del usuario para cada paso; la capa 4
 solo la leyó; la capa 5 **no la tocó en absoluto**, pese a ser la primera que
@@ -422,10 +423,15 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
 - Capa 5 **cerrada** el 2026-08-16, con sus subcapas 5.0 a 5.3 completas.
   Compuerta al cerrar: **exit 0 con 660 pruebas**, Ruff correcto y `pip check`
   correcto.
-- **Estado de publicación de la capa 5**: al cerrarla **no había push ni
-  despliegue**. Los cinco commits viven solo en el checkout local y producción
-  sigue corriendo `f4d0913`. Publicar es decisión del usuario, y en este
-  repositorio un push a `main` dispara el despliegue.
+- **Estado de publicación de la capa 5**: al cerrarla el 2026-08-16 **no había
+  push ni despliegue**, y así quedó registrado. **Se publicó después**, el
+  2026-08-17, junto con las tres correcciones puntuales posteriores al cierre.
+  Corregido el 2026-08-17 con autorización explícita: el reflog de `origin/main`
+  registra `update by push` de `544bd5c` y de `589cb6d`, y `HEAD` coincide con
+  esa referencia. Producción **ya no corre `f4d0913`**, porque en este
+  repositorio un push a `main` dispara el despliegue. Las líneas fechadas que
+  describen el estado del 2026-08-16 se conservan intactas: eran ciertas
+  entonces.
 - **Pendiente heredado que apareció el 2026-08-17**: al quitar el anidamiento de
   conexiones de los dos upsert, la constante
   `MAX_DB_CONNECTIONS_PER_THREADPOOL_WORKER = 2` de la capa 2 —de donde salen los
@@ -433,8 +439,23 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   respalde**. Se conserva como margen y **no se tocó**: cambiarla exige una
   auditoría de capacidad propia, no una inferencia. El barrido que lo detectó es
   estático y solo ve anidamiento dentro del mismo módulo.
-- Capa activa: **ninguna**. Siguiente capa: 6, asignaciones y estudiantes, en
-  espera.
+- Capa 6 **activada** el 2026-08-17 por orden explícita del usuario. Commit
+  base: `589cb6d1391161c692a6f24aee9d523317cbb1ce`, el `HEAD` limpio vigente en
+  `main` y coincidente con la referencia local `origin/main`, que el reflog
+  registra como publicada por push. Los diez commits posteriores al base de la
+  capa 5 fueron auditados: nueve están explicados en `05_PAGOS_TIPOS_PAGO.md` y
+  el décimo, `589cb6d`, es documental y quedó registrado al activar. La
+  activación es únicamente documental: no inspeccionó ni modificó código,
+  pruebas, consultas, configuración o base de datos.
+- Decisión al activar la capa 6: continuar aceptando que sigan pendientes la
+  calibración operativa final de `DB_STATEMENT_TIMEOUT_MS` y la evidencia de
+  GitHub Actions posterior a la capa 0. Ninguna se marca como cumplida y ambas
+  conservan su riesgo. La credencial privilegiada compartida en la capa 4 sigue
+  **sin rotar**. Pendientes también, y fuera de la capa 6 salvo orden explícita:
+  la clave de idempotencia de `POST /pagos` (paso 2), los status codes 500 de
+  `tipos_pagos_controller` y la auditoría de capacidad de la capa 2.
+- Capa activa: **6, asignaciones y estudiantes**. Primera subcapa pendiente:
+  **6.0**, inventario, contratos y caracterización, **no iniciada**.
 - Resultado de 3.5: el alta construye el schema desde la migración base en vez de
   copiar la plantilla. Un tenant nuevo nace con **37 claves foráneas y 30
   secuencias propias**, donde el camino anterior producía **0 y 0**. Ensayado
@@ -546,8 +567,16 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
 
 ## Archivos de continuidad
 
+- [06_ASIGNACIONES_ESTUDIANTES.md](./06_ASIGNACIONES_ESTUDIANTES.md): **bitácora
+  activa** de la capa 6. Registra el commit base `589cb6d`, el objetivo tomado
+  del índice, el alcance autorizado, los invariantes, el perfil de riesgo propio
+  —archivos que un rollback de datos no deshace, claves foráneas repuestas en la
+  capa 3 y contratos de lectura que dependen de `cobros.py`— y la subcapa 6.0
+  pendiente. Es el documento que un chat nuevo debe leer después de este índice.
 - [05_PAGOS_TIPOS_PAGO.md](./05_PAGOS_TIPOS_PAGO.md): **bitácora cerrada** de la
-  capa 5 y fuente de continuidad. Registra el commit base `f4d0913`, las
+  capa 5 y fuente de continuidad hasta la activación de la capa 6. Conserva los
+  siete hallazgos registrados sin corregir y el paso 2 acordado y no iniciado.
+  Registra el commit base `f4d0913`, las
   verificaciones heredadas aceptadas como pendientes, el inventario de 5.0 con
   sus 19 entradas HTTP, seis tablas escritas, contratos, idempotencia y línea
   base de consultas, los **ocho hallazgos registrados sin corregir**, las

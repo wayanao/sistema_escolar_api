@@ -344,11 +344,16 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   corrigió la mitad con autorización explícita, añadiendo un advisory lock por
   estudiante que cierra el hueco concurrente; el duplicado parcial separado en el
   tiempo sigue abierto y necesita la clave, que es el paso 2 acordado y no
-  iniciado—; no existe filtro de ownership por pago dentro del
-  tenant, así que una anulación no comprueba a qué estudiante pertenece; siete
-  funciones de tipos de pago absorben `Exception` y presentan un fallo de
-  infraestructura como 400 o 404; y los dos upsert de tipos de pago abren **dos
-  conexiones por petición**, releyendo fuera de la transacción confirmada.
+  iniciado—; siete funciones de tipos de pago absorben `Exception` y presentan un
+  fallo de infraestructura como 400 o 404; y los dos upsert de tipos de pago
+  abren **dos conexiones por petición**, releyendo fuera de la transacción
+  confirmada.
+- Hallazgo **retirado** el 2026-08-17: el «filtro de ownership por pago» que la
+  capa 5 había anotado **no era un hueco**. Solo alcanza el endpoint quien tiene
+  `rol == 'admin'` estricto, el `search_path` impide cruzar de colegio, dentro de
+  un colegio no existen admins con alcance parcial, y la anulación queda auditada
+  con motivo, fecha y responsable. Queda anotado en la bitácora para que no se
+  vuelva a levantar.
 - Resultado de 5.1: las ocho escrituras de `pagos` y `pagos_aplicaciones`
   salieron del controlador a `app/repositories/pagos_repository.py`, seis
   funciones que reciben el cursor existente. El controlador pasó de 717 a 701

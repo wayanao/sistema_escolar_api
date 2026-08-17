@@ -661,9 +661,17 @@ la subcapa. Corregir cualquiera exige una decisión explícita del usuario.
   comportamiento real. Aceptaría igual un caso que en producción se rechaza. Su
   nombre afirma más de lo que demuestra. Sustituirla por una que modele la tabla
   exige una decisión explícita, porque la capa ya está cerrada.
-- **No hay filtro de ownership dentro del tenant.** `anular_pago_controller`
-  anula cualquier `pago_id` que reciba sin comprobar a qué estudiante pertenece.
-  El aislamiento entre colegios sí está garantizado por `search_path`.
+- **~~No hay filtro de ownership dentro del tenant.~~ Retirado el 2026-08-17.**
+  Se planteó como hueco y **no lo es**. Solo alcanza el endpoint quien tiene
+  `rol == 'admin'` estricto —un profesor recibe 403—; el tenant sale del JWT,
+  se valida contra un patrón y fija el `search_path`, así que la consulta solo ve
+  la tabla del schema de ese colegio y un `pago_id` ajeno no existe allí; y dentro
+  de un colegio **no existe el concepto de admin con alcance parcial**, de modo
+  que anular cualquier pago del propio colegio es la función del rol, no una
+  escalada. Además queda auditado: la anulación exige motivo de al menos cinco
+  caracteres y guarda `motivo_anulacion`, `fecha_anulacion` y `anulado_por`. Un
+  filtro de ownership aquí no protegería de nada y rompería el caso normal. Se
+  deja anotado para que nadie vuelva a levantarlo.
 - **Siete funciones absorben `Exception` a secas** y devuelven `None`/`False`;
   un fallo de infraestructura llega al cliente como 400 o 404. Enmascara
   incidentes reales y una extracción podría cambiar qué queda absorbido.
@@ -997,7 +1005,8 @@ La suite pasó de **606 a 660** pruebas. Compuerta de cierre reproducida el
 - No cambió rutas, payloads, status codes, permisos, tenant, ownership, reglas
   financieras, transacciones, timeouts, dependencias ni configuración.
 - **No corrigió ninguno de los ocho hallazgos** que encontró: seis en 5.0 y dos
-  en 5.3. Todos quedan
+  en 5.3. Uno de ellos, el de ownership, se **retiró** el 2026-08-17 al
+  comprobarse que no era un hueco; quedan siete vivos. Todos quedan
   registrados arriba y exigen una decisión explícita.
 
 #### Rollback
@@ -1018,8 +1027,8 @@ despliegue.
 
 - **`POST /pagos` no tiene clave de idempotencia.** Es el riesgo financiero más
   directo del dominio y sigue intacto.
-- **No hay filtro de ownership por pago dentro del tenant**: una anulación no
-  comprueba a qué estudiante pertenece el pago.
+- ~~Filtro de ownership por pago~~: **retirado**, no era un hueco. Ver el
+  detalle en «Encontrados en 5.0».
 - Siete funciones de tipos de pago **absorben `Exception`** y presentan fallos de
   infraestructura como 400 o 404.
 - Los dos upsert de tipos de pago **abren dos conexiones por petición**.
@@ -1119,7 +1128,7 @@ Forma prevista, a confirmar cuando se aborde:
 - **Lo que la capa NO hizo**: no tocó la base de datos en absoluto, ni siquiera
   para leer. No corrigió ninguno de los ocho hallazgos registrados.
 - Riesgos abiertos y hallazgos sin corregir, todos registrados arriba:
-  `POST /pagos` sin idempotencia, ausencia de filtro de ownership por pago,
+  `POST /pagos` sin idempotencia,
   siete funciones que absorben `Exception`, dos conexiones por petición en los
   upsert, código duplicado byte a byte entre `pagos_controller` y `cobros`, y
   una indirección vacía. Heredados: calibración de `DB_STATEMENT_TIMEOUT_MS`,
@@ -1134,7 +1143,7 @@ Forma prevista, a confirmar cuando se aborde:
   consultas, once de ellas lecturas de validación**; un cargo de inventario
   cuesta **4**. No hay N+1 en este dominio.
 - Hallazgos registrados y **sin corregir**: `POST /pagos` no es idempotente, no
-  hay filtro de ownership por pago dentro del tenant, siete funciones absorben
+  siete funciones absorben
   `Exception` y devuelven 400/404, y los dos upsert de tipos de pago abren dos
   conexiones por petición.
 - Verificaciones heredadas pendientes y aceptadas: valor operativo final de

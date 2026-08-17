@@ -245,9 +245,11 @@ de esto entra en ella por inferencia: requiere una orden explícita.
   no puede distinguir un reintento de una segunda cuota legítima. El paso 2
   —columna con `UNIQUE`, migración y cambio en `frontend-react`— está descrito en
   `05_PAGOS_TIPOS_PAGO.md` y **no se ha iniciado**.
-- **No hay filtro de ownership por pago dentro del tenant**: `anular_pago` anula
-  el `pago_id` que reciba sin comprobar de quién es. El aislamiento entre
-  colegios sí lo garantiza el `search_path`.
+- ~~Filtro de ownership por pago~~. **Retirado el 2026-08-17: no era un hueco.**
+  Solo alcanza el endpoint `rol == 'admin'` estricto, el `search_path` impide
+  cruzar de colegio, dentro de un colegio no hay admins con alcance parcial, y la
+  anulación queda auditada con motivo, fecha y responsable. No lo vuelvas a
+  levantar.
 - **Siete funciones de `tipos_pagos_controller` capturan `Exception` a secas** y
   devuelven `None`/`False`; un fallo de infraestructura llega al cliente como 400
   o 404 en vez de 500.

@@ -1,17 +1,18 @@
 # Capa 5: pagos y tipos de pago
 
-Última revisión: 2026-08-15.
+Última revisión: 2026-08-16.
 
 ## Control
 
-- Estado: **Activa** desde el 2026-08-15.
+- Estado: **Cerrada** el 2026-08-16. Sus cuatro objetivos quedaron cumplidos y
+  verificados; los riesgos abiertos están registrados en el cierre.
 - Commit base: `f4d091329f84bcdd100b1bf0c70c02a0e32ee138`.
 - Rama acordada: `main`.
 - Estado al activar: árbol limpio; `HEAD` coincidente con la referencia local
   `origin/main`, que el reflog registra como publicada por push el 2026-08-15 a
   las 13:20:16.
-- Primera subcapa pendiente: **5.3, no iniciada**. 5.0, 5.1 y 5.2 quedaron
-  **cerradas** el 2026-08-15.
+- Primera subcapa pendiente: **ninguna**. Las cuatro subcapas, 5.0 a 5.3,
+  quedaron **cerradas** y con ellas la capa.
 - Código de producto modificado hasta ahora: `app/controllers/pagos_controller.py`
   y `app/repositories/pagos_repository.py`, en 5.1 y 5.2. Sin cambios en rutas,
   payloads, status codes, permisos, tenant, ownership, transacciones ni SQL
@@ -141,7 +142,7 @@ pruebas, exit 0. La suite pasó de **606 a 646** con la caracterización de 5.0.
 | 5.0 | Inventario, contratos, caracterización y línea base de consultas y escrituras | **Cerrada** |
 | 5.1 | Extraer la persistencia de las escrituras de `pagos` sin cambiar SQL, conteos ni transacción | **Cerrada** |
 | 5.2 | Completar la frontera de persistencia de `pagos_controller`: lecturas y contacto con `ventas` | **Cerrada** |
-| 5.3 | Guardas de migración restantes, retiro heredado y cierre de la capa | **Pendiente, no iniciada** |
+| 5.3 | Guardas de migración restantes, retiro heredado y cierre de la capa | **Cerrada** |
 
 5.3 quedó definida desde lo que 5.2 dejó fuera. Las subcapas innecesarias se
 marcarán `No aplica` con explicación.
@@ -363,7 +364,7 @@ unificaron en una sola constante.
    `FOR UPDATE`. Mantener en el controlador la propiedad de conexión, cursor,
    `commit`, `rollback`, cierres y traducción de errores.
 5. No tocar `tipos_pagos_controller`, `cobros.py`, cartera, cuentas, reportes,
-   timeouts ni la base de datos. No corregir ninguno de los cuatro hallazgos de
+   timeouts ni la base de datos. No corregir ninguno de los seis hallazgos de
    5.0.
 6. Verificar que los conteos de 5.0 y de la capa 4 no cambian, y volver a
    ejecutar el comparador de SQL exigiendo conjunto idéntico.
@@ -377,7 +378,7 @@ llamada** contra `ventas` sobre **seis literales**. El plan se escribió al cerr
 5.1 sin volver a contar; el inventario real de 5.2 lo corrigió antes de mover
 nada.
 
-## Primera subcapa pendiente: 5.3 — trabajo exacto
+## Subcapa 5.3 — alcance ejecutado
 
 1. Revalidar Git y limitar la inspección a las **cuatro sentencias** que quedan
    inline en `pagos_controller.py`: las tres guardas de migración y bloqueo
@@ -394,7 +395,7 @@ nada.
    inferencia.
 5. No tocar `tipos_pagos_controller`, `cobros.py`, `venta_controller.py`,
    cartera, cuentas, reportes, timeouts ni la base de datos. No corregir ninguno
-   de los cuatro hallazgos de 5.0.
+   de los seis hallazgos de 5.0.
 6. Verificar que los conteos de 5.0 y de la capa 4 no cambian, y volver a
    ejecutar el comparador de SQL contra el commit base de la capa exigiendo
    conjunto idéntico.
@@ -402,6 +403,92 @@ nada.
    documentar staging, rollback y verificación manual, actualizar el índice
    maestro, marcar la capa cerrada y dejar la capa 6 en espera. **No activar la
    capa 6 sin orden explícita.**
+
+Los siete puntos se cumplieron, salvo que el cierre de la capa queda supeditado a
+la decisión del usuario sobre la verificación manual, según se explica abajo.
+
+## Staging, rollback y verificación manual de la capa 5
+
+### Lo que esta capa hizo y no hizo
+
+La capa 5 es **exclusivamente una refactorización**. No añadió funciones, no
+cambió reglas, no tocó rutas, payloads, status codes, permisos, tenant,
+ownership, transacciones, timeouts, dependencias ni configuración. Y, a
+diferencia de todas las anteriores, **no abrió una sola conexión a PostgreSQL**:
+ni migraciones, ni DDL, ni DML, ni lecturas de medición. La capa 3 modificó la
+base real; la capa 4 la leyó; la capa 5 no la tocó en absoluto.
+
+La evidencia de que el comportamiento observable no cambió es doble:
+
+1. un comparador AST contra el commit base `f4d0913` demuestra que las **19
+   sentencias SQL distintas son las mismas**, ninguna perdida y ninguna nueva,
+   con **19 de 21** literales conservados byte a byte;
+2. **54 pruebas de caracterización** escritas antes de cada extracción fijan
+   payloads, conteos de consultas, `commit`, `rollback`, cierres, idempotencia,
+   bloqueos y las columnas que lee la capa 4; ninguna cambió de expectativa.
+
+### Rollback
+
+**Es puramente de código.** No hay nada que deshacer en datos ni en esquema.
+Revertir los commits de la capa hasta `f4d091329f84bcdd100b1bf0c70c02a0e32ee138`
+devuelve `pagos_controller.py` a su versión anterior y elimina
+`pagos_repository.py`. Como el SQL ejecutado es equivalente, revertir no cambia
+el comportamiento observable: solo devuelve el código a su forma anterior.
+
+No cambiar los timeouts durante el rollback. El punto de rollback vigente de la
+capa 4, `f4d0913`, es también el commit base de esta.
+
+### Staging
+
+No se usó un entorno de staging y **no se considera necesario** para esta capa,
+por la misma razón que hace el rollback trivial: no hay cambio de esquema, de
+datos ni de SQL. Un despliegue prudente solo necesita comprobar que la
+aplicación arranca y que los seis caminos de escritura responden, que es
+exactamente lo que cubre la verificación manual.
+
+Si en un futuro se quisiera medir estos caminos, aplica el criterio corregido en
+la capa 4: `EXPLAIN ANALYZE` sobre `SELECT` en producción en transacción
+`READ ONLY` cerrada con `rollback`, nunca una rama con datos de menores. Ninguna
+medición puede escribir, y estos caminos escriben.
+
+### Verificación manual: **hecha y correcta**
+
+Es la única evidencia que no puede delegarse en un asistente, porque exige
+reconocer importes reales.
+
+**Ejecutada por el usuario y con resultado correcto.** Se le ofrecieron las tres
+opciones —ejecutarla, aceptarla explícitamente como pendiente, o dejar la capa
+abierta sin decidir— y eligió ejecutarla, igual que hizo en la capa 4.
+
+**Artefacto verificado**: la aplicación levantada **en local contra el árbol de
+trabajo**, que incluía los cambios de 5.3 todavía sin commitear. Se confirmó
+expresamente con el usuario contra qué código había probado, porque el estado de
+Git admitía tres lecturas distintas. Cubre por tanto **la capa 5 completa**, 5.0
+a 5.3.
+
+**Limitación registrada, no disimulada**: la verificación fue local. Al cerrar la
+capa no había habido **push ni despliegue**: los cinco commits de la capa vivían
+solo en el checkout y producción seguía corriendo `f4d0913`, el código anterior a
+la capa 5. La verificación demuestra que el código refactorizado funciona
+ejercitado a mano; **no** demuestra nada sobre el despliegue, que sigue
+pendiente y es responsabilidad del usuario.
+
+Esta limitación es aceptable aquí por lo que la capa es: una refactorización con
+SQL equivalente demostrado y sin ningún acceso a la base de datos. En una capa
+que cambiara comportamiento o tocara datos no lo sería.
+
+- Registrar un pago simple, uno con dos métodos y uno contra un cargo de
+  inventario; comprobar importe, descripción, medio de pago, recibo y que el
+  saldo del cargo baja y se cierra al cubrirlo.
+- Registrar un pago adelantado y uno de cuotas vencidas; comprobar que los meses
+  se aplican una sola vez y que no se puede aplicar dos veces el mismo mes.
+- Anular un pago normal y uno de inventario; comprobar que el saldo del cargo se
+  devuelve, que la venta vuelve a `Pendiente` y que el pago sale de los totales.
+- Ejercitar el CRUD de tipos de pago, la asignación a cursos y los valores
+  personalizados por estudiante.
+- Abrir el estado de cuenta de la capa 4 y confirmar que las cifras siguen
+  cuadrando después de estas operaciones.
+- Comprobar todo en los dos tenants, sin mezclar datos.
 
 ## Criterios de cierre de la capa
 
@@ -487,8 +574,24 @@ nada.
   paginado solo tenía prueba de ruta y el saldo de venta no tenía ninguna. Once
   casos nuevos se escribieron y se vieron pasar contra el producto anterior; solo
   entonces se extrajo.
-- Las tres guardas de esquema y el `pg_advisory_xact_lock` **no se movieron**:
-  no son consultas de dominio y su sitio se decide en 5.3.
+- Las tres guardas de esquema y el `pg_advisory_xact_lock` **no se movieron** en
+  5.2: no son consultas de dominio y su sitio se decidió en 5.3.
+- **Las tres guardas se quedan en el controlador, decidido en 5.3 con
+  evidencia.** La convención vigente del repositorio es que la introspección de
+  esquema vive junto al código que la necesita, no en una frontera de
+  persistencia: `cobros.py` conserva tres comprobaciones sobre
+  `information_schema` inline y `tipos_pagos_controller.py` conserva
+  `_columnas_existentes` y `_table_names`. Moverlas a `pagos_repository` habría
+  roto esa convención sin ganar nada, porque no son consultas de dominio sino
+  preguntas sobre el esquema. El `pg_advisory_xact_lock` tampoco se movió: es
+  control de transacción, y 5.1 y 5.2 ya habían fijado que el advisory lock es
+  responsabilidad del controlador. Alternativa descartada: crear un
+  `esquema_repository`, que no tendría dos consumidores reales.
+- 5.3 sí movió la lectura de `_periodos_disponibles`, que sí es una consulta de
+  dominio sobre `pagos_aplicaciones`, la misma tabla que el repositorio ya posee.
+- **No se retiró código heredado porque no lo hay.** Se comprobaron los
+  dieciocho helpers privados de `pagos_controller.py` uno a uno: todos conservan
+  al menos un consumidor. Ninguna extracción dejó huérfanos.
 
 ## Riesgos
 
@@ -544,6 +647,33 @@ la subcapa. Corregir cualquiera exige una decisión explícita del usuario.
   de columna salen de la lista fija `_ADVANCED_COLUMNS` intersecada con el schema
   real, así que hoy **no es inyectable**. Queda anotado para que ninguna
   extracción futura abra esa lista a entrada del cliente.
+
+### Encontrados en 5.3, registrados y sin corregir
+
+- **Código duplicado byte a byte.**
+  `pagos_controller._tabla_pagos_aplicaciones_existe` y
+  `cobros.tabla_pagos_aplicaciones_existe` son la misma función con el mismo
+  SQL, comprobado literal a literal. La pública ya tiene dos consumidores reales
+  —`reportes_controller` y la propia `cobros`—, así que importarla no crearía
+  una abstracción nueva: deduplicar sería legítimo. **No se hizo** porque la
+  privada no está huérfana y porque deduplicar excede el alcance declarado de
+  5.3. Corregirlo exige una decisión explícita.
+- **Corrección de un error de esta bitácora**, hecha el mismo 2026-08-15 al
+  revisarla con el usuario. La versión anterior de este punto añadía una tercera
+  razón: que `tests/test_pagos_adelantados.py` sustituía una de las dos
+  funciones por separado y que unificarlas cambiaría el comportamiento de las
+  pruebas. **Es falso.** Los tres `monkeypatch` de
+  `tabla_pagos_aplicaciones_existe` —uno en `test_pagos_adelantados.py` y dos en
+  `test_reportes_estado_cuenta.py`— apuntan los tres a `reportes_controller`, y
+  **ninguna prueba menciona la función privada**. El error vino de leer una
+  línea de `grep` con el nombre de la función y deducir del nombre del archivo
+  de prueba a qué módulo se aplicaba, sin comprobar la línea anterior. La
+  conclusión de no tocarlo en 5.3 no cambia, pero el riesgo real de deduplicar
+  es **menor** que el registrado: hoy ninguna prueba depende de que estén
+  separadas.
+- **`_obtener_saldo_concepto` es una indirección vacía**: solo reenvía a
+  `cobros.obtener_saldo_concepto` sin añadir nada. Tiene un consumidor, así que
+  no está huérfana y no se retiró.
 
 ## Registro de ejecución
 
@@ -763,27 +893,147 @@ la subcapa. Corregir cualquiera exige una decisión explícita del usuario.
   atribuye CI remota.
 - Estado: 5.2 **cerrada**; 5.3 **pendiente y no iniciada**.
 - Siguiente acción exacta: ejecutar únicamente 5.3 y, por ser la última subcapa,
-  aplicar su compuerta de cierre sin activar la capa 6.
+  aplicar su compuerta de cierre sin activar la capa 6. *(Ejecutada en el turno
+  siguiente; ver el cierre de 5.3 más abajo.)*
+
+### 2026-08-15 — cierre de 5.3
+
+- Modo de acceso: mismo checkout local en
+  `C:\Users\David\Documents\sistema_escolar_api`; Git validado directamente y no
+  se usó GitHub para inferir el estado local.
+- Precondición Git: rama `main`, árbol inicialmente limpio, `HEAD`
+  `72fc12e7c22a58a44f0ce91957b90ba577e460c2`, cuatro commits por delante de la
+  referencia local `origin/main`. El commit base `f4d0913` existe y es ancestro;
+  los cuatro commits posteriores son la activación y los cierres de 5.0, 5.1 y
+  5.2, todos explicados en esta bitácora.
+- Decisiones con evidencia, registradas arriba: las tres guardas de esquema y el
+  advisory lock **se quedan** en el controlador; la lectura de
+  `_periodos_disponibles` **se mueve** al repositorio.
+- Caracterización añadida **antes** de mover: tres casos que fijan el texto, los
+  parámetros `(estudiante_id, tipo_pago_id)`, la exclusión de aplicaciones
+  inactivas y de pagos anulados, la consulta única y los periodos futuros. El
+  archivo pasó de 51 a **54 casos**. Se vieron pasar contra el producto anterior.
+- Búsqueda de código huérfano: se comprobaron los dieciocho helpers privados de
+  `pagos_controller.py`; **ninguno quedó sin consumidores**. No se retiró nada.
+- Archivos de producto: `app/controllers/pagos_controller.py` y
+  `app/repositories/pagos_repository.py`. Pruebas modificadas:
+  `tests/test_pagos_escrituras_caracterizacion.py`.
+- Equivalencia SQL contra el commit base de la capa: **19 sentencias distintas
+  antes y 19 después, conjunto idéntico**; **19 de 21** literales byte a byte.
+  Los dos reindentados siguen siendo los dos unificados con autorización.
+- SQL que queda inline en el controlador: **tres sentencias**, las dos guardas de
+  esquema y el `pg_advisory_xact_lock`.
+- Pruebas específicas: **103 pasaron** en 0,64 s sobre los ocho archivos del
+  dominio y de la capa 4.
+- Ruff del alcance: **correcto**.
+- Compuerta global de cierre: `.\venv\Scripts\python.exe scripts\verify.py`;
+  **660 pruebas pasaron** en 1,88 s, 5 warnings heredadas, Ruff correcto,
+  `pip check` íntegro y exit 0.
+- Revisión final: `git diff --check` en exit 0. El diff contiene tres archivos.
+- PostgreSQL, migraciones, producción, commit, push y deploy: **ninguno**, ni en
+  esta subcapa ni en toda la capa.
+- Estado: 5.3 **cerrada**. El cierre de la **capa** queda supeditado a la
+  decisión del usuario sobre la verificación manual, que está **definida y no
+  ejecutada**.
+- Siguiente acción exacta: obtener del usuario o bien la ejecución de la
+  verificación manual, o bien su aceptación explícita como pendiente. Solo
+  entonces marcar la capa cerrada. *(La ejecutó y la capa se cerró el
+  2026-08-16; ver el cierre de la capa más abajo.)*
+
+### 2026-08-16 — cierre de la capa 5
+
+Con la verificación manual ejecutada, la capa queda cerrada.
+
+#### Resultado frente a su objetivo
+
+El índice le pedía modularizar y proteger el dominio financiero de pagos y tipos
+de pago, cuidando montos, saldos, comprobantes, idempotencia y transacciones, y
+conservando los contratos del frontend y de la base.
+
+| Objetivo | Resultado |
+|---|---|
+| Separar HTTP, reglas, servicios y persistencia | `pagos_repository.py` nuevo con **16 funciones**; el controller pasó de **717 a 633 líneas** y de **23 sentencias SQL inline a 3** |
+| Proteger montos, saldos, comprobantes, idempotencia y transacciones | **54 pruebas de caracterización** nuevas que fijan payloads, conteos, `commit`/`rollback`, cierres, bloqueos y precedencias |
+| Conservar los contratos del frontend y de la base | Comparador AST contra el commit base: **conjunto de SQL idéntico**, 19 de 21 literales byte a byte; ninguna prueba cambió de expectativa |
+
+La suite pasó de **606 a 660** pruebas. Compuerta de cierre reproducida el
+2026-08-16: **exit 0 con 660 pruebas**, Ruff correcto y `pip check` íntegro.
+
+#### Lo que esta capa NO hizo
+
+- **No tocó la base de datos**, ni siquiera para leer. Es la única capa del
+  programa que no abrió una sola conexión a PostgreSQL. La capa 3 modificó la
+  base real; la capa 4 la leyó; la 5 no la tocó.
+- No cambió rutas, payloads, status codes, permisos, tenant, ownership, reglas
+  financieras, transacciones, timeouts, dependencias ni configuración.
+- **No corrigió ninguno de los ocho hallazgos** que encontró: seis en 5.0 y dos
+  en 5.3. Todos quedan
+  registrados arriba y exigen una decisión explícita.
+
+#### Rollback
+
+Puramente de código: revertir hasta
+`f4d091329f84bcdd100b1bf0c70c02a0e32ee138`. No hay nada que deshacer en datos ni
+en esquema. Como el SQL ejecutado es equivalente, revertir no cambia el
+comportamiento observable.
+
+#### Estado de publicación al cerrar
+
+**Sin push ni despliegue.** Los cinco commits de la capa viven solo en el
+checkout local y producción sigue corriendo `f4d0913`. Publicar es decisión y
+responsabilidad del usuario, y en este repositorio un push a `main` dispara el
+despliegue.
+
+#### Riesgos que la capa deja abiertos
+
+- **`POST /pagos` no tiene clave de idempotencia.** Es el riesgo financiero más
+  directo del dominio y sigue intacto.
+- **No hay filtro de ownership por pago dentro del tenant**: una anulación no
+  comprueba a qué estudiante pertenece el pago.
+- Siete funciones de tipos de pago **absorben `Exception`** y presentan fallos de
+  infraestructura como 400 o 404.
+- Los dos upsert de tipos de pago **abren dos conexiones por petición**.
+- Once de las doce consultas de un pago simple son lecturas de validación.
+- Código duplicado byte a byte y una indirección vacía, ambos descritos arriba.
+- Heredados: calibración de `DB_STATEMENT_TIMEOUT_MS` de la capa 1, ausencia de
+  evidencia de GitHub Actions desde la capa 0, y la credencial privilegiada de la
+  capa 4 sin rotar.
+
+- Estado: **capa 5 cerrada**. La capa 6, asignaciones y estudiantes, queda **en
+  espera** y no fue activada.
+- Siguiente acción exacta: esperar una orden explícita del usuario. Una
+  instrucción genérica de continuar no autoriza activar la capa 6.
 
 ## Entrega al próximo chat
 
-- Capa activa: **5, pagos y tipos de pago**.
-- Última subcapa terminada: **5.2**. Primera subcapa pendiente: **5.3, guardas
-  de migración restantes, retiro heredado y cierre de la capa**.
+- Capa activa: **ninguna**. La capa 5 quedó **cerrada** el 2026-08-16 y la capa
+  6 sigue en espera, sin activar.
+- Última subcapa terminada: **5.3**. Primera subcapa pendiente: **ninguna**.
+- Verificación manual: **hecha por el usuario y correcta**, en local contra el
+  árbol de trabajo. Sin push ni despliegue al cerrar.
 - Commit base: `f4d091329f84bcdd100b1bf0c70c02a0e32ee138`, rama `main`, ya
-  publicado. Al cerrar 5.2, `HEAD` es `ebc1bd8` más tres archivos sin commitear.
-- Bloqueos: ninguno para iniciar 5.3.
-- Precondición antes de continuar: el usuario debe revisar y dejar limpio el
-  cambio de 5.2; después se reaudita todo commit posterior al base.
-- Lo que 5.1 y 5.2 dejaron decidido y no debe rehacerse: la persistencia de
-  `pagos`, `pagos_aplicaciones` y el efecto sobre `ventas` vive en
-  `app/repositories/pagos_repository.py`, quince funciones que reciben el cursor.
-  El controlador conserva conexión, cursor, `commit`, `rollback`, advisory lock,
-  validaciones y traducción de errores. Solo quedan inline las tres guardas de
-  esquema y la lectura de `_periodos_disponibles`.
-- **5.3 es la última subcapa**: además de su trabajo debe ejecutar la compuerta
-  global, documentar staging, rollback y verificación manual, actualizar el
-  índice maestro, cerrar la capa y dejar la capa 6 en espera.
+  publicado. Al cerrar 5.3, `HEAD` es `72fc12e` más tres archivos sin commitear.
+- Lo que la capa consiguió: la persistencia del dominio de pagos salió del
+  controlador a `app/repositories/pagos_repository.py`, **16 funciones** que
+  reciben el cursor. `pagos_controller.py` pasó de **717 a 633 líneas** y de
+  **23 sentencias SQL inline a 3**. El dominio quedó protegido por **54 pruebas
+  de caracterización** nuevas y la suite pasó de 606 a **660**.
+- Evidencia de que nada observable cambió: comparador AST contra el commit base
+  con conjunto de SQL idéntico y 19 de 21 literales byte a byte, más las 54
+  pruebas, ninguna de las cuales cambió de expectativa al extraer.
+- **Lo que la capa NO hizo**: no tocó la base de datos en absoluto, ni siquiera
+  para leer. No corrigió ninguno de los ocho hallazgos registrados.
+- Riesgos abiertos y hallazgos sin corregir, todos registrados arriba:
+  `POST /pagos` sin idempotencia, ausencia de filtro de ownership por pago,
+  siete funciones que absorben `Exception`, dos conexiones por petición en los
+  upsert, código duplicado byte a byte entre `pagos_controller` y `cobros`, y
+  una indirección vacía. Heredados: calibración de `DB_STATEMENT_TIMEOUT_MS`,
+  evidencia de GitHub Actions desde la capa 0 y credencial privilegiada sin
+  rotar.
+- Siguiente acción exacta: esperar una orden explícita del usuario. La capa 6,
+  asignaciones y estudiantes, sigue **en espera** y no se activa sin ella.
+- Pendiente operativo del usuario: **publicar la capa**. Al cerrarla no había
+  push, y en este repositorio un push a `main` dispara el despliegue.
 - Lo que 5.0 dejó medido: 19 entradas HTTP, seis tablas escritas, 40 pruebas de
   caracterización y los conteos de once caminos. Un pago simple cuesta **12
   consultas, once de ellas lecturas de validación**; un cargo de inventario
@@ -799,5 +1049,5 @@ la subcapa. Corregir cualquiera exige una decisión explícita del usuario.
 - Lo que esta capa debe recordar antes de tocar nada: **escribe donde las
   anteriores solo leían**. Claves foráneas repuestas en la capa 3, contratos de
   lectura de `pagos` fijados en la capa 4, y `pagos.concepto_id` inexistente.
-- Siguiente acción exacta: ejecutar solo 5.3, que es la última subcapa, y
-  aplicar su compuerta de cierre sin activar la capa 6.
+- Siguiente acción exacta: esperar una orden explícita. Una instrucción genérica
+  de continuar no autoriza activar la capa 6.

@@ -14,6 +14,7 @@ from app.repositories.pagos_repository import (
     insertar_aplicacion,
     insertar_pago,
     insertar_pago_adelantado,
+    leer_aplicaciones_vigentes,
     leer_pago_para_anular,
     leer_saldo_de_venta,
     leer_venta_para_anular,
@@ -123,20 +124,8 @@ def _etiqueta_periodo(periodo):
 
 
 def _periodos_disponibles(cursor, estudiante_id, concepto, hoy):
-    cursor.execute(
-        """
-        SELECT pa.periodo, COALESCE(SUM(pa.monto), 0)
-        FROM pagos_aplicaciones pa
-        JOIN pagos p ON p.id = pa.pago_id
-        WHERE pa.estudiante_id = %s
-          AND pa.tipo_pago_id = %s
-          AND pa.activo = TRUE
-          AND COALESCE(p.estado, 'Pagado') <> 'Anulado'
-        GROUP BY pa.periodo
-        """,
-        (estudiante_id, concepto["id"]),
-    )
-    aplicados = {row[0]: float(row[1] or 0) for row in cursor.fetchall()}
+    filas = leer_aplicaciones_vigentes(cursor, estudiante_id, concepto["id"])
+    aplicados = {row[0]: float(row[1] or 0) for row in filas}
     valor_unitario = round(float(concepto["valor_unitario"] or 0), 2)
     periodos = []
     for periodo in _periodos_programados(concepto, hoy):

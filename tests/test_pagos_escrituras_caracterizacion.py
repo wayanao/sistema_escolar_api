@@ -1046,3 +1046,55 @@ def test_un_pago_heredado_con_cargo_solo_en_el_texto_recupera_su_venta_id(conexi
         if "update pagos set venta_id" in query
     ]
     assert asignaciones == [(42, 5)]
+
+
+# ---------------------------------------------------------------------------
+# 8. Lectura de aplicaciones vigentes, caracterizada antes de 5.3
+# ---------------------------------------------------------------------------
+
+CONCEPTO_MENSUAL = {
+    "id": 4,
+    "nombre": "Pension",
+    "valor_unitario": 100.0,
+    "mes_inicial": None,
+    "frecuencia_meses": 1,
+}
+
+
+def test_los_periodos_disponibles_solo_suman_aplicaciones_activas_no_anuladas(conexion):
+    _conn, cursor = conexion()
+
+    pagos_controller._periodos_disponibles(
+        cursor, 11, CONCEPTO_MENSUAL, date(2026, 10, 15)
+    )
+
+    consulta, params = cursor.ejecutadas[0]
+    assert "select pa.periodo, coalesce(sum(pa.monto), 0)" in consulta
+    assert "from pagos_aplicaciones pa join pagos p on p.id = pa.pago_id" in consulta
+    assert "pa.activo = true" in consulta
+    assert "coalesce(p.estado, 'pagado') <> 'anulado'" in consulta
+    assert "group by pa.periodo" in consulta
+    assert params == (11, 4)
+
+
+def test_los_periodos_disponibles_emiten_una_sola_consulta(conexion):
+    _conn, cursor = conexion()
+
+    pagos_controller._periodos_disponibles(
+        cursor, 11, CONCEPTO_MENSUAL, date(2026, 10, 15)
+    )
+
+    assert len(cursor.ejecutadas) == 1
+    assert cursor.escrituras == []
+
+
+def test_sin_aplicaciones_previas_todo_mes_futuro_queda_disponible(conexion):
+    _conn, cursor = conexion()
+
+    periodos = pagos_controller._periodos_disponibles(
+        cursor, 11, CONCEPTO_MENSUAL, date(2026, 10, 15)
+    )
+
+    assert [p["periodo"] for p in periodos] == [date(2026, 11, 1), date(2026, 12, 1)]
+    assert all(p["saldo"] == 100.0 for p in periodos)
+    assert all(p["estado"] == "disponible" for p in periodos)

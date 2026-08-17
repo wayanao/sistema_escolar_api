@@ -156,6 +156,28 @@ def contar_pagos_de_estudiante(cursor, estudiante_id):
     return cursor.fetchone()[0]
 
 
+def leer_aplicaciones_vigentes(cursor, estudiante_id, tipo_pago_id):
+    """Suma por periodo lo ya aplicado de un concepto a un estudiante.
+
+    Solo cuenta aplicaciones activas de pagos no anulados: es la lectura que
+    decide cuanto saldo queda libre en cada mes.
+    """
+    cursor.execute(
+        """
+        SELECT pa.periodo, COALESCE(SUM(pa.monto), 0)
+        FROM pagos_aplicaciones pa
+        JOIN pagos p ON p.id = pa.pago_id
+        WHERE pa.estudiante_id = %s
+          AND pa.tipo_pago_id = %s
+          AND pa.activo = TRUE
+          AND COALESCE(p.estado, 'Pagado') <> 'Anulado'
+        GROUP BY pa.periodo
+        """,
+        (estudiante_id, tipo_pago_id),
+    )
+    return cursor.fetchall()
+
+
 def listar_pagos_de_estudiante_paginado(cursor, estudiante_id, limit, offset):
     """Una pagina del historial, con el mismo orden que la version completa."""
     cursor.execute("""

@@ -1,6 +1,6 @@
 # Guía maestra de evolución segura del backend
 
-Última revisión: 2026-08-15.
+Última revisión: 2026-08-16.
 
 ## Propósito
 
@@ -39,8 +39,8 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 2 | Concurrencia | DB síncrona fuera del event loop preservando `ContextVar` | **Cerrada** y publicada; CI posterior al cierre no verificada | [02_CONCURRENCIA.md](./02_CONCURRENCIA.md) |
 | 3 | Migraciones y tenants | Todos los tenants versionados, runner bloqueado y alta reproducible | **Cerrada**; reparó producción y verificó en uso | [03_MIGRACIONES_TENANTS.md](./03_MIGRACIONES_TENANTS.md) |
 | 4 | Reportes financieros | Dominio modular, N+1 eliminado y consultas medidas | **Cerrada**; N+1 de 5N a 15 constantes, medido en producción | [04_REPORTES_FINANCIEROS.md](./04_REPORTES_FINANCIEROS.md) |
-| 5 | Pagos y tipos de pago | Dominio financiero modularizado y protegido | **Activa**; 5.0 a 5.2 cerradas, 5.3 pendiente | [05_PAGOS_TIPOS_PAGO.md](./05_PAGOS_TIPOS_PAGO.md) |
-| 6 | Asignaciones y estudiantes | Dominios grandes separados con contratos estables | En espera | Se crea al activarla |
+| 5 | Pagos y tipos de pago | Dominio financiero modularizado y protegido | **Cerrada**; SQL inline de 23 a 3, sin tocar la base | [05_PAGOS_TIPOS_PAGO.md](./05_PAGOS_TIPOS_PAGO.md) |
+| 6 | Asignaciones y estudiantes | Dominios grandes separados con contratos estables | **En espera**, siguiente | Se crea al activarla |
 | 7 | Resto de dominios | Migración individual con contratos y pruebas | En espera | Una bitácora por dominio al activarlo |
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
@@ -48,13 +48,13 @@ cierre y el usuario ordene continuar, se crea su sucesora desde
 `PLANTILLA_CAPA.md`, se registra el commit base vigente y se actualiza esta
 tabla.
 
-Las capas 0, 1, 2, 3 y 4 están cerradas. La **capa 5 está activa** desde el
-2026-08-15, activada por orden explícita del usuario; sus subcapas 5.0, 5.1 y 5.2
-quedaron cerradas y 5.3, la última, está pendiente. La capa 3 es la única del programa que modificó la base
+Las capas 0, 1, 2, 3, 4 y 5 están cerradas. **No existe una capa activa**: la
+capa 6 permanece en espera y no fue activada. La capa 3 es la única del programa
+que modificó la base
 de datos real, con autorización explícita del usuario para cada paso; la capa 4
-solo la leyó. La capa 5 será la primera que **escriba**, y ese cambio de perfil
-de riesgo está registrado en su bitácora. No se atribuye ningún resultado de
-GitHub Actions sin evidencia del run correspondiente.
+solo la leyó; la capa 5 **no la tocó en absoluto**, pese a ser la primera que
+modularizó caminos de escritura. No se atribuye ningún resultado de GitHub
+Actions sin evidencia del run correspondiente.
 
 ## Alcance de cada capa
 
@@ -379,10 +379,44 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
 - 5.2 amplió la caracterización **antes** de mover producto, de 40 a 51 casos: el
   historial paginado solo tenía prueba de ruta y la lectura de saldo de venta no
   tenía ninguna.
-- Capa activa: **5, pagos y tipos de pago**. 5.0, 5.1 y 5.2 **cerradas**; primera
-  subcapa pendiente: **5.3**, guardas de migración restantes, retiro heredado y
-  **cierre de la capa**, no iniciada. Siguiente capa: 6, asignaciones y
-  estudiantes, en espera.
+- Resultado de 5.3: la lectura de aplicaciones vigentes pasó al repositorio, que
+  llega a **16 funciones**. Las **tres guardas de esquema y el advisory lock se
+  quedan** en el controlador, decidido con evidencia: la convención del
+  repositorio es que la introspección de esquema viva junto al código que la
+  necesita —`cobros.py` y `tipos_pagos_controller.py` lo hacen así— y el lock es
+  control de transacción. **No se retiró código heredado porque no lo hay**: los
+  dieciocho helpers privados del controlador conservan consumidores.
+- Resultado de la capa 5, con sus cuatro subcapas cerradas:
+  `pagos_controller.py` pasó de **717 a 633 líneas** y de **23 sentencias SQL
+  inline a 3**; la persistencia vive en `app/repositories/pagos_repository.py`.
+  El dominio quedó protegido por **54 pruebas de caracterización** nuevas y la
+  suite pasó de 606 a **660**. Compuerta de cierre: exit 0.
+- La capa 5 es **exclusivamente una refactorización** y **no tocó la base de
+  datos en absoluto**, ni siquiera para leer. Su rollback es puramente de código:
+  revertir hasta `f4d0913`. Que nada observable cambió lo demuestran un
+  comparador AST contra el commit base —conjunto de SQL idéntico, 19 de 21
+  literales byte a byte— y que ninguna de las 54 pruebas cambió de expectativa.
+- Hallazgos añadidos en 5.3, **registrados y sin corregir**:
+  `pagos_controller._tabla_pagos_aplicaciones_existe` es un duplicado **byte a
+  byte** de `cobros.tabla_pagos_aplicaciones_existe`, y `_obtener_saldo_concepto`
+  es una indirección vacía. Ninguna está huérfana, así que retirarlas exige una
+  decisión explícita. Ninguna prueba depende de que el duplicado siga separado:
+  los tres `monkeypatch` de esa función apuntan a `reportes_controller`.
+- **Verificación manual de la capa 5: hecha por el usuario y correcta.** La
+  ejecutó en **local contra el árbol de trabajo**, que incluía 5.3; se confirmó
+  expresamente el artefacto antes de registrarla. Cubre la capa completa.
+  Limitación registrada: fue local, **sin push ni despliegue**. Aceptable en una
+  refactorización con SQL equivalente demostrado y sin acceso a la base; no lo
+  sería en una capa que cambiara comportamiento o tocara datos.
+- Capa 5 **cerrada** el 2026-08-16, con sus subcapas 5.0 a 5.3 completas.
+  Compuerta al cerrar: **exit 0 con 660 pruebas**, Ruff correcto y `pip check`
+  correcto.
+- **Estado de publicación de la capa 5**: al cerrarla **no había push ni
+  despliegue**. Los cinco commits viven solo en el checkout local y producción
+  sigue corriendo `f4d0913`. Publicar es decisión del usuario, y en este
+  repositorio un push a `main` dispara el despliegue.
+- Capa activa: **ninguna**. Siguiente capa: 6, asignaciones y estudiantes, en
+  espera.
 - Resultado de 3.5: el alta construye el schema desde la migración base en vez de
   copiar la plantilla. Un tenant nuevo nace con **37 claves foráneas y 30
   secuencias propias**, donde el camino anterior producía **0 y 0**. Ensayado
@@ -494,16 +528,15 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
 
 ## Archivos de continuidad
 
-- [05_PAGOS_TIPOS_PAGO.md](./05_PAGOS_TIPOS_PAGO.md): **bitácora activa** de la
-  capa 5. Registra el commit base `f4d0913`, las verificaciones heredadas
-  aceptadas como pendientes, el perfil de riesgo propio de la primera capa que
-  escribe, el cierre de 5.0 con su inventario de 19 entradas, seis tablas
-  escritas, contratos, idempotencia y línea base de consultas, los cuatro
-  hallazgos registrados sin corregir, los cierres de 5.1 y 5.2 con sus
-  extracciones, la unificación SQL autorizada y la decisión sobre dónde vive el
-  contacto con `ventas`, y el trabajo exacto de 5.3, que es la última subcapa y
-  debe cerrar la capa. Es el documento que un chat nuevo debe leer después de
-  este índice.
+- [05_PAGOS_TIPOS_PAGO.md](./05_PAGOS_TIPOS_PAGO.md): **bitácora cerrada** de la
+  capa 5 y fuente de continuidad. Registra el commit base `f4d0913`, las
+  verificaciones heredadas aceptadas como pendientes, el inventario de 5.0 con
+  sus 19 entradas HTTP, seis tablas escritas, contratos, idempotencia y línea
+  base de consultas, los **ocho hallazgos registrados sin corregir**, las
+  extracciones de 5.1 a 5.3 con la unificación SQL autorizada y la decisión sobre
+  dónde vive el contacto con `ventas`, y el cierre de la capa con su rollback,
+  su verificación manual local y la advertencia de que **no llegó a publicarse**.
+  Es el documento que un chat nuevo debe leer después de este índice.
 - [04_REPORTES_FINANCIEROS.md](./04_REPORTES_FINANCIEROS.md): **bitácora
   cerrada** de la capa 4. Conserva el cierre de 4.3 con su medición sobre
   producción y la verificación manual del usuario, el hallazgo de que el informe

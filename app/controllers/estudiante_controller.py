@@ -293,15 +293,9 @@ def obtener_detalles_estudiante_controller(est_id):
     try:
         try:
             # Notas por materia (promediando los detalles de la planilla)
-            cursor.execute('''
-                SELECT m.nombre, ROUND(AVG(n.nota), 1) as promedio
-                FROM notas_detalle n
-                JOIN asignaciones a ON n.asignacion_id = a.id
-                JOIN materias m ON a.materia_id = m.id
-                WHERE n.estudiante_id = %s GROUP BY m.id
-            ''', (est_id,))
+            filas_notas = estudiantes_repository.leer_promedios_por_materia(cursor, est_id)
 
-            notas_list = [{'materia': r[0], 'promedio': float(r[1])} for r in cursor.fetchall()]
+            notas_list = [{'materia': r[0], 'promedio': float(r[1])} for r in filas_notas]
             detalles['notas'] = notas_list
 
             if notas_list:
@@ -312,19 +306,15 @@ def obtener_detalles_estudiante_controller(est_id):
             _registrar_error_detalle(detalles, "notas", exc)
 
         try:
-            cursor.execute('''
-                SELECT count(*) FROM asistencia
-                WHERE estudiante_id = %s AND estado ILIKE 'ausente'
-            ''', (est_id,))
-            detalles['inasistencias'] = cursor.fetchone()[0]
+            detalles['inasistencias'] = estudiantes_repository.contar_inasistencias(
+                cursor, est_id
+            )
         except Exception as exc:
             conn.rollback()
             _registrar_error_detalle(detalles, "asistencia", exc)
 
         try:
-            cursor.execute('''
-                SELECT o.id, o.periodo, o.conductual, o.cognitivo, o.lenguaje, m.nombre AS materia_nombre, p.nombre || ' ' || p.apellido AS profesor_nombre FROM observaciones o JOIN asignaciones a ON o.asignacion_id = a.id JOIN materias m ON a.materia_id = m.id JOIN profesor p ON a.profesor_id = p.id WHERE o.estudiante_id = %s ORDER BY o.periodo DESC
-            ''', (est_id,))
+            filas_observaciones = estudiantes_repository.leer_observaciones(cursor, est_id)
 
             detalles['observaciones'] = [
                 {
@@ -336,7 +326,7 @@ def obtener_detalles_estudiante_controller(est_id):
                     'materia': r[5],
                     'profesor': r[6]
                 }
-                for r in cursor.fetchall()
+                for r in filas_observaciones
             ]
         except Exception as exc:
             conn.rollback()
@@ -354,17 +344,12 @@ def obtener_detalles_estudiante_controller(est_id):
             _registrar_error_detalle(detalles, "deudas", exc)
 
         try:
-            cursor.execute('''
-                SELECT v.id, v.fecha, v.estado, i.nombre, vd.cantidad, vd.subtotal, COALESCE(v.pagado, 0)
-                FROM ventas v
-                JOIN ventas_detalle vd ON v.id = vd.venta_id
-                JOIN inventario i ON vd.inventario_id = i.id
-                WHERE v.estudiante_id = %s
-                ORDER BY v.fecha DESC
-            ''', (est_id,))
+            filas_inventario = estudiantes_repository.leer_cargos_de_inventario(
+                cursor, est_id
+            )
 
             productos_inventario = []
-            for v_row in cursor.fetchall():
+            for v_row in filas_inventario:
                 estado_real = v_row[2]
                 subtotal = float(v_row[5])
                 pagado = float(v_row[6])

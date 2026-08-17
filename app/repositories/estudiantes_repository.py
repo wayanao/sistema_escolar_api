@@ -196,3 +196,71 @@ def actualizar_estado_estudiante(cursor, estado, est_id):
         (estado, est_id),
     )
     return cursor.fetchone()
+
+
+# ---------------------------------------------------------------------------
+# El expediente de un estudiante
+#
+# Las cuatro lecturas que siguen NO son persistencia de notas, asistencia,
+# observaciones ni ventas: son las cuatro preguntas que
+# `obtener_detalles_estudiante_controller` hace sobre UN estudiante para armar su
+# expediente. Viven aqui por la decision tomada en 6.2 con evidencia, la misma
+# que 5.2 aplico al contacto de pagos con `ventas`: no existe un repositorio de
+# esos dominios, y crear uno tendria un solo consumidor real porque migrar
+# dashboard, notas, planilla, boletin y venta_controller esta fuera del alcance
+# de esta capa. Ninguna de estas consultas es un duplicado: dashboard promedia
+# con TRUNC a dos decimales y notas con COALESCE(AVG, 0), no con ROUND a uno.
+#
+# Si algun dia existe un repositorio de esos dominios con dos consumidores
+# reales, este bloque es lo que se mueve.
+# ---------------------------------------------------------------------------
+
+
+def leer_promedios_por_materia(cursor, est_id):
+    """Promedio de cada materia del estudiante, redondeado a un decimal en SQL.
+
+    El promedio general NO sale de aqui: el controlador promedia estos
+    promedios y redondea otra vez en Python.
+    """
+    cursor.execute('''
+                SELECT m.nombre, ROUND(AVG(n.nota), 1) as promedio
+                FROM notas_detalle n
+                JOIN asignaciones a ON n.asignacion_id = a.id
+                JOIN materias m ON a.materia_id = m.id
+                WHERE n.estudiante_id = %s GROUP BY m.id
+            ''', (est_id,))
+    return cursor.fetchall()
+
+
+def contar_inasistencias(cursor, est_id):
+    """Numero de ausencias. El filtro es `ILIKE 'ausente'`, no una igualdad."""
+    cursor.execute('''
+                SELECT count(*) FROM asistencia
+                WHERE estudiante_id = %s AND estado ILIKE 'ausente'
+            ''', (est_id,))
+    return cursor.fetchone()[0]
+
+
+def leer_observaciones(cursor, est_id):
+    """Observaciones del estudiante con su materia y profesor, mas recientes primero."""
+    cursor.execute('''
+                SELECT o.id, o.periodo, o.conductual, o.cognitivo, o.lenguaje, m.nombre AS materia_nombre, p.nombre || ' ' || p.apellido AS profesor_nombre FROM observaciones o JOIN asignaciones a ON o.asignacion_id = a.id JOIN materias m ON a.materia_id = m.id JOIN profesor p ON a.profesor_id = p.id WHERE o.estudiante_id = %s ORDER BY o.periodo DESC
+            ''', (est_id,))
+    return cursor.fetchall()
+
+
+def leer_cargos_de_inventario(cursor, est_id):
+    """Ventas de inventario del estudiante con lo ya pagado de cada una.
+
+    Devuelve `COALESCE(v.pagado, 0)` porque quien decide si hay saldo y si el
+    estado se muestra como «Pendiente (Abonado)» es el controlador.
+    """
+    cursor.execute('''
+                SELECT v.id, v.fecha, v.estado, i.nombre, vd.cantidad, vd.subtotal, COALESCE(v.pagado, 0)
+                FROM ventas v
+                JOIN ventas_detalle vd ON v.id = vd.venta_id
+                JOIN inventario i ON vd.inventario_id = i.id
+                WHERE v.estudiante_id = %s
+                ORDER BY v.fecha DESC
+            ''', (est_id,))
+    return cursor.fetchall()

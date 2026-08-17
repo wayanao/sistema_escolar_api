@@ -40,7 +40,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 3 | Migraciones y tenants | Todos los tenants versionados, runner bloqueado y alta reproducible | **Cerrada**; reparó producción y verificó en uso | [03_MIGRACIONES_TENANTS.md](./03_MIGRACIONES_TENANTS.md) |
 | 4 | Reportes financieros | Dominio modular, N+1 eliminado y consultas medidas | **Cerrada**; N+1 de 5N a 15 constantes, medido en producción | [04_REPORTES_FINANCIEROS.md](./04_REPORTES_FINANCIEROS.md) |
 | 5 | Pagos y tipos de pago | Dominio financiero modularizado y protegido | **Cerrada**; SQL inline de 23 a 3, sin tocar la base | [05_PAGOS_TIPOS_PAGO.md](./05_PAGOS_TIPOS_PAGO.md) |
-| 6 | Asignaciones y estudiantes | Dominios grandes separados con contratos estables | **Activa**; 6.0 y 6.1 cerradas, 6.2 pendiente | [06_ASIGNACIONES_ESTUDIANTES.md](./06_ASIGNACIONES_ESTUDIANTES.md) |
+| 6 | Asignaciones y estudiantes | Dominios grandes separados con contratos estables | **Activa**; estudiantes terminado en 6.2, asignaciones pendiente desde 6.3 | [06_ASIGNACIONES_ESTUDIANTES.md](./06_ASIGNACIONES_ESTUDIANTES.md) |
 | 7 | Resto de dominios | Migración individual con contratos y pruebas | En espera | Una bitácora por dominio al activarlo |
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
@@ -499,10 +499,31 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   `asistencia`, `observaciones` y `ventas` **no se movieron**: no tocan la tabla
   `estudiantes` y su ubicación se decide en 6.2 con evidencia, igual que 5.1
   dejó `ventas` para 5.2.
-- Capa activa: **6, asignaciones y estudiantes**. Subcapas **6.0 y 6.1 cerradas**
-  el 2026-08-17. Primera subcapa pendiente: **6.2**, cerrar la frontera de
-  estudiantes con las cuatro lecturas de otros dominios, **definida y no
-  iniciada**. **Asignaciones sigue sin inspeccionar.**
+- Resultado de 6.2, que **termina el dominio de estudiantes**: las cuatro
+  lecturas del expediente —`notas_detalle`, `asistencia`, `observaciones` y
+  `ventas`— pasaron al repositorio, que llega a **once funciones**. El
+  controlador baja de **519 líneas al activar la capa a 381** y de **11
+  sentencias SQL inline a 0**. El comparador AST contra el commit base confirmó
+  conjunto idéntico y **11 de 11 literales byte a byte**; en toda la extracción
+  de estudiantes **no hizo falta autorizar ni un cambio de texto SQL**, a
+  diferencia de la capa 5. Compuerta local: **712 pruebas**, Ruff y dependencias
+  correctas.
+- Decisión de 6.2, tomada con evidencia: las cuatro lecturas viven en
+  `estudiantes_repository.py`, en un bloque rotulado como **el expediente de un
+  estudiante**, no como persistencia de notas, asistencia u observaciones.
+  Existen cuatro repositorios y **ninguno de esos dominios tiene el suyo**; crear
+  uno tendría un solo consumidor real porque migrar dashboard, notas, planilla,
+  boletín y ventas está fuera del alcance; y **ninguna de las consultas es un
+  duplicado** —estudiantes promedia con `ROUND(...,1)` por materia, dashboard con
+  `TRUNC(...,2)` por estudiante—. Es el criterio que 5.2 aplicó a `ventas`.
+- 6.2 amplió la caracterización **antes** de mover, de 39 a 43 casos: el promedio
+  general resultó ser el promedio de los promedios redondeado en Python —4,5 y
+  3,0 dan **3,8**—, y no estaba fijado.
+- Capa activa: **6, asignaciones y estudiantes**. Subcapas **6.0, 6.1 y 6.2
+  cerradas** el 2026-08-17; **el dominio de estudiantes está terminado**. Primera
+  subcapa pendiente: **6.3**, extraer las escrituras de `asignaciones`,
+  **definida y no iniciada**. El código de asignaciones **solo se ha
+  inventariado**: sus 1093 líneas son el trabajo que queda en la capa.
 - Resultado de 3.5: el alta construye el schema desde la migración base en vez de
   copiar la plantilla. Un tenant nuevo nace con **37 claves foráneas y 30
   secuencias propias**, donde el camino anterior producía **0 y 0**. Ensayado

@@ -776,6 +776,115 @@ def test_detalles_degrada_por_seccion_sin_tumbar_la_respuesta(conexion_de, monke
     assert conn.cerrada is True
 
 
+def test_detalles_promedia_los_promedios_por_materia(conexion_de, monkeypatch):
+    """Ampliada en 6.2 antes de mover las cuatro lecturas.
+
+    El promedio general no es el promedio de las notas: es el promedio de los
+    promedios por materia, redondeado a un decimal en Python. Con 4,5 y 3,0 da
+    3,75 que se redondea a 3,8. Si una extraccion cambiara el redondeo o la
+    agrupacion, el numero que ve el usuario cambiaria.
+    """
+    conexion_de(
+        estudiante_controller,
+        una=[(0,)],
+        todas=[[("Matemáticas", 4.5), ("Lengua", 3.0)], [], []],
+    )
+    monkeypatch.setattr(
+        estudiante_controller,
+        "calcular_deudas_estudiante",
+        lambda cursor, est_id: {"curso_id": 4, "deudas": []},
+    )
+
+    respuesta = estudiante_controller.obtener_detalles_estudiante_controller(55)
+
+    assert respuesta["notas"] == [
+        {"materia": "Matemáticas", "promedio": 4.5},
+        {"materia": "Lengua", "promedio": 3.0},
+    ]
+    assert respuesta["promedio_general"] == 3.8
+
+
+def test_detalles_cuenta_solo_las_ausencias(conexion_de, monkeypatch):
+    """Ampliada en 6.2: el filtro de asistencia es ILIKE 'ausente'."""
+    cursor, _ = conexion_de(estudiante_controller, una=[(7,)], todas=[[], [], []])
+    monkeypatch.setattr(
+        estudiante_controller,
+        "calcular_deudas_estudiante",
+        lambda cursor, est_id: {"curso_id": 4, "deudas": []},
+    )
+
+    respuesta = estudiante_controller.obtener_detalles_estudiante_controller(55)
+
+    consulta_asistencia = next(
+        (sql, params) for sql, params in cursor.ejecutadas if "FROM asistencia" in sql
+    )
+    assert "estado ILIKE 'ausente'" in consulta_asistencia[0]
+    assert consulta_asistencia[1] == (55,)
+    assert respuesta["inasistencias"] == 7
+
+
+def test_detalles_ordena_las_observaciones_por_periodo_descendente(conexion_de, monkeypatch):
+    """Ampliada en 6.2: fija la forma del payload y el orden de observaciones."""
+    cursor, _ = conexion_de(
+        estudiante_controller,
+        una=[(0,)],
+        todas=[
+            [],
+            [
+                (9, "P2", "conductual", "cognitivo", "lenguaje", "Lengua", "Ana Ríos"),
+                (8, "P1", "c1", "c2", "c3", "Matemáticas", "Luis Paz"),
+            ],
+            [],
+        ],
+    )
+    monkeypatch.setattr(
+        estudiante_controller,
+        "calcular_deudas_estudiante",
+        lambda cursor, est_id: {"curso_id": 4, "deudas": []},
+    )
+
+    respuesta = estudiante_controller.obtener_detalles_estudiante_controller(55)
+
+    consulta = next(sql for sql in cursor.sql if "FROM observaciones" in sql)
+    assert "ORDER BY o.periodo DESC" in consulta
+    assert respuesta["observaciones"][0] == {
+        "id": 9,
+        "periodo": "P2",
+        "conductual": "conductual",
+        "cognitivo": "cognitivo",
+        "lenguaje": "lenguaje",
+        "materia": "Lengua",
+        "profesor": "Ana Ríos",
+    }
+    assert [obs["periodo"] for obs in respuesta["observaciones"]] == ["P2", "P1"]
+
+
+def test_detalles_no_calcula_saldo_de_una_venta_ya_pagada(conexion_de, monkeypatch):
+    """Ampliada en 6.2: el saldo solo se calcula si la venta esta Pendiente."""
+    import datetime
+
+    conexion_de(
+        estudiante_controller,
+        una=[(0,)],
+        todas=[
+            [],
+            [],
+            [(12, datetime.date(2026, 3, 1), "Pagado", "Uniforme", 1, 50.0, 50.0)],
+        ],
+    )
+    monkeypatch.setattr(
+        estudiante_controller,
+        "calcular_deudas_estudiante",
+        lambda cursor, est_id: {"curso_id": 4, "deudas": []},
+    )
+
+    respuesta = estudiante_controller.obtener_detalles_estudiante_controller(55)
+
+    producto = respuesta["productos_inventario"][0]
+    assert producto["estado"] == "Pagado"
+    assert producto["saldo"] == 0
+
+
 def test_detalles_calcula_el_saldo_pendiente_del_inventario(conexion_de, monkeypatch):
     import datetime
 

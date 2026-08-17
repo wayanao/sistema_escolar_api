@@ -12,8 +12,9 @@
   A diferencia de todas las activaciones anteriores salvo la de la capa 5, el
   commit base **ya está desplegado**: un push a `main` dispara el despliegue en
   este repositorio.
-- Primera subcapa pendiente: **6.2**. Las subcapas **6.0 y 6.1 quedaron
-  cerradas** el 2026-08-17.
+- Primera subcapa pendiente: **6.3**. Las subcapas **6.0, 6.1 y 6.2 quedaron
+  cerradas** el 2026-08-17. Con 6.2 **el dominio de estudiantes queda terminado**:
+  su controlador no contiene ni una sentencia SQL.
 - Código de producto modificado al activar: **ninguno**. Tampoco en 6.0. En 6.1:
   `app/controllers/estudiante_controller.py` y el nuevo
   `app/repositories/estudiantes_repository.py`, sin cambios en rutas, payloads,
@@ -172,8 +173,9 @@ suite pasó de **669 a 708** con la caracterización de 6.0.
 |---:|---|---|
 | 6.0 | Inventario, contratos, caracterización y línea base de consultas y escrituras | **Cerrada** |
 | 6.1 | Extraer la persistencia de **estudiantes** sin cambiar SQL, conteos ni transacción | **Cerrada** |
-| 6.2 | Cerrar la frontera de estudiantes: las cuatro lecturas de otros dominios que quedan en `detalles` | **Pendiente, no iniciada** |
-| 6.3 en adelante | **Sin decidir.** El dominio de asignaciones se desglosa con la evidencia que dejen 6.1 y 6.2 | Sin definir |
+| 6.2 | Cerrar la frontera de estudiantes: las cuatro lecturas de otros dominios que quedan en `detalles` | **Cerrada** |
+| 6.3 | Extraer la persistencia de las **escrituras de `asignaciones`** | **Pendiente, no iniciada** |
+| 6.4 en adelante | **Sin decidir.** Lecturas de asignaciones, el SQL inline de la ruta y el cierre de la capa | Sin definir |
 
 6.1 quedó definida desde lo que 6.0 midió, y toma **estudiantes primero** por la
 razón registrada en Decisiones. El desglose de asignaciones se deja sin decidir
@@ -474,6 +476,37 @@ Cerrar la frontera de estudiantes antes de tocar asignaciones.
 7. Ejecutar pruebas específicas, Ruff del alcance, compuerta global y
    `git diff --check`; documentar y detenerse antes de 6.3.
 
+## Subcapa 6.3 — trabajo exacto, definido y NO iniciado
+
+Primera subcapa del **segundo** dominio. Estudiantes queda terminado; ahora
+empieza asignaciones, y empieza por sus escrituras.
+
+1. Revalidar Git y limitar la inspección a las escrituras de `asignaciones` en
+   `asignacion_controller.py`: el `INSERT` del alta, el `UPDATE` de
+   autorreferencia, el `UPDATE` de la edición, los dos `UPDATE` de
+   `SET activo = FALSE` y los dos `UPDATE` de `orden_boletin`.
+2. Conservar la caracterización de 6.0 y ampliarla **antes** de mover si algún
+   camino de escritura no está cubierto.
+3. Extraer solo esas sentencias a `app/repositories/asignaciones_repository.py`,
+   con funciones que **reciben el cursor existente**, siguiendo el patrón ya
+   aplicado dos veces en esta capa.
+4. Conservar byte por byte las cadenas SQL, sus parámetros y su orden. El
+   controlador sigue siendo dueño de conexión, cursor, `commit`, `rollback`,
+   cierres, validaciones de horario y jornada, y la traducción de
+   `IntegrityError` a `AsignacionDuplicadaError`.
+5. **No mover las lecturas** —validaciones de estado activo, unicidad, cruces,
+   disponibilidad, listados y orden del boletín—: son de 6.4, y así el diff de
+   esta subcapa se puede revisar entero.
+6. No tocar `app/services/asignacion_academica.py`, del que dependen nueve
+   módulos, ni el SQL inline de `app/routes/asignaciones.py`, ni estudiantes, ni
+   la base de datos. **No corregir ninguno de los diez hallazgos de 6.0**, en
+   particular ni el código muerto duplicado ni la ausencia de lock.
+7. Volver a ejecutar el comparador AST contra el commit base de la capa
+   exigiendo conjunto de SQL idéntico, y verificar que los conteos de 6.0 —12,
+   11, 8, 10, 6 y 6— no cambian.
+8. Ejecutar pruebas específicas, Ruff del alcance, compuerta global y
+   `git diff --check`; documentar y detenerse antes de 6.4.
+
 ## Criterios de cierre de la capa
 
 - Todas las subcapas necesarias están cerradas o marcadas `No aplica` con
@@ -549,6 +582,33 @@ Cerrar la frontera de estudiantes antes de tocar asignaciones.
   `asistencia`, `observaciones` y `ventas` no tocan la tabla `estudiantes`. Es
   literalmente el caso que 5.1 dejó para 5.2 con `ventas`, y se resuelve igual:
   con evidencia, en la subcapa siguiente.
+- **Dónde viven las cuatro lecturas del expediente, decidido en 6.2 con
+  evidencia.** Van a `estudiantes_repository.py`, en un bloque propio rotulado
+  como **el expediente de un estudiante**, no como persistencia de notas,
+  asistencia, observaciones o ventas. Tres datos lo sostienen: existen cuatro
+  repositorios —`estudiantes`, `pagos`, `plan_de_clases` y `reportes`— y **ninguno
+  de esos dominios tiene el suyo**; esas tablas se leen hoy con SQL inline desde
+  `dashboard`, `notas`, `planilla`, `boletin`, `asistencia` y `venta_controller`,
+  cuya migración está **fuera del alcance de esta capa**, así que un repositorio
+  nuevo tendría **un solo consumidor real**; y **ninguna de las cuatro consultas
+  es un duplicado**, comprobado literal a literal: el promedio de estudiantes usa
+  `ROUND(AVG(...), 1)` agrupando por materia, mientras dashboard usa
+  `TRUNC(AVG(CAST(... AS numeric)), 2)` por estudiante y notas
+  `COALESCE(AVG(...), 0)`. Es la misma decisión y el mismo criterio que 5.2
+  aplicó al contacto de pagos con `ventas`. Si algún día existe un repositorio de
+  esos dominios con dos consumidores reales, ese bloque es lo que se mueve.
+  Alternativa descartada: dejarlas en el controlador, que habría dejado la
+  frontera de estudiantes a medias sin ganar nada.
+- **6.2 amplió la caracterización antes de mover**, de 39 a 43 casos. Los cuatro
+  nuevos cubren lo que 6.0 no fijaba: que el promedio general es el promedio de
+  los promedios por materia redondeado en Python —4,5 y 3,0 dan **3,8**, no 3,75—,
+  el filtro `ILIKE 'ausente'` de la asistencia, la forma exacta y el orden de las
+  observaciones, y que el saldo de un cargo **solo** se calcula si la venta está
+  `Pendiente`. Se vieron pasar contra el producto anterior a mover.
+- **La degradación por secciones se queda en el controlador**, decidido en 6.2.
+  Los cinco `try/except` con su `rollback` y su entrada en `errores` son política
+  de respuesta, no persistencia. El repositorio ejecuta y devuelve; quien decide
+  que un fallo de notas no tumbe el expediente sigue siendo el controlador.
 
 ## Riesgos
 
@@ -756,23 +816,86 @@ Cerrar la frontera de estudiantes antes de tocar asignaciones.
 - Estado: 6.1 **cerrada**; 6.2 **pendiente y no iniciada**.
 - Siguiente acción exacta: ejecutar únicamente 6.2, decidir con evidencia dónde
   viven las cuatro lecturas de otros dominios, y detenerse antes de 6.3.
+  *(Ejecutada en el turno siguiente; ver el cierre de 6.2 más abajo.)*
+
+### 2026-08-17 — cierre de 6.2
+
+- Modo de acceso: mismo checkout local en
+  `C:\Users\David\Documents\sistema_escolar_api`; Git validado directamente y no
+  se usó GitHub para inferir el estado local.
+- Precondición Git: rama `main`, **árbol limpio**, `HEAD` `69c0033`, el cierre de
+  6.1 que el usuario commiteó entre turnos y que contiene exactamente los cuatro
+  archivos que 6.1 declaró. El commit base `589cb6d` existe y es ancestro;
+  `origin/main` sigue en el base, así que hay **tres commits locales por delante,
+  sin publicar**, todos explicados aquí.
+- Alcance inspeccionado y modificado: únicamente las cuatro lecturas de
+  `obtener_detalles_estudiante_controller` y el repositorio de estudiantes. Se
+  leyeron además, **solo para decidir con evidencia y sin modificarlos**, los
+  literales SQL de `dashboard_controller`, `notas_controller`,
+  `planilla_controller` y `boletin_controller`, y el listado de repositorios
+  existentes. **No se inspeccionó asignaciones.**
+- Decisión con evidencia sobre las cuatro lecturas: registrada en Decisiones.
+  Viven en `estudiantes_repository.py`, en un bloque rotulado, porque no existe
+  un repositorio de esos dominios, crear uno tendría un solo consumidor real y
+  ninguna de las consultas es un duplicado.
+- Caracterización añadida **antes** de mover producto:
+  `tests/test_asignaciones_estudiantes_caracterizacion.py` pasó de 39 a **43
+  casos**. Se vieron pasar contra el producto anterior.
+- Archivos de producto: `app/controllers/estudiante_controller.py` y
+  `app/repositories/estudiantes_repository.py`. Pruebas modificadas:
+  `tests/test_asignaciones_estudiantes_caracterizacion.py`.
+- Implementación: **cuatro funciones nuevas** en el repositorio, que llega a
+  **once**. El controlador bajó de **396 a 381 líneas**; desde el commit base de
+  la capa, de **519 a 381**. **Ya no contiene ni una sola sentencia SQL**: la
+  frontera del dominio de estudiantes queda cerrada.
+- Equivalencia SQL verificada con el comparador AST **contra el commit base de la
+  capa**, `589cb6d`: **11 sentencias distintas antes y 11 después, conjunto
+  idéntico**, doce puntos de llamada antes y doce después, y **11 de 11 literales
+  conservados byte a byte**. Ninguna autorización de cambio de SQL fue necesaria
+  en toda la extracción de estudiantes.
+- Error detectado y corregido durante la subcapa: al mover la lectura de
+  observaciones quedó un `for r in cursor.fetchall()` consumiendo el cursor en
+  vez de la lista devuelta. Se detectó releyendo el resultado de la edición,
+  antes de ejecutar nada, y se corrigió; las pruebas lo habrían atrapado igual.
+- Conteos conservados: `GET /estudiantes/{id}/detalles` sigue costando **4
+  consultas propias** más las de `cobros`, y `GET /estudiantes` con `limit` sigue
+  costando 2. Los de la capa 4 no se tocan.
+- Pruebas específicas: **71 pasaron** en 0,67 s sobre los siete archivos del
+  dominio. Ruff del alcance: **correcto**.
+- Compuerta global final: `.\venv\Scripts\python.exe scripts\verify.py`;
+  **712 pruebas pasaron** en 2,08 s, 5 warnings heredadas, Ruff correcto,
+  `pip check` íntegro y exit 0. La suite pasó de 708 a 712.
+- Revisión final: `git diff --check` en exit 0. El diff contiene tres archivos:
+  dos de producto y la prueba ampliada. No hubo cambios en rutas, payloads,
+  status codes, permisos, tenant, ownership, transacciones, timeouts,
+  dependencias ni configuración.
+- PostgreSQL, migraciones, producción, commit, push y deploy: **ninguno**. La
+  evidencia de GitHub Actions posterior a la capa 0 continúa pendiente y no se
+  atribuye CI remota.
+- Estado: 6.2 **cerrada** y con ella **el dominio de estudiantes**; 6.3
+  **pendiente y no iniciada**.
+- Siguiente acción exacta: ejecutar únicamente 6.3, extracción de las escrituras
+  de `asignaciones`, y detenerse antes de 6.4.
 
 ## Entrega al próximo chat
 
 - Capa activa: **6, asignaciones y estudiantes**.
-- Última subcapa terminada: **6.1**, cerrada el 2026-08-17.
-- Primera subcapa pendiente: **6.2**, decidir con evidencia dónde viven las
-  cuatro lecturas de otros dominios que quedan en `detalles`. Su trabajo exacto
-  está definido arriba y **no se ha iniciado**.
+- Última subcapa terminada: **6.2**, cerrada el 2026-08-17. Con ella **el dominio
+  de estudiantes está terminado**.
+- Primera subcapa pendiente: **6.3**, extraer las escrituras de `asignaciones`.
+  Su trabajo exacto está definido arriba y **no se ha iniciado**.
 - Commit base: `589cb6d1391161c692a6f24aee9d523317cbb1ce`, rama `main`,
-  **publicado y desplegado**. Al cerrar 6.1, `HEAD` es `9e9b4dc` —dos commits
-  locales por delante de `origin/main`, sin publicar— más los dos archivos de
-  6.1 sin commitear.
-- Lo que 6.1 consiguió: la persistencia de la tabla `estudiantes` salió del
-  controlador a `app/repositories/estudiantes_repository.py`, **siete funciones**
-  que reciben el cursor. `estudiante_controller.py` pasó de **519 a 396 líneas**.
-  Comparador AST contra el commit base: **conjunto de SQL idéntico, 11 de 11
-  literales byte a byte**, y **ninguna prueba cambió de expectativa**.
+  **publicado y desplegado**. Al cerrar 6.2, `HEAD` es `69c0033` —tres commits
+  locales por delante de `origin/main`, sin publicar— más los tres archivos de
+  6.2 sin commitear.
+- Lo que consiguieron 6.1 y 6.2: toda la persistencia de estudiantes salió del
+  controlador a `app/repositories/estudiantes_repository.py`, **once funciones**
+  que reciben el cursor —siete de la tabla `estudiantes` y cuatro del bloque del
+  expediente—. `estudiante_controller.py` pasó de **519 a 381 líneas** y de
+  **11 sentencias SQL inline a 0**. Comparador AST contra el commit base:
+  **conjunto de SQL idéntico, 11 de 11 literales byte a byte**, sin una sola
+  autorización de cambio de texto. Ninguna prueba cambió de expectativa; las
+  cuatro añadidas en 6.2 cubren huecos, no correcciones.
 - Lo que 6.0 dejó medido: **19 entradas HTTP** —12 de asignaciones y 7 de
   estudiantes—, **dos tablas escritas** y ninguna borrada, **39 pruebas de
   caracterización** nuevas y los conteos de once caminos. Un alta de asignación
@@ -792,6 +915,7 @@ Cerrar la frontera de estudiantes antes de tocar asignaciones.
      `require_profesor_scope` y admiten a un profesor, no solo a un admin.
   4. **Nada se borra**: los dos dominios desactivan con `UPDATE`, y eso es lo
      que hace inocuas las 16 claves foráneas que apuntan a sus tablas.
-- Siguiente acción exacta: ejecutar únicamente 6.2 y detenerse antes de 6.3. No
-  iniciar dos subcapas en el mismo turno. **Asignaciones sigue sin inspeccionar**
-  y no se toca hasta cerrar la frontera de estudiantes.
+- Siguiente acción exacta: ejecutar únicamente 6.3 y detenerse antes de 6.4. No
+  iniciar dos subcapas en el mismo turno. **Asignaciones solo se ha inventariado
+  en 6.0**: su código no se ha modificado y sus 1093 líneas son el trabajo que
+  queda en la capa.

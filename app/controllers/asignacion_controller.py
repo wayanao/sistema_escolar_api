@@ -1,6 +1,7 @@
 from psycopg2 import IntegrityError, errorcodes
 
 from app.database import get_connection, get_cursor
+from app.repositories import asignaciones_repository
 
 
 ASIGNACION_OTRO_PROFESOR_MENSAJE = (
@@ -365,26 +366,11 @@ def actualizar_orden_boletin_curso_controller(curso_id, data):
         if materias_invalidas:
             return {"error": "El orden contiene materias que no están asignadas a este curso."}
 
-        cursor.execute(
-            """
-            UPDATE asignaciones
-            SET orden_boletin = 100
-            WHERE curso_id = %s
-              AND activo = TRUE
-            """,
-            (curso_id,),
-        )
+        asignaciones_repository.reiniciar_orden_boletin(cursor, curso_id)
 
         for posicion, item in enumerate(data.materias, start=1):
-            cursor.execute(
-                """
-                UPDATE asignaciones
-                SET orden_boletin = %s
-                WHERE curso_id = %s
-                  AND materia_id = %s
-                  AND activo = TRUE
-                """,
-                (posicion, curso_id, item.materia_id),
+            asignaciones_repository.fijar_orden_boletin_materia(
+                cursor, posicion, curso_id, item.materia_id
             )
 
         conn.commit()
@@ -459,21 +445,7 @@ def asignar_profesor_controller(asignacion):
                 return {"error": "Error: El curso (salón) ya tiene otra clase asignada en ese horario y ese día."}
 
         try:
-            cursor.execute("""
-                INSERT INTO asignaciones (
-                    profesor_id,
-                    curso_id,
-                    materia_id,
-                    dia,
-                    hora_inicio,
-                    hora_fin,
-                    activo,
-                    asignacion_academica_id,
-                    orden_boletin
-                )
-                VALUES (%s, %s, %s, %s, %s, %s, TRUE, %s, %s)
-                RETURNING id
-            """, (
+            asignaciones_repository.insertar_asignacion(cursor, (
                 asignacion.profesor_id,
                 asignacion.curso_id,
                 asignacion.materia_id,
@@ -491,14 +463,7 @@ def asignar_profesor_controller(asignacion):
 
         asignacion_id = cursor.fetchone()[0]
         if asignacion_academica_id is None:
-            cursor.execute(
-                """
-                UPDATE asignaciones
-                SET asignacion_academica_id = id
-                WHERE id = %s
-                """,
-                (asignacion_id,),
-            )
+            asignaciones_repository.apuntar_asignacion_a_si_misma(cursor, asignacion_id)
         conn.commit()
         return {
             "mensaje": "Asignación creada",
@@ -639,11 +604,7 @@ def eliminar_asignacion_controller(profesor_id, curso_id):
 
         asignacion_id = asignacion[0]
 
-        cursor.execute("""
-            UPDATE asignaciones
-            SET activo = FALSE
-            WHERE id = %s
-        """, (asignacion_id,))
+        asignaciones_repository.desactivar_asignacion(cursor, asignacion_id)
 
     return {"mensaje": "Asignación desactivada. El historial académico se conserva."}
 
@@ -684,7 +645,7 @@ def eliminar_asignacion_por_id_controller(asignacion_id):
         if not cursor.fetchone():
             return {"error": "Asignación no encontrada"}
 
-        cursor.execute("UPDATE asignaciones SET activo = FALSE WHERE id = %s", (asignacion_id,))
+        asignaciones_repository.desactivar_asignacion_por_id(cursor, asignacion_id)
         conn.commit()
         return {"mensaje": "Asignación desactivada. El historial académico se conserva."}
     finally:
@@ -843,19 +804,7 @@ def editar_asignacion_controller(asignacion_id, asignacion):
                 return {"error": "Error: El curso (salón) ya tiene otra clase asignada en ese horario y ese día."}
 
         try:
-            cursor.execute("""
-                UPDATE asignaciones
-                SET profesor_id = %s,
-                    curso_id = %s,
-                    materia_id = %s,
-                    dia = %s,
-                    hora_inicio = %s,
-                    hora_fin = %s,
-                    asignacion_academica_id = %s
-                WHERE id = %s
-                  AND activo = TRUE
-                RETURNING id
-            """, (
+            asignaciones_repository.actualizar_asignacion(cursor, (
                 asignacion.profesor_id,
                 asignacion.curso_id,
                 asignacion.materia_id,

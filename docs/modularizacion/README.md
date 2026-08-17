@@ -40,7 +40,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 3 | Migraciones y tenants | Todos los tenants versionados, runner bloqueado y alta reproducible | **Cerrada**; reparó producción y verificó en uso | [03_MIGRACIONES_TENANTS.md](./03_MIGRACIONES_TENANTS.md) |
 | 4 | Reportes financieros | Dominio modular, N+1 eliminado y consultas medidas | **Cerrada**; N+1 de 5N a 15 constantes, medido en producción | [04_REPORTES_FINANCIEROS.md](./04_REPORTES_FINANCIEROS.md) |
 | 5 | Pagos y tipos de pago | Dominio financiero modularizado y protegido | **Cerrada**; SQL inline de 23 a 3, sin tocar la base | [05_PAGOS_TIPOS_PAGO.md](./05_PAGOS_TIPOS_PAGO.md) |
-| 6 | Asignaciones y estudiantes | Dominios grandes separados con contratos estables | **Activa**; estudiantes terminado en 6.2, asignaciones pendiente desde 6.3 | [06_ASIGNACIONES_ESTUDIANTES.md](./06_ASIGNACIONES_ESTUDIANTES.md) |
+| 6 | Asignaciones y estudiantes | Dominios grandes separados con contratos estables | **Activa**; estudiantes terminado, escrituras de asignaciones extraídas, 6.4 pendiente | [06_ASIGNACIONES_ESTUDIANTES.md](./06_ASIGNACIONES_ESTUDIANTES.md) |
 | 7 | Resto de dominios | Migración individual con contratos y pruebas | En espera | Una bitácora por dominio al activarlo |
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
@@ -519,11 +519,26 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
 - 6.2 amplió la caracterización **antes** de mover, de 39 a 43 casos: el promedio
   general resultó ser el promedio de los promedios redondeado en Python —4,5 y
   3,0 dan **3,8**—, y no estaba fijado.
-- Capa activa: **6, asignaciones y estudiantes**. Subcapas **6.0, 6.1 y 6.2
-  cerradas** el 2026-08-17; **el dominio de estudiantes está terminado**. Primera
-  subcapa pendiente: **6.3**, extraer las escrituras de `asignaciones`,
-  **definida y no iniciada**. El código de asignaciones **solo se ha
-  inventariado**: sus 1093 líneas son el trabajo que queda en la capa.
+- Resultado de 6.3: las **siete escrituras** de `asignaciones` salieron a
+  `app/repositories/asignaciones_repository.py`. El controlador pasó de **1093 a
+  1041 líneas** y **ya no contiene ninguna escritura**; le quedan **34 lecturas
+  distintas**, que son el trabajo de 6.4. El comparador AST contra el commit base
+  confirmó **41 sentencias distintas antes y después, conjunto idéntico**, con
+  **41 de 41** literales byte a byte. **6.3 no cambió ninguna expectativa de
+  prueba**; solo añadió una guardia. Compuerta local: **713 pruebas**, Ruff y
+  dependencias correctas.
+- Decisiones de 6.3: las **dos formas de `SET activo = FALSE`** —una en cuatro
+  líneas, otra en una— **no se unificaron**, porque esta vez no se pidió la
+  autorización y la extracción no la necesitaba; una guardia de prueba falla si
+  alguien lo hace sin registrarlo. Y `insertar_asignacion` y
+  `actualizar_asignacion` **no leen su `RETURNING`**: en el controlador el
+  `fetchone` ocurre después del `except IntegrityError`, para que un duplicado se
+  traduzca a 409 antes de leer, y mover esa lectura habría cambiado el orden.
+- Capa activa: **6, asignaciones y estudiantes**. Subcapas **6.0 a 6.3 cerradas**
+  el 2026-08-17: **estudiantes terminado** y las escrituras de asignaciones ya
+  extraídas. Primera subcapa pendiente: **6.4**, extraer las lecturas de
+  `asignaciones`, **definida y no iniciada**. Después quedan el SQL inline de la
+  ruta `/mis-clases` y el cierre de la capa.
 - Resultado de 3.5: el alta construye el schema desde la migración base en vez de
   copiar la plantilla. Un tenant nuevo nace con **37 claves foráneas y 30
   secuencias propias**, donde el camino anterior producía **0 y 0**. Ensayado

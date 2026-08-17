@@ -990,6 +990,40 @@ def test_los_dominios_de_la_capa_6_no_tocan_archivos():
         assert "storage" not in codigo
 
 
+def test_las_dos_formas_de_desactivar_siguen_sin_unificarse():
+    """Guardia anadida en 6.3 sobre una decision que sigue pendiente.
+
+    `desactivar_asignacion` y `desactivar_asignacion_por_id` ejecutan la misma
+    sentencia con formato distinto: la primera en cuatro lineas y la segunda en
+    una. El flujo de tokens que recibe PostgreSQL es identico, asi que
+    unificarlas seria legitimo, pero es una decision del usuario y no se ha
+    tomado. Esta prueba falla si alguien las unifica sin registrarlo, y falla
+    igual si alguien cambia el texto de una de las dos.
+    """
+    codigo = (RAIZ_APP / "repositories" / "asignaciones_repository.py").read_text(
+        encoding="utf-8"
+    )
+    arbol = ast.parse(codigo)
+    docstrings = {
+        ast.get_docstring(nodo, clean=False)
+        for nodo in ast.walk(arbol)
+        if isinstance(nodo, (ast.Module, ast.FunctionDef, ast.ClassDef))
+    }
+    formas = {
+        nodo.value
+        for nodo in ast.walk(arbol)
+        if isinstance(nodo, ast.Constant)
+        and isinstance(nodo.value, str)
+        and nodo.value not in docstrings
+        and "SET activo = FALSE" in nodo.value
+    }
+
+    assert len(formas) == 2
+    assert "UPDATE asignaciones SET activo = FALSE WHERE id = %s" in formas
+    # Las dos dicen lo mismo una vez normalizados los espacios.
+    assert len({" ".join(forma.split()) for forma in formas}) == 1
+
+
 def test_la_ruta_mis_clases_conserva_su_sql_inline():
     """Hallazgo de 6.0: hay SQL de dominio en la capa de rutas, no solo en el
     controlador. Ningun dominio migrado antes tenia esto, y 6.1 debera decidir

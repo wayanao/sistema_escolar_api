@@ -139,7 +139,7 @@ Al final de este archivo hay una preparada para la **capa 6**, con la misma
 condición de caducidad. **No se dispara sola**: es un texto que el usuario decide
 pegar. Si no la pega, la capa 6 sigue en espera.
 
-## Estado del programa al 2026-08-16 (capa 5 cerrada)
+## Estado del programa al 2026-08-17 (capa 5 cerrada y publicada)
 
 Lo que sigue es un resumen para orientarse; **el estado vivo está en
 `docs/modularizacion/README.md`**, que es lo que manda si algo no coincide.
@@ -149,7 +149,7 @@ Lo que sigue es un resumen para orientarse; **el estado vivo está en
 - La capa 5 cerró el 2026-08-16 modularizando pagos y tipos de pago:
   `pagos_controller.py` pasó de **717 a 633 líneas** y de **23 sentencias SQL
   inline a 3**; la persistencia vive en `app/repositories/pagos_repository.py`
-  con 16 funciones que reciben el cursor. La suite pasó de 606 a **660**.
+  con 16 funciones que reciben el cursor.
 - La capa 5 es **exclusivamente una refactorización** y **no tocó la base de
   datos en absoluto**, ni siquiera para leer. Su rollback es puramente de código.
 - Que nada observable cambió se demostró con dos evidencias: un comparador AST
@@ -157,7 +157,22 @@ Lo que sigue es un resumen para orientarse; **el estado vivo está en
   byte a byte, y **54 pruebas de caracterización** escritas antes de cada
   extracción, ninguna de las cuales cambió de expectativa.
 - Verificación manual de la capa 5: **hecha por el usuario y correcta**, en local
-  contra el árbol de trabajo. **Al cerrar no había push ni despliegue.**
+  contra el árbol de trabajo. Al cerrarla no había push; **se publicó después**,
+  el 2026-08-17, junto con las tres correcciones puntuales de abajo.
+- **Tres correcciones puntuales posteriores al cierre**, cada una autorizada
+  explícitamente y registrada en `05_PAGOS_TIPOS_PAGO.md`. La capa **no se
+  reabrió**: son correcciones sobre hallazgos que la capa dejó anotados.
+  1. **Candado de registro de pagos**: `registrar_pago_controller` toma un
+     `pg_advisory_xact_lock` por estudiante, así que un doble clic ya no cobra
+     dos veces. La clave de idempotencia sigue pendiente.
+  2. **Registro de fallos absorbidos** en `tipos_pagos_controller`: los siete
+     `except Exception` ya dejan traceback. Los status codes no cambiaron.
+  3. **Una sola conexión por upsert**: los dos upsert de tipos de pago releen con
+     su cursor antes de confirmar. Cerró además una ventana en la que un `commit`
+     correcto se reportaba como 400.
+- Suite al día: **669 pruebas**, exit 0. Partió de 606 al activar la capa 5.
+- **Un hallazgo se retiró** tras revisarlo: el «filtro de ownership por pago» no
+  era un hueco. Ver el detalle en la bitácora antes de volver a levantarlo.
 - Verificaciones heredadas que siguen **pendientes y aceptadas**: el valor
   operativo final de `DB_STATEMENT_TIMEOUT_MS` de la capa 1 y que GitHub Actions
   no se ha verificado desde la capa 0. Sigue sin rotar la credencial
@@ -319,8 +334,9 @@ En el mismo checkout local:
 4. No uses ningun hash de memoria: comprueba primero el HEAD limpio real.
 5. No declares GitHub Actions verificada solo porque HEAD coincida con
    origin/main; exige evidencia del run.
-6. Comprueba si la capa 5 llego a publicarse. Al cerrarla no habia push y
-   produccion corria f4d0913. Informa lo que encuentres, no lo supongas.
+6. La capa 5 y sus tres correcciones puntuales se publicaron el 2026-08-17.
+   Comprueba el estado real de origin/main de todas formas e informa lo que
+   encuentres, no lo supongas.
 7. Crea docs/modularizacion/06_ASIGNACIONES_ESTUDIANTES.md partiendo de
    docs/modularizacion/PLANTILLA_CAPA.md.
 8. Registra el HEAD limpio vigente como commit base, rama main, estado Activa,

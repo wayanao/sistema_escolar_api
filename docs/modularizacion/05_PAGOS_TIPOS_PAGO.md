@@ -627,10 +627,40 @@ que cambiara comportamiento o tocara datos no lo sería.
 Ninguno se corrige por inferencia: son hallazgos del inventario, no defectos de
 la subcapa. Corregir cualquiera exige una decisión explícita del usuario.
 
-- **`POST /pagos` no tiene clave de idempotencia.** Un doble clic o un reintento
-  del frontend crea dos pagos mientras la suma no supere la deuda. Es el riesgo
-  financiero más directo del dominio y hoy solo lo contiene la validación de
-  saldo, que no distingue un reintento de un segundo pago legítimo.
+- **`POST /pagos` no tiene clave de idempotencia.** Es el riesgo financiero más
+  directo del dominio. El detalle se revisó y se midió el 2026-08-17, y el
+  resultado matiza en un sentido y agrava en otro lo que se había registrado:
+  - **Secuencialmente existe una protección accidental.** La validación de deuda
+    relee los pagos ya guardados, así que un duplicado que cubra la deuda entera
+    se rechaza con «no puede ser mayor a la deuda pendiente ($0.00)». Comprobado
+    con un doble que sí modela la tabla: 100 sobre una deuda de 100 se acepta una
+    vez y se rechaza la segunda.
+  - **Un duplicado parcial sí pasa**, y es indistinguible de un segundo abono
+    legítimo: 50 sobre una deuda de 100 se acepta dos veces. Con 40 se aceptan
+    dos y se rechaza el tercero.
+  - **Concurrentemente no hay ninguna protección.** El camino de pago normal
+    **no toma el advisory lock**: `_preparar_aplicaciones_pago` sale por
+    `return None` antes de tomarlo cuando no hay `aplicaciones`. Tampoco usa
+    `FOR UPDATE` ni se configura nivel de aislamiento, así que rige el
+    `READ COMMITTED` por defecto. Dos peticiones simultáneas leen ambas el estado
+    previo, ambas pasan la validación y ambas insertan: la protección secuencial
+    **no se sostiene**. Es el escenario del doble clic real.
+  - **La asimetría es lo más revelador**: el camino de adelantos y cuotas **sí**
+    toma `pg_advisory_xact_lock` y **sí** tiene el índice parcial único
+    `uq_pagos_aplicaciones_pago_periodo_activas`. El camino de pago normal, que
+    es el más usado, no tiene ninguno de los dos.
+  - Lo mismo vale para el cargo de inventario: `_obtener_saldo_venta` lee sin
+    `FOR UPDATE` al registrar, mientras que `anular_pago_controller` sí bloquea
+    la venta con `FOR UPDATE`.
+  - `pagos` **no tiene ninguna restricción `UNIQUE`**: en la migración base solo
+    lleva `pagos_pkey` sobre `id`. Nada en la base frena un duplicado.
+- **La prueba que fija este hallazgo es débil y no debe creerse.**
+  `test_registrar_pago_no_es_idempotente_dos_llamadas_crean_dos_pagos` usa el
+  doble sin estado: sus consultas de suma devuelven siempre `[]`, así que la
+  deuda no baja nunca y la segunda llamada pasa **por construcción**, no por el
+  comportamiento real. Aceptaría igual un caso que en producción se rechaza. Su
+  nombre afirma más de lo que demuestra. Sustituirla por una que modele la tabla
+  exige una decisión explícita, porque la capa ya está cerrada.
 - **No hay filtro de ownership dentro del tenant.** `anular_pago_controller`
   anula cualquier `pago_id` que reciba sin comprobar a qué estudiante pertenece.
   El aislamiento entre colegios sí está garantizado por `search_path`.
@@ -1004,7 +1034,72 @@ despliegue.
 - Siguiente acción exacta: esperar una orden explícita del usuario. Una
   instrucción genérica de continuar no autoriza activar la capa 6.
 
-## Entrega al próximo chat
+### 2026-08-17 — corrección puntual posterior al cierre: candado de registro
+
+**La capa 5 sigue cerrada.** Esto no la reabre ni es una subcapa: es una
+corrección puntual autorizada explícitamente por el usuario sobre uno de los
+hallazgos que la capa dejó registrados, hecha fuera de toda capa.
+
+- Autorización: el usuario revisó el hallazgo de idempotencia, se le ofrecieron
+  tres alcances —solo el candado, la clave de idempotencia completa, o el candado
+  ahora y la clave después— y eligió **el candado ahora y la clave después**.
+- Precondición Git: rama `main`, `HEAD` `dcf7ffd`, con las tres correcciones
+  documentales del hallazgo aún sin commitear.
+- Evidencia test-first: se añadieron cuatro pruebas **antes** de tocar producto.
+  Las tres de comportamiento pasaron contra el código anterior y confirmaron lo
+  medido: un duplicado que cubre la deuda entera se rechaza, dos parciales
+  idénticos se aceptan los dos, y el tercero se rechaza cuando ya no cabe. La
+  cuarta, la del candado, **falló** con «el camino de pago normal no toma ningún
+  lock». Esa era la señal esperada.
+- Producto modificado: `app/controllers/pagos_controller.py`. Se extrajo
+  `_tomar_lock`, con dos usos reales, y se añadió `_bloquear_registro_de_pagos`,
+  que toma `pg_advisory_xact_lock` con la clave `pagos:registro:{estudiante_id}`
+  como **primera sentencia** de `registrar_pago_controller`.
+- **Qué arregla**: el hueco concurrente. Dos peticiones simultáneas ya no leen la
+  misma deuda: la segunda espera al `commit` de la primera, relee y se rechaza si
+  ya no cabe. El doble clic deja de cobrar dos veces.
+- **Qué NO arregla**: dos pagos parciales idénticos separados en el tiempo siguen
+  entrando los dos, porque sin una clave de idempotencia el servidor no puede
+  distinguir un reintento de una segunda cuota legítima. Eso exige el paso 2.
+- Análisis de interbloqueo: donde se toman los dos locks, el de registro va
+  siempre primero y el de concepto después; el camino de adelantos toma solo el
+  de concepto y nunca el de registro. No hay ciclo posible.
+- El lock es de transacción: se libera solo en el `commit` o el `rollback`, que
+  siguen siendo del controlador. No cambia la propiedad de recursos fijada en
+  5.1 y 5.2, ni el SQL de dominio: la sentencia añadida es la misma cadena que ya
+  usaba `_bloquear_aplicaciones_concepto`.
+- Conteos actualizados **deliberadamente**, porque la caracterización los detectó
+  y obligó a revisarlos uno a uno: pago simple **12 → 13**, dos métodos
+  **13 → 14**, cargo de inventario **4 → 5**. La lectura del saldo de venta pasó
+  de ser la sentencia 0 a la 1. Ningún otro conteo cambió; los de la capa 4
+  siguen intactos.
+- Pruebas específicas: 58 en el archivo de caracterización y 49 en los otros
+  siete archivos del dominio y de la capa 4, todas pasando. Ruff correcto.
+- Compuerta global: **664 pruebas, exit 0**, Ruff correcto y `pip check` íntegro.
+  La suite pasó de 660 a 664.
+- PostgreSQL, migraciones, producción, commit, push y deploy: **ninguno**.
+- Siguiente paso acordado: la **clave de idempotencia**, descrita abajo. No se
+  inició.
+
+### Paso 2 acordado y no iniciado: clave de idempotencia
+
+Es el único arreglo que cierra también el duplicado parcial separado en el
+tiempo, porque es el único que permite al servidor distinguir un reintento de una
+segunda cuota legítima. No se ha empezado y no debe empezarse sin orden
+explícita.
+
+Forma prevista, a confirmar cuando se aborde:
+
+1. El frontend genera un identificador único por intento de pago —no por
+   reintento— y lo envía en el cuerpo o en una cabecera.
+2. `pagos` recibe una columna para ese identificador con una restricción
+   `UNIQUE`, mediante una migración versionada aplicada con el runner de la capa
+   3 y sobre el endpoint directo, no el `-pooler`.
+3. El registro traduce la violación de unicidad a una respuesta que el frontend
+   entienda como «este pago ya se registró», devolviendo el pago existente en vez
+   de crear otro ni fallar con 500.
+4. Toca tres piezas: migración, backend y el repositorio `frontend-react`. Por
+   eso es varias veces mayor que el candado y merece su propio alcance acordado.
 
 - Capa activa: **ninguna**. La capa 5 quedó **cerrada** el 2026-08-16 y la capa
   6 sigue en espera, sin activar.

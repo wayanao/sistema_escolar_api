@@ -340,8 +340,11 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   local terminó con **646 pruebas**, Ruff y dependencias correctas. No se
   modificó producto ni configuración: el diff es un solo archivo nuevo.
 - Hallazgos de 5.0, **registrados y sin corregir** porque exigen decisión
-  explícita: `POST /pagos` **no tiene clave de idempotencia** y dos envíos
-  idénticos crean dos pagos; no existe filtro de ownership por pago dentro del
+  explícita: `POST /pagos` **no tenía clave de idempotencia** —el 2026-08-17 se
+  corrigió la mitad con autorización explícita, añadiendo un advisory lock por
+  estudiante que cierra el hueco concurrente; el duplicado parcial separado en el
+  tiempo sigue abierto y necesita la clave, que es el paso 2 acordado y no
+  iniciado—; no existe filtro de ownership por pago dentro del
   tenant, así que una anulación no comprueba a qué estudiante pertenece; siete
   funciones de tipos de pago absorben `Exception` y presentan un fallo de
   infraestructura como 400 o 404; y los dos upsert de tipos de pago abren **dos

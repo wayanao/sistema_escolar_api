@@ -774,15 +774,15 @@ def test_la_anulacion_escribe_el_estado_que_la_capa_4_excluye_de_los_totales(con
 # 6. Linea base de consultas y ciclo de vida de la conexion
 # ---------------------------------------------------------------------------
 
-def test_linea_base_del_pago_simple_son_once_lecturas_y_una_escritura(conexion):
-    """El grueso del coste es recalcular la deuda entera antes de insertar."""
+def test_linea_base_del_pago_simple_es_lock_once_lecturas_y_una_escritura(conexion):
+    """Un lock, once lecturas para recalcular la deuda entera y una escritura."""
     _conn, cursor = conexion()
 
     pagos_controller.registrar_pago_controller(
         PagoCreate(estudiante_id=1, monto=100, descripcion="Pension")
     )
 
-    assert len(cursor.ejecutadas) == 12
+    assert len(cursor.ejecutadas) == 13
     assert len(cursor.escrituras) == 1
 
 
@@ -801,19 +801,19 @@ def test_cada_metodo_adicional_suma_exactamente_una_escritura(conexion):
         )
     )
 
-    assert len(cursor.ejecutadas) == 13
+    assert len(cursor.ejecutadas) == 14
     assert len(cursor.escrituras) == 2
 
 
 def test_el_pago_de_venta_no_recalcula_la_deuda_academica(conexion):
-    """Rareza util: el camino de venta sale antes y cuesta 4 consultas, no 12."""
+    """Rareza util: el camino de venta sale antes y cuesta 5 sentencias, no 13."""
     _conn, cursor = conexion(venta=(100, 0))
 
     pagos_controller.registrar_pago_controller(
         PagoCreate(estudiante_id=1, monto=100, venta_id=7, descripcion="Cargo #7")
     )
 
-    assert len(cursor.ejecutadas) == 4
+    assert len(cursor.ejecutadas) == 5
     assert len(cursor.escrituras) == 3
 
 
@@ -950,7 +950,8 @@ def test_el_saldo_de_venta_se_lee_antes_de_insertar_el_pago(conexion):
         PagoCreate(estudiante_id=1, monto=60, venta_id=7, descripcion="Cargo #7")
     )
 
-    lectura, params = cursor.ejecutadas[0]
+    assert "pg_advisory_xact_lock" in cursor.ejecutadas[0][0]
+    lectura, params = cursor.ejecutadas[1]
     assert lectura.startswith("select total, coalesce(pagado, 0), estado from ventas")
     assert params == (7,)
 
@@ -1098,3 +1099,106 @@ def test_sin_aplicaciones_previas_todo_mes_futuro_queda_disponible(conexion):
     assert [p["periodo"] for p in periodos] == [date(2026, 11, 1), date(2026, 12, 1)]
     assert all(p["saldo"] == 100.0 for p in periodos)
     assert all(p["estado"] == "disponible" for p in periodos)
+
+
+# ---------------------------------------------------------------------------
+# 9. Duplicados de POST /pagos
+#
+# El doble de arriba no modela la tabla `pagos`: sus sumas devuelven siempre
+# vacio, asi que la deuda nunca baja. Sirve para contar consultas, pero no puede
+# demostrar nada sobre duplicados. Estas pruebas usan un doble que si acumula lo
+# insertado, de modo que la segunda llamada ve la primera.
+# ---------------------------------------------------------------------------
+
+class CursorConEstado(CursorFalso):
+    """Cursor que recuerda los pagos insertados y los suma al recalcular deuda."""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.pagos = []
+
+    def _despachar(self, query, params):
+        if query.startswith("insert into pagos "):
+            self.pagos.append((float(params[2]), params[3], params[5]))
+            return [(self._nuevo_id(),)]
+        if "coalesce(sum(monto), 0)" in query and "from pagos" in query:
+            por_descripcion = "descripcion" in query.split("group by")[-1]
+            acumulado = {}
+            for monto, descripcion, tipo_pago in self.pagos:
+                clave = ((descripcion if por_descripcion else tipo_pago) or "").lower()
+                acumulado[clave] = acumulado.get(clave, 0.0) + monto
+            return [(1, clave, monto) for clave, monto in acumulado.items()]
+        return super()._despachar(query, params)
+
+
+@pytest.fixture
+def conexion_con_estado(monkeypatch):
+    def instalar(**kwargs):
+        cursor = CursorConEstado(**kwargs)
+        conn = ConexionFalsa(cursor)
+        monkeypatch.setattr(pagos_controller, "get_connection", lambda: conn)
+        return conn, cursor
+
+    return instalar
+
+
+def _pagar(monto):
+    return PagoCreate(estudiante_id=1, monto=monto, descripcion="Pension")
+
+
+def test_un_duplicado_que_cubre_la_deuda_entera_se_rechaza(conexion_con_estado):
+    """Proteccion accidental: la validacion de deuda relee lo ya pagado."""
+    _conn, cursor = conexion_con_estado()
+
+    pagos_controller.registrar_pago_controller(_pagar(100))
+
+    with pytest.raises(ValueError, match=r"no puede ser mayor a la deuda pendiente"):
+        pagos_controller.registrar_pago_controller(_pagar(100))
+
+    assert len(cursor.pagos) == 1
+
+
+def test_dos_pagos_parciales_identicos_se_aceptan_los_dos(conexion_con_estado):
+    """Hueco conocido: el servidor no distingue duplicado de segunda cuota."""
+    _conn, cursor = conexion_con_estado()
+
+    pagos_controller.registrar_pago_controller(_pagar(50))
+    pagos_controller.registrar_pago_controller(_pagar(50))
+
+    assert len(cursor.pagos) == 2
+    assert sum(monto for monto, _d, _t in cursor.pagos) == 100
+
+
+def test_el_tercer_parcial_se_rechaza_cuando_ya_no_cabe_en_la_deuda(conexion_con_estado):
+    _conn, cursor = conexion_con_estado()
+
+    pagos_controller.registrar_pago_controller(_pagar(40))
+    pagos_controller.registrar_pago_controller(_pagar(40))
+
+    with pytest.raises(ValueError, match=r"no puede ser mayor a la deuda pendiente"):
+        pagos_controller.registrar_pago_controller(_pagar(40))
+
+    assert sum(monto for monto, _d, _t in cursor.pagos) == 80
+
+
+def test_registrar_pago_toma_un_advisory_lock_por_estudiante_antes_de_leer_la_deuda(conexion):
+    """Sin este lock la proteccion anterior no sobrevive a dos peticiones a la vez.
+
+    Ambas leerian la deuda antes de que ninguna confirmara, las dos pasarian la
+    validacion y las dos insertarian. El lock serializa leer-validar-escribir.
+    """
+    _conn, cursor = conexion()
+
+    pagos_controller.registrar_pago_controller(_pagar(100))
+
+    indice_lock = next(
+        (i for i, (q, _) in enumerate(cursor.ejecutadas) if "pg_advisory_xact_lock" in q),
+        None,
+    )
+    assert indice_lock is not None, "el camino de pago normal no toma ningun lock"
+
+    indice_insert = next(
+        i for i, (q, _) in enumerate(cursor.ejecutadas) if q.startswith("insert into pagos ")
+    )
+    assert indice_lock < indice_insert
+    assert indice_lock == 0, "el lock debe tomarse antes de leer la deuda"

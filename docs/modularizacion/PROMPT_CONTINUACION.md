@@ -235,9 +235,16 @@ de esto entra en ella por inferencia: requiere una orden explícita.
   repitiendo el cálculo y llega a doce consultas por estudiante.
 - **14 índices duplicados** en `tenant_2005`, medidos y descartados
   deliberadamente en la capa 3.
-- **`POST /pagos` no tiene clave de idempotencia.** Un doble clic o un reintento
-  del frontend crea dos pagos mientras la suma no supere la deuda. Es el riesgo
-  financiero más directo que dejó la capa 5.
+- **`POST /pagos`: clave de idempotencia, paso 2 pendiente.** El 2026-08-17 se
+  corrigió la mitad del problema con autorización explícita: el camino de pago
+  normal ya toma un `pg_advisory_xact_lock` por estudiante como primera
+  sentencia, así que **dos peticiones simultáneas ya no cobran dos veces** —la
+  segunda espera, relee la deuda y se rechaza—. Lo que **sigue abierto** es el
+  duplicado parcial separado en el tiempo: dos envíos idénticos de 50 sobre una
+  deuda de 100 entran los dos, porque sin una clave de idempotencia el servidor
+  no puede distinguir un reintento de una segunda cuota legítima. El paso 2
+  —columna con `UNIQUE`, migración y cambio en `frontend-react`— está descrito en
+  `05_PAGOS_TIPOS_PAGO.md` y **no se ha iniciado**.
 - **No hay filtro de ownership por pago dentro del tenant**: `anular_pago` anula
   el `pago_id` que reciba sin comprobar de quién es. El aislamiento entre
   colegios sí lo garantiza el `search_path`.

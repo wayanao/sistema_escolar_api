@@ -97,9 +97,27 @@ def _exigir_indice_aplicaciones_parciales(cursor):
         )
 
 
-def _bloquear_aplicaciones_concepto(cursor, estudiante_id, tipo_pago_id):
-    clave = f"pagos_aplicaciones:{estudiante_id}:{tipo_pago_id}"
+def _tomar_lock(cursor, clave):
     cursor.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))", (clave,))
+
+
+def _bloquear_aplicaciones_concepto(cursor, estudiante_id, tipo_pago_id):
+    _tomar_lock(cursor, f"pagos_aplicaciones:{estudiante_id}:{tipo_pago_id}")
+
+
+def _bloquear_registro_de_pagos(cursor, estudiante_id):
+    """Serializa el registro de pagos de un estudiante dentro de la transacción.
+
+    Sin él, dos peticiones simultáneas leen la deuda antes de que ninguna
+    confirme, las dos pasan la validación de saldo y las dos insertan: un doble
+    clic cobra dos veces. El lock es de transacción, así que se libera solo en el
+    `commit` o el `rollback`.
+
+    No introduce riesgo de interbloqueo con `_bloquear_aplicaciones_concepto`:
+    donde se toman los dos, este va siempre primero, y el camino de adelantos
+    solo toma el de concepto.
+    """
+    _tomar_lock(cursor, f"pagos:registro:{estudiante_id}")
 
 
 def _periodos_programados(concepto, hoy):
@@ -466,6 +484,7 @@ def registrar_pago_controller(pago):
     cursor = conn.cursor()
 
     try:
+        _bloquear_registro_de_pagos(cursor, pago.estudiante_id)
         aplicaciones_preparadas = _preparar_aplicaciones_pago(cursor, pago)
         _validar_pago_no_excede_deuda(cursor, pago)
         fecha_registro = _fecha_pago_local(getattr(pago, "fecha", None))

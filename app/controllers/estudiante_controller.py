@@ -1,6 +1,7 @@
 import logging
 
 from app.database import get_connection, get_cursor
+from app.repositories import estudiantes_repository
 from app.services.cobros import calcular_deudas_estudiante
 
 logger = logging.getLogger(__name__)
@@ -31,48 +32,7 @@ def crear_estudiante_controller(est):
     with get_cursor(commit=True) as cursor:
         estado = normalizar_estado_estudiante(getattr(est, "estado", None))
 
-        cursor.execute("""
-            INSERT INTO estudiantes
-            (
-            nombre, 
-            apellido,
-            documento_identidad,
-            fecha_nacimiento,
-            curso_id, 
-            descuento_matricula, 
-            descuento_mensualidad,
-            datos_medicos,
-            telefono,
-            email,
-            direccion,
-            nombre_padre,
-            telefono_padre,
-            nombre_madre,
-            telefono_madre,
-            contacto_emergencia,
-            tipo_documento,
-            lugar_expedicion,
-            eps,
-            estrato,
-            jornada,
-            colegio_anterior,
-            anio_cursado_anterior,
-            pre_escolar_anterior,
-            ebp_anterior,
-            motivo_retiro_anterior,
-            paz_salvo_anterior,
-            ocupacion_padre,
-            tipo_documento_padre,
-            documento_padre,
-            ocupacion_madre,
-            tipo_documento_madre,
-            documento_madre,
-            condicion_diagnostico,
-            estado
-            )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            RETURNING id
-        """, (
+        estudiante_id = estudiantes_repository.insertar_estudiante(cursor, (
             est.nombre,
             est.apellido,
             est.documento_identidad,
@@ -110,8 +70,6 @@ def crear_estudiante_controller(est):
             estado
         ))
 
-        estudiante_id = cursor.fetchone()[0]
-
     return {
     "mensaje": "Estudiante creado correctamente",
     "id": estudiante_id
@@ -140,22 +98,9 @@ def obtener_estudiantes_controller(estado="activo"):
         estado_where, parametros = _build_estado_filter(estado)
         where_sql = f"WHERE {estado_where}" if estado_where else ""
 
-        cursor.execute(f"""
-            SELECT
-                id,
-                nombre,
-                apellido,
-                documento_identidad,
-                fecha_nacimiento,
-                curso_id,
-                email,
-                COALESCE(LOWER(estado), 'activo') AS estado
-            FROM estudiantes
-            {where_sql}
-            ORDER BY apellido ASC, nombre ASC
-        """, tuple(parametros))
-
-        resultado = cursor.fetchall()
+        resultado = estudiantes_repository.listar_estudiantes(
+            cursor, where_sql, parametros
+        )
     finally:
         cursor.close()
         conn.close()
@@ -190,35 +135,17 @@ def obtener_estudiantes_paginado_controller(limit=50, offset=0, busqueda=None, e
     where_sql = " WHERE " + " AND ".join(condiciones) if condiciones else ""
 
     try:
-        cursor.execute("SELECT COUNT(*) FROM estudiantes" + where_sql, tuple(parametros))
-        total = cursor.fetchone()[0]
+        total = estudiantes_repository.contar_estudiantes(cursor, where_sql, parametros)
 
-        cursor.execute(
-            """
-            SELECT
-                id,
-                nombre,
-                apellido,
-                documento_identidad,
-                fecha_nacimiento,
-                curso_id,
-                email,
-                COALESCE(LOWER(estado), 'activo') AS estado
-            FROM estudiantes
-            """
-            + where_sql
-            + """
-            ORDER BY apellido ASC, nombre ASC
-            LIMIT %s OFFSET %s
-            """,
-            tuple(parametros + [limit, offset]),
+        filas = estudiantes_repository.listar_estudiantes_paginado(
+            cursor, where_sql, parametros + [limit, offset]
         )
 
         return {
             "total": total,
             "limit": limit,
             "offset": offset,
-            "items": [_formatear_estudiante_lista(row) for row in cursor.fetchall()],
+            "items": [_formatear_estudiante_lista(row) for row in filas],
         }
     finally:
         cursor.close()
@@ -233,46 +160,7 @@ def actualizar_estudiante_controller(est_id, est):
             else None
         )
 
-        cursor.execute("""
-            UPDATE estudiantes
-            SET nombre = %s,
-            apellido = %s,
-            documento_identidad = %s,
-            fecha_nacimiento = %s,
-            curso_id = %s, 
-            descuento_matricula = %s, 
-            descuento_mensualidad = %s,
-            datos_medicos = %s,
-            telefono = %s,
-            email = %s,
-            direccion = %s,
-            nombre_padre = %s,
-            telefono_padre = %s,
-            nombre_madre = %s,
-            telefono_madre = %s,
-            contacto_emergencia = %s,
-            tipo_documento = %s,
-            lugar_expedicion = %s,
-            eps = %s,
-            estrato = %s,
-            jornada = %s,
-            colegio_anterior = %s,
-            anio_cursado_anterior = %s,
-            pre_escolar_anterior = %s,
-            ebp_anterior = %s,
-            motivo_retiro_anterior = %s,
-            paz_salvo_anterior = %s,
-            ocupacion_padre = %s,
-            tipo_documento_padre = %s,
-            documento_padre = %s,
-            ocupacion_madre = %s,
-            tipo_documento_madre = %s,
-            documento_madre = %s,
-            condicion_diagnostico = %s,
-                estado = COALESCE(%s, estado, 'activo')
-            WHERE id = %s
-            RETURNING id
-        """, (
+        resultado = estudiantes_repository.actualizar_estudiante(cursor, (
             est.nombre,
             est.apellido,
             est.documento_identidad,
@@ -311,8 +199,6 @@ def actualizar_estudiante_controller(est_id, est):
             est_id
         ))
 
-        resultado = cursor.fetchone()
-
     if resultado:
         return {"mensaje": "Estudiante actualizado correctamente", "id": resultado[0]}
     else:
@@ -322,8 +208,7 @@ def obtener_estudiante_por_id_controller(est_id):
     conn = get_connection()
     cursor = conn.cursor()
     try:
-        cursor.execute("SELECT * FROM estudiantes WHERE id = %s", (est_id,))
-        row = cursor.fetchone()
+        row = estudiantes_repository.obtener_estudiante(cursor, est_id)
         if row:
             col_names = [desc[0] for desc in cursor.description]
             data = dict(zip(col_names, row))
@@ -351,16 +236,9 @@ def actualizar_estado_estudiante_controller(est_id, estado):
     conn = get_connection()
     cursor = conn.cursor()
     try:
-        cursor.execute(
-            """
-            UPDATE estudiantes
-            SET estado = %s
-            WHERE id = %s
-            RETURNING id, COALESCE(LOWER(estado), 'activo')
-            """,
-            (estado_normalizado, est_id),
+        row = estudiantes_repository.actualizar_estado_estudiante(
+            cursor, estado_normalizado, est_id
         )
-        row = cursor.fetchone()
         if not row:
             conn.rollback()
             return {"error": "Estudiante no encontrado"}

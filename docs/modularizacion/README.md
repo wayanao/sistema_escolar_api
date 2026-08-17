@@ -40,7 +40,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 3 | Migraciones y tenants | Todos los tenants versionados, runner bloqueado y alta reproducible | **Cerrada**; reparó producción y verificó en uso | [03_MIGRACIONES_TENANTS.md](./03_MIGRACIONES_TENANTS.md) |
 | 4 | Reportes financieros | Dominio modular, N+1 eliminado y consultas medidas | **Cerrada**; N+1 de 5N a 15 constantes, medido en producción | [04_REPORTES_FINANCIEROS.md](./04_REPORTES_FINANCIEROS.md) |
 | 5 | Pagos y tipos de pago | Dominio financiero modularizado y protegido | **Cerrada**; SQL inline de 23 a 3, sin tocar la base | [05_PAGOS_TIPOS_PAGO.md](./05_PAGOS_TIPOS_PAGO.md) |
-| 6 | Asignaciones y estudiantes | Dominios grandes separados con contratos estables | **Activa**; 6.0 cerrada, 6.1 pendiente | [06_ASIGNACIONES_ESTUDIANTES.md](./06_ASIGNACIONES_ESTUDIANTES.md) |
+| 6 | Asignaciones y estudiantes | Dominios grandes separados con contratos estables | **Activa**; 6.0 y 6.1 cerradas, 6.2 pendiente | [06_ASIGNACIONES_ESTUDIANTES.md](./06_ASIGNACIONES_ESTUDIANTES.md) |
 | 7 | Resto de dominios | Migración individual con contratos y pruebas | En espera | Una bitácora por dominio al activarlo |
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
@@ -483,10 +483,26 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   `GET /estudiantes/{id}` devuelve `SELECT *`, de modo que su contrato es el
   esquema entero de la tabla; y quedan dos rarezas de status code y varias
   f-strings en SQL hoy no inyectables.
-- Capa activa: **6, asignaciones y estudiantes**. Subcapa **6.0 cerrada** el
-  2026-08-17. Primera subcapa pendiente: **6.1**, extraer la persistencia de
-  **estudiantes** —el dominio contenido antes que el transversal—, **definida y
-  no iniciada**.
+- Resultado de 6.1: la persistencia de la tabla `estudiantes` salió del
+  controlador a `app/repositories/estudiantes_repository.py`, **siete funciones**
+  que reciben el cursor existente. El controlador pasó de **519 a 396 líneas** y
+  conserva conexión, cursor, `commit`, `rollback`, normalización de estado,
+  construcción del filtro y degradación por secciones. Un comparador AST contra
+  el commit base confirmó **11 sentencias distintas antes y después, conjunto
+  idéntico**, con **11 de 11** literales conservados **byte a byte**: a
+  diferencia de 5.1 y 5.2, no hizo falta autorizar ningún cambio de texto SQL.
+  **6.1 no modificó ninguna prueba**: la caracterización de 6.0 bastó. Compuerta
+  local: 708 pruebas, Ruff y dependencias correctas.
+- Decisión de 6.1: el filtro de estado se **queda en el controlador** porque
+  valida y produce el 422 de la ruta; el repositorio recibe el `where_sql` ya
+  construido. Las cuatro lecturas de `detalles` sobre `notas_detalle`,
+  `asistencia`, `observaciones` y `ventas` **no se movieron**: no tocan la tabla
+  `estudiantes` y su ubicación se decide en 6.2 con evidencia, igual que 5.1
+  dejó `ventas` para 5.2.
+- Capa activa: **6, asignaciones y estudiantes**. Subcapas **6.0 y 6.1 cerradas**
+  el 2026-08-17. Primera subcapa pendiente: **6.2**, cerrar la frontera de
+  estudiantes con las cuatro lecturas de otros dominios, **definida y no
+  iniciada**. **Asignaciones sigue sin inspeccionar.**
 - Resultado de 3.5: el alta construye el schema desde la migración base en vez de
   copiar la plantilla. Un tenant nuevo nace con **37 claves foráneas y 30
   secuencias propias**, donde el camino anterior producía **0 y 0**. Ensayado

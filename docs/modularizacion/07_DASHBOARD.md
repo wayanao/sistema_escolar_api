@@ -4,7 +4,9 @@
 
 ## Control
 
-- Estado: **Activa** desde el 2026-08-17.
+- Estado: **Activa** desde el 2026-08-17. Sus dos subcapas están cerradas y el
+  **cierre de la capa queda supeditado a la verificación manual**, que el
+  usuario decide si ejecuta, acepta como pendiente o deja abierta.
 - Commit base: `123637ee80895023ecece9c32df526ef4eddd1e5`.
 - Rama acordada: `main`.
 - Primera subcapa pendiente: **ninguna definida**. Las subcapas **7.0 y 7.1**
@@ -446,7 +448,7 @@ SQL**, igual que en toda la capa 6.
 las 77 pasaron sin tocarlas, incluidos los ocho conteos de consultas y conexiones
 y todas las aserciones sobre el texto del SQL.
 
-## Punto de decisión abierto al terminar 7.1
+## Punto de decisión, resuelto el 2026-08-17
 
 **La frontera de persistencia de dashboard ya está cerrada**: el controlador no
 tiene SQL, la ruta tampoco y el repositorio existe. Lo que queda del objetivo que
@@ -464,13 +466,105 @@ Esa parte **no se inicia por inferencia**, por dos razones registradas:
    `response_model` haría de la 7 la primera que toca la superficie del contrato,
    aunque sea para conservarla. Eso es una decisión del usuario.
 
-Las dos salidas son legítimas y ninguna está tomada:
+Las dos salidas eran legítimas:
 
-- **Cerrar la capa aquí**, como refactorización pura, con su compuerta global,
+- **cerrar la capa aquí**, como refactorización pura, con su compuerta global,
   staging, rollback y verificación manual; o
 - **abrir 7.2** para añadir `response_model` y errores de dominio sobre la
   caracterización que ya existe, demostrando payload por payload que la respuesta
   no cambia.
+
+**El usuario eligió cerrar la capa aquí**, el 2026-08-17 y de forma explícita.
+Consecuencias registradas, ninguna de ellas una deuda oculta:
+
+- La capa 7 para `dashboard` es, como la 5 y la 6, **exclusivamente una
+  refactorización**. Ningún contrato observable cambió.
+- **`response_model` y los errores de dominio no se añaden.** No quedan como
+  trabajo pendiente de esta capa: quedan registrados como trabajo disponible que
+  exigiría una orden explícita, igual que el resto de hallazgos abiertos.
+- Los **diez hallazgos de 7.0 siguen vivos y sin corregir**, incluido el primero,
+  que las dos precondiciones de permiso ignoran `activo`. Cerrar la capa **no los
+  resuelve ni los cancela**.
+
+## Staging, rollback y verificación manual de la capa 7
+
+### Lo que esta capa hizo y no hizo
+
+La capa 7 para `dashboard` es **exclusivamente una refactorización**, igual que
+la 5 y la 6. No añadió funciones, no cambió reglas, no tocó rutas, payloads,
+status codes, permisos, tenant, ownership, transacciones, timeouts, dependencias
+ni configuración. Y **no abrió una sola conexión a PostgreSQL**: ni migraciones,
+ni DDL, ni DML, ni lecturas de medición. Toda la caracterización se hizo con
+dobles.
+
+La evidencia de que el comportamiento observable no cambió es doble:
+
+1. un comparador AST contra el commit base `123637e` demuestra que los **16
+   literales SQL distintos son los mismos**, ninguno perdido y ninguno nuevo, con
+   **16 de 16 byte a byte**, y que hay **8 puntos de llamada antes y después**.
+   **No hizo falta autorizar ni un solo cambio de texto SQL**, como en la capa 6
+   y a diferencia de la 5, que necesitó dos;
+2. **42 pruebas de caracterización** fijan payloads, permisos por rol, conteos de
+   consultas **y de conexiones**, ciclo de vida y fórmulas de cálculo. **Ninguna
+   cambió de expectativa**; las dos únicas que fallaron fueron las guardias que
+   7.0 dejó *deliberadamente* sobre la línea base previa a la extracción, y que
+   debían fallar cuando 7.1 la moviera.
+
+### Rollback
+
+**Es puramente de código.** No hay nada que deshacer en datos ni en esquema.
+Revertir los commits de la capa hasta
+`123637ee80895023ecece9c32df526ef4eddd1e5` devuelve el controlador a su versión
+anterior y elimina el repositorio nuevo. Como el SQL ejecutado es equivalente,
+revertir no cambia el comportamiento observable.
+
+Ese commit base **ya está publicado y desplegado**, así que revertir exigiría un
+push y un despliegue, no una operación local. Es la misma situación que dejó la
+capa 6.
+
+No cambiar los timeouts durante el rollback.
+
+### Staging
+
+No se usó un entorno de staging y **no se considera necesario** para esta capa,
+por la misma razón que hace trivial el rollback: no hay cambio de esquema, de
+datos ni de SQL. Un despliegue prudente solo necesita comprobar que la
+aplicación arranca y que los siete paneles responden, que es lo que cubre la
+verificación manual.
+
+### Verificación manual: definida y **no ejecutada**
+
+Es la única evidencia que no puede delegarse en un asistente, porque exige
+reconocer datos reales. En un panel de estadísticas eso es más cierto que en
+ningún otro dominio: **la cifra es el contrato**, y solo quien conoce el colegio
+sabe si un promedio cuadra.
+
+Guion propuesto, a ejecutar contra el artefacto que el usuario confirme —lección
+10 de la capa 5: hay que preguntar contra qué código se probó **antes** de
+registrarlo—:
+
+- **Cumpleaños, como admin**: abrir el panel y comprobar que salen los de los
+  próximos 7 días, en orden de fecha; cambiar el rango de días y comprobar que la
+  lista crece o se reduce. Comprobar que **aparece un estudiante sin curso**, si
+  lo hay: el panel de admin los incluye a propósito.
+- **Cumpleaños, como profesor**: comprobar que solo salen los estudiantes de sus
+  **cursos activos**, y que un estudiante retirado **no** aparece.
+- **Inasistencias**: entrar como profesor y comprobar que salen **como mucho tres
+  estudiantes por curso**, los de más faltas, y que las cifras cuadran con las
+  ausencias reales.
+- **Notas altas y bajas**: elegir un curso propio y comprobar que salen **como
+  mucho cinco**, con sus colores —verde arriba, rojo o amarillo abajo—; intentar
+  **sin elegir curso** y comprobar el aviso; intentar un curso **de otro
+  profesor** y comprobar que se rechaza.
+- **Rankings**: abrir el ranking de una asignación propia por periodo y comprobar
+  que los promedios cuadran y el orden es el correcto en los dos sentidos;
+  comprobar que un profesor **no** puede abrir el de otro.
+- **Lo más importante, las cifras**: contrastar un promedio del panel con las
+  notas reales de ese estudiante. Y tener presente el hallazgo de 7.0: **notas
+  altas/bajas y los rankings no calculan el promedio igual**, así que pueden
+  discrepar entre sí **desde antes de esta capa**. Si discrepan, no es la
+  refactorización: es el hallazgo, ya registrado.
+- Comprobar todo en **los dos tenants**, sin mezclar datos.
 
 ## Criterios de cierre de la capa
 
@@ -488,6 +582,22 @@ Las dos salidas son legítimas y ninguna está tomada:
   que el dominio escribe archivos, el rollback debe cubrirlos explícitamente.
 - El índice maestro queda actualizado y **ningún otro dominio se activa sin
   orden explícita del usuario**.
+
+Estado de los ocho criterios al 2026-08-17:
+
+| Criterio | Estado |
+|---|---|
+| Subcapas cerradas o `No aplica` | **Cumplido**: 7.0 y 7.1 cerradas; no hubo más |
+| Dominio migrado sin arrastrar otros | **Cumplido**: el diff no toca ningún otro dominio |
+| `response_model` solo tras caracterizar | **No aplica**: el usuario decidió no añadirlo |
+| Ninguna abstracción sin dos consumidores | **Cumplido**: el repositorio por módulo es la convención de `app/repositories/README.md`, con cuatro precedentes |
+| Contratos del frontend y de la base intactos | **Cumplido**: comparador AST 16 de 16 y 42 pruebas sin cambio de expectativa |
+| Compuerta, Ruff, dependencias y `git diff --check` | **Cumplido**: 756 pruebas, exit 0 |
+| Staging, rollback y verificación manual documentados | **Cumplido** el documentarlos; el rollback **no** necesita cubrir archivos porque 7.0 demostró que el dominio no los escribe |
+| Índice actualizado y ningún dominio activado | **Cumplido** |
+
+**Falta una sola cosa para cerrar: ejecutar la verificación manual**, o que el
+usuario la acepte explícitamente como pendiente. No se marca como cumplida.
 
 ## Decisiones
 
@@ -810,21 +920,58 @@ Las dos salidas son legítimas y ninguna está tomada:
 - Estado: 7.1 **cerrada**. La frontera de persistencia del dominio queda cerrada.
 - Siguiente acción exacta: **pedir al usuario la decisión** entre cerrar la capa
   como refactorización pura o abrir 7.2 para `response_model` y errores de
-  dominio. No se inicia ninguna de las dos sin orden explícita.
+  dominio. No se inicia ninguna de las dos sin orden explícita. *(Respondida en
+  el turno siguiente: cerrar. Ver abajo.)*
+
+### 2026-08-17 — preparación del cierre de la capa
+
+- Modo de acceso: mismo checkout local en
+  `C:\Users\David\Documents\sistema_escolar_api`; Git validado directamente.
+- Decisión del usuario, explícita: **cerrar la capa aquí**, sin abrir 7.2. La
+  capa queda siendo una refactorización pura, como la 5 y la 6.
+- Precondición Git: rama `main`, **árbol limpio**, `HEAD`
+  `c75a5b720a751ffb9fcbda10640fd4a9d80d5f21`, el commit de 7.1 que el usuario
+  hizo entre turnos. El commit base `123637e` existe y es ancestro, y los **tres**
+  commits posteriores están explicados aquí: la activación `fb303d5`, el cierre
+  de 7.0 `59efda6` y la extracción de 7.1 `c75a5b7`. `origin/main` sigue en el
+  base, así que hay **tres commits locales por delante, sin publicar**.
+- **Compuerta global de cierre**: `.\venv\Scripts\python.exe scripts\verify.py`;
+  **756 pruebas pasaron**, 5 warnings heredadas, Ruff correcto, `pip check`
+  íntegro y exit 0.
+- Archivos modificados en este turno: esta bitácora,
+  `docs/modularizacion/README.md` y `docs/modularizacion/PROMPT_CONTINUACION.md`.
+  **Código de producto y pruebas: ninguno.**
+- Se retiró de `PROMPT_CONTINUACION.md` la autorización puntual de la capa 7, ya
+  consumida, como se había registrado al activar. Queda preparada una nueva para
+  **el siguiente dominio**, con su condición de caducidad y el mismo requisito de
+  rellenar el nombre antes de pegarla.
+- PostgreSQL, migraciones, producción, commit, push y deploy: **ninguno**, ni en
+  este turno ni en toda la capa.
+- Estado: subcapas 7.0 y 7.1 **cerradas**; **el cierre de la capa queda
+  supeditado a la verificación manual**, que el usuario decide si ejecuta o
+  acepta como pendiente.
+- Siguiente acción exacta: obtener del usuario el resultado de la verificación
+  manual o su aceptación explícita como pendiente. Solo entonces marcar la capa
+  cerrada. **No activar ningún otro dominio.**
 
 ## Entrega al próximo chat
 
 - Capa activa: **7, dashboard**, y solo ese dominio. Activada el 2026-08-17.
 - Última subcapa terminada: **7.1**, cerrada el 2026-08-17. Con ella **la
   frontera de persistencia del dominio queda cerrada**.
-- Primera subcapa pendiente: **ninguna definida.** Lo que sigue es un **punto de
-  decisión del usuario**, no una subcapa pendiente: cerrar la capa como
-  refactorización pura, o abrir **7.2** para `response_model` y errores de
-  dominio. Ver «Punto de decisión abierto al terminar 7.1».
+- Primera subcapa pendiente: **ninguna.** El usuario decidió el 2026-08-17
+  **cerrar la capa aquí**, sin abrir 7.2: `response_model` y los errores de
+  dominio **no se añaden** y no quedan como deuda de esta capa.
+- **Lo único que falta para cerrar es la verificación manual**, definida en esta
+  bitácora y **no ejecutada**. Hasta que el usuario la ejecute o la acepte
+  explícitamente como pendiente, la capa **no se marca cerrada**.
 - Commit base: `123637ee80895023ecece9c32df526ef4eddd1e5`, rama `main`,
-  **publicado y desplegado**. Al cerrar 7.1, `HEAD` es `59efda6` —dos commits
-  locales por delante de `origin/main`, la activación y el cierre de 7.0,
-  **sin publicar**— más los tres archivos de 7.1 sin commitear.
+  **publicado y desplegado**. Al preparar el cierre, `HEAD` es `c75a5b7` y hay
+  **tres commits locales por delante de `origin/main`** —activación, cierre de
+  7.0 y extracción de 7.1—, **sin publicar**. Producción sigue corriendo el
+  commit base.
+- Compuerta de cierre: **756 pruebas, exit 0**, Ruff correcto y `pip check`
+  íntegro. La suite pasó de 714 al activar la capa a 756.
 - Bloqueos: ninguno. Verificaciones heredadas **pendientes y aceptadas**: valor
   operativo final de `DB_STATEMENT_TIMEOUT_MS` (capa 1) y evidencia de GitHub
   Actions posterior a la capa 0. La credencial privilegiada de la capa 4 sigue
@@ -866,6 +1013,8 @@ Las dos salidas son legítimas y ninguna está tomada:
   6. **Las dos precondiciones viven en `dashboard_repository` a propósito**, no
      en `asignaciones_repository`, para que nadie «arregle» su falta de `activo`
      por vecindad. La decisión y su evidencia están en Decisiones.
-- Siguiente acción exacta: **pedir al usuario la decisión** entre cerrar la capa
-  o abrir 7.2. Ninguna de las dos se inicia sin orden explícita, y una
-  instrucción genérica de continuar no la autoriza.
+- Siguiente acción exacta: obtener del usuario **el resultado de la verificación
+  manual**, o su aceptación explícita de dejarla pendiente. Solo entonces marcar
+  la capa cerrada y actualizar el índice. **No activar ningún otro dominio de la
+  capa 7 sin orden explícita**: una instrucción genérica de continuar no la
+  autoriza.

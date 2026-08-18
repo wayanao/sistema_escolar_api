@@ -41,7 +41,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 4 | Reportes financieros | Dominio modular, N+1 eliminado y consultas medidas | **Cerrada**; N+1 de 5N a 15 constantes, medido en producción | [04_REPORTES_FINANCIEROS.md](./04_REPORTES_FINANCIEROS.md) |
 | 5 | Pagos y tipos de pago | Dominio financiero modularizado y protegido | **Cerrada**; SQL inline de 23 a 3, sin tocar la base | [05_PAGOS_TIPOS_PAGO.md](./05_PAGOS_TIPOS_PAGO.md) |
 | 6 | Asignaciones y estudiantes | Dominios grandes separados con contratos estables | **Cerrada**; SQL inline de 52 a 1, sin tocar la base | [06_ASIGNACIONES_ESTUDIANTES.md](./06_ASIGNACIONES_ESTUDIANTES.md) |
-| 7 | Resto de dominios — **dominio activo: `dashboard`** | Migración individual con contratos y pruebas | **Activa** desde el 2026-08-17; 7.0 y 7.1 cerradas, a la espera de una decisión del usuario | [07_DASHBOARD.md](./07_DASHBOARD.md) |
+| 7 | Resto de dominios — **dominio activo: `dashboard`** | Migración individual con contratos y pruebas | **Activa** desde el 2026-08-17; 7.0 y 7.1 cerradas, cierre **supeditado a la verificación manual** | [07_DASHBOARD.md](./07_DASHBOARD.md) |
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
 cierre y el usuario ordene continuar, se crea su sucesora desde
@@ -679,7 +679,19 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   diff a un módulo que la capa 6 cerró, y sobre todo **poner una consulta que no
   filtra al lado de las que sí filtran invita a "arreglarla"**, que es
   exactamente el hallazgo que esta capa tiene prohibido corregir.
-- **Punto de decisión abierto al terminar 7.1**: la frontera de persistencia de
+- **Decisión del usuario el 2026-08-17: cerrar la capa aquí**, sin abrir 7.2.
+  `response_model` y los errores de dominio **no se añaden** y **no quedan como
+  deuda de esta capa**: pasan a ser trabajo disponible que exigiría una orden
+  explícita. La capa 7 para `dashboard` es, como la 5 y la 6, **exclusivamente
+  una refactorización**, y **no tocó la base de datos** ni siquiera para leer.
+  Compuerta de cierre: **exit 0 con 756 pruebas**. Su rollback es de código,
+  revertir hasta `123637e`; ese base **ya está desplegado**, así que revertir
+  exigiría push y despliegue.
+- **Lo único que falta para cerrar la capa es la verificación manual**, definida
+  en su bitácora y **no ejecutada**. Cerrar la capa **no cancela los diez
+  hallazgos de 7.0**, que siguen vivos, empezando por el `activo` ausente de las
+  dos precondiciones de permiso.
+- El punto de decisión que quedó abierto al terminar 7.1, ya resuelto, era: la frontera de persistencia de
   dashboard ya está cerrada. Lo que queda del objetivo de la capa es la parte
   condicional del índice —`response_model`, errores de dominio y pruebas HTTP—,
   que **no entra por inferencia**. Las dos salidas legítimas son cerrar la capa

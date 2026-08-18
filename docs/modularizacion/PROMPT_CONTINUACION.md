@@ -143,13 +143,35 @@ aplicarla, que uno de sus supuestos había quedado desfasado —el índice segu�
 declarando la capa 5 sin publicar cuando el reflog ya registraba el push—, y esa
 corrección documental se pidió y se autorizó por separado.
 
-## Estado del programa al 2026-08-17 (capa 6 cerrada, sin capa activa)
+## Estado del programa al 2026-08-17 (capa 7 activa: `dashboard` migrado)
 
 Lo que sigue es un resumen para orientarse; **el estado vivo está en
 `docs/modularizacion/README.md`**, que es lo que manda si algo no coincide.
 
-- Capas 0 a 6 **cerradas**. **No hay capa activa.**
-- Siguiente capa: **7, resto de dominios, en espera**.
+- Capas 0 a 6 **cerradas**. La **capa 7 está activa para el dominio
+  `dashboard`, y solo ese**, activada el 2026-08-17.
+- Sus dos subcapas, **7.0 y 7.1, están cerradas**, y el usuario decidió **cerrar
+  la capa ahí** sin abrir una 7.2 para `response_model`. **Lo único que falta es
+  la verificación manual**, definida en su bitácora y **no ejecutada**: hasta
+  entonces la capa **no se marca cerrada**.
+- Resultado de la migración de `dashboard`: **7 entradas HTTP**, todas `GET` y
+  todas de **solo lectura**, con **cero tablas escritas** y **cero transacciones
+  propias**. `dashboard_controller.py` pasó de **336 a 146 líneas** y de **8
+  sentencias SQL inline a 0**; la persistencia vive en
+  `app/repositories/dashboard_repository.py`, ocho funciones que reciben el
+  cursor más dos fragmentos privados. **42 pruebas de caracterización** nuevas y
+  la suite de **714 a 756**.
+- Como la 5 y la 6, **no tocó la base de datos**, ni siquiera para leer.
+  Comparador AST contra el commit base: **16 de 16 literales byte a byte**, sin
+  una sola autorización de cambio de texto SQL.
+- **Un supuesto heredado resultó falso**: `dashboard` no concentraba «varias
+  consultas de promedios por estudiante». Cada panel se resuelve con **una sola
+  consulta agregada** y **no hay N+1**. Lo caro son las **conexiones**: el camino
+  de notas con asignación abre **cuatro en serie** y resuelve la asignación
+  académica **dos veces**. Es la evidencia real que le faltaba a la constante de
+  capacidad de la capa 2, registrada **sin actuar**.
+- Siguiente paso del programa: **otro dominio de la capa 7**, en espera y sin
+  elegir. No se activa sin orden explícita.
 - La capa 6 cerró el 2026-08-17 modularizando asignaciones y estudiantes en cinco
   subcapas, cada dominio por separado: `estudiante_controller.py` pasó de **519 a
   381 líneas** y de 11 sentencias SQL inline a **0**; `asignacion_controller.py`
@@ -277,11 +299,77 @@ Lo que sigue es un resumen para orientarse; **el estado vivo está en
     5.3: la introspección de esquema vive junto al código que la necesita— y la
     que busca filas **se movió** al repositorio. Preguntar por el esquema y
     preguntar por los datos no son lo mismo.
+16. **Una autorización guardada puede llegar con su marcador sin rellenar.** La
+    de la capa 7 exigía nombrar el dominio y se pegó con `DOMINIO` literal. Lo
+    correcto es **detenerse y preguntar**, no deducirlo: activar sin nombrarlo
+    habría dejado el alcance abierto, que es lo contrario de lo que hace segura
+    una capa.
+17. **Los literales SQL se copian por rango de líneas, no se transcriben.** En
+    7.1 un script copió los rangos exactos del controlador al repositorio, así
+    que cada cadena viaja con **su sangría original** aunque el código que la
+    rodea cambie de nivel. Python permite cualquier indentación en una línea de
+    continuación dentro de paréntesis, así que el literal no necesita moverse.
+    Por eso el comparador dio 16 de 16 sin negociar un solo cambio de texto.
+18. **El directorio de trabajo del shell puede volver al repositorio
+    equivocado.** Al empezar 7.1, la primera comprobación de Git se ejecutó
+    contra otro repositorio y devolvió un `HEAD` que no existe en esta historia.
+    Se detectó porque el commit base «no era un nombre de commit válido».
+    Comprobar `git rev-parse --show-toplevel`, no solo `git status`.
+19. **Los finales de línea se comprueban con bytes, no con `grep`.** Un patrón
+    mal escrito dio CRLF donde el repositorio usa LF, y los archivos generados
+    quedaron mezclados. Contar `b'\r\n'` sobre los bytes del archivo es la
+    comprobación fiable; el aviso de `git diff --check` sobre LF/CRLF es de
+    `core.autocrlf` y **no** es un error de whitespace.
+20. **Una consulta que deliberadamente no filtra no debe vivir junto a las que
+    sí filtran.** Las dos precondiciones de permiso de `dashboard` no filtran por
+    `activo` —hallazgo abierto— y por eso **no** se llevaron a
+    `asignaciones_repository`, donde sus vecinas sí filtran: alguien las
+    «arreglaría» por vecindad. La proximidad en el código es una insinuación.
 
 ## Trabajo registrado fuera del alcance de cualquier capa activa
 
 Registrado y sin hacer. Nada de esto bloquea a la capa que se active, y nada de
 esto entra en ella por inferencia: requiere una orden explícita.
+
+### Lo que dejó abierto la capa 7 en `dashboard`
+
+Diez hallazgos, todos **registrados y sin corregir**. Cerrar la capa **no los
+cancela**.
+
+- **Las dos precondiciones de permiso ignoran `activo`.** `profesor_tiene_curso_controller`
+  y `profesor_tiene_asignacion_en_curso_controller` consultan `asignaciones` sin
+  `activo = TRUE`, así que **un profesor cuya asignación fue desactivada conserva
+  el acceso** al rendimiento de ese curso. La consulta de cumpleaños del mismo
+  controlador **sí** filtra. Es el hallazgo más importante porque **toca
+  permisos**: corregirlo cambia quién ve qué. Una guardia de prueba falla si
+  alguien lo hace sin registrarlo.
+- **Dos definiciones distintas de «promedio» en el mismo panel**: notas altas y
+  bajas promedian **los promedios por clase**; los rankings promedian **las notas
+  planas**. Con 4,0 en una clase de dos notas y 2,0 en otra de seis, la primera
+  da 3,00 y la segunda 2,50. Estudiantes usa una **tercera**, `ROUND(..., 1)`.
+- **Las siete entradas absorben `Exception`, responden 400 y devuelven
+  `str(e)`** en el `detail`, sin registrar nada: un error de PostgreSQL puede
+  llegar al navegador. Misma familia que el hallazgo de `tipos_pagos_controller`,
+  pero aquí además **se devuelve el mensaje interno**.
+- **Hasta cuatro conexiones por petición**, en serie y sin anidar, en el camino
+  de notas con asignación, que además **resuelve la asignación académica dos
+  veces**. Pertenece a la auditoría de capacidad de la capa 2.
+- **El filtro de rendimiento consulta la base desde la capa de rutas** y **fuera**
+  del `try/except`, así que un fallo de infraestructura ahí sale como **500** y
+  no como el 400 del resto del endpoint.
+- **`dias` se valida dos veces con criterios divergentes**: la ruta responde 422
+  fuera de 0..31 y el controlador recorta en silencio. Por HTTP el recorte es
+  inalcanzable.
+- **Cuarta pareja de literales SQL gemelos** del programa: los dos rankings solo
+  difieren en el signo y el orden. No se unifican sin autorización.
+- **f-strings en SQL, hoy no inyectables**, en `leer_estudiantes_por_promedio` y
+  en el fragmento del rango de cumpleaños. Guarda: no abrirlas a entrada del
+  cliente.
+- **`periodo: int = 1` es un parámetro de ruta con defecto inalcanzable** en los
+  dos rankings.
+- **`response_model` y los errores de dominio no se añadieron**, por decisión
+  explícita del usuario al cerrar. No son deuda de la capa: son trabajo
+  disponible que exigiría una orden.
 
 ### Lo que dejó abierto la capa 6
 
@@ -380,21 +468,26 @@ esto entra en ella por inferencia: requiere una orden explícita.
   evidencia de GitHub Actions desde la capa 0, y la credencial privilegiada de la
   capa 4 **sin rotar**.
 
-## Autorización de uso inmediato: activar la capa 7
+## Autorización de uso inmediato: activar la capa 7 para OTRO dominio
 
-Válida **solo mientras el índice maestro siga indicando que no existe una capa
-activa y que la capa 7 está en espera**. Si el estado ya cambió, no la
-reutilices: vuelve a determinarlo desde el índice.
+La autorización anterior, la de `dashboard`, **se consumió el 2026-08-17** y
+queda retirada, con el mismo criterio aplicado a las capas 3, 4, 5 y 6.
+
+Válida **solo mientras el índice maestro indique que no existe una capa activa**.
+Si `dashboard` sigue marcada como activa o con su verificación manual pendiente,
+**no la reutilices**: vuelve a determinar el estado desde el índice.
 
 **Antes de pegarla hay que rellenar el nombre del dominio.** La capa 7 es
-explícitamente «uno a la vez»: no es un bloque. Activarla sin decir cuál se
-aborda dejaría el alcance abierto, que es lo contrario de lo que hace segura una
-capa.
+explícitamente «uno a la vez»: cada dominio necesita su propia bitácora. La
+primera vez que se usó, el marcador llegó **sin rellenar** y el asistente se
+detuvo a preguntar en vez de deducirlo, que es lo correcto.
 
 Se copia el bloque universal del principio y se añade inmediatamente después:
 
 ```text
-Autorizo activar unicamente la capa 7 para el dominio DOMINIO, y solo ese.
+Autorizo activar la capa 7 para el dominio DOMINIO, y solo ese. El dominio
+dashboard ya se migro y su bitacora esta cerrada; este es un dominio nuevo con
+su propia bitacora.
 
 Acepto continuar manteniendo pendientes las verificaciones heredadas: el valor
 operativo final de DB_STATEMENT_TIMEOUT_MS de la capa 1 y la ausencia de
@@ -402,76 +495,64 @@ evidencia de GitHub Actions desde la capa 0. Registralas como pendientes,
 conserva su riesgo y no las marques como cumplidas.
 
 Esta autorizacion permite solamente la activacion documental. No autoriza
-inspeccionar codigo del dominio, implementar 7.0, tocar la base de datos, hacer
-deploy, commit o push. Despues de activar la capa, detente.
+inspeccionar codigo del dominio, implementar su subcapa 0, tocar la base de
+datos, hacer deploy, commit o push. Despues de activar la capa, detente.
 
 En el mismo checkout local:
 
 1. Lee y aplica completamente el protocolo universal anterior.
 2. Valida main, git status, el HEAD limpio vigente, origin/main y la continuidad
-   desde el commit base de la capa 6, 589cb6d1391161c692a6f24aee9d523317cbb1ce,
-   comprobando que todo commit posterior este explicado en
-   06_ASIGNACIONES_ESTUDIANTES.md.
-3. Confirma que la capa 6 esta cerrada, que la capa 7 sigue en espera y que no
-   existe otra capa activa. Si hay divergencia o un commit sin explicar, detente.
+   desde el commit base registrado en la bitacora de dashboard, comprobando que
+   todo commit posterior este explicado.
+3. Confirma que la migracion de dashboard esta cerrada y que no existe otra capa
+   activa. Si hay divergencia o un commit sin explicar, detente.
 4. No uses ningun hash de memoria: comprueba primero el HEAD limpio real.
 5. Comprueba el estado real de origin/main e informa lo que encuentres, no lo
-   supongas. La capa 6 se publico el 2026-08-17 en bf075a0 y por tanto ya esta
-   desplegada. No presentes GitHub Actions como verificada en ningun caso: esa
-   evidencia sigue sin obtenerse desde la capa 0.
+   supongas. No presentes GitHub Actions como verificada en ningun caso.
 6. Crea docs/modularizacion/07_DOMINIO.md partiendo de
-   docs/modularizacion/PLANTILLA_CAPA.md.
+   docs/modularizacion/PLANTILLA_CAPA.md, con un nombre de archivo que no pise
+   el de dashboard.
 7. Registra el HEAD limpio vigente como commit base, rama main, estado Activa,
-   primera subcapa pendiente 7.0 y codigo de producto modificado al activar:
+   primera subcapa pendiente la 0 y codigo de producto modificado al activar:
    ninguno.
-8. Define el objetivo solo desde el indice maestro y limitado a ese dominio:
-   migrarlo con contratos y pruebas, agregando response_model, errores de
-   dominio y pruebas HTTP o de integracion solo despues de caracterizar y
-   conservar la respuesta existente.
-9. Deja 7.0 como inventario, contratos y caracterizacion. No inventes detalles
-   de implementacion sin inspeccionarlos en un turno posterior. No decidas aun
-   el desglose de 7.1 en adelante.
-10. Ten presente lo que la capa 6 dejo comprobado, y no lo des por bueno sin
-    verificarlo para ESTE dominio:
-    - plan_de_clases y branding SI escriben archivos via app/services/storage.py;
-      si el dominio elegido es uno de ellos, un rollback de datos no deshace un
-      archivo ya escrito y eso cambia como hay que documentar el rollback;
-    - asignaciones es transversal: nueve modulos dependen de
-      resolver_asignacion_academica_id_cursor, asi que casi cualquier dominio
-      academico lo consume;
-    - los contratos de lectura financieros de la capa 4 dependen de cobros.py;
-    - los permisos no son uniformes: hay rutas con require_profesor_scope y
-      require_asignacion_access, no solo admin.
-11. Actualiza docs/modularizacion/README.md para marcar unicamente la capa 7
-    como Activa, con su dominio, enlazar su bitacora y dejar 7.0 pendiente.
-12. Ejecuta git diff --check, comprueba el whitespace del archivo nuevo y
-    verifica que el alcance contenga exclusivamente README.md y la bitacora
-    nueva.
+8. Define el objetivo solo desde el indice maestro y limitado a ese dominio.
+9. Deja la subcapa 0 como inventario, contratos y caracterizacion. No decidas
+   aun el desglose posterior.
+10. Marca como NO VERIFICADO todo supuesto heredado sobre ese dominio y
+    comprueba cada uno en la subcapa 0. En dashboard, de siete supuestos, uno
+    resulto falso.
+11. Actualiza docs/modularizacion/README.md para marcar unicamente esa capa como
+    Activa, con su dominio, y enlazar su bitacora.
+12. Ejecuta git diff --check y verifica que el alcance contenga exclusivamente
+    README.md y la bitacora nueva.
 13. Informa el commit base, la primera subcapa pendiente, las verificaciones
     heredadas y cualquier evidencia remota disponible. Detente sin inspeccionar
-    ni implementar 7.0.
+    ni implementar la subcapa 0.
 
 No hagas commit, push, deploy, migraciones reales ni acceso a produccion. Yo
 revisare los cambios y controlare su publicacion.
 ```
 
-### Cómo elegir el dominio de la capa 7
+### Cómo elegir el siguiente dominio de la capa 7
 
-El índice no fija el orden; dice «priorizar uno a la vez». Lo que el programa ya
-sabe, sin haber inspeccionado esos módulos:
+El índice no fija el orden; dice «priorizar uno a la vez». `dashboard` ya está
+hecho. Lo que el programa sabe del resto, sin haberlo inspeccionado:
 
 - **Los más consumidos** son los que dependen de `asignacion_academica`:
-  `notas`, `boletin`, `asistencia`, `observaciones`, `planilla`,
-  `planeador_anual` y `dashboard`. Tocar cualquiera afecta al resto por ese
-  servicio compartido.
+  `notas`, `boletin`, `asistencia`, `observaciones`, `planilla` y
+  `planeador_anual`. Tocar cualquiera afecta al resto por ese servicio
+  compartido.
 - **`plan_de_clases` ya tiene repositorio propio** —`plan_de_clases_repository`—,
-  así que su migración empieza más cerca del final que las demás.
+  así que su migración empieza más cerca del final que las demás. **Pero escribe
+  archivos** vía `app/services/storage.py`, así que un rollback de datos no
+  deshace un archivo ya escrito y eso cambia cómo hay que documentar el rollback.
 - **`venta_controller` es el único con SQL inline sobre `ventas`**, tabla que
   `pagos_repository` ya toca desde su bloque rotulado. Migrarlo daría por fin el
   segundo consumidor real que justificaría un `ventas_repository`, y cerraría una
   decisión que la capa 5 dejó explícitamente abierta.
-- **`dashboard_controller` concentra los cálculos más caros** vistos de pasada en
-  las capas 4 y 6, con varias consultas de promedios por estudiante.
+- **`branding`** también escribe archivos, y **`profesor_controller`** conserva
+  una de las dos copias muertas de `obtener_clases_profesor_controller` que el
+  usuario decidió no retirar.
 
 Nada de esto es una recomendación cerrada: es lo que hay registrado. La elección
 es del usuario.

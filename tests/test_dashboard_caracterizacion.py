@@ -11,6 +11,10 @@ alterar sin que fallara nada:
 3. guardias estructurales sobre lo que este dominio no hace: no escribe, no
    toca storage y no tiene SQL en las rutas.
 
+La subcapa 7.1 sustituyo las dos guardias que fijaban la linea base previa a
+la extraccion —ocho sentencias en el controlador y ningun repositorio— por sus
+versiones positivas. Fallaron al extraer, que era la senal esperada.
+
 Los conteos excluyen autenticacion, search_path y la sentencia de timeouts,
 igual que los de las capas 5 y 6. Todo se mide con dobles: ninguna prueba de
 este archivo abre una conexion real.
@@ -31,6 +35,7 @@ from app.routes import dashboard
 RAIZ = Path(__file__).resolve().parents[1]
 CONTROLADOR = RAIZ / "app" / "controllers" / "dashboard_controller.py"
 RUTAS = RAIZ / "app" / "routes" / "dashboard.py"
+REPOSITORIO = RAIZ / "app" / "repositories" / "dashboard_repository.py"
 
 ADMIN = {"id": 1, "rol": "admin", "tenant": "tenant_demo"}
 PROFESOR = {"id": 7, "rol": "profesor", "tenant": "tenant_demo"}
@@ -170,14 +175,14 @@ def _llamadas_execute(path):
 
 def test_el_dominio_no_escribe_en_la_base():
     """Las 7 entradas son GET y ninguna sentencia es de escritura."""
-    for path in (CONTROLADOR, RUTAS):
+    for path in (CONTROLADOR, RUTAS, REPOSITORIO):
         escrituras = [texto for texto in _literales_sql(path) if ESCRITURA.match(texto)]
         assert escrituras == [], f"{path.name} contiene una escritura"
 
 
 def test_el_dominio_no_confirma_ni_revierte():
     """Ninguna funcion es duena de commit o rollback: no abre transaccion propia."""
-    for path in (CONTROLADOR, RUTAS):
+    for path in (CONTROLADOR, RUTAS, REPOSITORIO):
         fuente = path.read_text(encoding="utf-8")
         assert ".commit()" not in fuente
         assert ".rollback()" not in fuente
@@ -191,7 +196,7 @@ def test_el_dominio_no_toca_storage():
     introduce aqui una escritura de archivo, el rollback de la capa deja de ser
     reversible y esta prueba debe fallar antes.
     """
-    for path in (CONTROLADOR, RUTAS):
+    for path in (CONTROLADOR, RUTAS, REPOSITORIO):
         assert "storage" not in path.read_text(encoding="utf-8")
 
 
@@ -201,27 +206,49 @@ def test_las_rutas_del_dominio_no_contienen_sql():
     assert consultas == []
 
 
-def test_el_controlador_conserva_sus_ocho_sentencias():
-    """Linea base del SQL inline. Una extraccion debe bajar este numero a 0.
+def test_el_sql_del_dominio_vive_solo_en_el_repositorio():
+    """Senal esperada de 7.1: la linea base de ocho sentencias baja a cero.
 
-    Si sube, alguien anadio SQL sin registrarlo.
+    La version anterior de esta prueba fijaba las ocho **en el controlador** y
+    fallo al extraerlas, que era exactamente lo que debia ocurrir. Se sustituye
+    por su version positiva, igual que 6.5 hizo con la guardia de `/mis-clases`.
     """
-    assert len(_llamadas_execute(CONTROLADOR)) == 8
+    assert len(_llamadas_execute(CONTROLADOR)) == 0
+    assert len(_llamadas_execute(RUTAS)) == 0
+    assert len(_llamadas_execute(REPOSITORIO)) == 8
 
 
-def test_el_dominio_no_tiene_repositorio_propio():
-    """Toda su persistencia vive hoy en el controlador."""
+def test_el_dominio_tiene_su_repositorio():
+    """Segunda senal esperada de 7.1: el repositorio existe y es el sexto."""
     repositorios = {
         path.stem for path in (RAIZ / "app" / "repositories").glob("*_repository.py")
     }
-    assert "dashboard_repository" not in repositorios
     assert repositorios == {
         "asignaciones_repository",
+        "dashboard_repository",
         "estudiantes_repository",
         "pagos_repository",
         "plan_de_clases_repository",
         "reportes_repository",
     }
+
+
+def test_el_repositorio_recibe_el_cursor_y_no_abre_recursos():
+    """El patron de los cuatro repositorios anteriores, aplicado al quinto."""
+    fuente = REPOSITORIO.read_text(encoding="utf-8")
+    assert "get_connection" not in fuente
+    assert "get_cursor" not in fuente
+    assert "app.database" not in fuente
+
+    arbol = ast.parse(fuente)
+    publicas = [
+        nodo
+        for nodo in arbol.body
+        if isinstance(nodo, ast.FunctionDef) and not nodo.name.startswith("_")
+    ]
+    assert len(publicas) == 8
+    for funcion in publicas:
+        assert funcion.args.args[0].arg == "cursor", funcion.name
 
 
 # --------------------------------------------------------------------------

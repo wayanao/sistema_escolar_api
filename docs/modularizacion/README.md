@@ -41,7 +41,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 4 | Reportes financieros | Dominio modular, N+1 eliminado y consultas medidas | **Cerrada**; N+1 de 5N a 15 constantes, medido en producción | [04_REPORTES_FINANCIEROS.md](./04_REPORTES_FINANCIEROS.md) |
 | 5 | Pagos y tipos de pago | Dominio financiero modularizado y protegido | **Cerrada**; SQL inline de 23 a 3, sin tocar la base | [05_PAGOS_TIPOS_PAGO.md](./05_PAGOS_TIPOS_PAGO.md) |
 | 6 | Asignaciones y estudiantes | Dominios grandes separados con contratos estables | **Cerrada**; SQL inline de 52 a 1, sin tocar la base | [06_ASIGNACIONES_ESTUDIANTES.md](./06_ASIGNACIONES_ESTUDIANTES.md) |
-| 7 | Resto de dominios — **dominio activo: `dashboard`** | Migración individual con contratos y pruebas | **Activa** desde el 2026-08-17; 7.0 cerrada, 7.1 pendiente y no iniciada | [07_DASHBOARD.md](./07_DASHBOARD.md) |
+| 7 | Resto de dominios — **dominio activo: `dashboard`** | Migración individual con contratos y pruebas | **Activa** desde el 2026-08-17; 7.0 y 7.1 cerradas, a la espera de una decisión del usuario | [07_DASHBOARD.md](./07_DASHBOARD.md) |
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
 cierre y el usuario ordene continuar, se crea su sucesora desde
@@ -659,6 +659,33 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   y la consulta—, y resuelve la asignación académica **dos veces**. Es la
   evidencia real que le faltaba a la constante de capacidad de la capa 2, que se
   registra **sin actuar**.
+- Resultado de 7.1: las **8 sentencias** salieron del controlador a
+  `app/repositories/dashboard_repository.py`, **ocho funciones** que reciben el
+  cursor existente más los **dos fragmentos** que componen las consultas de
+  cumpleaños. `dashboard_controller.py` pasó de **336 a 146 líneas** y de **8
+  sentencias SQL inline a 0**; la ruta ya tenía 0. El comparador AST contra el
+  commit base confirmó **16 literales SQL distintos antes y después, conjunto
+  idéntico**, con **16 de 16 byte a byte**: **no hizo falta autorizar ningún
+  cambio de texto SQL**. Compuerta local: **756 pruebas**, Ruff y dependencias
+  correctas.
+- **Las dos guardias de línea base que 7.0 dejó puestas fallaron al extraer**,
+  que era la señal esperada —lección 14 de la capa 6—, y solo esas dos: las otras
+  **75 pruebas pasaron sin cambiar de expectativa**, incluidos los ocho conteos
+  de consultas y conexiones. Se sustituyeron por versiones positivas.
+- Decisión de 7.1, tomada con evidencia: las dos consultas de precondición de
+  permiso viven en `dashboard_repository` y **no** en `asignaciones_repository`,
+  aunque consulten esa tabla y ese repositorio exista. No son duplicados —las
+  funciones vecinas **filtran por `activo` y estas no**—, moverlas ampliaría el
+  diff a un módulo que la capa 6 cerró, y sobre todo **poner una consulta que no
+  filtra al lado de las que sí filtran invita a "arreglarla"**, que es
+  exactamente el hallazgo que esta capa tiene prohibido corregir.
+- **Punto de decisión abierto al terminar 7.1**: la frontera de persistencia de
+  dashboard ya está cerrada. Lo que queda del objetivo de la capa es la parte
+  condicional del índice —`response_model`, errores de dominio y pruebas HTTP—,
+  que **no entra por inferencia**. Las dos salidas legítimas son cerrar la capa
+  como refactorización pura, igual que la 5 y la 6, o abrir una **7.2** que añada
+  `response_model` demostrando payload por payload que la respuesta no cambia. Es
+  decisión del usuario y no está tomada.
 - Hallazgos de 7.0, **registrados y sin corregir**: las dos precondiciones de
   permiso **ignoran `activo`**, así que un profesor con la asignación
   desactivada **conserva el acceso** al rendimiento de ese curso, mientras la
@@ -792,9 +819,11 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   **conexiones** por camino, los **siete supuestos heredados resueltos** —seis
   confirmados y uno refutado— y los **diez hallazgos sin corregir**, entre ellos
   el `activo` ausente de las precondiciones de permiso y las dos fórmulas de
-  promedio. Deja definida y **no iniciada** la subcapa **7.1**, la extracción a
-  `dashboard_repository`, con su punto delicado: dos de las ocho consultas se
-  componen de fragmentos. El desglose de 7.2 en adelante sigue **sin decidir**.
+  promedio. Registra también el cierre de **7.1**, la extracción a
+  `dashboard_repository` con su comparador AST de **16 de 16** literales, las
+  dos guardias que fallaron como señal esperada y la decisión sobre dónde viven
+  las precondiciones de permiso. Deja abierto el **punto de decisión** que
+  cierra o prolonga la capa; **7.2 no está definida ni pendiente**.
   **Es el documento que un chat nuevo debe leer después de este índice.**
 - [06_ASIGNACIONES_ESTUDIANTES.md](./06_ASIGNACIONES_ESTUDIANTES.md): **bitácora
   cerrada** de la capa 6 y fuente de continuidad **hasta que se activó la capa

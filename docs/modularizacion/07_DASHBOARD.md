@@ -7,8 +7,10 @@
 - Estado: **Activa** desde el 2026-08-17.
 - Commit base: `123637ee80895023ecece9c32df526ef4eddd1e5`.
 - Rama acordada: `main`.
-- Primera subcapa pendiente: **7.1**, definida y **no iniciada**. La **7.0**
-  quedó **cerrada** el 2026-08-17.
+- Primera subcapa pendiente: **ninguna definida**. Las subcapas **7.0 y 7.1**
+  quedaron **cerradas** el 2026-08-17. Lo que sigue exige una **decisión del
+  usuario**: cerrar la capa como refactorización pura, o abrir una 7.2 para
+  `response_model` y errores de dominio. Ver «Punto de decisión abierto».
 - Código de producto modificado al activar: **ninguno**. Tampoco en 7.0: su diff
   es un solo archivo de prueba nuevo.
 - Dominio de esta capa: **dashboard, y solo ese**. La capa 7 del índice es
@@ -194,8 +196,8 @@ coincidiendo con lo registrado al cerrar la capa 6. La suite pasó de **714 a
 | Subcapa | Resultado | Estado |
 |---:|---|---|
 | 7.0 | Inventario, contratos, caracterización y línea base de consultas y conexiones | **Cerrada** |
-| 7.1 | Extraer la persistencia a `dashboard_repository` sin cambiar SQL, conteos ni ciclo de vida | **Pendiente**, definida y no iniciada |
-| 7.2 en adelante | **Sin decidir** | — |
+| 7.1 | Extraer la persistencia a `dashboard_repository` sin cambiar SQL, conteos ni ciclo de vida | **Cerrada** |
+| 7.2 | `response_model` y errores de dominio, **si el usuario los autoriza** | **Sin decidir**: es un punto de decisión, no una subcapa pendiente |
 
 El desglose posterior a 7.0 se dejó deliberadamente sin decidir, igual que hizo
 la capa 6. Con la evidencia del inventario, **7.1 queda definida** y el resto
@@ -385,7 +387,7 @@ la subcapa. Corregir cualquiera exige una decisión explícita del usuario.
   dos rankings. Al estar en el path nunca puede faltar, así que el defecto es
   inalcanzable.
 
-## Subcapa 7.1 — trabajo exacto, definido y NO iniciado
+## Subcapa 7.1 — trabajo exacto, ejecutado y cerrado
 
 Extraer la persistencia de dashboard, y solo eso, siguiendo el patrón que las
 capas 5 y 6 dejaron probado tres veces.
@@ -423,6 +425,52 @@ capas 5 y 6 dejaron probado tres veces.
    de comparar, que es la lección 13 de la capa 6.
 10. Ejecutar pruebas específicas, Ruff del alcance, compuerta global y
     `git diff --check`; documentar y detenerse antes de decidir 7.2.
+
+## Resultado de 7.1
+
+Las **8 sentencias** salieron del controlador a
+`app/repositories/dashboard_repository.py`, **ocho funciones** que reciben el
+cursor existente más los **dos fragmentos** que componen las consultas de
+cumpleaños. El controlador pasó de **336 a 146 líneas** y de **8 sentencias SQL
+inline a 0**; la ruta seguía teniendo 0. Conserva conexión, cursor, `try/finally`,
+la resolución de la asignación académica, la normalización de `dias`, el formateo
+del payload y el color de cada fila.
+
+El comparador AST **contra el commit base de la capa**, `123637e`, confirmó **16
+literales SQL distintos antes y 16 después, conjunto idéntico**, ninguno perdido
+y ninguno nuevo, con **16 de 16 conservados byte a byte**, y **8 puntos de
+llamada antes y después**. **No hizo falta autorizar ningún cambio de texto
+SQL**, igual que en toda la capa 6.
+
+**Ninguna prueba cambió de expectativa salvo las dos que debían cambiar**: 75 de
+las 77 pasaron sin tocarlas, incluidos los ocho conteos de consultas y conexiones
+y todas las aserciones sobre el texto del SQL.
+
+## Punto de decisión abierto al terminar 7.1
+
+**La frontera de persistencia de dashboard ya está cerrada**: el controlador no
+tiene SQL, la ruta tampoco y el repositorio existe. Lo que queda del objetivo que
+el índice fijó para la capa 7 es la parte condicional: «agregar `response_model`,
+errores de dominio y pruebas HTTP o de integración **solo después de caracterizar
+y conservar la respuesta existente**».
+
+Esa parte **no se inicia por inferencia**, por dos razones registradas:
+
+1. `response_model` **filtra** en FastAPI los campos que no declara. Las siete
+   entradas devuelven hoy listas de diccionarios construidos a mano; declarar un
+   modelo que se quede corto **recortaría el payload sin que fallara nada**. Es
+   el riesgo propio de esta capa, anotado desde la activación.
+2. Las capas 5 y 6 cerraron siendo **refactorizaciones puras**. Añadir
+   `response_model` haría de la 7 la primera que toca la superficie del contrato,
+   aunque sea para conservarla. Eso es una decisión del usuario.
+
+Las dos salidas son legítimas y ninguna está tomada:
+
+- **Cerrar la capa aquí**, como refactorización pura, con su compuerta global,
+  staging, rollback y verificación manual; o
+- **abrir 7.2** para añadir `response_model` y errores de dominio sobre la
+  caracterización que ya existe, demostrando payload por payload que la respuesta
+  no cambia.
 
 ## Criterios de cierre de la capa
 
@@ -495,6 +543,46 @@ capas 5 y 6 dejaron probado tres veces.
 - **`app/core/permissions.py` se leyó pero no se tocó ni se caracterizó
   aparte.** Es infraestructura compartida por varios dominios; aquí solo se fija
   su efecto sobre los conteos de dashboard. Migrarlo no es de esta capa.
+- **Las dos consultas de precondición viven en `dashboard_repository`, no en
+  `asignaciones_repository`, decidido en 7.1 con evidencia.** Consultan la tabla
+  `asignaciones`, que **sí** tiene repositorio propio desde la capa 6, así que el
+  criterio de 5.2 y 6.2 —no crear un repositorio con un solo consumidor— no
+  decide aquí. Deciden otras tres cosas: **no son duplicados**, porque
+  `buscar_asignacion_activa` y `buscar_ultima_asignacion_activa` **filtran por
+  `activo` y estas no**; llevarlas allí ampliaría el diff a un módulo que la capa
+  6 cerró y haría que dashboard dependa del repositorio de otro dominio; y sobre
+  todo, **poner una consulta que no filtra `activo` al lado de sus vecinas que sí
+  lo hacen invita a "arreglarla"**, que es exactamente el hallazgo abierto que
+  esta capa tiene prohibido corregir. El docstring de las dos funciones lo
+  advierte. Alternativa descartada: moverlas a `asignaciones_repository`.
+- **Los dos fragmentos SQL viajan con sus consultas.** `_cte_rango_cumpleanos` y
+  `_filtro_rango_cumpleanos` no son helpers de formato: son **texto SQL**, así
+  que pertenecen al repositorio. Siguen siendo privados y solo los usan las dos
+  funciones de cumpleaños. Es el punto que 7.1 había marcado como delicado, y se
+  resolvió copiándolos verbatim.
+- **La resolución de la asignación académica se queda en el controlador.** El
+  repositorio recibe el id **ya resuelto**. Mover la llamada habría cambiado el
+  orden de las consultas —que los conteos de 7.0 fijan— y habría metido en el
+  repositorio una dependencia de `app/services/asignacion_academica.py`, que esta
+  capa tiene prohibido tocar. Es la misma frontera que 6.1 fijó con el filtro de
+  estado.
+- **El ciclo de vida no se tocó**, como exigía el trabajo exacto de 7.1: las
+  cuatro funciones que usaban `get_connection()` con `try/finally` lo siguen
+  usando. Unificarlas con `get_cursor()` es trabajo de la capa 1 y habría
+  cambiado el número de conexiones, que es justo lo que 7.0 midió.
+- **Las dos guardias de línea base se sustituyeron por su versión positiva.**
+  `test_el_controlador_conserva_sus_ocho_sentencias` y
+  `test_el_dominio_no_tiene_repositorio_propio` **fallaron al extraer**, que era
+  la señal esperada: 7.0 las escribió sabiendo que una extracción debía tumbarlas.
+  Es la lección 14 de la capa 6, aplicada dos veces. Ahora fijan que el SQL vive
+  **solo** en el repositorio y que este es el sexto. Se añadió además una guardia
+  de que sus ocho funciones públicas reciben el cursor.
+- **Error propio detectado y corregido dentro de la subcapa**: los archivos
+  generados quedaron con finales de línea **mezclados**, porque la detección
+  inicial fue defectuosa y dio CRLF donde el repositorio usa LF. Se normalizaron
+  los tres archivos a LF antes de cerrar, y se repitieron el comparador, las
+  pruebas y la compuerta. No afecta al valor de las cadenas —Python normaliza los
+  finales de línea del código fuente—, pero habría ensuciado el diff.
 
 ## Riesgos
 
@@ -656,30 +744,111 @@ capas 5 y 6 dejaron probado tres veces.
 - Estado: 7.0 **cerrada**; 7.1 **pendiente y no iniciada**.
 - Siguiente acción exacta: ejecutar únicamente 7.1, la extracción de la
   persistencia a `dashboard_repository`, y detenerse antes de decidir 7.2.
+  *(Ejecutada en el turno siguiente; ver el cierre de 7.1 más abajo.)*
+
+### 2026-08-17 — cierre de 7.1
+
+- Modo de acceso: mismo checkout local en
+  `C:\Users\David\Documents\sistema_escolar_api`; Git validado directamente y no
+  se usó GitHub para inferir el estado local. **La primera comprobación del turno
+  salió del repositorio equivocado** —el shell había vuelto al directorio del
+  frontend— y se detectó al ver un `HEAD` que no existe en esta historia; se
+  repitió con la ruta explícita antes de tocar nada.
+- Precondición Git: rama `main`, **árbol limpio**, `HEAD`
+  `59efda6f83c877d514eb095cdbd0057b550c2873`, el cierre de 7.0 que el usuario
+  commiteó entre turnos y que contiene exactamente los tres archivos que 7.0
+  declaró. El commit base `123637e` existe y es ancestro; `origin/main` sigue en
+  el base, así que hay **dos commits locales por delante, sin publicar**, ambos
+  explicados aquí.
+- Alcance inspeccionado y modificado: `dashboard_controller.py` y el repositorio
+  nuevo. Se leyeron además, **solo para decidir con evidencia y sin
+  modificarlos**, `app/repositories/README.md`, la cabecera y dos funciones de
+  `estudiantes_repository` y `asignaciones_repository`, y el estilo de import de
+  dos controladores ya migrados. **No se inspeccionó ningún otro dominio.**
+- Archivos de producto: `app/controllers/dashboard_controller.py` y el nuevo
+  `app/repositories/dashboard_repository.py`. Pruebas modificadas:
+  `tests/test_dashboard_caracterizacion.py`, para sustituir las dos guardias de
+  línea base por su versión positiva y añadir una tercera.
+- Implementación: **ocho funciones** que reciben el cursor existente cubren los
+  ocho puntos de llamada, más los **dos fragmentos privados** que componen las
+  consultas de cumpleaños. El controlador pasó de **336 a 146 líneas** y **ya no
+  contiene SQL**.
+- Técnica usada para no alterar el texto: las cadenas **no se transcribieron a
+  mano**. Un script copió los rangos de línea exactos del controlador al
+  repositorio, así que cada literal viaja con su sangría original aunque el
+  código que lo rodea cambie de nivel. Es lo que hace que el comparador dé 16 de
+  16.
+- Equivalencia SQL verificada con el comparador AST **contra el commit base de la
+  capa**, `123637e`, excluyendo docstrings: **16 literales SQL distintos antes y
+  16 después, conjunto idéntico**, ninguno perdido y ninguno nuevo, **16 de 16
+  byte a byte**, y **8 puntos de llamada antes y después**. Ninguna autorización
+  de cambio de SQL fue necesaria.
+- **Señales esperadas, producidas y atendidas**: las dos guardias que 7.0 había
+  escrito sobre la línea base previa a la extracción —ocho sentencias en el
+  controlador y ningún repositorio de dashboard— **fallaron**, y solo esas dos.
+  Las otras **75 pruebas pasaron sin cambiar de expectativa**, incluidos los ocho
+  conteos de consultas y conexiones y todas las aserciones sobre el texto del
+  SQL. Se sustituyeron por versiones positivas.
+- Error propio, detectado y corregido dentro de la subcapa: los archivos
+  generados quedaron con finales de línea mezclados por una detección defectuosa.
+  Se normalizaron a LF y se repitieron comparador, pruebas y compuerta.
+- Conteos conservados: los ocho caminos que 7.0 fijó siguen costando lo mismo,
+  incluido el de **6 consultas y 4 conexiones**. Los de la capa 4 no se tocan.
+- Pruebas específicas: **78 pasaron** en 0,80 s sobre los tres archivos del
+  dominio. Ruff del alcance: **correcto**.
+- Compuerta global final: `.\venv\Scripts\python.exe scripts\verify.py`;
+  **756 pruebas pasaron**, 5 warnings heredadas, Ruff correcto, `pip check`
+  íntegro y exit 0. La suite pasó de 755 a 756 por la guardia añadida.
+- Revisión final: `git diff --check` en exit 0. El diff contiene tres archivos:
+  dos de producto y la prueba. El del controlador son **21 líneas añadidas** —un
+  import y las llamadas al repositorio— y 211 eliminadas. No hubo cambios en
+  rutas, payloads, status codes, permisos, tenant, ownership, transacciones,
+  timeouts, dependencias ni configuración.
+- PostgreSQL, migraciones, producción, commit, push y deploy: **ninguno**. La
+  evidencia de GitHub Actions posterior a la capa 0 continúa pendiente y no se
+  atribuye CI remota.
+- Estado: 7.1 **cerrada**. La frontera de persistencia del dominio queda cerrada.
+- Siguiente acción exacta: **pedir al usuario la decisión** entre cerrar la capa
+  como refactorización pura o abrir 7.2 para `response_model` y errores de
+  dominio. No se inicia ninguna de las dos sin orden explícita.
 
 ## Entrega al próximo chat
 
 - Capa activa: **7, dashboard**, y solo ese dominio. Activada el 2026-08-17.
-- Última subcapa terminada: **7.0**, cerrada el 2026-08-17.
-- Primera subcapa pendiente: **7.1**, extracción de la persistencia a
-  `app/repositories/dashboard_repository.py`. **Definida y no iniciada.**
+- Última subcapa terminada: **7.1**, cerrada el 2026-08-17. Con ella **la
+  frontera de persistencia del dominio queda cerrada**.
+- Primera subcapa pendiente: **ninguna definida.** Lo que sigue es un **punto de
+  decisión del usuario**, no una subcapa pendiente: cerrar la capa como
+  refactorización pura, o abrir **7.2** para `response_model` y errores de
+  dominio. Ver «Punto de decisión abierto al terminar 7.1».
 - Commit base: `123637ee80895023ecece9c32df526ef4eddd1e5`, rama `main`,
-  **publicado y desplegado**. Al cerrar 7.0, `HEAD` es `fb303d5` —un commit
-  local por delante de `origin/main`, la activación, **sin publicar**— más el
-  archivo de prueba de 7.0 sin commitear.
+  **publicado y desplegado**. Al cerrar 7.1, `HEAD` es `59efda6` —dos commits
+  locales por delante de `origin/main`, la activación y el cierre de 7.0,
+  **sin publicar**— más los tres archivos de 7.1 sin commitear.
 - Bloqueos: ninguno. Verificaciones heredadas **pendientes y aceptadas**: valor
   operativo final de `DB_STATEMENT_TIMEOUT_MS` (capa 1) y evidencia de GitHub
   Actions posterior a la capa 0. La credencial privilegiada de la capa 4 sigue
   **sin rotar**.
+- Lo que consiguió 7.1: `dashboard_controller.py` pasó de **336 a 146 líneas** y
+  de **8 sentencias SQL inline a 0**; la persistencia vive en
+  `app/repositories/dashboard_repository.py`, **ocho funciones** que reciben el
+  cursor más dos fragmentos privados. Comparador AST contra el commit base:
+  **conjunto de SQL idéntico, 16 de 16 literales byte a byte**, sin una sola
+  autorización de cambio de texto. **Ninguna prueba cambió de expectativa salvo
+  las dos que debían fallar.**
 - Lo que 7.0 dejó medido: **7 entradas HTTP**, todas `GET` y todas de **solo
-  lectura**; **cero tablas escritas** y **cero transacciones propias**; **8
-  sentencias SQL inline** en el controlador y **ninguna** en la ruta; **41
-  pruebas de caracterización** nuevas y los conteos de ocho caminos. El más caro
-  cuesta **6 consultas y 4 conexiones**. **No hay N+1.**
+  lectura**; **cero tablas escritas** y **cero transacciones propias**; **42
+  pruebas de caracterización** y los conteos de ocho caminos. El más caro cuesta
+  **6 consultas y 4 conexiones**. **No hay N+1.**
 - **Lo que la activación creía y resultó falso**: que dashboard concentraba
   «varias consultas de promedios por estudiante». Cada panel se resuelve con
   **una sola consulta agregada**. Lo caro son las **conexiones**, no las
   consultas.
+- Estado de la capa: **exclusivamente una refactorización hasta aquí**, como la 5
+  y la 6. **No ha tocado la base de datos**, ni siquiera para leer: toda la
+  caracterización se hizo con dobles. Su rollback es de código: revertir hasta
+  `123637e`, que **ya está desplegado**, así que revertir exigiría push y
+  despliegue.
 - Lo que hay que recordar antes de tocar nada:
   1. **Un solo dominio.** La capa 7 es «uno a la vez»; los demás necesitan su
      propia bitácora y su propia orden.
@@ -690,12 +859,13 @@ capas 5 y 6 dejaron probado tres veces.
   3. **No cambiar el ciclo de vida de las conexiones.** Cuatro funciones siguen
      con `get_connection()` y `try/finally`; convertirlas es trabajo de la capa
      1 y no está autorizado aquí.
-  4. **Dos de las ocho consultas se componen de fragmentos**, no son un literal
-     único. Es el punto delicado de 7.1.
-  5. **`response_model` filtra campos.** Solo después de caracterizar y
-     demostrando que la respuesta se conserva.
-  6. **En un panel, la cifra es el contrato.** Este dominio usa **dos** fórmulas
+  4. **`response_model` filtra campos.** Es el riesgo propio de esta capa y el
+     centro del punto de decisión abierto.
+  5. **En un panel, la cifra es el contrato.** Este dominio usa **dos** fórmulas
      de promedio distintas, y el sistema una tercera en estudiantes.
-- Siguiente acción exacta: ejecutar únicamente **7.1** conforme a su trabajo
-  exacto y detenerse antes de decidir 7.2. No inspeccionar los demás dominios de
-  la capa 7.
+  6. **Las dos precondiciones viven en `dashboard_repository` a propósito**, no
+     en `asignaciones_repository`, para que nadie «arregle» su falta de `activo`
+     por vecindad. La decisión y su evidencia están en Decisiones.
+- Siguiente acción exacta: **pedir al usuario la decisión** entre cerrar la capa
+  o abrir 7.2. Ninguna de las dos se inicia sin orden explícita, y una
+  instrucción genérica de continuar no la autoriza.

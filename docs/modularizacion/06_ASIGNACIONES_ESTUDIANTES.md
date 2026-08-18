@@ -12,10 +12,10 @@
   A diferencia de todas las activaciones anteriores salvo la de la capa 5, el
   commit base **ya está desplegado**: un push a `main` dispara el despliegue en
   este repositorio.
-- Primera subcapa pendiente: **6.4**. Las subcapas **6.0 a 6.3 quedaron cerradas**
-  el 2026-08-17. Con 6.2 **el dominio de estudiantes queda terminado**: su
-  controlador no contiene ni una sentencia SQL. Con 6.3, `asignacion_controller`
-  ya no contiene **ninguna escritura**; le quedan sus lecturas.
+- Primera subcapa pendiente: **6.5**, la última prevista. Las subcapas **6.0 a
+  6.4 quedaron cerradas** el 2026-08-17. Con 6.2 **el dominio de estudiantes
+  queda terminado**; con 6.3 y 6.4, `asignacion_controller` conserva **una sola
+  sentencia SQL**, la introspección de esquema que se decidió no mover.
 - Código de producto modificado al activar: **ninguno**. Tampoco en 6.0. En 6.1:
   `app/controllers/estudiante_controller.py` y el nuevo
   `app/repositories/estudiantes_repository.py`, sin cambios en rutas, payloads,
@@ -176,8 +176,8 @@ suite pasó de **669 a 708** con la caracterización de 6.0.
 | 6.1 | Extraer la persistencia de **estudiantes** sin cambiar SQL, conteos ni transacción | **Cerrada** |
 | 6.2 | Cerrar la frontera de estudiantes: las cuatro lecturas de otros dominios que quedan en `detalles` | **Cerrada** |
 | 6.3 | Extraer la persistencia de las **escrituras de `asignaciones`** | **Cerrada** |
-| 6.4 | Extraer las **lecturas de `asignaciones`**: validaciones, listados, disponibilidad y orden | **Pendiente, no iniciada** |
-| 6.5 en adelante | **Sin decidir.** El SQL inline de la ruta, el código muerto y el cierre de la capa | Sin definir |
+| 6.4 | Extraer las **lecturas de `asignaciones`**: validaciones, listados, disponibilidad y orden | **Cerrada** |
+| 6.5 | El SQL inline de la ruta `/mis-clases`, el código heredado y el **cierre de la capa** | **Pendiente, no iniciada** |
 
 6.1 quedó definida desde lo que 6.0 midió, y toma **estudiantes primero** por la
 razón registrada en Decisiones. El desglose de asignaciones se deja sin decidir
@@ -543,6 +543,37 @@ empieza asignaciones, y empieza por sus escrituras.
 8. Ejecutar pruebas específicas, Ruff del alcance, compuerta global y
    `git diff --check`; documentar y detenerse antes de 6.5.
 
+## Subcapa 6.5 — trabajo exacto, definido y NO iniciado
+
+Última subcapa prevista. Cierra la capa, así que ejecuta también la compuerta
+global y documenta staging, rollback y verificación manual.
+
+1. Revalidar Git y limitar la inspección a lo que queda: el `SELECT` inline de
+   `GET /mis-clases/{profesor_id}` en `app/routes/asignaciones.py` y la única
+   sentencia que conserva el controlador, la de `information_schema.columns`.
+2. Decidir **con evidencia** qué hacer con el SQL de la ruta. Ningún dominio
+   migrado antes tenía SQL en la capa HTTP. Es una consulta de dominio sobre
+   `asignaciones`, así que moverla al repositorio es lo coherente, pero hay que
+   comprobar antes si su texto coincide con alguna de las funciones que ya
+   existen y caracterizar la ruta si no lo está.
+3. Confirmar que `tabla_columna_existe` **se queda**, conforme a lo ya decidido
+   en 6.4 y al precedente de 5.3, y dejarlo registrado como decisión firme y no
+   como pendiente.
+4. Buscar código heredado que haya quedado sin consumidores tras las cuatro
+   extracciones y retirarlo **solo si se demuestra huérfano**. Las dos copias de
+   `obtener_clases_profesor_controller` ya estaban muertas antes de la capa: su
+   retirada es un hallazgo de 6.0 y **exige decisión explícita del usuario**, así
+   que se le pregunta, no se decide.
+5. No corregir el resto de hallazgos de 6.0 —la ausencia de lock, el `SELECT *`,
+   las rarezas de status code— salvo autorización explícita.
+6. Verificar que los conteos de 6.0 y los de la capa 4 no cambian, y ejecutar el
+   comparador AST contra el commit base por última vez.
+7. Ejecutar la **compuerta global completa**, `git diff --check` y la revisión de
+   alcance.
+8. Documentar staging, rollback y verificación manual de la capa; actualizar el
+   índice maestro; marcar la capa **cerrada** y dejar la capa 7 **en espera**.
+   **No activar la capa 7 sin orden explícita.**
+
 ## Criterios de cierre de la capa
 
 - Todas las subcapas necesarias están cerradas o marcadas `No aplica` con
@@ -657,6 +688,36 @@ empieza asignaciones, y empieza por sus escrituras.
   repositorio habría cambiado ese orden, así que se dejó donde estaba. Es la
   diferencia con `insertar_estudiante`, que sí devuelve el id porque allí no hay
   traducción de error en medio.
+- **Las precondiciones sobre `profesor`, `cursos` y `materias` van al
+  repositorio de asignaciones, decidido en 6.4 con evidencia.** No son
+  persistencia de esos catálogos: son las preguntas que hay que responder antes
+  de poder asignar. Se comprobó que **no existe** un repositorio de ninguno de
+  los tres —hay cuatro: asignaciones, estudiantes, pagos, plan de clases y
+  reportes— y que el patrón de estado activo que usan aparece **cuatro veces en
+  este controlador y una sola vez fuera**, en `venta_controller` y con otro
+  texto. Un repositorio de catálogos tendría por tanto un solo consumidor real.
+  Es el criterio de 5.2 y 6.2. Alternativa descartada: dejarlas en el
+  controlador, que habría partido la frontera sin motivo.
+- **`tabla_columna_existe` se queda en el controlador, decidido en 6.4 con
+  evidencia.** Consulta `information_schema.columns`, y la convención vigente del
+  repositorio, fijada por 5.3 tras revisar `cobros.py` y
+  `tipos_pagos_controller.py`, es que **la introspección de esquema vive junto al
+  código que la necesita**, no en una frontera de persistencia. Es la única
+  sentencia SQL que sigue inline en `asignacion_controller`.
+- **Su pregunta hermana sí se movió.** `SELECT 1 FROM {tabla} WHERE
+  asignacion_id` es una pregunta sobre **datos**, no sobre el esquema, así que
+  pertenece al repositorio. Separar las dos mitades de
+  `asignacion_tiene_historial` es deliberado: cada una va donde su naturaleza
+  indica, y la función sigue orquestándolas en el controlador.
+- **`buscar_curso_activo` y `buscar_curso_activo_para_orden` NO se unificaron.**
+  Su texto solo difiere en la sangría, heredada de estar una en una función
+  suelta y otra dentro de un `try`. Es el tercer par gemelo de la capa, y se
+  trata igual que los dos anteriores: conservar ambos literales, porque unificar
+  es una decisión del usuario.
+- **El SQL de la función muerta también se movió.**
+  `obtener_clases_profesor_controller` no tiene consumidores —6.0 lo demostró—,
+  pero su lectura se extrajo igual para no dejar SQL inline a medias. Retirar la
+  función sigue exigiendo decisión explícita y se plantea en 6.5.
 - **La degradación por secciones se queda en el controlador**, decidido en 6.2.
   Los cinco `try/except` con su `rollback` y su entrada en `errores` son política
   de respuesta, no persistencia. El repositorio ejecuta y devuelve; quien decide
@@ -980,24 +1041,83 @@ empieza asignaciones, y empieza por sus escrituras.
   atribuye CI remota.
 - Estado: 6.3 **cerrada**; 6.4 **pendiente y no iniciada**.
 - Siguiente acción exacta: ejecutar únicamente 6.4, extracción de las lecturas de
-  `asignaciones`, y detenerse antes de 6.5.
+  `asignaciones`, y detenerse antes de 6.5. *(Ejecutada en el turno siguiente;
+  ver el cierre de 6.4 más abajo.)*
+
+### 2026-08-17 — cierre de 6.4
+
+- Modo de acceso: mismo checkout local en
+  `C:\Users\David\Documents\sistema_escolar_api`; Git validado directamente y no
+  se usó GitHub para inferir el estado local.
+- Precondición Git: rama `main`, **árbol limpio**, `HEAD` `be725c8`, el cierre de
+  6.3 que el usuario commiteó entre turnos y que contiene exactamente los cinco
+  archivos que 6.3 declaró. El commit base `589cb6d` existe y es ancestro;
+  `origin/main` sigue en el base, así que hay **cinco commits locales por
+  delante, sin publicar**, todos explicados aquí.
+- Alcance inspeccionado y modificado: las lecturas de `asignacion_controller.py`
+  y el repositorio de asignaciones. Se leyeron además, **solo para decidir con
+  evidencia y sin modificarlos**, `app/repositories/README.md` y el recuento de
+  usos del patrón de estado activo en todo `app/`. No se tocaron
+  `asignacion_academica.py`, las rutas ni estudiantes.
+- Convención confirmada en `app/repositories/README.md`: consultas SQL por
+  módulo, sin detalles HTTP, recibiendo y devolviendo datos simples. Es lo que ya
+  venían haciendo las tres extracciones anteriores.
+- Decisiones con evidencia, registradas arriba: las precondiciones sobre
+  catálogos **van** al repositorio; `tabla_columna_existe` **se queda**; la
+  consulta de historial sobre datos **se mueve**; el tercer par de literales
+  gemelos **no se unifica**.
+- Caracterización: **no hizo falta ampliarla**. Los caminos de lectura ya estaban
+  cubiertos por 6.0 y por las pruebas heredadas, y **ninguna prueba cambió de
+  expectativa**.
+- Archivos de producto: `app/controllers/asignacion_controller.py` y
+  `app/repositories/asignaciones_repository.py`. **Pruebas modificadas: ninguna.**
+- Implementación: **veintiuna funciones nuevas** en el repositorio, repartidas en
+  cuatro bloques rotulados —precondiciones, validaciones de unicidad y cruce,
+  lecturas de asignaciones e historial académico—. El controlador pasó de **1041
+  a 762 líneas**; desde el commit base de la capa, de **1093 a 762**, y conserva
+  **una sola sentencia SQL**: la de `information_schema.columns`.
+- Equivalencia SQL verificada con el comparador AST **contra el commit base de la
+  capa**, `589cb6d`: **41 sentencias distintas antes y 41 después, conjunto
+  idéntico**, 42 puntos de llamada antes y 42 después, y **41 de 41 literales
+  conservados byte a byte**, incluidas las siete que se construyen con f-string.
+  Ninguna autorización de cambio de SQL fue necesaria.
+- Conteos conservados: alta con horario 12, heredando 11, sin horario 8, edición
+  de horario 10, edición bloqueada por historial 6, orden del boletín 6,
+  `asignacion_tiene_historial` 7 a 14. Los verifica la caracterización de 6.0.
+- Pruebas específicas: **72 pasaron** en 0,97 s sobre los siete archivos del
+  dominio. Ruff del alcance: **correcto**.
+- Compuerta global final: `.\venv\Scripts\python.exe scripts\verify.py`;
+  **713 pruebas pasaron** en 2,48 s, 5 warnings heredadas, Ruff correcto,
+  `pip check` íntegro y exit 0. El total no cambia porque 6.4 no añadió pruebas.
+- Revisión final: `git diff --check` en exit 0. El diff contiene exactamente dos
+  archivos de producto. No hubo cambios en rutas, payloads, status codes,
+  permisos, tenant, ownership, transacciones, timeouts, dependencias ni
+  configuración.
+- PostgreSQL, migraciones, producción, commit, push y deploy: **ninguno**. La
+  evidencia de GitHub Actions posterior a la capa 0 continúa pendiente y no se
+  atribuye CI remota.
+- Estado: 6.4 **cerrada**; 6.5 **pendiente y no iniciada**.
+- Siguiente acción exacta: ejecutar únicamente 6.5 y, por ser la última subcapa,
+  aplicar la compuerta de cierre de la capa sin activar la capa 7.
 
 ## Entrega al próximo chat
 
 - Capa activa: **6, asignaciones y estudiantes**.
-- Última subcapa terminada: **6.3**, cerrada el 2026-08-17. Estudiantes está
-  terminado desde 6.2; de asignaciones ya salieron **todas las escrituras**.
-- Primera subcapa pendiente: **6.4**, extraer las lecturas de `asignaciones`.
-  Su trabajo exacto está definido arriba y **no se ha iniciado**.
+- Última subcapa terminada: **6.4**, cerrada el 2026-08-17.
+- Primera subcapa pendiente: **6.5**, la última: el SQL inline de la ruta
+  `/mis-clases`, el código heredado y el **cierre de la capa**. Su trabajo exacto
+  está definido arriba y **no se ha iniciado**.
 - Commit base: `589cb6d1391161c692a6f24aee9d523317cbb1ce`, rama `main`,
-  **publicado y desplegado**. Al cerrar 6.3, `HEAD` es `c477516` —cuatro commits
-  locales por delante de `origin/main`, sin publicar— más los tres archivos de
-  6.3 sin commitear.
-- Lo que consiguió 6.3: las siete escrituras de `asignaciones` salieron a
-  `app/repositories/asignaciones_repository.py`. El controlador pasó de **1093 a
-  1041 líneas** y **no contiene ninguna escritura**; le quedan **34 lecturas
-  distintas**. Comparador AST contra el commit base: **41 de 41 literales byte a
-  byte**, conjunto idéntico. Ninguna prueba cambió de expectativa.
+  **publicado y desplegado**. Al cerrar 6.4, `HEAD` es `be725c8` —cinco commits
+  locales por delante de `origin/main`, sin publicar— más los dos archivos de
+  6.4 sin commitear.
+- Lo que consiguieron 6.3 y 6.4: toda la persistencia de `asignaciones` salió del
+  controlador a `app/repositories/asignaciones_repository.py`, **veintiocho
+  funciones** en cinco bloques rotulados. `asignacion_controller.py` pasó de
+  **1093 a 762 líneas** y de **41 sentencias SQL inline a 1**, la introspección de
+  esquema que se decidió conservar. Comparador AST contra el commit base: **41 de
+  41 literales byte a byte**, conjunto idéntico, sin una sola autorización de
+  cambio de texto. Ninguna prueba cambió de expectativa en ninguna de las dos.
 - Lo que consiguieron 6.1 y 6.2: toda la persistencia de estudiantes salió del
   controlador a `app/repositories/estudiantes_repository.py`, **once funciones**
   que reciben el cursor —siete de la tabla `estudiantes` y cuatro del bloque del
@@ -1025,6 +1145,9 @@ empieza asignaciones, y empieza por sus escrituras.
      `require_profesor_scope` y admiten a un profesor, no solo a un admin.
   4. **Nada se borra**: los dos dominios desactivan con `UPDATE`, y eso es lo
      que hace inocuas las 16 claves foráneas que apuntan a sus tablas.
-- Siguiente acción exacta: ejecutar únicamente 6.4 y detenerse antes de 6.5. No
-  iniciar dos subcapas en el mismo turno. Lo que queda de la capa son **las
-  lecturas de asignaciones**, el SQL inline de la ruta `/mis-clases` y el cierre.
+- Siguiente acción exacta: ejecutar únicamente 6.5, que es la **última subcapa** y
+  cierra la capa. Exige compuerta global, staging, rollback, verificación manual y
+  actualización del índice. **No activar la capa 7 sin orden explícita.**
+- Decisión que 6.5 debe plantear al usuario, no resolver sola: **retirar o no las
+  dos copias muertas de `obtener_clases_profesor_controller`**. Es un hallazgo de
+  6.0 y su retirada toca dos módulos de producto y dos archivos de prueba.

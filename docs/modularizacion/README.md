@@ -40,7 +40,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 3 | Migraciones y tenants | Todos los tenants versionados, runner bloqueado y alta reproducible | **Cerrada**; reparó producción y verificó en uso | [03_MIGRACIONES_TENANTS.md](./03_MIGRACIONES_TENANTS.md) |
 | 4 | Reportes financieros | Dominio modular, N+1 eliminado y consultas medidas | **Cerrada**; N+1 de 5N a 15 constantes, medido en producción | [04_REPORTES_FINANCIEROS.md](./04_REPORTES_FINANCIEROS.md) |
 | 5 | Pagos y tipos de pago | Dominio financiero modularizado y protegido | **Cerrada**; SQL inline de 23 a 3, sin tocar la base | [05_PAGOS_TIPOS_PAGO.md](./05_PAGOS_TIPOS_PAGO.md) |
-| 6 | Asignaciones y estudiantes | Dominios grandes separados con contratos estables | **Activa**; estudiantes terminado, escrituras de asignaciones extraídas, 6.4 pendiente | [06_ASIGNACIONES_ESTUDIANTES.md](./06_ASIGNACIONES_ESTUDIANTES.md) |
+| 6 | Asignaciones y estudiantes | Dominios grandes separados con contratos estables | **Activa**; 6.0 a 6.4 cerradas, solo queda 6.5 y el cierre | [06_ASIGNACIONES_ESTUDIANTES.md](./06_ASIGNACIONES_ESTUDIANTES.md) |
 | 7 | Resto de dominios | Migración individual con contratos y pruebas | En espera | Una bitácora por dominio al activarlo |
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
@@ -534,11 +534,25 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   `actualizar_asignacion` **no leen su `RETURNING`**: en el controlador el
   `fetchone` ocurre después del `except IntegrityError`, para que un duplicado se
   traduzca a 409 antes de leer, y mover esa lectura habría cambiado el orden.
-- Capa activa: **6, asignaciones y estudiantes**. Subcapas **6.0 a 6.3 cerradas**
-  el 2026-08-17: **estudiantes terminado** y las escrituras de asignaciones ya
-  extraídas. Primera subcapa pendiente: **6.4**, extraer las lecturas de
-  `asignaciones`, **definida y no iniciada**. Después quedan el SQL inline de la
-  ruta `/mis-clases` y el cierre de la capa.
+- Resultado de 6.4: las lecturas de `asignaciones` salieron al repositorio, que
+  llega a **28 funciones** en cinco bloques rotulados. El controlador baja de
+  **1093 líneas al activar la capa a 762** y de **41 sentencias SQL inline a 1**.
+  El comparador AST contra el commit base confirmó conjunto idéntico y **41 de 41
+  literales byte a byte**, incluidas las siete construidas con f-string; en toda
+  la extracción de asignaciones **no hizo falta autorizar ni un cambio de texto
+  SQL**. **Ninguna prueba cambió de expectativa.** Compuerta local: **713
+  pruebas**, Ruff y dependencias correctas.
+- Decisiones de 6.4, todas con evidencia: las precondiciones sobre `profesor`,
+  `cursos` y `materias` **van** al repositorio, porque no existe repositorio de
+  esos catálogos y el patrón que usan aparece cuatro veces en este controlador y
+  una sola fuera; `tabla_columna_existe` **se queda**, por la convención que 5.3
+  fijó de que la introspección de esquema vive junto al código que la necesita —es
+  la única sentencia inline que sobrevive—; y su pregunta hermana sobre datos
+  **sí se mueve**, porque pregunta por filas, no por el esquema.
+- Capa activa: **6, asignaciones y estudiantes**. Subcapas **6.0 a 6.4 cerradas**
+  el 2026-08-17. Primera subcapa pendiente: **6.5**, la última: el SQL inline de
+  la ruta `/mis-clases`, el código heredado y el **cierre de la capa** con su
+  compuerta, staging, rollback y verificación manual. **Definida y no iniciada.**
 - Resultado de 3.5: el alta construye el schema desde la migración base en vez de
   copiar la plantilla. Un tenant nuevo nace con **37 claves foráneas y 30
   secuencias propias**, donde el camino anterior producía **0 y 0**. Ensayado

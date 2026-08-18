@@ -78,8 +78,7 @@ def validar_jornada_curso(cursor, curso_id, hora_inicio, hora_fin):
     if not hora_inicio or not hora_fin:
         return None
 
-    cursor.execute("SELECT jornada FROM cursos WHERE id = %s", (curso_id,))
-    row = cursor.fetchone()
+    row = asignaciones_repository.leer_jornada_curso(cursor, curso_id)
     if not row:
         return None  # el curso ya se valida por la FK en el INSERT
 
@@ -107,17 +106,7 @@ def verificar_cruce_horario(cursor, campo_id, valor_id, dia, hora_inicio_nueva, 
     if campo_id not in {"profesor_id", "curso_id"}:
         raise ValueError("Campo de cruce no permitido")
 
-    cursor.execute(
-        f"""
-        SELECT hora_inicio, hora_fin
-        FROM asignaciones
-        WHERE {campo_id} = %s
-          AND dia = %s
-          AND activo = TRUE
-        """,
-        (valor_id, dia),
-    )
-    registros = cursor.fetchall()
+    registros = asignaciones_repository.leer_horarios_del_dia(cursor, campo_id, valor_id, dia)
 
     hora_inicio_nueva = normalizar_hora(hora_inicio_nueva)
     hora_fin_nueva = normalizar_hora(hora_fin_nueva)
@@ -139,42 +128,15 @@ def verificar_cruce_horario(cursor, campo_id, valor_id, dia, hora_inicio_nueva, 
 
 
 def profesor_activo(cursor, profesor_id):
-    cursor.execute(
-        """
-        SELECT 1
-        FROM profesor
-        WHERE id = %s
-          AND COALESCE(LOWER(estado), 'activo') = 'activo'
-        """,
-        (profesor_id,),
-    )
-    return cursor.fetchone() is not None
+    return asignaciones_repository.buscar_profesor_activo(cursor, profesor_id) is not None
 
 
 def curso_activo(cursor, curso_id):
-    cursor.execute(
-        """
-        SELECT 1
-        FROM cursos
-        WHERE id = %s
-          AND COALESCE(LOWER(estado), 'activo') = 'activo'
-        """,
-        (curso_id,),
-    )
-    return cursor.fetchone() is not None
+    return asignaciones_repository.buscar_curso_activo(cursor, curso_id) is not None
 
 
 def materia_activa(cursor, materia_id):
-    cursor.execute(
-        """
-        SELECT 1
-        FROM materias
-        WHERE id = %s
-          AND COALESCE(LOWER(estado), 'activo') = 'activo'
-        """,
-        (materia_id,),
-    )
-    return cursor.fetchone() is not None
+    return asignaciones_repository.buscar_materia_activa(cursor, materia_id) is not None
 
 
 def validar_profesor_responsable_materia(cursor, profesor_id, curso_id, materia_id, asignacion_id=None):
@@ -184,21 +146,9 @@ def validar_profesor_responsable_materia(cursor, profesor_id, curso_id, materia_
         filtro_asignacion = "AND a.id != %s"
         params.append(asignacion_id)
 
-    cursor.execute(
-        f"""
-        SELECT p.nombre || ' ' || p.apellido AS profesor_nombre
-        FROM asignaciones a
-        JOIN profesor p ON p.id = a.profesor_id
-        WHERE a.curso_id = %s
-          AND a.materia_id = %s
-          AND a.profesor_id != %s
-          AND a.activo = TRUE
-          {filtro_asignacion}
-        LIMIT 1
-        """,
-        params,
+    row = asignaciones_repository.buscar_responsable_de_materia(
+        cursor, filtro_asignacion, params
     )
-    row = cursor.fetchone()
     if row:
         profesor_nombre = row[0] or "otro profesor"
         raise AsignacionDuplicadaError(
@@ -216,23 +166,7 @@ def validar_horario_unico(cursor, profesor_id, curso_id, materia_id, dia, hora_i
         filtro_asignacion = "AND id != %s"
         params.append(asignacion_id)
 
-    cursor.execute(
-        f"""
-        SELECT 1
-        FROM asignaciones
-        WHERE profesor_id = %s
-          AND curso_id = %s
-          AND materia_id = %s
-          AND dia IS NOT DISTINCT FROM %s
-          AND hora_inicio IS NOT DISTINCT FROM %s
-          AND hora_fin IS NOT DISTINCT FROM %s
-          AND activo = TRUE
-          {filtro_asignacion}
-        LIMIT 1
-        """,
-        params,
-    )
-    if cursor.fetchone():
+    if asignaciones_repository.buscar_horario_identico(cursor, filtro_asignacion, params):
         raise AsignacionDuplicadaError(ASIGNACION_HORARIO_DUPLICADO_MENSAJE)
 
 
@@ -243,36 +177,12 @@ def obtener_asignacion_academica_id(cursor, profesor_id, curso_id, materia_id, a
         filtro_asignacion = "AND id != %s"
         params.append(asignacion_id)
 
-    cursor.execute(
-        f"""
-        SELECT COALESCE(asignacion_academica_id, id)
-        FROM asignaciones
-        WHERE profesor_id = %s
-          AND curso_id = %s
-          AND materia_id = %s
-          AND activo = TRUE
-          {filtro_asignacion}
-        ORDER BY id ASC
-        LIMIT 1
-        """,
-        params,
-    )
-    row = cursor.fetchone()
+    row = asignaciones_repository.buscar_asignacion_academica(cursor, filtro_asignacion, params)
     return row[0] if row else None
 
 
 def obtener_orden_boletin_materia_curso(cursor, curso_id, materia_id):
-    cursor.execute(
-        """
-        SELECT COALESCE(MIN(orden_boletin), 100)
-        FROM asignaciones
-        WHERE curso_id = %s
-          AND materia_id = %s
-          AND activo = TRUE
-        """,
-        (curso_id, materia_id),
-    )
-    row = cursor.fetchone()
+    row = asignaciones_repository.leer_orden_boletin_materia(cursor, curso_id, materia_id)
     return row[0] if row and row[0] is not None else 100
 
 
@@ -291,32 +201,8 @@ def _formatear_orden_boletin(row):
 
 
 def _obtener_orden_boletin_curso(cursor, curso_id):
-    cursor.execute(
-        """
-        SELECT
-            MIN(COALESCE(a.asignacion_academica_id, a.id)) AS asignacion_academica_id,
-            a.curso_id,
-            c.nombre AS curso_nombre,
-            a.materia_id,
-            m.nombre AS materia_nombre,
-            MIN(a.profesor_id) AS profesor_id,
-            MIN(p.nombre || ' ' || p.apellido) AS profesor_nombre,
-            COALESCE(MIN(a.orden_boletin), 100) AS orden_boletin,
-            COUNT(*) AS horarios
-        FROM asignaciones a
-        JOIN cursos c ON c.id = a.curso_id
-        JOIN materias m ON m.id = a.materia_id
-        JOIN profesor p ON p.id = a.profesor_id
-        WHERE a.curso_id = %s
-          AND a.activo = TRUE
-          AND COALESCE(LOWER(c.estado), 'activo') = 'activo'
-          AND COALESCE(LOWER(m.estado), 'activo') = 'activo'
-        GROUP BY a.curso_id, c.nombre, a.materia_id, m.nombre
-        ORDER BY COALESCE(MIN(a.orden_boletin), 100), m.nombre
-        """,
-        (curso_id,),
-    )
-    return [_formatear_orden_boletin(row) for row in cursor.fetchall()]
+    filas = asignaciones_repository.leer_orden_boletin_curso(cursor, curso_id)
+    return [_formatear_orden_boletin(row) for row in filas]
 
 
 def obtener_orden_boletin_curso_controller(curso_id):
@@ -336,32 +222,16 @@ def actualizar_orden_boletin_curso_controller(curso_id, data):
     conn = get_connection()
     cursor = conn.cursor()
     try:
-        cursor.execute(
-            """
-            SELECT 1
-            FROM cursos
-            WHERE id = %s
-              AND COALESCE(LOWER(estado), 'activo') = 'activo'
-            """,
-            (curso_id,),
-        )
-        if not cursor.fetchone():
+        if not asignaciones_repository.buscar_curso_activo_para_orden(cursor, curso_id):
             return {"error": "Curso no encontrado o inactivo."}
 
         materia_ids = [item.materia_id for item in data.materias]
         if len(materia_ids) != len(set(materia_ids)):
             return {"error": "El orden enviado contiene materias repetidas."}
 
-        cursor.execute(
-            """
-            SELECT DISTINCT materia_id
-            FROM asignaciones
-            WHERE curso_id = %s
-              AND activo = TRUE
-            """,
-            (curso_id,),
-        )
-        materias_asignadas = {row[0] for row in cursor.fetchall()}
+        materias_asignadas = {
+            row[0] for row in asignaciones_repository.leer_materias_asignadas(cursor, curso_id)
+        }
         materias_invalidas = [materia_id for materia_id in materia_ids if materia_id not in materias_asignadas]
         if materias_invalidas:
             return {"error": "El orden contiene materias que no están asignadas a este curso."}
@@ -478,20 +348,7 @@ def asignar_profesor_controller(asignacion):
 def cursos_por_profesor_controller(profesor_id):
 
     with get_cursor() as cursor:
-        cursor.execute("""
-            SELECT DISTINCT
-                c.id,
-                c.nombre
-            FROM asignaciones a
-            JOIN cursos c ON a.curso_id = c.id
-            JOIN materias m ON a.materia_id = m.id
-            WHERE a.profesor_id = %s
-              AND a.activo = TRUE
-              AND COALESCE(LOWER(c.estado), 'activo') = 'activo'
-              AND COALESCE(LOWER(m.estado), 'activo') = 'activo'
-        """, (profesor_id,))
-
-        resultado = cursor.fetchall()
+        resultado = asignaciones_repository.leer_cursos_de_profesor(cursor, profesor_id)
 
     data = []
 
@@ -508,22 +365,7 @@ def cursos_por_profesor_controller(profesor_id):
 def profesor_por_curso_controller(curso_id):
 
     with get_cursor() as cursor:
-        cursor.execute("""
-            SELECT DISTINCT
-                p.id,
-                p.nombre,
-                p.apellido
-            FROM asignaciones a
-            JOIN profesor p ON a.profesor_id = p.id
-            JOIN cursos c ON a.curso_id = c.id
-            JOIN materias m ON a.materia_id = m.id
-            WHERE a.curso_id = %s
-              AND a.activo = TRUE
-              AND COALESCE(LOWER(c.estado), 'activo') = 'activo'
-              AND COALESCE(LOWER(m.estado), 'activo') = 'activo'
-        """, (curso_id,))
-
-        resultado = cursor.fetchall()
+        resultado = asignaciones_repository.leer_profesores_de_curso(cursor, curso_id)
 
     data = []
 
@@ -537,41 +379,7 @@ def profesor_por_curso_controller(curso_id):
     return data
 def obtener_horarios_admin_controller():
     with get_cursor() as cursor:
-        cursor.execute("""
-            SELECT
-                p.nombre || ' ' || p.apellido AS profesor,
-                c.nombre AS curso,
-                m.nombre AS materia,
-                a.dia,
-                a.hora_inicio,
-                a.hora_fin
-            FROM asignaciones a
-            JOIN profesor p ON a.profesor_id = p.id
-            JOIN cursos c ON a.curso_id = c.id
-            JOIN materias m ON a.materia_id = m.id
-            WHERE a.dia IS NOT NULL
-              AND a.hora_inicio IS NOT NULL
-              AND a.hora_fin IS NOT NULL
-              AND a.hora_inicio != ''
-              AND a.hora_fin != ''
-              AND a.activo = TRUE
-              AND COALESCE(LOWER(c.estado), 'activo') = 'activo'
-              AND COALESCE(LOWER(m.estado), 'activo') = 'activo'
-            ORDER BY
-                CASE a.dia
-                    WHEN 'Lunes' THEN 1
-                    WHEN 'Martes' THEN 2
-                    WHEN 'Miércoles' THEN 3
-                    WHEN 'Jueves' THEN 4
-                    WHEN 'Viernes' THEN 5
-                    WHEN 'Sábado' THEN 6
-                    WHEN 'Domingo' THEN 7
-                    ELSE 8
-                END,
-                a.hora_inicio
-        """)
-
-        clases = cursor.fetchall()
+        clases = asignaciones_repository.leer_horarios_admin(cursor)
 
     resultado = []
     for c in clases:
@@ -590,14 +398,9 @@ def obtener_horarios_admin_controller():
 def eliminar_asignacion_controller(profesor_id, curso_id):
 
     with get_cursor(commit=True) as cursor:
-        cursor.execute("""
-            SELECT id FROM asignaciones
-            WHERE profesor_id = %s AND curso_id = %s AND activo = TRUE
-            ORDER BY id DESC
-            LIMIT 1
-        """, (profesor_id, curso_id))
-
-        asignacion = cursor.fetchone()
+        asignacion = asignaciones_repository.buscar_ultima_asignacion_activa(
+            cursor, profesor_id, curso_id
+        )
 
         if not asignacion:
             return {"mensaje": "Asignación no encontrada"}
@@ -611,21 +414,7 @@ def eliminar_asignacion_controller(profesor_id, curso_id):
 def obtener_clases_profesor_controller(profesor_id):
 
     with get_cursor() as cursor:
-        cursor.execute("""
-            SELECT
-                a.id,
-                c.nombre,
-                m.nombre
-            FROM asignaciones a
-            JOIN cursos c ON a.curso_id = c.id
-            JOIN materias m ON a.materia_id = m.id
-            WHERE a.profesor_id = %s
-              AND a.activo = TRUE
-              AND COALESCE(LOWER(c.estado), 'activo') = 'activo'
-              AND COALESCE(LOWER(m.estado), 'activo') = 'activo'
-        """, (profesor_id,))
-
-        rows = cursor.fetchall()
+        rows = asignaciones_repository.leer_clases_de_profesor(cursor, profesor_id)
 
     return [
         {
@@ -641,8 +430,7 @@ def eliminar_asignacion_por_id_controller(asignacion_id):
     cursor = conn.cursor()
 
     try:
-        cursor.execute("SELECT id FROM asignaciones WHERE id = %s AND activo = TRUE", (asignacion_id,))
-        if not cursor.fetchone():
+        if not asignaciones_repository.buscar_asignacion_activa(cursor, asignacion_id):
             return {"error": "Asignación no encontrada"}
 
         asignaciones_repository.desactivar_asignacion_por_id(cursor, asignacion_id)
@@ -660,18 +448,9 @@ def verificar_cruce_horario_editar(cursor, campo_id, valor_id, dia, hora_inicio_
     if campo_id not in {"profesor_id", "curso_id"}:
         raise ValueError("Campo de cruce no permitido")
 
-    cursor.execute(
-        f"""
-        SELECT hora_inicio, hora_fin
-        FROM asignaciones
-        WHERE {campo_id} = %s
-          AND dia = %s
-          AND id != %s
-          AND activo = TRUE
-        """,
-        (valor_id, dia, asignacion_id_ignorar),
+    registros = asignaciones_repository.leer_horarios_del_dia_excluyendo(
+        cursor, campo_id, valor_id, dia, asignacion_id_ignorar
     )
-    registros = cursor.fetchall()
 
     hora_inicio_nueva = normalizar_hora(hora_inicio_nueva)
     hora_fin_nueva = normalizar_hora(hora_fin_nueva)
@@ -717,8 +496,7 @@ def asignacion_tiene_historial(cursor, asignacion_id):
     for tabla in tablas:
         if not tabla_columna_existe(cursor, tabla, "asignacion_id"):
             continue
-        cursor.execute(f"SELECT 1 FROM {tabla} WHERE asignacion_id = %s LIMIT 1", (asignacion_id,))
-        if cursor.fetchone():
+        if asignaciones_repository.buscar_historial_en_tabla(cursor, tabla, asignacion_id):
             return True
     return False
 
@@ -727,12 +505,7 @@ def editar_asignacion_controller(asignacion_id, asignacion):
     cursor = conn.cursor()
 
     try:
-        cursor.execute("""
-            SELECT profesor_id, curso_id, materia_id, activo, COALESCE(asignacion_academica_id, id)
-            FROM asignaciones
-            WHERE id = %s
-        """, (asignacion_id,))
-        actual = cursor.fetchone()
+        actual = asignaciones_repository.leer_asignacion_para_editar(cursor, asignacion_id)
         if not actual:
             return {"error": "Asignación no encontrada"}
         if actual[3] is not True:
@@ -834,25 +607,7 @@ def editar_asignacion_controller(asignacion_id, asignacion):
 
 def obtener_todas_asignaciones_controller():
     with get_cursor() as cursor:
-        cursor.execute("""
-            SELECT
-                a.id, a.profesor_id, a.curso_id, a.materia_id, a.dia, a.hora_inicio, a.hora_fin,
-                p.nombre || ' ' || p.apellido AS profesor_nombre,
-                c.nombre AS curso_nombre,
-                m.nombre AS materia_nombre,
-                COALESCE(a.asignacion_academica_id, a.id) AS asignacion_academica_id,
-                COALESCE(a.orden_boletin, 100) AS orden_boletin
-            FROM asignaciones a
-            JOIN profesor p ON a.profesor_id = p.id
-            JOIN cursos c ON a.curso_id = c.id
-            JOIN materias m ON a.materia_id = m.id
-            WHERE a.activo = TRUE
-              AND COALESCE(LOWER(c.estado), 'activo') = 'activo'
-              AND COALESCE(LOWER(m.estado), 'activo') = 'activo'
-            ORDER BY a.id DESC
-        """)
-
-        rows = cursor.fetchall()
+        rows = asignaciones_repository.leer_todas_las_asignaciones(cursor)
 
     resultado = []
     for r in rows:
@@ -931,33 +686,11 @@ def obtener_todas_asignaciones_paginado_controller(
 
         where_sql = f"WHERE {' AND '.join(filtros)}" if filtros else ""
 
-        cursor.execute(f"""
-            SELECT COUNT(*)
-            FROM asignaciones a
-            JOIN profesor p ON a.profesor_id = p.id
-            JOIN cursos c ON a.curso_id = c.id
-            JOIN materias m ON a.materia_id = m.id
-            {where_sql}
-        """, params)
-        total = cursor.fetchone()[0]
+        total = asignaciones_repository.contar_asignaciones(cursor, where_sql, params)[0]
 
-        cursor.execute(f"""
-            SELECT
-                a.id, a.profesor_id, a.curso_id, a.materia_id, a.dia, a.hora_inicio, a.hora_fin,
-                p.nombre || ' ' || p.apellido AS profesor_nombre,
-                c.nombre AS curso_nombre,
-                m.nombre AS materia_nombre,
-                COALESCE(a.asignacion_academica_id, a.id) AS asignacion_academica_id,
-                COALESCE(a.orden_boletin, 100) AS orden_boletin
-            FROM asignaciones a
-            JOIN profesor p ON a.profesor_id = p.id
-            JOIN cursos c ON a.curso_id = c.id
-            JOIN materias m ON a.materia_id = m.id
-            {where_sql}
-            ORDER BY a.id DESC
-            LIMIT %s OFFSET %s
-        """, params + [limit, offset])
-        rows = cursor.fetchall()
+        rows = asignaciones_repository.leer_asignaciones_paginado(
+            cursor, where_sql, params + [limit, offset]
+        )
 
         return {
             "total": total,
@@ -981,21 +714,9 @@ def obtener_disponibilidad_profesor_controller(profesor_id, dia, excluir_asignac
             filtro_excluir = "AND id != %s"
             params.append(excluir_asignacion_id)
 
-        cursor.execute(f"""
-            SELECT hora_inicio, hora_fin
-            FROM asignaciones
-            WHERE profesor_id = %s
-              AND dia = %s
-              AND activo = TRUE
-              AND hora_inicio IS NOT NULL
-              AND hora_fin IS NOT NULL
-              AND hora_inicio != ''
-              AND hora_fin != ''
-              {filtro_excluir}
-            ORDER BY hora_inicio
-        """, params)
+        franjas = asignaciones_repository.leer_horarios_ocupados(cursor, filtro_excluir, params)
         ocupadas = []
-        for inicio, fin in cursor.fetchall():
+        for inicio, fin in franjas:
             inicio_min = hora_a_minutos(inicio)
             fin_min = hora_a_minutos(fin)
             if inicio_min is None or fin_min is None or inicio_min >= fin_min:

@@ -41,15 +41,18 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 4 | Reportes financieros | Dominio modular, N+1 eliminado y consultas medidas | **Cerrada**; N+1 de 5N a 15 constantes, medido en producción | [04_REPORTES_FINANCIEROS.md](./04_REPORTES_FINANCIEROS.md) |
 | 5 | Pagos y tipos de pago | Dominio financiero modularizado y protegido | **Cerrada**; SQL inline de 23 a 3, sin tocar la base | [05_PAGOS_TIPOS_PAGO.md](./05_PAGOS_TIPOS_PAGO.md) |
 | 6 | Asignaciones y estudiantes | Dominios grandes separados con contratos estables | **Cerrada**; SQL inline de 52 a 1, sin tocar la base | [06_ASIGNACIONES_ESTUDIANTES.md](./06_ASIGNACIONES_ESTUDIANTES.md) |
-| 7 | Resto de dominios | Migración individual con contratos y pruebas | **En espera**, siguiente | Una bitácora por dominio al activarlo |
+| 7 | Resto de dominios — **dominio activo: `dashboard`** | Migración individual con contratos y pruebas | **Activa** desde el 2026-08-17; 7.0 pendiente y no iniciada | [07_DASHBOARD.md](./07_DASHBOARD.md) |
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
 cierre y el usuario ordene continuar, se crea su sucesora desde
 `PLANTILLA_CAPA.md`, se registra el commit base vigente y se actualiza esta
 tabla.
 
-Las capas 0 a 6 están cerradas. **No existe una capa activa**: la capa 7
-permanece en espera y no fue activada. La capa 3 es la única del programa
+Las capas 0 a 6 están cerradas. **La capa activa es la 7, para el dominio
+`dashboard` y solo ese**, activada el 2026-08-17 por orden explícita del
+usuario; su primera subcapa, 7.0, está pendiente y no iniciada. Los demás
+dominios de la capa 7 siguen en espera y cada uno necesitará su propia bitácora
+y su propia orden. La capa 3 es la única del programa
 que modificó la base
 de datos real, con autorización explícita del usuario para cada paso; la capa 4
 solo la leyó; las capas 5 y 6 **no la tocaron en absoluto**, pese a ser las que
@@ -115,6 +118,13 @@ parte del contrato de seguridad.
 - Agregar `response_model`, errores de dominio y pruebas HTTP o de integración
   solo después de caracterizar y conservar la respuesta existente.
 - No crear abstracciones compartidas sin dos consumidores reales.
+
+**Dominio elegido y activo: `dashboard`.** Lo eligió el usuario el 2026-08-17.
+Su bitácora es [07_DASHBOARD.md](./07_DASHBOARD.md) y su alcance se limita a ese
+dominio. Ningún otro se activa por inferencia: notas, boletín, asistencia,
+observaciones, planilla, planeador anual, plan de clases, ventas, branding,
+profesores y super admin siguen en espera, y cada uno exigirá su propia bitácora
+y una orden explícita.
 
 ## Paquete mínimo de contexto para un chat nuevo
 
@@ -596,7 +606,43 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   crear clases solapadas para el mismo profesor o salón. Es el análogo del hueco
   de idempotencia de `POST /pagos`, que la capa 5 sí corrigió a medias; este
   sigue intacto.
-- Capa activa: **ninguna**. Siguiente capa: 7, resto de dominios, en espera.
+- Capa 7 **activada** el 2026-08-17 por orden explícita del usuario, **para el
+  dominio `dashboard` y solo ese**. Commit base:
+  `123637ee80895023ecece9c32df526ef4eddd1e5`, el `HEAD` limpio vigente en `main`
+  y coincidente con la referencia local `origin/main`, que el reflog registra
+  como publicada por push. Los ocho commits posteriores al base de la capa 6
+  fueron auditados: siete están explicados en `06_ASIGNACIONES_ESTUDIANTES.md` y
+  el octavo, `123637e`, es documental y su contenido está registrado en esa
+  misma bitácora y en este índice. La activación es únicamente documental: no
+  inspeccionó ni modificó código, pruebas, consultas, configuración o base de
+  datos.
+- **El dominio lo eligió el usuario, no se dedujo.** La autorización preparada
+  llegó con el marcador `DOMINIO` sin rellenar; se detuvo el trabajo, se explicó
+  qué es un dominio y por qué esta capa obliga a nombrar uno, y el usuario
+  eligió `dashboard`. Activarla sin nombrarlo habría dejado el alcance abierto,
+  que es lo que el propio texto de la autorización prohíbe.
+- Decisión al activar la capa 7: continuar aceptando que sigan pendientes la
+  calibración operativa final de `DB_STATEMENT_TIMEOUT_MS` y la evidencia de
+  GitHub Actions posterior a la capa 0. Ninguna se marca como cumplida y ambas
+  conservan su riesgo. La credencial privilegiada compartida en la capa 4 sigue
+  **sin rotar**. Pendientes también, y fuera de la capa 7 salvo orden explícita:
+  la clave de idempotencia de `POST /pagos` (paso 2), los status codes 500 de
+  `tipos_pagos_controller`, la auditoría de capacidad de la capa 2 y la ausencia
+  de lock en el alta y la edición de asignaciones.
+- **Nada de lo que la bitácora de la capa 7 dice de `dashboard` está
+  verificado.** La activación no inspeccionó su código: registra **siete
+  supuestos heredados marcados como no verificados** —que no tiene repositorio
+  propio, que consume `resolver_asignacion_academica_id_cursor`, que lee tablas
+  académicas con SQL inline, que concentra los cálculos más caros, que no
+  escribe archivos, que es de solo lectura y que sus permisos no son
+  uniformes—. 7.0 debe confirmarlos o refutarlos uno a uno. Es la lección 12 de
+  la capa 6, donde un supuesto heredado resultó falso.
+- Riesgo propio y nuevo de la capa 7: `response_model` **filtra** en FastAPI los
+  campos que no declara, así que añadirlo puede recortar un payload sin que
+  falle nada. El índice solo lo autoriza tras caracterizar y conservar la
+  respuesta existente. Y en un panel de estadísticas **la cifra es el
+  contrato**: un `TRUNC` frente a un `ROUND` cambia lo que ve el usuario sin
+  romper la estructura.
 - Resultado de 3.5: el alta construye el schema desde la migración base en vez de
   copiar la plantilla. Un tenant nuevo nace con **37 claves foráneas y 30
   secuencias propias**, donde el camino anterior producía **0 y 0**. Ensayado
@@ -708,8 +754,19 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
 
 ## Archivos de continuidad
 
+- [07_DASHBOARD.md](./07_DASHBOARD.md): **bitácora activa** de la capa 7 para el
+  dominio `dashboard`. Registra el commit base
+  `123637ee80895023ecece9c32df526ef4eddd1e5`, la autorización y el marcador de
+  dominio que llegó sin rellenar, el alcance limitado a un solo dominio, los
+  **siete supuestos heredados marcados como no verificados** que 7.0 debe
+  resolver, el riesgo propio de `response_model`, las verificaciones heredadas
+  aceptadas como pendientes y el trabajo exacto de **7.0**, que sigue pendiente
+  y no iniciada. El desglose de 7.1 en adelante está **sin decidir** a
+  propósito, hasta que 7.0 aporte evidencia. **Es el documento que un chat nuevo
+  debe leer después de este índice.**
 - [06_ASIGNACIONES_ESTUDIANTES.md](./06_ASIGNACIONES_ESTUDIANTES.md): **bitácora
-  cerrada** de la capa 6 y **fuente de continuidad**. Registra el commit base
+  cerrada** de la capa 6 y fuente de continuidad **hasta que se activó la capa
+  7**. Registra el commit base
   `589cb6d`, el inventario de 6.0 con sus 19 entradas HTTP, dos tablas escritas y
   16 claves foráneas, los **diez hallazgos sin corregir** —entre ellos la
   ausencia de lock frente a horarios solapados y el código muerto duplicado que el

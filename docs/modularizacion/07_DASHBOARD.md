@@ -7,8 +7,10 @@
 - Estado: **Activa** desde el 2026-08-17.
 - Commit base: `123637ee80895023ecece9c32df526ef4eddd1e5`.
 - Rama acordada: `main`.
-- Primera subcapa pendiente: **7.0**, no iniciada.
-- Código de producto modificado al activar: **ninguno**.
+- Primera subcapa pendiente: **7.1**, definida y **no iniciada**. La **7.0**
+  quedó **cerrada** el 2026-08-17.
+- Código de producto modificado al activar: **ninguno**. Tampoco en 7.0: su diff
+  es un solo archivo de prueba nuevo.
 - Dominio de esta capa: **dashboard, y solo ese**. La capa 7 del índice es
   «resto de dominios» y ordena expresamente **priorizar uno a la vez**, así que
   esta bitácora cubre un único dominio. Los demás quedan fuera y necesitarán su
@@ -93,15 +95,18 @@ verificado y se comprueba en la subcapa 0**. La capa 6 se activó anticipando qu
 sus dominios escribían archivos, y era falso. Nada de lo que sigue se da por
 bueno.
 
-| Supuesto | Origen | Estado |
+**Los siete quedaron resueltos en 7.0**, uno por uno y con evidencia. Seis se
+confirmaron y **uno resultó falso**.
+
+| Supuesto | Origen | Resultado en 7.0 |
 |---|---|---|
-| Dashboard **no tiene repositorio propio** | La capa 6 enumeró los existentes: asignaciones, estudiantes, pagos, plan de clases y reportes | **No verificado** para este dominio |
-| Dashboard **consume `resolver_asignacion_academica_id_cursor`** | 6.0 lo listó entre los nueve módulos consumidores, verificado desde el lado de asignaciones | **A reconfirmar desde el lado de dashboard** |
-| Dashboard **lee `notas_detalle` y tablas académicas con SQL inline**, y promedia con `TRUNC(AVG(CAST(... AS numeric)), 2)` por estudiante | 6.2 leyó esos literales, sin modificarlos, para decidir dónde vivían las lecturas del expediente | **Registrado, no reinspeccionado** |
-| Dashboard **concentra los cálculos más caros**, con varias consultas de promedios por estudiante | Visto **de pasada** en las capas 4 y 6 | **No medido.** Que huela a N+1 no es evidencia de N+1 |
-| Dashboard **no escribe archivos** vía `app/services/storage.py` | Solo se demostró que branding y plan de clases **sí** lo usan | **No verificado.** Si resultara que escribe, el rollback deja de ser reversible y hay que documentarlo antes de tocar nada |
-| Dashboard **es de solo lectura** | Nadie lo ha comprobado | **No verificado.** Si escribe alguna tabla, cambia el perfil de riesgo entero |
-| Los permisos **no son uniformes** en el sistema: hay rutas con `require_profesor_scope` y `require_asignacion_access`, no solo admin | Capa 6 | **No verificado** para las entradas de dashboard. El inventario de roles es contrato de seguridad, no un detalle |
+| Dashboard **no tiene repositorio propio** | La capa 6 enumeró los existentes | **Confirmado.** Hay cinco repositorios —asignaciones, estudiantes, pagos, plan de clases y reportes— y ninguno es de dashboard. Toda su persistencia vive en el controlador. Fijado por prueba |
+| Dashboard **consume `resolver_asignacion_academica_id_cursor`** | 6.0 lo listó entre los nueve consumidores, verificado desde el lado de asignaciones | **Confirmado desde este lado.** Lo usan **cuatro** funciones: la precondición de pertenencia, `_obtener_notas_profesor` y los dos rankings |
+| Dashboard **lee tablas académicas con SQL inline** y promedia con `TRUNC(..., 2)` | 6.2 leyó esos literales para decidir dónde vivían las lecturas del expediente | **Confirmado y precisado.** Son **8 sentencias inline**. Pero no hay una fórmula de promedio, hay **dos distintas**, y no dan la misma cifra. Ver hallazgos |
+| Dashboard **concentra los cálculos más caros**, con varias consultas de promedios por estudiante | Visto **de pasada** en las capas 4 y 6 | **Refutado como N+1.** Cada entrada resuelve su panel con **una sola consulta agregada** y ningún conteo depende del número de estudiantes. Lo caro no son las consultas: son las **conexiones**, hasta cuatro por petición |
+| Dashboard **no escribe archivos** vía `app/services/storage.py` | Solo se demostró que branding y plan de clases **sí** lo usan | **Confirmado.** Ni el controlador ni la ruta mencionan `storage`. El rollback de esta capa es de código, no de archivos. Fijado por prueba |
+| Dashboard **es de solo lectura** | Nadie lo había comprobado | **Confirmado.** Cero `INSERT`, `UPDATE` y `DELETE`, cero `commit` y cero `rollback`: **ninguna función es dueña de una transacción**. Fijado por prueba |
+| Los permisos **no son uniformes** | Capa 6 | **Confirmado y cuantificado.** Siete entradas con **cuatro modelos distintos**: router para todos, admin estricto, `require_profesor_scope` y `require_asignacion_access`, más un filtro propio de la ruta |
 
 ## Alcance autorizado
 
@@ -171,31 +176,100 @@ bueno.
 - Ninguna escritura de archivos cambia de momento, de nombre ni de destino sin
   una decisión explícita y un rollback documentado.
 
-## Línea base
-
-Pendiente: la establece 7.0. Ningún valor de esta tabla se rellena por memoria.
+## Línea base registrada en 7.0
 
 | Comprobación | Comando | Resultado |
 |---|---|---|
-| Pruebas específicas | Lo determina 7.0 tras inventariar el dominio | Pendiente |
-| Suite global | `.\venv\Scripts\python.exe scripts\verify.py` | Pendiente. Última registrada al cerrar la capa 6: **714 pruebas, exit 0** |
-| Ruff | Ejecutado por la compuerta global y sobre el alcance modificado | Pendiente |
-| Dependencias | Ejecutado por la compuerta global | Pendiente |
+| Pruebas específicas | `.\venv\Scripts\python.exe -m pytest -q -p no:cacheprovider tests\test_dashboard_caracterizacion.py tests\test_dashboard_controlador.py tests\test_dashboard_routes.py` | **77 pasaron** en 0,64 s |
+| Suite global | `.\venv\Scripts\python.exe scripts\verify.py` | **755 pasaron**, 5 warnings heredadas, exit 0 |
+| Ruff | Ejecutado por la compuerta global y sobre la prueba nueva | **Correcto** |
+| Dependencias | Ejecutado por la compuerta global | **Íntegras** |
+
+La compuerta heredada se reprodujo antes de tocar nada: **714 pruebas, exit 0**,
+coincidiendo con lo registrado al cerrar la capa 6. La suite pasó de **714 a
+755** con la caracterización de 7.0.
 
 ## Subcapas
 
 | Subcapa | Resultado | Estado |
 |---:|---|---|
-| 7.0 | Inventario, contratos, caracterización y línea base de consultas | **Pendiente**, no iniciada |
-| 7.1 en adelante | **Sin decidir** | — |
+| 7.0 | Inventario, contratos, caracterización y línea base de consultas y conexiones | **Cerrada** |
+| 7.1 | Extraer la persistencia a `dashboard_repository` sin cambiar SQL, conteos ni ciclo de vida | **Pendiente**, definida y no iniciada |
+| 7.2 en adelante | **Sin decidir** | — |
 
-El desglose posterior a 7.0 **se deja deliberadamente sin decidir**, igual que
-hizo la capa 6. Definirlo ahora exigiría inventar detalles de implementación de
-un dominio que esta activación no ha inspeccionado. Se define con la evidencia
-que produzca 7.0.
+El desglose posterior a 7.0 se dejó deliberadamente sin decidir, igual que hizo
+la capa 6. Con la evidencia del inventario, **7.1 queda definida** y el resto
+sigue abierto: si 7.1 basta para cerrar la frontera de persistencia, la capa
+puede pasar directamente a su cierre.
 
 Las subcapas innecesarias se marcarán `No aplica` con explicación. Nunca se
 ejecutan dos subcapas en el mismo turno.
+
+## Inventario y contratos fijados en 7.0
+
+La frontera son **7 entradas HTTP**, todas `GET`, todas de **solo lectura**.
+Ninguna declara `response_model` ni `status_code` explícito. El router lleva
+`Depends(get_current_user)`, así que toda entrada exige un usuario autenticado;
+sobre eso, **cada una añade lo suyo**.
+
+| Entrada | Permiso | Contrato observable que debe conservarse |
+|---|---|---|
+| `GET /dashboard/cumpleanos/admin` | **admin estricto** | Lista de `{estudiante_id, nombre, apellido, curso, fecha_nacimiento}`; la fecha va como texto o `None`. `dias` es query 0..31, por defecto 7, y fuera de rango da **422**. `LEFT JOIN cursos`: **incluye estudiantes sin curso** |
+| `GET /dashboard/cumpleanos/profesor/{profesor_id}` | **profesor propio o admin** | Mismo payload, pero `JOIN cursos` y `EXISTS` sobre una asignación **activa** del profesor, con el curso activo: **excluye** a quien no tenga curso |
+| `GET /dashboard/inasistencias/{profesor_id}` | **profesor propio o admin** | `{curso_id, curso, estudiante_id, nombre, total_fallas, posicion}`; **los tres peores de cada curso**, contando solo `estado ILIKE 'ausente'` |
+| `GET /dashboard/notas-bajas/{profesor_id}` | **profesor propio o admin**, más filtro propio | `{nombre, curso, materia, promedio, color}`; `curso_id` es **obligatorio** y sin él responde **422**; promedio **< 3,0**, orden ascendente, **máximo 5 filas**; color `red` o `yellow` |
+| `GET /dashboard/notas-altas/{profesor_id}` | idem | Igual, con promedio **≥ 3,0**, orden descendente y color `green` |
+| `GET /dashboard/ranking/{asignacion_id}/{periodo}` | **`require_asignacion_access`** | `{id, nombre, promedio}` de la asignación y el periodo, promedio **< 3,0**, ascendente |
+| `GET /dashboard/ranking-mejor/{asignacion_id}/{periodo}` | idem | Igual, con **≥ 3,0** y descendente |
+
+- Tenant por `search_path` desde el JWT, igual que en las capas anteriores.
+- El filtro de rendimiento de las dos entradas de notas se ejecuta **en la capa
+  de rutas**, `validar_filtro_rendimiento_profesor`, y da **422** sin curso,
+  **403** si el curso no es del profesor y **403** si la asignación no pertenece
+  a ese curso. Se ejecuta **fuera** del `try/except` del endpoint.
+- `require_profesor_scope` **no consulta la base**: resuelve con el JWT.
+  `require_asignacion_access` **sí**, y solo cuando el rol es `profesor`.
+
+### Propiedad transaccional
+
+**Ninguna tabla recibe escritura y ninguna función abre una transacción propia.**
+No hay un solo `commit` ni `rollback` en el dominio; una prueba estructural lo
+fija.
+
+Conviven **dos** estilos de ciclo de vida, y esta capa **no los unifica**:
+
+- `get_connection()` con `try/finally` manual en cuatro funciones: los dos
+  cumpleaños y las dos precondiciones de permiso;
+- `with get_cursor()` en las otras cuatro, migradas en la subcapa 1.4d de la
+  capa 1.
+
+## Línea base de consultas y conexiones
+
+Medida herméticamente con dobles de cursor y conexión, y **fijada por pruebas**,
+no escrita a mano. Los conteos excluyen autenticación, `search_path` y la
+sentencia de timeouts de cada checkout.
+
+| Camino | Consultas | Conexiones |
+|---|---:|---:|
+| `GET /dashboard/cumpleanos/admin` | 1 | 1 |
+| `GET /dashboard/cumpleanos/profesor/{id}` | 1 | 1 |
+| `GET /dashboard/inasistencias/{id}` | 1 | 1 |
+| `GET /dashboard/ranking/...`, como **admin** | 2 | 1 |
+| `GET /dashboard/ranking/...`, como **profesor** | 3 | 2 |
+| `GET /dashboard/notas-*` sin asignación, profesor | 2 | 2 |
+| `GET /dashboard/notas-*` con asignación, **admin** | 5 | 3 |
+| `GET /dashboard/notas-*` con asignación, **profesor** | **6** | **4** |
+
+Lectura del resultado, sin optimizar todavía:
+
+- **No hay N+1**, y el supuesto heredado de «varias consultas de promedios por
+  estudiante» queda **refutado**: cada panel se resuelve con una sola consulta
+  agregada. Una prueba lo fija comparando 1 fila contra 50.
+- El coste real está **en las conexiones, no en las consultas**. El camino más
+  caro abre **cuatro**, y cada una paga además su `search_path` y su sentencia
+  de timeouts, que estos conteos no incluyen.
+- Ser admin **abarata** las dos rutas protegidas por `require_asignacion_access`,
+  porque esa comprobación sale sin consultar.
 
 ## Subcapa activa: trabajo exacto de 7.0
 
@@ -244,6 +318,112 @@ ejecutan dos subcapas en el mismo turno.
   correctamente, y el diff es exclusivo de 7.0.
 - La subcapa 7.1 queda definida y no iniciada.
 
+Los siete criterios se cumplieron. El diff de 7.0 contiene **un solo archivo
+nuevo** y **ningún archivo rastreado modificado**, igual que los de 5.0 y 6.0.
+
+## Hallazgos de 7.0, registrados y sin corregir
+
+Ninguno se corrige por inferencia: son hallazgos del inventario, no defectos de
+la subcapa. Corregir cualquiera exige una decisión explícita del usuario.
+
+- **Las dos precondiciones de permiso ignoran el estado `activo`.** Es el
+  hallazgo más importante de 7.0 porque **toca permisos**.
+  `profesor_tiene_curso_controller` y
+  `profesor_tiene_asignacion_en_curso_controller` consultan `asignaciones` sin
+  `activo = TRUE`, así que **un profesor cuya asignación fue desactivada
+  conserva el acceso** al rendimiento de ese curso. La incoherencia es interna:
+  la consulta de cumpleaños **del mismo controlador** sí exige `a.activo = TRUE`,
+  y la capa 6 dejó registrado que desactivar es precisamente como este sistema
+  «borra». Corregirlo cambia quién puede ver qué, así que no se toca sin orden.
+  Una guardia de prueba falla si alguien lo hace sin registrarlo.
+- **Hasta cuatro conexiones por petición, en serie.** El camino de notas con
+  asignación abre cuatro conexiones sucesivas: una por cada precondición y una
+  para la consulta. **No hay anidamiento** —cada una se cierra antes de que se
+  abra la siguiente—, así que **no contradice**
+  `MAX_DB_CONNECTIONS_PER_THREADPOOL_WORKER = 2`; pero es **la evidencia real
+  que a esa constante le faltaba** desde el 2026-08-17, y pertenece a la
+  auditoría de capacidad de la capa 2. Se registra, no se actúa.
+- **La asignación académica se resuelve dos veces** en ese mismo camino, con el
+  mismo `asignacion_id`: una en la precondición de pertenencia y otra dentro del
+  controlador, cada una en su propia conexión.
+- **Dos definiciones distintas de «promedio» en el mismo panel.** Notas altas y
+  bajas promedian **los promedios por clase**, `TRUNC(AVG(promedio_clase), 2)`;
+  los rankings promedian **las notas planas**,
+  `TRUNC(AVG(CAST(n.nota AS numeric)), 2)`. Con 4,0 en una clase de dos notas y
+  2,0 en otra de seis, la primera fórmula da **3,00** y la segunda **2,50**: el
+  mismo estudiante aparece aprobado en un panel y en rojo en el otro. Y la capa
+  6 ya registró una **tercera** en estudiantes, `ROUND(..., 1)`. Ninguna es un
+  error; son contratos distintos que hoy nadie declara.
+- **Las siete entradas absorben `Exception` y responden 400 con `str(e)`.** Un
+  fallo de infraestructura se presenta como error del cliente **y el texto de la
+  excepción viaja en el `detail`**, así que un error de PostgreSQL puede llegar
+  al navegador. Es la misma familia que el hallazgo de la capa 5 en
+  `tipos_pagos_controller`, pero aquí **no se registra nada en el log** y además
+  **se devuelve el mensaje interno**. Cambiar el status code es contrato
+  observable; registrar el traceback no lo es.
+- **El filtro de rendimiento consulta la base desde la capa de rutas.** No es
+  SQL inline —la invariante que dejó 6.5 se conserva: las rutas de este dominio
+  no contienen SQL, y una prueba lo fija—, pero `validar_filtro_rendimiento_profesor`
+  llama a dos funciones que abren conexión, y lo hace **fuera** del
+  `try/except`. Consecuencia observable: un fallo de infraestructura **ahí** sale
+  como **500**, mientras que el mismo fallo dentro del endpoint sale como 400.
+- **Doble validación divergente de `dias`.** La ruta rechaza con **422** fuera
+  de 0..31; el controlador **recorta en silencio** y cae a 7 ante un valor no
+  numérico. Por HTTP el recorte es inalcanzable, porque `Query(ge=0, le=31)`
+  responde antes. Queda fijado por prueba tal como está.
+- **Cuarta pareja de literales SQL gemelos del programa.** Los dos rankings solo
+  difieren en `< 3.0` frente a `>= 3.0` y en `ASC` frente a `DESC`: una prueba
+  fija que uno se obtiene del otro con esas dos sustituciones. Unificarlos es
+  legítimo, pero es decisión del usuario y **no se pidió**, igual que las tres
+  parejas de la capa 6.
+- **f-strings en SQL, hoy no inyectables.** `_obtener_notas_profesor` interpola
+  el comparador, el orden y el filtro de asignación desde literales del propio
+  código, y `_filtro_rango_cumpleanos` interpola el alias de tabla. Los valores
+  siempre van parametrizados. Queda anotado como guarda: **ninguna extracción
+  futura debe abrir esa construcción a entrada del cliente**.
+- **`periodo: int = 1` es un parámetro de ruta con valor por defecto** en los
+  dos rankings. Al estar en el path nunca puede faltar, así que el defecto es
+  inalcanzable.
+
+## Subcapa 7.1 — trabajo exacto, definido y NO iniciado
+
+Extraer la persistencia de dashboard, y solo eso, siguiendo el patrón que las
+capas 5 y 6 dejaron probado tres veces.
+
+1. Revalidar Git y limitar la inspección a `dashboard_controller.py`, su ruta y
+   sus pruebas. **No inspeccionar otros dominios de la capa 7.**
+2. Conservar la caracterización de 7.0 y ampliarla solo si una extracción
+   concreta lo exige, **antes** de mover producto.
+3. Extraer las **8 sentencias** a `app/repositories/dashboard_repository.py`,
+   con funciones que **reciben el cursor existente** y no abren, cierran,
+   confirman ni revierten recursos, igual que los cuatro repositorios ya
+   existentes.
+4. **Punto delicado propio de este dominio**: dos de las ocho consultas no son
+   un literal único, sino una **composición** de `_cte_rango_cumpleanos()`, el
+   cuerpo, `_filtro_rango_cumpleanos()` y el `ORDER BY`. Los dos fragmentos
+   deben viajar con las consultas que los usan. Conservar byte por byte cada
+   trozo y el resultado concatenado.
+5. **No cambiar el ciclo de vida.** Las cuatro funciones que usan
+   `get_connection()` con `try/finally` siguen usándolo; convertirlas a
+   `get_cursor()` es trabajo de la capa 1 y **no está autorizado aquí**.
+6. Decidir **con evidencia** si las dos consultas de precondición de permiso van
+   al repositorio. El precedente es 6.4, que llevó allí las precondiciones sobre
+   catálogos por no existir un repositorio de esos dominios; registrar la
+   decisión **antes** de mover.
+7. Conservar byte por byte las cadenas SQL, sus parámetros y su orden. Si
+   aparecen dos literales idénticos salvo la sangría, **no unificarlos sin
+   autorización explícita**; y **no unificar las dos consultas gemelas de
+   ranking**, que es un hallazgo abierto.
+8. **No corregir ninguno de los diez hallazgos de 7.0**, en particular ni el
+   `activo` ausente de las precondiciones, ni los status codes, ni las dos
+   fórmulas de promedio.
+9. Verificar que los conteos de consultas y conexiones de 7.0 **no cambian**, y
+   ejecutar un comparador AST contra el commit base de la capa,
+   `123637e`, exigiendo conjunto de SQL idéntico. Excluir los docstrings antes
+   de comparar, que es la lección 13 de la capa 6.
+10. Ejecutar pruebas específicas, Ruff del alcance, compuerta global y
+    `git diff --check`; documentar y detenerse antes de decidir 7.2.
+
 ## Criterios de cierre de la capa
 
 - Todas las subcapas necesarias están cerradas o marcadas `No aplica` con
@@ -290,7 +470,31 @@ ejecutan dos subcapas en el mismo turno.
   dominio no inspeccionado. La capa 6 hizo lo mismo y le funcionó.
 - **Los supuestos heredados se registran como no verificados**, no como hechos.
   Es la lección 12 de la capa 6, donde el supuesto de los archivos resultó
-  falso y solo se detectó porque estaba marcado así.
+  falso y solo se detectó porque estaba marcado así. **Sirvió**: de los siete,
+  uno resultó falso.
+- **7.0 no retiró ni corrigió nada**, aunque encontró diez cosas anotables. Su
+  diff es un solo archivo nuevo, igual que los de 5.0 y 6.0. El hallazgo del
+  `activo` ausente **toca permisos**, que es exactamente lo que las invariantes
+  de la capa prohíben cambiar sin orden explícita.
+- **La caracterización se escribió con dobles, sin tocar PostgreSQL.** 7.0 no
+  abrió una sola conexión a la base, igual que 5.0 y 6.0.
+- **No se ampliaron las pruebas existentes, se añadió un archivo nuevo.**
+  `test_dashboard_routes.py` ya cubría la capa HTTP con solidez —delegación,
+  traducción a 400, los 403 de scope y acceso, el 422 del filtro, el mapa de
+  dependencias y el contrato OpenAPI— y `test_dashboard_controlador.py` cubría
+  las cuatro funciones que migraron a `get_cursor` en la subcapa 1.4d. Lo que
+  faltaba era **lo que ninguno de los dos tocaba**: las cuatro funciones que
+  siguen usando `get_connection`, los conteos y las guardias estructurales.
+  Alternativa descartada: ampliar los archivos existentes, que habría mezclado
+  la caracterización de la capa 7 con documentos escritos para otras capas.
+- **Los conteos se miden a través de la ruta, no solo del controlador.** Es la
+  única forma de ver las conexiones que abren las precondiciones de permiso, que
+  viven en la capa HTTP y en `app/core/permissions.py`. Medir solo el
+  controlador habría dado 1 o 2 conexiones y habría escondido el camino de
+  cuatro.
+- **`app/core/permissions.py` se leyó pero no se tocó ni se caracterizó
+  aparte.** Es infraestructura compartida por varios dominios; aquí solo se fija
+  su efecto sobre los conteos de dashboard. Migrarlo no es de esta capa.
 
 ## Riesgos
 
@@ -391,29 +595,107 @@ ejecutan dos subcapas en el mismo turno.
 - Estado al cerrar el turno de activación: capa 7 **activa** para el dominio
   dashboard; 7.0 **pendiente y no iniciada**.
 - Siguiente acción exacta: ejecutar únicamente 7.0 conforme al trabajo exacto de
-  arriba y detenerse antes de 7.1.
+  arriba y detenerse antes de 7.1. *(Ejecutada en el turno siguiente; ver el
+  cierre de 7.0 más abajo.)*
+
+### 2026-08-17 — cierre de 7.0
+
+- Modo de acceso: mismo checkout local en
+  `C:\Users\David\Documents\sistema_escolar_api`; Git validado directamente y no
+  se usó GitHub para inferir el estado local.
+- Precondición Git: rama `main`, **árbol limpio**, `HEAD`
+  `fb303d58ae459e5da862211a9cef08d93dfb5058`. Entre la activación y este turno
+  el usuario **commiteó** el trabajo documental: ese commit es exactamente la
+  activación, dos archivos de `docs/modularizacion/`, y está explicado en esta
+  bitácora. El commit base `123637e` existe y es ancestro; `origin/main` sigue
+  en el base, así que hay **un commit local por delante, sin publicar**.
+- Compuerta heredada reproducida antes de tocar nada: **714 pruebas, exit 0**,
+  Ruff correcto y `pip check` íntegro. Coincide con lo registrado al cerrar la
+  capa 6.
+- Inventario dirigido: `app/routes/dashboard.py`,
+  `app/controllers/dashboard_controller.py`, `tests/test_dashboard_routes.py` y
+  `tests/test_dashboard_controlador.py`. Se leyeron además, **solo para resolver
+  los supuestos y medir, sin modificarlos**, `app/core/permissions.py`,
+  `app/services/asignacion_academica.py`, `app/db/session.py`, el registro del
+  router en `app/main.py` y el listado de `app/repositories/`. No se leyó
+  historia global ni código de otros dominios de la capa 7.
+- Frontera comprobada: `app/routes/cartera.py` y
+  `app/controllers/cartera_mora_controller.py` mencionan «dashboard» **solo en
+  sus docstrings**. Son de cartera y mora, dominio financiero cuyos conteos fijó
+  la capa 4; **no entran** en esta capa.
+- **Los siete supuestos que la activación registró sin verificar quedaron
+  resueltos**: seis confirmados y **uno refutado**, el de los cálculos más
+  caros, que no es un N+1. La tabla de supuestos quedó corregida con el
+  resultado de cada uno.
+- Caracterización añadida: `tests/test_dashboard_caracterizacion.py`, **41
+  casos** en cinco bloques —guardias estructurales, cumpleaños, precondiciones
+  de permiso, conteos y contrato de cálculo—. Código de producto y configuración
+  modificados: **ninguno**.
+- Las 41 pruebas se escribieron contra el código actual y **pasaron todas en su
+  primera ejecución**. Se comprobó aparte que las guardias no pasan en vacío: el
+  extractor de literales ve **50 cadenas en el controlador, 10 de ellas con
+  `SELECT`**, y **18 en la ruta, ninguna con SQL**, que es justo lo que la
+  guardia de 6.5 exige.
+- Pruebas específicas: **77 pasaron** en 0,64 s sobre los tres archivos del
+  dominio. La prueba nueva aislada: 41 pasaron en 0,58 s. Ruff del archivo
+  nuevo: **correcto**.
+- Compuerta global final: `.\venv\Scripts\python.exe scripts\verify.py`;
+  **755 pruebas pasaron** en 2,48 s, 5 warnings heredadas, Ruff correcto,
+  `pip check` sin dependencias rotas, exit 0. La suite pasó de 714 a 755.
+- Medición: hermética, con dobles de cursor y conexión, y **a través de la
+  ruta** para capturar las conexiones que abren las precondiciones de permiso.
+  Los conteos de ocho caminos quedan **fijados por aserciones**, no anotados en
+  prosa.
+- Diff final: `git diff --check` en exit 0. El alcance es **un solo archivo
+  nuevo** y **ningún archivo rastreado modificado**: no se tocó producto, rutas,
+  payloads, status codes, permisos, tenant, ownership, SQL, transacciones,
+  configuración ni dependencias.
+- PostgreSQL, migraciones, producción, commit, push y deploy: **ninguno**. La
+  evidencia de GitHub Actions posterior a la capa 0 continúa pendiente y no se
+  atribuye CI remota.
+- Estado: 7.0 **cerrada**; 7.1 **pendiente y no iniciada**.
+- Siguiente acción exacta: ejecutar únicamente 7.1, la extracción de la
+  persistencia a `dashboard_repository`, y detenerse antes de decidir 7.2.
 
 ## Entrega al próximo chat
 
 - Capa activa: **7, dashboard**, y solo ese dominio. Activada el 2026-08-17.
-- Última subcapa terminada: **ninguna**.
-- Primera subcapa pendiente: **7.0**, inventario, contratos y caracterización.
-- Commit base: `123637ee80895023ecece9c32df526ef4eddd1e5`, rama `main`, árbol
-  limpio al activar, **publicado y desplegado**.
+- Última subcapa terminada: **7.0**, cerrada el 2026-08-17.
+- Primera subcapa pendiente: **7.1**, extracción de la persistencia a
+  `app/repositories/dashboard_repository.py`. **Definida y no iniciada.**
+- Commit base: `123637ee80895023ecece9c32df526ef4eddd1e5`, rama `main`,
+  **publicado y desplegado**. Al cerrar 7.0, `HEAD` es `fb303d5` —un commit
+  local por delante de `origin/main`, la activación, **sin publicar**— más el
+  archivo de prueba de 7.0 sin commitear.
 - Bloqueos: ninguno. Verificaciones heredadas **pendientes y aceptadas**: valor
   operativo final de `DB_STATEMENT_TIMEOUT_MS` (capa 1) y evidencia de GitHub
   Actions posterior a la capa 0. La credencial privilegiada de la capa 4 sigue
   **sin rotar**.
-- Lo que esta capa debe recordar antes de tocar nada:
-  1. **Nada de lo que esta bitácora dice de dashboard está verificado.** Son
-     siete supuestos heredados, marcados como tales en su tabla. 7.0 los
-     comprueba o los refuta, uno por uno.
-  2. **Un solo dominio.** La capa 7 es «uno a la vez»; los demás necesitan su
+- Lo que 7.0 dejó medido: **7 entradas HTTP**, todas `GET` y todas de **solo
+  lectura**; **cero tablas escritas** y **cero transacciones propias**; **8
+  sentencias SQL inline** en el controlador y **ninguna** en la ruta; **41
+  pruebas de caracterización** nuevas y los conteos de ocho caminos. El más caro
+  cuesta **6 consultas y 4 conexiones**. **No hay N+1.**
+- **Lo que la activación creía y resultó falso**: que dashboard concentraba
+  «varias consultas de promedios por estudiante». Cada panel se resuelve con
+  **una sola consulta agregada**. Lo caro son las **conexiones**, no las
+  consultas.
+- Lo que hay que recordar antes de tocar nada:
+  1. **Un solo dominio.** La capa 7 es «uno a la vez»; los demás necesitan su
      propia bitácora y su propia orden.
-  3. **`response_model` filtra campos.** Solo después de caracterizar y
+  2. **No corregir los diez hallazgos de 7.0**, y menos el primero: las dos
+     precondiciones de permiso ignoran `activo`, así que un profesor con la
+     asignación desactivada conserva el acceso. **Cambiarlo es cambiar
+     permisos.**
+  3. **No cambiar el ciclo de vida de las conexiones.** Cuatro funciones siguen
+     con `get_connection()` y `try/finally`; convertirlas es trabajo de la capa
+     1 y no está autorizado aquí.
+  4. **Dos de las ocho consultas se componen de fragmentos**, no son un literal
+     único. Es el punto delicado de 7.1.
+  5. **`response_model` filtra campos.** Solo después de caracterizar y
      demostrando que la respuesta se conserva.
-  4. **En un panel, la cifra es el contrato**, no solo la forma del payload.
-  5. **No crear abstracciones compartidas sin dos consumidores reales**, el
-     criterio que ya aplicaron 5.2, 6.2 y 6.4.
-- Siguiente acción exacta: ejecutar únicamente **7.0** y detenerse antes de 7.1.
-  No inspeccionar los demás dominios de la capa 7.
+  6. **En un panel, la cifra es el contrato.** Este dominio usa **dos** fórmulas
+     de promedio distintas, y el sistema una tercera en estudiantes.
+- Siguiente acción exacta: ejecutar únicamente **7.1** conforme a su trabajo
+  exacto y detenerse antes de decidir 7.2. No inspeccionar los demás dominios de
+  la capa 7.

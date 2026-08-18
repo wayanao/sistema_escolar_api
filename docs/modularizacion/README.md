@@ -41,7 +41,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 4 | Reportes financieros | Dominio modular, N+1 eliminado y consultas medidas | **Cerrada**; N+1 de 5N a 15 constantes, medido en producción | [04_REPORTES_FINANCIEROS.md](./04_REPORTES_FINANCIEROS.md) |
 | 5 | Pagos y tipos de pago | Dominio financiero modularizado y protegido | **Cerrada**; SQL inline de 23 a 3, sin tocar la base | [05_PAGOS_TIPOS_PAGO.md](./05_PAGOS_TIPOS_PAGO.md) |
 | 6 | Asignaciones y estudiantes | Dominios grandes separados con contratos estables | **Cerrada**; SQL inline de 52 a 1, sin tocar la base | [06_ASIGNACIONES_ESTUDIANTES.md](./06_ASIGNACIONES_ESTUDIANTES.md) |
-| 7 | Resto de dominios — **dominio activo: `dashboard`** | Migración individual con contratos y pruebas | **Activa** desde el 2026-08-17; 7.0 pendiente y no iniciada | [07_DASHBOARD.md](./07_DASHBOARD.md) |
+| 7 | Resto de dominios — **dominio activo: `dashboard`** | Migración individual con contratos y pruebas | **Activa** desde el 2026-08-17; 7.0 cerrada, 7.1 pendiente y no iniciada | [07_DASHBOARD.md](./07_DASHBOARD.md) |
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
 cierre y el usuario ordene continuar, se crea su sucesora desde
@@ -643,6 +643,34 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   respuesta existente. Y en un panel de estadísticas **la cifra es el
   contrato**: un `TRUNC` frente a un `ROUND` cambia lo que ve el usuario sin
   romper la estructura.
+- Resultado de 7.0: el dominio quedó inventariado en **7 entradas HTTP**, todas
+  `GET` y todas de **solo lectura**, con **cero tablas escritas**, **cero
+  transacciones propias** y **8 sentencias SQL inline** en el controlador,
+  protegido por **41 pruebas nuevas**. Los permisos usan **cuatro modelos
+  distintos** en siete entradas. La compuerta local terminó con **755 pruebas**,
+  Ruff y dependencias correctas. No se modificó producto: el diff es un solo
+  archivo nuevo.
+- **Los siete supuestos que la activación registró sin verificar quedaron
+  resueltos en 7.0**: seis confirmados y **uno refutado**. Dashboard **no
+  concentra «varias consultas de promedios por estudiante»**: cada panel se
+  resuelve con **una sola consulta agregada** y **no hay N+1**. Lo caro no son
+  las consultas sino **las conexiones**: el camino de notas con asignación abre
+  **cuatro en serie** —dos precondiciones de permiso, una comprobación de acceso
+  y la consulta—, y resuelve la asignación académica **dos veces**. Es la
+  evidencia real que le faltaba a la constante de capacidad de la capa 2, que se
+  registra **sin actuar**.
+- Hallazgos de 7.0, **registrados y sin corregir**: las dos precondiciones de
+  permiso **ignoran `activo`**, así que un profesor con la asignación
+  desactivada **conserva el acceso** al rendimiento de ese curso, mientras la
+  consulta de cumpleaños del mismo controlador sí filtra; el dominio usa **dos
+  definiciones distintas de promedio** —promedio de promedios por clase en notas
+  altas y bajas, promedio plano en los rankings—, que con los mismos datos dan
+  cifras distintas; las **siete entradas** absorben `Exception`, responden 400 y
+  **devuelven el texto de la excepción al cliente** sin registrar nada; el filtro
+  de rendimiento consulta la base **desde la capa de rutas** y fuera del
+  `try/except`, así que un fallo ahí sale como 500; `dias` se valida dos veces
+  con criterios divergentes; y quedan una cuarta pareja de literales gemelos y
+  varias f-strings en SQL hoy no inyectables.
 - Resultado de 3.5: el alta construye el schema desde la migración base en vez de
   copiar la plantilla. Un tenant nuevo nace con **37 claves foráneas y 30
   secuencias propias**, donde el camino anterior producía **0 y 0**. Ensayado
@@ -757,13 +785,17 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
 - [07_DASHBOARD.md](./07_DASHBOARD.md): **bitácora activa** de la capa 7 para el
   dominio `dashboard`. Registra el commit base
   `123637ee80895023ecece9c32df526ef4eddd1e5`, la autorización y el marcador de
-  dominio que llegó sin rellenar, el alcance limitado a un solo dominio, los
-  **siete supuestos heredados marcados como no verificados** que 7.0 debe
-  resolver, el riesgo propio de `response_model`, las verificaciones heredadas
-  aceptadas como pendientes y el trabajo exacto de **7.0**, que sigue pendiente
-  y no iniciada. El desglose de 7.1 en adelante está **sin decidir** a
-  propósito, hasta que 7.0 aporte evidencia. **Es el documento que un chat nuevo
-  debe leer después de este índice.**
+  dominio que llegó sin rellenar, el alcance limitado a un solo dominio, las
+  verificaciones heredadas aceptadas como pendientes y el riesgo propio de
+  `response_model`. Conserva el inventario de **7.0**, ya **cerrada**: sus 7
+  entradas HTTP con sus cuatro modelos de permiso, la línea base de consultas y
+  **conexiones** por camino, los **siete supuestos heredados resueltos** —seis
+  confirmados y uno refutado— y los **diez hallazgos sin corregir**, entre ellos
+  el `activo` ausente de las precondiciones de permiso y las dos fórmulas de
+  promedio. Deja definida y **no iniciada** la subcapa **7.1**, la extracción a
+  `dashboard_repository`, con su punto delicado: dos de las ocho consultas se
+  componen de fragmentos. El desglose de 7.2 en adelante sigue **sin decidir**.
+  **Es el documento que un chat nuevo debe leer después de este índice.**
 - [06_ASIGNACIONES_ESTUDIANTES.md](./06_ASIGNACIONES_ESTUDIANTES.md): **bitácora
   cerrada** de la capa 6 y fuente de continuidad **hasta que se activó la capa
   7**. Registra el commit base

@@ -578,14 +578,19 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   expresamente el artefacto **antes** de registrarla, porque el estado de Git
   admitía tres lecturas —`HEAD` sin 6.5, el árbol con 6.5, y `origin/main` con el
   código anterior a la capa—. Es la lección 10 de la capa 5, aplicada. Cubre la
-  capa completa. Limitación registrada: fue local, **sin push ni despliegue**.
+  capa completa. Limitación que sigue vigente: **fue local**. La capa se publicó
+  después, así que producción corre este código sin que nadie lo haya ejercitado
+  a mano **ya desplegado**. Aceptable en una refactorización con SQL equivalente
+  demostrado y sin acceso a la base; no lo sería en una capa que tocara datos.
 - Capa 6 **cerrada** el 2026-08-17, con sus subcapas 6.0 a 6.5 completas.
   Compuerta al cerrar: **exit 0 con 714 pruebas**, Ruff correcto y `pip check`
   correcto.
-- **Estado de publicación de la capa 6**: al cerrarla **no había push ni
-  despliegue**. Los seis commits viven solo en el checkout local y producción
-  sigue corriendo `589cb6d`. Publicar es decisión del usuario, y en este
-  repositorio un push a `main` dispara el despliegue.
+- **Estado de publicación de la capa 6**: al cerrarla **no había push**, y así
+  quedó registrado. **Se publicó el mismo 2026-08-17**, poco después: el reflog
+  de `origin/main` registra `update by push` de `bf075a0`, el commit de cierre,
+  que arrastra los **siete** de la capa —de `2881b03` a `bf075a0`—. Como un push
+  a `main` dispara el despliegue, **producción ya corre este código**, y el
+  rollback a `589cb6d` exigiría otro push y otro despliegue.
 - Riesgo más directo que deja abierto la capa 6: **el alta y la edición de
   asignaciones no toman ningún lock**, así que dos peticiones simultáneas pueden
   crear clases solapadas para el mismo profesor o salón. Es el análogo del hueco
@@ -748,8 +753,12 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   inventario de contratos que la capa 1 debe preservar.
 - [PROMPT_CONTINUACION.md](./PROMPT_CONTINUACION.md): texto universal para
   iniciar o continuar en otro chat, más un resumen del estado del programa. Las
-  autorizaciones puntuales para activar las capas 3, 4 y 5 fueron consumidas y
-  retiradas; no queda ninguna vigente. Incluye
+  autorizaciones puntuales de las capas 3 a 6 fueron consumidas y retiradas;
+  conserva **una preparada para la capa 7**, que exige rellenar antes qué dominio
+  se aborda, porque esa capa es «uno a la vez» y no un bloque. Registra también
+  lo que dejaron abiertas las capas 5 y 6 —la clave de idempotencia y la ausencia
+  de lock frente a horarios solapados— y cuatro lecciones nuevas de la capa 6.
+  Incluye
   las tres trampas que dejó la capa 3: el endpoint `-pooler`, los nombres sin
   cualificar que resuelve el `search_path`, y que los ensayos necesitan schema
   canónico, datos representativos y aislamiento no productivo; no requieren

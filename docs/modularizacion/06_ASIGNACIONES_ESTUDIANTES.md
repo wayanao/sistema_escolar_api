@@ -1309,6 +1309,16 @@ local y producción sigue corriendo `589cb6d`. Publicar es decisión y
 responsabilidad del usuario, y en este repositorio un push a `main` dispara el
 despliegue.
 
+> **Corrección del mismo 2026-08-17.** El párrafo anterior describía el momento
+> del cierre y se conserva por eso. **Ya no es el estado vigente**: el usuario
+> commiteó el cierre como `bf075a0` y **publicó la capa**. El reflog de
+> `origin/main` registra `update by push` de ese commit, que incluye los
+> **siete** de la capa —`2881b03` a `bf075a0`—. Como un push a `main` dispara el
+> despliegue, **producción ya corre este código**. El punto de rollback pasa a ser
+> `589cb6d` en remoto, y revertir exigiría otro push y otro despliegue.
+> La corrección se hizo al detectar que `origin/main..HEAD` había quedado en 0,
+> antes de dar por bueno lo que este documento afirmaba.
+
 #### Riesgos que la capa deja abiertos
 
 - **El alta y la edición de asignaciones no toman ningún lock.** Dos peticiones
@@ -1387,8 +1397,9 @@ despliegue.
 - Siguiente acción exacta: **esperar una orden explícita del usuario**. La capa 7,
   resto de dominios, sigue **en espera** y no se activa sin ella. Una instrucción
   genérica de continuar no la autoriza.
-- Pendiente operativo del usuario: **publicar la capa**. Al cerrarla no había
-  push, y en este repositorio un push a `main` dispara el despliegue.
+- Pendiente operativo del usuario: **resuelto**. La capa se publicó el 2026-08-17
+  en `bf075a0`; el reflog de `origin/main` lo registra. Como un push a `main`
+  dispara el despliegue, producción ya corre este código.
 - Decisión ya tomada por el usuario el 2026-08-17: las dos copias muertas de
   `obtener_clases_profesor_controller` **se dejan**, registradas como hallazgo con
   su guardia de prueba. La capa cierra sin borrar código de producto.

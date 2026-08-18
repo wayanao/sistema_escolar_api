@@ -126,10 +126,11 @@ Si dos asistentes indican capas diferentes, prevalece el estado guardado en
 
 Este archivo llegó a contener autorizaciones de uso inmediato para activar las
 capas 3, 4, 5 y 6. Se consumieron el 2026-08-13, el 2026-08-14, el 2026-08-15 y
-el 2026-08-17, respectivamente, y se retiraron. **No queda ninguna vigente.** La
-lección no fue «no guardar autorizaciones», sino que **una autorización guardada
-debe llevar su propia condición de caducidad**: si el estado documental ya
-cambió, no debe aplicarse.
+el 2026-08-17, respectivamente, y se retiraron. Al final de este archivo hay una
+preparada para la **capa 7**. La lección no fue «no guardar autorizaciones», sino
+que **una autorización guardada debe llevar su propia condición de caducidad**:
+si el estado documental ya cambió, no debe aplicarse. **Ninguna se dispara
+sola**: son textos que el usuario decide pegar.
 
 La de la capa 5 funcionó como estaba previsto: su condición era «válida solo
 mientras el índice siga indicando que no existe una capa activa y que la capa 5
@@ -164,7 +165,10 @@ Lo que sigue es un resumen para orientarse; **el estado vivo está en
   **Sigue siendo cierto para la capa 7**: plan de clases sí escribe archivos.
 - Verificación manual de la capa 6: **hecha por el usuario y correcta**, en local
   contra el árbol de trabajo. Se confirmó el artefacto antes de registrarla.
-  Al cerrarla **no había push ni despliegue**.
+  Al cerrarla no había push; **se publicó poco después**, el mismo 2026-08-17, en
+  `bf075a0`. Como un push a `main` dispara el despliegue, **producción ya corre
+  la capa 6**. La verificación siguió siendo local: nadie la ha repetido contra
+  el despliegue.
 - La capa 5 cerró el 2026-08-16 modularizando pagos y tipos de pago:
   `pagos_controller.py` pasó de **717 a 633 líneas** y de **23 sentencias SQL
   inline a 3**; la persistencia vive en `app/repositories/pagos_repository.py`
@@ -189,7 +193,8 @@ Lo que sigue es un resumen para orientarse; **el estado vivo está en
   3. **Una sola conexión por upsert**: los dos upsert de tipos de pago releen con
      su cursor antes de confirmar. Cerró además una ventana en la que un `commit`
      correcto se reportaba como 400.
-- Suite al día: **669 pruebas**, exit 0. Partió de 606 al activar la capa 5.
+- Suite al día: **714 pruebas**, exit 0. Partió de 606 al activar la capa 5 y de
+  669 al activar la capa 6.
 - **Un hallazgo se retiró** tras revisarlo: el «filtro de ownership por pago» no
   era un hueco. Ver el detalle en la bitácora antes de volver a levantarlo.
 - Verificaciones heredadas que siguen **pendientes y aceptadas**: el valor
@@ -251,11 +256,65 @@ Lo que sigue es un resumen para orientarse; **el estado vivo está en
     `monkeypatch` en `test_pagos_adelantados.py` puede apuntar a
     `reportes_controller`. En la capa 5 se registró un hallazgo falso por
     deducirlo del nombre; hay que leer el argumento de destino.
+12. **Un supuesto heredado se marca como no verificado y se comprueba en la
+    subcapa 0.** La capa 6 se activó anticipando que sus dominios escribían
+    archivos y que eso hacía irreversible el rollback. Era **falso**, y se supo
+    porque la activación lo registró como *no verificado* en vez de darlo por
+    bueno. Un riesgo copiado de un documento anterior no es evidencia.
+13. **El comparador AST confunde docstrings con SQL.** Un docstring que mencione
+    `UPDATE` o `DELETE` en prosa aparece como sentencia nueva. Hay que excluir
+    los docstrings con `ast.get_docstring` antes de comparar, o se pierden
+    minutos persiguiendo falsos positivos. Ocurrió en 6.1.
+14. **Una guardia que fija un defecto debe fallar cuando se corrija.** 6.0 dejó
+    una prueba que afirmaba que la ruta `/mis-clases` conservaba su SQL inline;
+    6.5 lo movió y la prueba **falló**, que era exactamente la señal esperada, y
+    se sustituyó por su versión positiva. Es el mismo patrón que 3.2 y 3.3b. Si
+    una guardia así falla, hay que preguntarse primero si la corrección era el
+    objetivo del turno, no «arreglarla» a ciegas.
+15. **Cada mitad de una comprobación puede ir a un sitio distinto.** En 6.4,
+    `asignacion_tiene_historial` se partió: la consulta a
+    `information_schema.columns` **se quedó** en el controlador —convención de
+    5.3: la introspección de esquema vive junto al código que la necesita— y la
+    que busca filas **se movió** al repositorio. Preguntar por el esquema y
+    preguntar por los datos no son lo mismo.
 
-## Trabajo registrado fuera del alcance de la capa activa
+## Trabajo registrado fuera del alcance de cualquier capa activa
 
-Registrado y sin hacer. Nada de esto es urgente ni bloquea a la capa 5, y nada
-de esto entra en ella por inferencia: requiere una orden explícita.
+Registrado y sin hacer. Nada de esto bloquea a la capa que se active, y nada de
+esto entra en ella por inferencia: requiere una orden explícita.
+
+### Lo que dejó abierto la capa 6
+
+- **El alta y la edición de asignaciones no toman ningún lock.** Es el riesgo más
+  directo del backend hoy. La validación de cruce de horarios lee, decide y
+  escribe bajo `READ COMMITTED`, sin `pg_advisory_xact_lock` y sin `FOR UPDATE`,
+  así que **dos peticiones simultáneas pueden crear dos clases solapadas** para
+  el mismo profesor o el mismo salón. La restricción `UNIQUE` de la base solo
+  cubre el duplicado exacto, no el solapamiento. Es el análogo del hueco que la
+  capa 5 encontró en `POST /pagos`; aquel se corrigió a medias con un candado por
+  estudiante y **este sigue intacto**. El arreglo tendría la misma forma: tomar
+  el lock por profesor y por curso como primera sentencia del registro.
+- **`GET /estudiantes/{id}` devuelve `SELECT *`**, así que su contrato observable
+  es el esquema entero de la tabla: añadir una columna cambia la respuesta de la
+  API sin tocar código.
+- **`asignacion_tiene_historial` cuesta hasta 14 consultas** para responder sí o
+  no: dos por cada una de sus siete tablas, sin caché entre tablas ni peticiones.
+- **Dos rarezas de status code**: `PUT /estudiantes/{id}` sobre un inexistente
+  responde 200 con un mensaje, mientras `PATCH .../estado` responde 404; y
+  `DELETE /asignaciones/{profesor_id}/{curso_id}` responde 200 aunque no
+  encuentre nada, mientras `DELETE /asignaciones/{id}` responde 404.
+- **`obtener_clases_profesor_controller` está definida dos veces y ninguna tiene
+  consumidores**, con SQL divergente entre copias. El usuario decidió el
+  2026-08-17 **conservarlas**; una guardia de prueba falla si alguien las
+  conecta. Retirarlas sigue siendo posible con una orden explícita.
+- **Tres parejas de literales SQL gemelos sin unificar**, conservadas byte a
+  byte: las dos formas de `SET activo = FALSE` y las dos de `buscar_curso_activo`.
+  Unificarlas es legítimo y no cambia lo que recibe PostgreSQL, pero es decisión
+  del usuario y no se pidió.
+- **`POST /estudiantes` descarta el mensaje del controlador**: la ruta construye
+  su propia respuesta. El cliente nunca ve el texto que devuelve el controlador.
+
+### Lo que sigue abierto de capas anteriores
 
 - **Colisión de mayúsculas en el servicio de reportes.**
   `app/services/reportes_financieros.py` indexa por `str(nombre).lower()` con
@@ -321,17 +380,98 @@ de esto entra en ella por inferencia: requiere una orden explícita.
   evidencia de GitHub Actions desde la capa 0, y la credencial privilegiada de la
   capa 4 **sin rotar**.
 
-## Autorizaciones de uso inmediato
+## Autorización de uso inmediato: activar la capa 7
 
-**No hay ninguna vigente.** La de la capa 6 se consumió el 2026-08-17 y se
-retiró, igual que las de las capas 3, 4 y 5.
+Válida **solo mientras el índice maestro siga indicando que no existe una capa
+activa y que la capa 7 está en espera**. Si el estado ya cambió, no la
+reutilices: vuelve a determinarlo desde el índice.
 
-La capa 6 está cerrada y **no hay capa activa**, así que el bloque universal del
-principio hará que el asistente informe del estado y se detenga, que es lo
-correcto. Activar la capa 7 exige una orden explícita del usuario en el turno.
+**Antes de pegarla hay que rellenar el nombre del dominio.** La capa 7 es
+explícitamente «uno a la vez»: no es un bloque. Activarla sin decir cuál se
+aborda dejaría el alcance abierto, que es lo contrario de lo que hace segura una
+capa.
 
-Si se quiere volver a guardar una autorización de uso inmediato para la capa 7,
-debe llevar su propia condición de caducidad —«válida solo mientras el índice
-siga indicando que no existe una capa activa y que la capa 7 está en espera»— y
-decidir antes qué dominio se aborda primero, porque la capa 7 es «uno a la vez»,
-no un bloque.
+Se copia el bloque universal del principio y se añade inmediatamente después:
+
+```text
+Autorizo activar unicamente la capa 7 para el dominio DOMINIO, y solo ese.
+
+Acepto continuar manteniendo pendientes las verificaciones heredadas: el valor
+operativo final de DB_STATEMENT_TIMEOUT_MS de la capa 1 y la ausencia de
+evidencia de GitHub Actions desde la capa 0. Registralas como pendientes,
+conserva su riesgo y no las marques como cumplidas.
+
+Esta autorizacion permite solamente la activacion documental. No autoriza
+inspeccionar codigo del dominio, implementar 7.0, tocar la base de datos, hacer
+deploy, commit o push. Despues de activar la capa, detente.
+
+En el mismo checkout local:
+
+1. Lee y aplica completamente el protocolo universal anterior.
+2. Valida main, git status, el HEAD limpio vigente, origin/main y la continuidad
+   desde el commit base de la capa 6, 589cb6d1391161c692a6f24aee9d523317cbb1ce,
+   comprobando que todo commit posterior este explicado en
+   06_ASIGNACIONES_ESTUDIANTES.md.
+3. Confirma que la capa 6 esta cerrada, que la capa 7 sigue en espera y que no
+   existe otra capa activa. Si hay divergencia o un commit sin explicar, detente.
+4. No uses ningun hash de memoria: comprueba primero el HEAD limpio real.
+5. Comprueba el estado real de origin/main e informa lo que encuentres, no lo
+   supongas. La capa 6 se publico el 2026-08-17 en bf075a0 y por tanto ya esta
+   desplegada. No presentes GitHub Actions como verificada en ningun caso: esa
+   evidencia sigue sin obtenerse desde la capa 0.
+6. Crea docs/modularizacion/07_DOMINIO.md partiendo de
+   docs/modularizacion/PLANTILLA_CAPA.md.
+7. Registra el HEAD limpio vigente como commit base, rama main, estado Activa,
+   primera subcapa pendiente 7.0 y codigo de producto modificado al activar:
+   ninguno.
+8. Define el objetivo solo desde el indice maestro y limitado a ese dominio:
+   migrarlo con contratos y pruebas, agregando response_model, errores de
+   dominio y pruebas HTTP o de integracion solo despues de caracterizar y
+   conservar la respuesta existente.
+9. Deja 7.0 como inventario, contratos y caracterizacion. No inventes detalles
+   de implementacion sin inspeccionarlos en un turno posterior. No decidas aun
+   el desglose de 7.1 en adelante.
+10. Ten presente lo que la capa 6 dejo comprobado, y no lo des por bueno sin
+    verificarlo para ESTE dominio:
+    - plan_de_clases y branding SI escriben archivos via app/services/storage.py;
+      si el dominio elegido es uno de ellos, un rollback de datos no deshace un
+      archivo ya escrito y eso cambia como hay que documentar el rollback;
+    - asignaciones es transversal: nueve modulos dependen de
+      resolver_asignacion_academica_id_cursor, asi que casi cualquier dominio
+      academico lo consume;
+    - los contratos de lectura financieros de la capa 4 dependen de cobros.py;
+    - los permisos no son uniformes: hay rutas con require_profesor_scope y
+      require_asignacion_access, no solo admin.
+11. Actualiza docs/modularizacion/README.md para marcar unicamente la capa 7
+    como Activa, con su dominio, enlazar su bitacora y dejar 7.0 pendiente.
+12. Ejecuta git diff --check, comprueba el whitespace del archivo nuevo y
+    verifica que el alcance contenga exclusivamente README.md y la bitacora
+    nueva.
+13. Informa el commit base, la primera subcapa pendiente, las verificaciones
+    heredadas y cualquier evidencia remota disponible. Detente sin inspeccionar
+    ni implementar 7.0.
+
+No hagas commit, push, deploy, migraciones reales ni acceso a produccion. Yo
+revisare los cambios y controlare su publicacion.
+```
+
+### Cómo elegir el dominio de la capa 7
+
+El índice no fija el orden; dice «priorizar uno a la vez». Lo que el programa ya
+sabe, sin haber inspeccionado esos módulos:
+
+- **Los más consumidos** son los que dependen de `asignacion_academica`:
+  `notas`, `boletin`, `asistencia`, `observaciones`, `planilla`,
+  `planeador_anual` y `dashboard`. Tocar cualquiera afecta al resto por ese
+  servicio compartido.
+- **`plan_de_clases` ya tiene repositorio propio** —`plan_de_clases_repository`—,
+  así que su migración empieza más cerca del final que las demás.
+- **`venta_controller` es el único con SQL inline sobre `ventas`**, tabla que
+  `pagos_repository` ya toca desde su bloque rotulado. Migrarlo daría por fin el
+  segundo consumidor real que justificaría un `ventas_repository`, y cerraría una
+  decisión que la capa 5 dejó explícitamente abierta.
+- **`dashboard_controller` concentra los cálculos más caros** vistos de pasada en
+  las capas 4 y 6, con varias consultas de promedios por estudiante.
+
+Nada de esto es una recomendación cerrada: es lo que hay registrado. La elección
+es del usuario.

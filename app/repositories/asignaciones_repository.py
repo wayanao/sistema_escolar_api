@@ -614,6 +614,65 @@ def leer_asignaciones_paginado(cursor, where_sql, params):
 # ---------------------------------------------------------------------------
 
 
+def leer_clases_con_horario_de_profesor(cursor, profesor_id):
+    """Clases del profesor con su horario, curso, jornada y materia.
+
+    Extraida en 6.5 desde `app/routes/asignaciones.py`, donde era **el unico SQL
+    de dominio que vivia en la capa HTTP** de todo el programa. La ruta conserva
+    el `get_cursor`, la comprobacion de permisos y el formateo del payload.
+
+    Devuelve dos identificadores distintos y **no son intercambiables**: el
+    primero resuelve la cabecera academica del grupo con el mismo `CASE` que
+    `resolver_asignacion_academica_id_cursor`, y `horario_id` es la fila concreta
+    de este horario. El frontend usa el primero para notas y boletines, y el
+    segundo para editar la franja.
+    """
+    cursor.execute("""
+            SELECT
+                CASE
+                    WHEN base.id IS NOT NULL
+                     AND base.profesor_id = a.profesor_id
+                     AND base.curso_id = a.curso_id
+                     AND base.materia_id = a.materia_id
+                        THEN base.id
+                    ELSE a.id
+                END AS asignacion_id,
+                a.id AS horario_id,
+                m.nombre AS materia,
+                c.nombre AS curso,
+                c.id AS curso_id,
+                c.jornada,
+                a.dia,
+                a.hora_inicio,
+                a.hora_fin
+
+            FROM asignaciones a
+            JOIN materias m ON a.materia_id = m.id
+            JOIN cursos c ON a.curso_id = c.id
+            LEFT JOIN asignaciones base ON base.id = a.asignacion_academica_id
+
+            WHERE a.profesor_id = %s
+              AND a.activo = TRUE
+              AND COALESCE(LOWER(c.estado), 'activo') = 'activo'
+              AND COALESCE(LOWER(m.estado), 'activo') = 'activo'
+            ORDER BY
+                c.nombre,
+                m.nombre,
+                CASE a.dia
+                    WHEN 'Lunes' THEN 1
+                    WHEN 'Martes' THEN 2
+                    WHEN 'Miércoles' THEN 3
+                    WHEN 'Jueves' THEN 4
+                    WHEN 'Viernes' THEN 5
+                    WHEN 'Sábado' THEN 6
+                    WHEN 'Domingo' THEN 7
+                    ELSE 8
+                END,
+                a.hora_inicio
+        """, (profesor_id,))
+    return cursor.fetchall()
+
+
 def buscar_historial_en_tabla(cursor, tabla, asignacion_id):
     """Fila testigo si esa tabla tiene historial de la asignacion.
 

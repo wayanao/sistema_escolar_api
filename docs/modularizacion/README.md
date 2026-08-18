@@ -40,21 +40,20 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 3 | Migraciones y tenants | Todos los tenants versionados, runner bloqueado y alta reproducible | **Cerrada**; reparó producción y verificó en uso | [03_MIGRACIONES_TENANTS.md](./03_MIGRACIONES_TENANTS.md) |
 | 4 | Reportes financieros | Dominio modular, N+1 eliminado y consultas medidas | **Cerrada**; N+1 de 5N a 15 constantes, medido en producción | [04_REPORTES_FINANCIEROS.md](./04_REPORTES_FINANCIEROS.md) |
 | 5 | Pagos y tipos de pago | Dominio financiero modularizado y protegido | **Cerrada**; SQL inline de 23 a 3, sin tocar la base | [05_PAGOS_TIPOS_PAGO.md](./05_PAGOS_TIPOS_PAGO.md) |
-| 6 | Asignaciones y estudiantes | Dominios grandes separados con contratos estables | **Activa**; 6.0 a 6.4 cerradas, solo queda 6.5 y el cierre | [06_ASIGNACIONES_ESTUDIANTES.md](./06_ASIGNACIONES_ESTUDIANTES.md) |
-| 7 | Resto de dominios | Migración individual con contratos y pruebas | En espera | Una bitácora por dominio al activarlo |
+| 6 | Asignaciones y estudiantes | Dominios grandes separados con contratos estables | **Cerrada**; SQL inline de 52 a 1, sin tocar la base | [06_ASIGNACIONES_ESTUDIANTES.md](./06_ASIGNACIONES_ESTUDIANTES.md) |
+| 7 | Resto de dominios | Migración individual con contratos y pruebas | **En espera**, siguiente | Una bitácora por dominio al activarlo |
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
 cierre y el usuario ordene continuar, se crea su sucesora desde
 `PLANTILLA_CAPA.md`, se registra el commit base vigente y se actualiza esta
 tabla.
 
-Las capas 0, 1, 2, 3, 4 y 5 están cerradas. **La capa activa es la 6**,
-activada el 2026-08-17 por orden explícita del usuario; su subcapa 6.0 está
-pendiente y no iniciada. La capa 3 es la única del programa
+Las capas 0 a 6 están cerradas. **No existe una capa activa**: la capa 7
+permanece en espera y no fue activada. La capa 3 es la única del programa
 que modificó la base
 de datos real, con autorización explícita del usuario para cada paso; la capa 4
-solo la leyó; la capa 5 **no la tocó en absoluto**, pese a ser la primera que
-modularizó caminos de escritura. No se atribuye ningún resultado de GitHub
+solo la leyó; las capas 5 y 6 **no la tocaron en absoluto**, pese a ser las que
+modularizaron caminos de escritura. No se atribuye ningún resultado de GitHub
 Actions sin evidencia del run correspondiente.
 
 ## Alcance de cada capa
@@ -549,10 +548,50 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   fijó de que la introspección de esquema vive junto al código que la necesita —es
   la única sentencia inline que sobrevive—; y su pregunta hermana sobre datos
   **sí se mueve**, porque pregunta por filas, no por el esquema.
-- Capa activa: **6, asignaciones y estudiantes**. Subcapas **6.0 a 6.4 cerradas**
-  el 2026-08-17. Primera subcapa pendiente: **6.5**, la última: el SQL inline de
-  la ruta `/mis-clases`, el código heredado y el **cierre de la capa** con su
-  compuerta, staging, rollback y verificación manual. **Definida y no iniciada.**
+- Resultado de 6.5: el `SELECT` de `GET /mis-clases` salió de
+  `app/routes/asignaciones.py` al repositorio, que llega a **33 funciones**. Era
+  **el único SQL de dominio que vivía en la capa HTTP** de todo el programa. La
+  guardia que 6.0 había dejado sobre ese hallazgo **falló al moverlo**, que era la
+  señal esperada, y se sustituyó por dos pruebas positivas. Se recorrieron las 32
+  funciones del controlador y **ninguna quedó huérfana**. Compuerta de cierre:
+  **714 pruebas, exit 0**.
+- Decisión del usuario el 2026-08-17: las dos copias muertas de
+  `obtener_clases_profesor_controller` **se dejan** registradas, sin retirar, para
+  que la capa cierre siendo una refactorización pura sin borrados de producto.
+- Resultado de la capa 6, con sus cinco subcapas cerradas:
+  `estudiante_controller.py` pasó de **519 a 381 líneas** y de 11 sentencias SQL
+  inline a **0**; `asignacion_controller.py` de **1093 a 762** y de 41 a **1**;
+  la persistencia vive en `estudiantes_repository` —11 funciones— y
+  `asignaciones_repository` —33—. El dominio quedó protegido por **43 pruebas de
+  caracterización** nuevas y la suite pasó de 669 a **714**.
+- La capa 6 es **exclusivamente una refactorización** y, como la 5, **no tocó la
+  base de datos en absoluto**, ni siquiera para leer. Su rollback es de código:
+  revertir hasta `589cb6d`; a diferencia de la capa 5, ese base **ya está
+  desplegado**, así que revertir exigiría push y despliegue. Que nada observable
+  cambió lo demuestran los comparadores AST contra el commit base —conjunto de
+  SQL idéntico, **42 de 42** literales byte a byte en asignaciones y **11 de 11**
+  en estudiantes— y que ninguna prueba cambió de expectativa. **En toda la capa
+  no hizo falta autorizar ni un cambio de texto SQL**, frente a los dos que
+  necesitó la capa 5.
+- **Verificación manual de la capa 6: hecha por el usuario y correcta.** La
+  ejecutó en **local contra el árbol de trabajo**, que incluía 6.5; se confirmó
+  expresamente el artefacto **antes** de registrarla, porque el estado de Git
+  admitía tres lecturas —`HEAD` sin 6.5, el árbol con 6.5, y `origin/main` con el
+  código anterior a la capa—. Es la lección 10 de la capa 5, aplicada. Cubre la
+  capa completa. Limitación registrada: fue local, **sin push ni despliegue**.
+- Capa 6 **cerrada** el 2026-08-17, con sus subcapas 6.0 a 6.5 completas.
+  Compuerta al cerrar: **exit 0 con 714 pruebas**, Ruff correcto y `pip check`
+  correcto.
+- **Estado de publicación de la capa 6**: al cerrarla **no había push ni
+  despliegue**. Los seis commits viven solo en el checkout local y producción
+  sigue corriendo `589cb6d`. Publicar es decisión del usuario, y en este
+  repositorio un push a `main` dispara el despliegue.
+- Riesgo más directo que deja abierto la capa 6: **el alta y la edición de
+  asignaciones no toman ningún lock**, así que dos peticiones simultáneas pueden
+  crear clases solapadas para el mismo profesor o salón. Es el análogo del hueco
+  de idempotencia de `POST /pagos`, que la capa 5 sí corrigió a medias; este
+  sigue intacto.
+- Capa activa: **ninguna**. Siguiente capa: 7, resto de dominios, en espera.
 - Resultado de 3.5: el alta construye el schema desde la migración base en vez de
   copiar la plantilla. Un tenant nuevo nace con **37 claves foráneas y 30
   secuencias propias**, donde el camino anterior producía **0 y 0**. Ensayado
@@ -665,14 +704,18 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
 ## Archivos de continuidad
 
 - [06_ASIGNACIONES_ESTUDIANTES.md](./06_ASIGNACIONES_ESTUDIANTES.md): **bitácora
-  activa** de la capa 6. Registra el commit base `589cb6d`, el objetivo tomado
-  del índice, el alcance autorizado, los invariantes, el perfil de riesgo propio
-  —archivos que un rollback de datos no deshace, claves foráneas repuestas en la
-  capa 3 y contratos de lectura que dependen de `cobros.py`— y la subcapa 6.0
-  pendiente. Es el documento que un chat nuevo debe leer después de este índice.
+  cerrada** de la capa 6 y **fuente de continuidad**. Registra el commit base
+  `589cb6d`, el inventario de 6.0 con sus 19 entradas HTTP, dos tablas escritas y
+  16 claves foráneas, los **diez hallazgos sin corregir** —entre ellos la
+  ausencia de lock frente a horarios solapados y el código muerto duplicado que el
+  usuario decidió conservar—, las cuatro extracciones de 6.1 a 6.5 con sus
+  decisiones tomadas con evidencia, el supuesto de `storage` **refutado**, y el
+  cierre de la capa con su rollback, su verificación manual local y la advertencia
+  de que **no llegó a publicarse**. Es el documento que un chat nuevo debe leer
+  después de este índice.
 - [05_PAGOS_TIPOS_PAGO.md](./05_PAGOS_TIPOS_PAGO.md): **bitácora cerrada** de la
-  capa 5 y fuente de continuidad hasta la activación de la capa 6. Conserva los
-  siete hallazgos registrados sin corregir y el paso 2 acordado y no iniciado.
+  capa 5. Conserva los siete hallazgos registrados sin corregir y el paso 2
+  acordado y no iniciado, la clave de idempotencia de `POST /pagos`.
   Registra el commit base `f4d0913`, las
   verificaciones heredadas aceptadas como pendientes, el inventario de 5.0 con
   sus 19 entradas HTTP, seis tablas escritas, contratos, idempotencia y línea

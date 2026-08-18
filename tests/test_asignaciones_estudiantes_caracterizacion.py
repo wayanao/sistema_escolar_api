@@ -1024,19 +1024,52 @@ def test_las_dos_formas_de_desactivar_siguen_sin_unificarse():
     assert len({" ".join(forma.split()) for forma in formas}) == 1
 
 
-def test_la_ruta_mis_clases_conserva_su_sql_inline():
-    """Hallazgo de 6.0: hay SQL de dominio en la capa de rutas, no solo en el
-    controlador. Ningun dominio migrado antes tenia esto, y 6.1 debera decidir
-    que hacer con el. Se fija para que la extraccion no lo pierda de vista."""
-    codigo = (RAIZ_APP / "routes" / "asignaciones.py").read_text(encoding="utf-8")
+def test_las_rutas_del_dominio_ya_no_llevan_sql():
+    """Sustituye en 6.5 a la guardia que 6.0 dejo sobre el SQL inline de la ruta.
+
+    Aquella fijaba el hallazgo: `GET /mis-clases` ejecutaba en la capa HTTP un
+    SELECT de cuarenta lineas, el unico SQL de dominio fuera de un controlador o
+    un repositorio en todo el programa. **Debia fallar cuando 6.5 lo moviera**, y
+    fallo. Esta la reemplaza fijando el estado nuevo: ninguna ruta de la capa 6
+    contiene SQL.
+    """
+    for nombre in ("asignaciones.py", "estudiantes.py"):
+        codigo = (RAIZ_APP / "routes" / nombre).read_text(encoding="utf-8")
+        sentencias = [
+            nodo.value
+            for nodo in ast.walk(ast.parse(codigo))
+            if isinstance(nodo, ast.Constant)
+            and isinstance(nodo.value, str)
+            and any(p in nodo.value.upper() for p in ("SELECT", "INSERT", "UPDATE", "DELETE"))
+        ]
+
+        assert sentencias == [], nombre
+
+
+def test_el_controlador_de_asignaciones_solo_conserva_la_guarda_de_esquema():
+    """Cierra la capa fijando que el unico SQL que queda es introspeccion.
+
+    5.3 decidio con evidencia que la introspeccion de esquema vive junto al
+    codigo que la necesita, no en la frontera de persistencia. 6.4 aplico esa
+    convencion aqui: `tabla_columna_existe` se quedo y todo lo demas se fue.
+    """
+    codigo = (RAIZ_APP / "controllers" / "asignacion_controller.py").read_text(
+        encoding="utf-8"
+    )
+    arbol = ast.parse(codigo)
+    docstrings = {
+        ast.get_docstring(nodo, clean=False)
+        for nodo in ast.walk(arbol)
+        if isinstance(nodo, (ast.Module, ast.FunctionDef, ast.ClassDef))
+    }
     sentencias = [
         nodo.value
-        for nodo in ast.walk(ast.parse(codigo))
+        for nodo in ast.walk(arbol)
         if isinstance(nodo, ast.Constant)
         and isinstance(nodo.value, str)
-        and "SELECT" in nodo.value
+        and nodo.value not in docstrings
+        and any(p in nodo.value.upper() for p in ("SELECT", "INSERT", "UPDATE", "DELETE"))
     ]
 
     assert len(sentencias) == 1
-    assert "FROM asignaciones a" in sentencias[0]
-    assert "LEFT JOIN asignaciones base" in sentencias[0]
+    assert "information_schema.columns" in sentencias[0]

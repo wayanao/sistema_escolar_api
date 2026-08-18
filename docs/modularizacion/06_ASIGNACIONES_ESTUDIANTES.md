@@ -4,7 +4,8 @@
 
 ## Control
 
-- Estado: **Activa** desde el 2026-08-17.
+- Estado: **Cerrada** el 2026-08-17. Sus tres objetivos quedaron cumplidos y
+  verificados; los riesgos abiertos están registrados en el cierre.
 - Commit base: `589cb6d1391161c692a6f24aee9d523317cbb1ce`.
 - Rama acordada: `main`.
 - Estado al activar: árbol limpio; `HEAD` coincidente con la referencia local
@@ -12,10 +13,9 @@
   A diferencia de todas las activaciones anteriores salvo la de la capa 5, el
   commit base **ya está desplegado**: un push a `main` dispara el despliegue en
   este repositorio.
-- Primera subcapa pendiente: **6.5**, la última prevista. Las subcapas **6.0 a
-  6.4 quedaron cerradas** el 2026-08-17. Con 6.2 **el dominio de estudiantes
-  queda terminado**; con 6.3 y 6.4, `asignacion_controller` conserva **una sola
-  sentencia SQL**, la introspección de esquema que se decidió no mover.
+- Primera subcapa pendiente: **ninguna**. Las cinco subcapas, **6.0 a 6.5**,
+  quedaron **cerradas** el 2026-08-17. El **cierre de la capa** queda supeditado
+  a la verificación manual, que el usuario decidió ejecutar él mismo.
 - Código de producto modificado al activar: **ninguno**. Tampoco en 6.0. En 6.1:
   `app/controllers/estudiante_controller.py` y el nuevo
   `app/repositories/estudiantes_repository.py`, sin cambios en rutas, payloads,
@@ -177,7 +177,7 @@ suite pasó de **669 a 708** con la caracterización de 6.0.
 | 6.2 | Cerrar la frontera de estudiantes: las cuatro lecturas de otros dominios que quedan en `detalles` | **Cerrada** |
 | 6.3 | Extraer la persistencia de las **escrituras de `asignaciones`** | **Cerrada** |
 | 6.4 | Extraer las **lecturas de `asignaciones`**: validaciones, listados, disponibilidad y orden | **Cerrada** |
-| 6.5 | El SQL inline de la ruta `/mis-clases`, el código heredado y el **cierre de la capa** | **Pendiente, no iniciada** |
+| 6.5 | El SQL inline de la ruta `/mis-clases`, el código heredado y el **cierre de la capa** | **Cerrada** |
 
 6.1 quedó definida desde lo que 6.0 midió, y toma **estudiantes primero** por la
 razón registrada en Decisiones. El desglose de asignaciones se deja sin decidir
@@ -573,6 +573,111 @@ global y documenta staging, rollback y verificación manual.
 8. Documentar staging, rollback y verificación manual de la capa; actualizar el
    índice maestro; marcar la capa **cerrada** y dejar la capa 7 **en espera**.
    **No activar la capa 7 sin orden explícita.**
+
+## Staging, rollback y verificación manual de la capa 6
+
+### Lo que esta capa hizo y no hizo
+
+La capa 6 es **exclusivamente una refactorización**, igual que la 5. No añadió
+funciones, no cambió reglas, no tocó rutas, payloads, status codes, permisos,
+tenant, ownership, transacciones, timeouts, dependencias ni configuración. Y **no
+abrió una sola conexión a PostgreSQL**: ni migraciones, ni DDL, ni DML, ni
+lecturas de medición. Toda la caracterización se hizo con dobles.
+
+La evidencia de que el comportamiento observable no cambió es doble:
+
+1. un comparador AST contra el commit base `589cb6d` demuestra que las **42
+   sentencias SQL distintas de asignaciones son las mismas**, ninguna perdida y
+   ninguna nueva, con **42 de 42 literales byte a byte**; y las **11 de
+   estudiantes**, con 11 de 11. En toda la capa **no hizo falta autorizar ni un
+   solo cambio de texto SQL**, a diferencia de la capa 5, que necesitó dos;
+2. **43 pruebas de caracterización** escritas antes de cada extracción fijan
+   payloads, permisos por rol, conteos de consultas, `commit`, `rollback`,
+   cierres y el historial académico. **Ninguna cambió de expectativa**; la única
+   que falló fue la guardia que 6.0 dejó *deliberadamente* sobre el SQL inline de
+   la ruta, que debía fallar cuando 6.5 lo moviera, y se sustituyó por su versión
+   positiva.
+
+### Rollback
+
+**Es puramente de código.** No hay nada que deshacer en datos ni en esquema.
+Revertir los commits de la capa hasta
+`589cb6d1391161c692a6f24aee9d523317cbb1ce` devuelve los dos controladores y la
+ruta a su versión anterior y elimina los dos repositorios nuevos. Como el SQL
+ejecutado es equivalente, revertir no cambia el comportamiento observable.
+
+**Diferencia con la capa 5**: el commit base de esta capa **ya está desplegado**,
+así que revertir exigiría un push y un despliegue, no solo una operación local.
+
+No cambiar los timeouts durante el rollback.
+
+### Staging
+
+No se usó un entorno de staging y **no se considera necesario** para esta capa,
+por la misma razón que hace el rollback trivial: no hay cambio de esquema, de
+datos ni de SQL. Un despliegue prudente solo necesita comprobar que la aplicación
+arranca y que los caminos de escritura responden, que es lo que cubre la
+verificación manual.
+
+### Verificación manual: **hecha y correcta**
+
+Es la única evidencia que no puede delegarse en un asistente, porque exige
+reconocer datos reales. Se ofrecieron las tres opciones —ejecutarla, aceptarla
+explícitamente como pendiente, o dejar la capa abierta sin decidir— y el usuario
+**eligió ejecutarla**, igual que en las capas 4 y 5.
+
+**Ejecutada por el usuario el 2026-08-17 y con resultado correcto.**
+
+**Artefacto verificado**: la aplicación levantada **en local contra el árbol de
+trabajo**, que incluía los cambios de 6.5 todavía sin commitear. Se confirmó
+expresamente con el usuario contra qué código había probado **antes** de
+registrarlo, porque el estado de Git admitía tres lecturas: `HEAD` en `d04a455`
+sin 6.5, el árbol con 6.5 encima, y `origin/main` en `589cb6d`, que es lo que
+corre en producción y **no contiene nada de esta capa**. Es la lección 10 que
+dejó la capa 5, aplicada. Cubre por tanto **la capa 6 completa**, 6.0 a 6.5.
+
+**Limitación registrada, no disimulada**: la verificación fue local. Al cerrar la
+capa **no había push ni despliegue**: los seis commits viven solo en el checkout
+y producción sigue corriendo `589cb6d`, el código anterior a la capa 6. La
+verificación demuestra que el código refactorizado funciona ejercitado a mano;
+**no** demuestra nada sobre el despliegue, que sigue pendiente y es
+responsabilidad del usuario.
+
+Esta limitación es aceptable aquí por lo que la capa es: una refactorización con
+SQL equivalente demostrado y sin ningún acceso a la base de datos. En una capa
+que cambiara comportamiento o tocara datos no lo sería.
+
+Guion ejecutado, contra el árbol de trabajo local:
+
+- **Asignaciones**: crear una asignación nueva y comprobar que aparece con su
+  horario; crear una segunda del mismo profesor, curso y materia y comprobar que
+  hereda el mismo grupo académico; intentar asignar la misma materia del curso a
+  **otro** profesor y comprobar que sale el 409 con el nombre del responsable.
+- **Horarios**: intentar una clase que se solape con otra del mismo profesor y
+  otra del mismo salón, y comprobar los dos mensajes de error; intentar una clase
+  fuera de la jornada del curso y comprobar el aviso.
+- **Historial académico**, lo más importante: sobre una asignación que ya tenga
+  notas, asistencia u observaciones, intentar cambiar profesor, curso o materia y
+  comprobar que **se rechaza** pidiendo desactivar y crear otra; cambiar solo el
+  horario de esa misma asignación y comprobar que **sí se permite**.
+- **Desactivación**: desactivar una asignación con historial y comprobar que las
+  notas y los boletines anteriores **siguen ahí**.
+- **Orden del boletín**: reordenar las materias de un curso, guardar, recargar y
+  comprobar que el orden persiste y que el boletín lo respeta.
+- **Mis clases**: entrar como profesor y comprobar que `/mis-clases` sigue
+  mostrando sus clases con jornada y horario, y que un profesor no puede
+  consultar las de otro.
+- **Estudiantes**: crear uno con todos sus campos y comprobar que **ninguno se
+  desplaza** —el teléfono del padre en su sitio, no en el de la madre—; editarlo
+  sin tocar el estado y comprobar que el estado se conserva; retirarlo y
+  comprobar que desaparece del listado por defecto pero sigue en «todos».
+- **Expediente**: abrir el detalle de un estudiante con notas, inasistencias,
+  observaciones, deudas y cargos de inventario, y comprobar que las cinco
+  secciones cuadran, en particular el promedio general y el saldo de un cargo
+  abonado a medias.
+- **Financiero**: abrir el estado de cuenta de la capa 4 y confirmar que las
+  cifras siguen cuadrando.
+- Comprobar todo en **los dos tenants**, sin mezclar datos.
 
 ## Criterios de cierre de la capa
 
@@ -1098,26 +1203,160 @@ global y documenta staging, rollback y verificación manual.
   atribuye CI remota.
 - Estado: 6.4 **cerrada**; 6.5 **pendiente y no iniciada**.
 - Siguiente acción exacta: ejecutar únicamente 6.5 y, por ser la última subcapa,
-  aplicar la compuerta de cierre de la capa sin activar la capa 7.
+  aplicar la compuerta de cierre de la capa sin activar la capa 7. *(Ejecutada en
+  el turno siguiente; ver el cierre de 6.5 más abajo.)*
+
+### 2026-08-17 — cierre de 6.5
+
+- Modo de acceso: mismo checkout local en
+  `C:\Users\David\Documents\sistema_escolar_api`; Git validado directamente y no
+  se usó GitHub para inferir el estado local.
+- Precondición Git: rama `main`, **árbol limpio**, `HEAD` `d04a455`, el cierre de
+  6.4 que el usuario commiteó entre turnos. El commit base `589cb6d` existe y es
+  ancestro; `origin/main` sigue en el base, así que hay **seis commits locales
+  por delante, sin publicar**, todos explicados aquí.
+- Alcance inspeccionado y modificado: el `SELECT` inline de
+  `GET /mis-clases/{profesor_id}` en `app/routes/asignaciones.py` y el
+  repositorio de asignaciones. No se tocó `asignacion_academica.py`.
+- Decisión con evidencia sobre el SQL de la ruta: **se movió** al repositorio. Se
+  comprobó antes que su texto **no coincide con ninguna** de las funciones ya
+  extraídas —es la única consulta del dominio con `LEFT JOIN` reflexivo sobre
+  `asignaciones` y con `c.jornada`— y que la ruta **ya estaba caracterizada** por
+  `test_mis_clases_incluye_jornada_del_curso`, que fija su payload completo. La
+  ruta conserva `get_cursor`, `require_profesor_scope` y el formateo.
+- **Señal esperada, producida y atendida**: la guardia
+  `test_la_ruta_mis_clases_conserva_su_sql_inline`, que 6.0 escribió para no
+  perder de vista ese hallazgo, **falló** al moverlo. Era exactamente lo que
+  debía ocurrir, igual que la prueba deliberada de 3.2 falló cuando 3.3b corrigió
+  su defecto. Se sustituyó por dos pruebas positivas: una fija que **ninguna
+  ruta** de la capa 6 contiene SQL, y otra que el controlador de asignaciones
+  conserva **una sola sentencia**, la de `information_schema`.
+- Código heredado: se recorrieron las **32 funciones** que define
+  `asignacion_controller.py` y **ninguna quedó sin consumidores** tras las cuatro
+  extracciones. Las dos copias de `obtener_clases_profesor_controller` ya estaban
+  muertas **antes** de la capa; el usuario, preguntado explícitamente, decidió
+  **dejarlas registradas y no retirarlas**, para que la capa cierre siendo una
+  refactorización pura sin borrados de producto.
+- Archivos de producto: `app/routes/asignaciones.py` y
+  `app/repositories/asignaciones_repository.py`, que llega a **33 funciones**. La
+  ruta bajó de 238 a **196 líneas**. Pruebas modificadas:
+  `tests/test_asignaciones_estudiantes_caracterizacion.py`.
+- Equivalencia SQL final, con el comparador ampliado a la ruta y contra el commit
+  base: **42 sentencias distintas antes y 42 después, conjunto idéntico**, 43
+  puntos de llamada antes y después, y **42 de 42 literales byte a byte**.
+- Pruebas específicas: **73 pasaron** en 0,85 s. Ruff sobre `app/` completo y la
+  prueba: **correcto**.
+- **Compuerta global de cierre**: `.\venv\Scripts\python.exe scripts\verify.py`;
+  **714 pruebas pasaron** en 2,57 s, 5 warnings heredadas, Ruff correcto,
+  `pip check` íntegro y exit 0.
+- Revisión final: `git diff --check` en exit 0. El diff contiene tres archivos.
+- PostgreSQL, migraciones, producción, commit, push y deploy: **ninguno**, ni en
+  esta subcapa ni en toda la capa.
+- Estado: 6.5 **cerrada**. El cierre de la **capa** queda supeditado a la
+  verificación manual, que el usuario **eligió ejecutar él mismo** y que está
+  **definida y no ejecutada**.
+- Siguiente acción exacta: obtener del usuario el resultado de la verificación
+  manual. Solo entonces marcar la capa cerrada, actualizar el índice y dejar la
+  capa 7 en espera. **No activar la capa 7.** *(La ejecutó y la capa se cerró el
+  mismo 2026-08-17; ver el cierre de la capa más abajo.)*
+
+### 2026-08-17 — cierre de la capa 6
+
+Con la verificación manual ejecutada, la capa queda cerrada.
+
+#### Resultado frente a su objetivo
+
+El índice le pedía separar asignaciones y estudiantes con contratos estables,
+trabajando cada dominio en subcapas, evitando una extracción conjunta masiva y
+protegiendo permisos, relaciones académicas, archivos e historial.
+
+| Objetivo | Resultado |
+|---|---|
+| Separar los dos dominios con contratos estables | Dos repositorios nuevos: `estudiantes_repository` con **11 funciones** y `asignaciones_repository` con **33**. Los controladores pasaron de **1612 líneas juntas a 1143** y de **52 sentencias SQL inline a 1** |
+| Cada dominio en subcapas, sin extracción conjunta | Cinco subcapas: estudiantes en 6.1 y 6.2, **terminado antes de empezar** asignaciones en 6.3 y 6.4. En ningún turno se tocaron los dos |
+| Proteger permisos, relaciones académicas, archivos e historial | **43 pruebas de caracterización** nuevas que fijan los permisos por rol —incluido `require_profesor_scope`—, el bloqueo de cambios sobre asignaciones con historial, y que **ningún camino borra filas** |
+
+La suite pasó de **669 a 714** pruebas. Compuerta de cierre: **exit 0 con 714
+pruebas**, Ruff correcto y `pip check` íntegro.
+
+#### Lo que esta capa NO hizo
+
+- **No tocó la base de datos**, ni siquiera para leer. Es la segunda capa del
+  programa que no abre una sola conexión a PostgreSQL, después de la 5.
+- **No tocó archivos.** El supuesto de `storage` con el que se activó la capa era
+  falso y quedó refutado en 6.0 con prueba: solo branding y plan de clases usan
+  ese servicio. El riesgo de rollback irreversible que se anticipó **no
+  existía**.
+- No cambió rutas, payloads, status codes, permisos, tenant, ownership, reglas
+  académicas, transacciones, timeouts, dependencias ni configuración.
+- **No corrigió ninguno de los diez hallazgos** de 6.0, ni retiró el código
+  muerto: el usuario decidió expresamente dejarlo registrado.
+- **No necesitó autorizar ni un solo cambio de texto SQL**, frente a los dos que
+  necesitó la capa 5. Las tres parejas de literales gemelos que aparecieron se
+  conservaron sin unificar.
+
+#### Rollback
+
+Puramente de código: revertir hasta
+`589cb6d1391161c692a6f24aee9d523317cbb1ce`. No hay nada que deshacer en datos ni
+en esquema. **Diferencia con la capa 5**: ese commit base **ya está desplegado**,
+así que revertir exigiría un push y un despliegue, no una operación local.
+
+#### Estado de publicación al cerrar
+
+**Sin push ni despliegue.** Los seis commits de la capa viven solo en el checkout
+local y producción sigue corriendo `589cb6d`. Publicar es decisión y
+responsabilidad del usuario, y en este repositorio un push a `main` dispara el
+despliegue.
+
+#### Riesgos que la capa deja abiertos
+
+- **El alta y la edición de asignaciones no toman ningún lock.** Dos peticiones
+  simultáneas pueden crear clases solapadas para el mismo profesor o salón. Es el
+  riesgo más directo que deja la capa, y el análogo del hueco de idempotencia que
+  la capa 5 encontró en `POST /pagos` —aquel se corrigió a medias; este sigue
+  intacto—.
+- `GET /estudiantes/{id}` devuelve `SELECT *`: su contrato es el esquema entero.
+- `asignacion_tiene_historial` cuesta hasta 14 consultas.
+- Dos rarezas de status code y las tres parejas de literales gemelos.
+- Código muerto duplicado: las dos copias de
+  `obtener_clases_profesor_controller`, que el usuario decidió conservar.
+- Heredados: calibración de `DB_STATEMENT_TIMEOUT_MS` de la capa 1, ausencia de
+  evidencia de GitHub Actions desde la capa 0, la credencial privilegiada de la
+  capa 4 sin rotar, los siete hallazgos abiertos de la capa 5 —incluida la clave
+  de idempotencia, paso 2— y la auditoría de capacidad de la capa 2.
+
+- Estado: **capa 6 cerrada**. La capa 7, resto de dominios, queda **en espera** y
+  no fue activada.
+- Siguiente acción exacta: esperar una orden explícita del usuario. Una
+  instrucción genérica de continuar no autoriza activar la capa 7.
 
 ## Entrega al próximo chat
 
-- Capa activa: **6, asignaciones y estudiantes**.
-- Última subcapa terminada: **6.4**, cerrada el 2026-08-17.
-- Primera subcapa pendiente: **6.5**, la última: el SQL inline de la ruta
-  `/mis-clases`, el código heredado y el **cierre de la capa**. Su trabajo exacto
-  está definido arriba y **no se ha iniciado**.
+- Capa activa: **ninguna**. La capa 6 quedó **cerrada** el 2026-08-17 y la capa
+  7, resto de dominios, sigue en espera, sin activar.
+- Última subcapa terminada: **6.5**, la última. Las cinco están cerradas.
+- Primera subcapa pendiente: **ninguna**.
+- **Capa cerrada.** La verificación manual la ejecutó el usuario el 2026-08-17,
+  en local contra el árbol de trabajo, con resultado **correcto**. No quedan
+  bloqueos.
 - Commit base: `589cb6d1391161c692a6f24aee9d523317cbb1ce`, rama `main`,
-  **publicado y desplegado**. Al cerrar 6.4, `HEAD` es `be725c8` —cinco commits
-  locales por delante de `origin/main`, sin publicar— más los dos archivos de
-  6.4 sin commitear.
-- Lo que consiguieron 6.3 y 6.4: toda la persistencia de `asignaciones` salió del
-  controlador a `app/repositories/asignaciones_repository.py`, **veintiocho
-  funciones** en cinco bloques rotulados. `asignacion_controller.py` pasó de
-  **1093 a 762 líneas** y de **41 sentencias SQL inline a 1**, la introspección de
-  esquema que se decidió conservar. Comparador AST contra el commit base: **41 de
-  41 literales byte a byte**, conjunto idéntico, sin una sola autorización de
-  cambio de texto. Ninguna prueba cambió de expectativa en ninguna de las dos.
+  **publicado y desplegado**. Al cerrar 6.5, `HEAD` es `d04a455` —seis commits
+  locales por delante de `origin/main`, **sin publicar**— más los tres archivos
+  de 6.5 sin commitear.
+- Lo que consiguió la capa, con sus cinco subcapas cerradas:
+  `estudiante_controller.py` pasó de **519 a 381 líneas** y de 11 sentencias SQL
+  inline a **0**; `asignacion_controller.py` de **1093 a 762** y de 41 a **1**, la
+  introspección de esquema; `app/routes/asignaciones.py` perdió el **único SQL de
+  dominio que vivía en la capa HTTP** de todo el programa. La persistencia vive
+  en dos repositorios nuevos, `estudiantes_repository` con **11 funciones** y
+  `asignaciones_repository` con **33**. El dominio quedó protegido por **43
+  pruebas de caracterización** nuevas y la suite pasó de 669 a **714**.
+- Evidencia de que nada observable cambió: comparadores AST contra el commit base
+  con **conjunto de SQL idéntico** en los dos dominios —42 de 42 literales byte a
+  byte en asignaciones, 11 de 11 en estudiantes— y ninguna prueba que cambiara de
+  expectativa. **En toda la capa no hizo falta autorizar ni un cambio de texto
+  SQL**, a diferencia de la capa 5.
 - Lo que consiguieron 6.1 y 6.2: toda la persistencia de estudiantes salió del
   controlador a `app/repositories/estudiantes_repository.py`, **once funciones**
   que reciben el cursor —siete de la tabla `estudiantes` y cuatro del bloque del
@@ -1145,9 +1384,16 @@ global y documenta staging, rollback y verificación manual.
      `require_profesor_scope` y admiten a un profesor, no solo a un admin.
   4. **Nada se borra**: los dos dominios desactivan con `UPDATE`, y eso es lo
      que hace inocuas las 16 claves foráneas que apuntan a sus tablas.
-- Siguiente acción exacta: ejecutar únicamente 6.5, que es la **última subcapa** y
-  cierra la capa. Exige compuerta global, staging, rollback, verificación manual y
-  actualización del índice. **No activar la capa 7 sin orden explícita.**
-- Decisión que 6.5 debe plantear al usuario, no resolver sola: **retirar o no las
-  dos copias muertas de `obtener_clases_profesor_controller`**. Es un hallazgo de
-  6.0 y su retirada toca dos módulos de producto y dos archivos de prueba.
+- Siguiente acción exacta: **esperar una orden explícita del usuario**. La capa 7,
+  resto de dominios, sigue **en espera** y no se activa sin ella. Una instrucción
+  genérica de continuar no la autoriza.
+- Pendiente operativo del usuario: **publicar la capa**. Al cerrarla no había
+  push, y en este repositorio un push a `main` dispara el despliegue.
+- Decisión ya tomada por el usuario el 2026-08-17: las dos copias muertas de
+  `obtener_clases_profesor_controller` **se dejan**, registradas como hallazgo con
+  su guardia de prueba. La capa cierra sin borrar código de producto.
+- Hallazgos de 6.0 que siguen **vivos y sin corregir**: la ausencia de lock en el
+  alta y la edición de asignaciones —dos peticiones simultáneas pueden crear
+  clases solapadas—, el `SELECT *` de `GET /estudiantes/{id}`, las dos rarezas de
+  status code, el coste de hasta 14 consultas de `asignacion_tiene_historial` y
+  las tres parejas de literales gemelos sin unificar.

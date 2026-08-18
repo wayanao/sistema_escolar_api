@@ -142,21 +142,29 @@ aplicarla, que uno de sus supuestos había quedado desfasado —el índice segu�
 declarando la capa 5 sin publicar cuando el reflog ya registraba el push—, y esa
 corrección documental se pidió y se autorizó por separado.
 
-## Estado del programa al 2026-08-17 (capa 6 activa, 6.0 sin iniciar)
+## Estado del programa al 2026-08-17 (capa 6 cerrada, sin capa activa)
 
 Lo que sigue es un resumen para orientarse; **el estado vivo está en
 `docs/modularizacion/README.md`**, que es lo que manda si algo no coincide.
 
-- Capas 0, 1, 2, 3, 4 y 5 **cerradas**.
-- **Capa activa: 6, asignaciones y estudiantes**, activada el 2026-08-17 con
-  commit base `589cb6d1391161c692a6f24aee9d523317cbb1ce`. Su bitácora es
-  `06_ASIGNACIONES_ESTUDIANTES.md` y su primera subcapa pendiente es **6.0**,
-  inventario, contratos y caracterización, **no iniciada**. La activación fue
-  únicamente documental: no se inspeccionó código de esos dominios.
-- Lo nuevo de la capa 6 frente a todas las anteriores: **toca archivos, no solo
-  filas**. Un rollback de datos no deshace un archivo ya escrito, así que el
-  rollback de cada subcapa que toque `storage` debe documentarse antes de
-  ejecutarla.
+- Capas 0 a 6 **cerradas**. **No hay capa activa.**
+- Siguiente capa: **7, resto de dominios, en espera**.
+- La capa 6 cerró el 2026-08-17 modularizando asignaciones y estudiantes en cinco
+  subcapas, cada dominio por separado: `estudiante_controller.py` pasó de **519 a
+  381 líneas** y de 11 sentencias SQL inline a **0**; `asignacion_controller.py`
+  de **1093 a 762** y de 41 a **1**, la introspección de esquema que se decidió
+  conservar; y `app/routes/asignaciones.py` perdió el **único SQL de dominio que
+  vivía en la capa HTTP** de todo el programa. La persistencia vive en
+  `estudiantes_repository` —11 funciones— y `asignaciones_repository` —33—.
+- **El supuesto de los archivos era falso.** La capa 6 se activó anticipando que
+  estos dominios escribirían archivos vía `app/services/storage.py` y que por eso
+  el rollback dejaría de ser reversible. 6.0 lo **refutó con prueba**: solo
+  branding y plan de clases usan ese servicio. Que la activación lo registrara
+  como *no verificado* es lo que permitió corregirlo sin arrastrar el error.
+  **Sigue siendo cierto para la capa 7**: plan de clases sí escribe archivos.
+- Verificación manual de la capa 6: **hecha por el usuario y correcta**, en local
+  contra el árbol de trabajo. Se confirmó el artefacto antes de registrarla.
+  Al cerrarla **no había push ni despliegue**.
 - La capa 5 cerró el 2026-08-16 modularizando pagos y tipos de pago:
   `pagos_controller.py` pasó de **717 a 633 líneas** y de **23 sentencias SQL
   inline a 3**; la persistencia vive en `app/repositories/pagos_repository.py`
@@ -318,10 +326,12 @@ de esto entra en ella por inferencia: requiere una orden explícita.
 **No hay ninguna vigente.** La de la capa 6 se consumió el 2026-08-17 y se
 retiró, igual que las de las capas 3, 4 y 5.
 
-Con la capa 6 activa, el bloque universal del principio basta por sí solo: el
-índice maestro le indicará al asistente que debe ejecutar únicamente 6.0 y
-detenerse antes de 6.1. No hace falta añadir nada.
+La capa 6 está cerrada y **no hay capa activa**, así que el bloque universal del
+principio hará que el asistente informe del estado y se detenga, que es lo
+correcto. Activar la capa 7 exige una orden explícita del usuario en el turno.
 
-Solo volverá a hacer falta una autorización guardada cuando la capa 6 se cierre y
-haya que activar la 7, y entonces deberá escribirse con su propia condición de
-caducidad.
+Si se quiere volver a guardar una autorización de uso inmediato para la capa 7,
+debe llevar su propia condición de caducidad —«válida solo mientras el índice
+siga indicando que no existe una capa activa y que la capa 7 está en espera»— y
+decidir antes qué dominio se aborda primero, porque la capa 7 es «uno a la vez»,
+no un bloque.

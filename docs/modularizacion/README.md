@@ -42,7 +42,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 5 | Pagos y tipos de pago | Dominio financiero modularizado y protegido | **Cerrada**; SQL inline de 23 a 3, sin tocar la base | [05_PAGOS_TIPOS_PAGO.md](./05_PAGOS_TIPOS_PAGO.md) |
 | 6 | Asignaciones y estudiantes | Dominios grandes separados con contratos estables | **Cerrada**; SQL inline de 52 a 1, sin tocar la base | [06_ASIGNACIONES_ESTUDIANTES.md](./06_ASIGNACIONES_ESTUDIANTES.md) |
 | 7 | Resto de dominios — **`dashboard` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `dashboard` el 2026-08-19; publicada y verificada a mano | [07_DASHBOARD.md](./07_DASHBOARD.md) |
-| 7 | Resto de dominios — **`notas` en curso** | Migración individual con contratos y pruebas | **Activa** para `notas` desde el 2026-08-19; subcapa 7.0 pendiente y no iniciada. Los demás dominios, **en espera** | [07_NOTAS.md](./07_NOTAS.md) |
+| 7 | Resto de dominios — **`notas` en curso** | Migración individual con contratos y pruebas | **Activa** para `notas` desde el 2026-08-19; **7.0 cerrada**, 7.1 definida y pendiente. Los demás dominios, **en espera** | [07_NOTAS.md](./07_NOTAS.md) |
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
 cierre y el usuario ordene continuar, se crea su sucesora desde
@@ -763,6 +763,67 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   mismo tipo que el que la capa 4 limpió con autorización explícita; corregirlo
   es ajeno a una activación y queda registrado para que nadie lo lea como una
   decisión abierta.
+- Resultado de 7.0 de `notas`: el dominio quedó inventariado en **5 entradas
+  HTTP** repartidas en **cuatro archivos**, con **una sola tabla escrita**
+  —`notas_detalle`, solo `INSERT`—, **una sola transacción propia** y **9
+  sentencias SQL inline** —6 en el controlador, **3 en el servicio** y 0 en la
+  ruta—, protegido por **34 pruebas nuevas**. Los permisos usan **dos modelos**
+  en cinco entradas. La compuerta local terminó con **790 pruebas**, Ruff y
+  dependencias correctas. No se modificó producto: el diff es un solo archivo
+  nuevo.
+- **Los diez supuestos que la activación registró sin verificar quedaron
+  resueltos en 7.0**: nueve confirmados y **uno incompleto**. El dominio **no
+  eran dos archivos sino cuatro**: `app/services/nota_service.py` contiene **un
+  tercio de la persistencia**, y un inventario que se hubiera fiado del supuesto
+  lo habría dejado fuera. **El supuesto que mandaba quedó confirmado: `notas`
+  escribe**, así que su perfil de riesgo es el de la capa 5 y no el de
+  dashboard.
+- **Hay N+1 en `notas`**, el primero que el programa encuentra desde la capa 4:
+  `GET /boletin/detallado/{id}` emite **una consulta por materia**. Y escribir
+  una nota cuesta **cuatro conexiones**, cinco como profesor, porque las tres
+  validaciones abren cada una la suya. Ambas cosas se **registran sin actuar**:
+  la primera es trabajo del tipo de la capa 4 y la segunda de la auditoría de
+  capacidad de la capa 2.
+- **Los dos hallazgos más graves de 7.0 de `notas` no tienen equivalente en
+  dashboard, porque afectan a lo que el cliente recibe al escribir**:
+  `POST /notas` responde **200 con «Nota registrada» aunque no registre nada**
+  cuando falla una validación —el error viaja dentro del campo `id`—, y su campo
+  **`id` no es un entero sino un diccionario**, porque la ruta envuelve la
+  respuesta completa del controlador. **El frontend desplegado depende de lo que
+  hoy recibe**, así que cambiarlos no es una corrección interna.
+- **Los dos se verificaron con peticiones HTTP reales**, a petición explícita del
+  usuario y tras detectar que la primera comprobación solo llamaba a la función
+  de ruta y por tanto **nunca observaba un status code**. La verificación se hizo
+  conduciendo la aplicación por su **interfaz ASGI cruda**, porque `httpx` no
+  está instalado y una subcapa de inventario no cambia dependencias. El hallazgo
+  quedó **confirmado**, y el status code **fijado por aserción**. El contraste
+  que lo delimita: una `nota` fuera del rango 0..5 **sí** responde 422, así que
+  el problema no es FastAPI sino que **las tres validaciones propias del dominio
+  no usan su mecanismo de error**.
+- **Limitación de evidencia que esto destapó y que afecta a todo el programa**:
+  no existe **ni un solo `TestClient`** en `tests/`. Las capas 4 a 7 registraron
+  status codes en sus bitácoras a partir de pruebas que **solo invocan
+  funciones**, sin observar nunca una respuesta HTTP. `POST /notas` es hoy **la
+  única entrada del programa** con esa evidencia. No se revisa el resto —es
+  trabajo ajeno a la capa activa—, pero queda anotado que esa evidencia es más
+  débil de lo que las bitácoras sugieren.
+- Hallazgos de 7.0 de `notas`, **registrados y sin corregir**: son **doce**.
+  Además de los dos anteriores y del N+1, la escritura **no fija `periodo`**
+  mientras el boletín detallado **sí filtra por él** y las otras tres lecturas lo
+  ignoran; `validar_asignacion` **no filtra por `activo`**, tercera instancia del
+  patrón que dashboard registró dos veces, y aquí permite **escribir** contra una
+  asignación desactivada; `require_estudiante_access` tampoco lo filtra, aunque
+  vive en infraestructura compartida y queda fuera de alcance; el dominio **no
+  tiene un solo `try/except`**, así que un fallo sale como **500** y no como 400;
+  el boletín detallado **fabrica ids sintéticos por concatenación de cadenas**
+  que pueden colisionar con ids reales; y **la frontera no coincide con los
+  nombres de archivo**, porque `notas` posee `/boletin`, `/boletin/detallado` y
+  `/planilla`, sin colisión de paths pero con consecuencias para quien migre esos
+  dominios.
+- **`notas_detalle` es la tabla más compartida del programa hasta hoy**: la leen
+  **siete módulos**, tres de ellos ya migrados —asignaciones, dashboard y
+  estudiantes—. Romper un contrato ajeno desde `notas` **no haría fallar sus
+  propias pruebas**, solo la compuerta global.
 - El punto de decisión que quedó abierto al terminar 7.1, ya resuelto, era: la frontera de persistencia de
   dashboard ya está cerrada. Lo que queda del objetivo de la capa es la parte
   condicional del índice —`response_model`, errores de dominio y pruebas HTTP—,
@@ -896,16 +957,22 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
 - [07_NOTAS.md](./07_NOTAS.md): **bitácora ACTIVA** de la capa 7 para el dominio
   `notas`. Registra el commit base
   `eee8aec8725fc0bdd4a98fd2fd29cb88502c56e1`, la autorización del usuario, el
-  alcance limitado a un solo dominio, la decisión explícita de continuar
-  aceptando las verificaciones heredadas como pendientes, y **los diez supuestos
-  heredados marcados como NO VERIFICADOS** que su subcapa 7.0 debe resolver uno a
-  uno —empezando por si el dominio **escribe**, del que depende el perfil de
-  riesgo entero—. Fija el trabajo exacto de 7.0, sus criterios de cierre, las
-  invariantes y los riesgos, incluido que **la cifra es el contrato** en un
-  dominio de calificaciones donde el sistema ya usa **tres fórmulas de promedio
-  distintas**, y que dominios ya migrados leen estas tablas con contratos que
-  pueden romperse sin que falle una sola prueba de `notas`. **Es el documento
-  que un chat nuevo debe leer después de este índice.**
+  alcance limitado a un solo dominio y la decisión explícita de continuar
+  aceptando las verificaciones heredadas como pendientes. Conserva el inventario
+  de **7.0**, ya **cerrada**: sus 5 entradas HTTP en **cuatro** archivos con sus
+  dos modelos de permiso, la línea base de consultas **y conexiones** de diez
+  caminos, los **diez supuestos heredados resueltos** —nueve confirmados y uno
+  incompleto, el que daba el dominio por dos archivos— y los **doce hallazgos
+  sin corregir**, encabezados por el falso éxito de `POST /notas` y su campo
+  `id` anidado. Registra que **el dominio escribe**, así que su perfil de riesgo
+  es el de la capa 5; que **hay N+1**, el primero desde la capa 4; que la cifra
+  es el contrato y este dominio añade la **cuarta** fórmula de promedio; y que
+  `notas_detalle` la leen **siete módulos**, tres ya migrados, de modo que
+  romper un contrato ajeno no haría fallar las pruebas de `notas`. Deja
+  **7.1 definida y no iniciada**, con su punto de decisión propio: si las tres
+  consultas de `nota_service` van al repositorio, que **no tiene precedente
+  exacto**. **Es el documento que un chat nuevo debe leer después de este
+  índice.**
 - [07_DASHBOARD.md](./07_DASHBOARD.md): **bitácora cerrada** de la capa 7 para
   el dominio `dashboard`, y **fuente de continuidad**. Registra el commit base
   `123637ee80895023ecece9c32df526ef4eddd1e5`, la autorización y el marcador de

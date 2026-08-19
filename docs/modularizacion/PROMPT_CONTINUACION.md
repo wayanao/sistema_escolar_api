@@ -143,17 +143,22 @@ aplicarla, que uno de sus supuestos había quedado desfasado —el índice segu�
 declarando la capa 5 sin publicar cuando el reflog ya registraba el push—, y esa
 corrección documental se pidió y se autorizó por separado.
 
-## Estado del programa al 2026-08-17 (capa 7 activa: `dashboard` migrado)
+## Estado del programa al 2026-08-19 (capa 7 cerrada para `dashboard`)
 
 Lo que sigue es un resumen para orientarse; **el estado vivo está en
 `docs/modularizacion/README.md`**, que es lo que manda si algo no coincide.
 
-- Capas 0 a 6 **cerradas**. La **capa 7 está activa para el dominio
-  `dashboard`, y solo ese**, activada el 2026-08-17.
-- Sus dos subcapas, **7.0 y 7.1, están cerradas**, y el usuario decidió **cerrar
-  la capa ahí** sin abrir una 7.2 para `response_model`. **Lo único que falta es
-  la verificación manual**, definida en su bitácora y **no ejecutada**: hasta
-  entonces la capa **no se marca cerrada**.
+- Capas 0 a 6 **cerradas**. La **capa 7 quedó cerrada para el dominio
+  `dashboard`** el 2026-08-19. **No hay capa activa.**
+- Sus dos subcapas, **7.0 y 7.1**, están cerradas, y el usuario decidió **cerrar
+  la capa ahí** sin abrir una 7.2 para `response_model`. La **verificación manual
+  la ejecutó él el 2026-08-19, en local, completa y con resultado correcto**; el
+  artefacto se confirmó antes de registrarla y no había ambigüedad, porque `HEAD`
+  coincidía con `origin/main`. Limitación que sigue vigente: **fue local**, así
+  que nadie ha repetido el guion contra el despliegue.
+- **La capa está publicada y desplegada**: el reflog de `origin/main` registra
+  `update by push` de `8591816`, que arrastra sus cuatro commits. Producción ya
+  corre este código.
 - Resultado de la migración de `dashboard`: **7 entradas HTTP**, todas `GET` y
   todas de **solo lectura**, con **cero tablas escritas** y **cero transacciones
   propias**. `dashboard_controller.py` pasó de **336 a 146 líneas** y de **8
@@ -171,7 +176,13 @@ Lo que sigue es un resumen para orientarse; **el estado vivo está en
   académica **dos veces**. Es la evidencia real que le faltaba a la constante de
   capacidad de la capa 2, registrada **sin actuar**.
 - Siguiente paso del programa: **otro dominio de la capa 7**, en espera y sin
-  elegir. No se activa sin orden explícita.
+  elegir. No se activa sin orden explícita, y una instrucción genérica de
+  continuar no la autoriza.
+- **Cerrar la capa no canceló sus diez hallazgos.** Siguen vivos, y el primero
+  toca permisos: las dos precondiciones de `dashboard` no filtran por `activo`,
+  así que un profesor con la asignación desactivada conserva el acceso al
+  rendimiento de ese curso. Está en la lista de trabajo fuera de alcance, más
+  abajo.
 - La capa 6 cerró el 2026-08-17 modularizando asignaciones y estudiantes en cinco
   subcapas, cada dominio por separado: `estudiante_controller.py` pasó de **519 a
   381 líneas** y de 11 sentencias SQL inline a **0**; `asignacion_controller.py`

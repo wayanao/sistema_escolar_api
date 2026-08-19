@@ -1,6 +1,6 @@
 # Guía maestra de evolución segura del backend
 
-Última revisión: 2026-08-17.
+Última revisión: 2026-08-19.
 
 ## Propósito
 
@@ -41,18 +41,18 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 4 | Reportes financieros | Dominio modular, N+1 eliminado y consultas medidas | **Cerrada**; N+1 de 5N a 15 constantes, medido en producción | [04_REPORTES_FINANCIEROS.md](./04_REPORTES_FINANCIEROS.md) |
 | 5 | Pagos y tipos de pago | Dominio financiero modularizado y protegido | **Cerrada**; SQL inline de 23 a 3, sin tocar la base | [05_PAGOS_TIPOS_PAGO.md](./05_PAGOS_TIPOS_PAGO.md) |
 | 6 | Asignaciones y estudiantes | Dominios grandes separados con contratos estables | **Cerrada**; SQL inline de 52 a 1, sin tocar la base | [06_ASIGNACIONES_ESTUDIANTES.md](./06_ASIGNACIONES_ESTUDIANTES.md) |
-| 7 | Resto de dominios — **dominio activo: `dashboard`** | Migración individual con contratos y pruebas | **Activa** desde el 2026-08-17; 7.0 y 7.1 cerradas, cierre **supeditado a la verificación manual** | [07_DASHBOARD.md](./07_DASHBOARD.md) |
+| 7 | Resto de dominios — **`dashboard` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `dashboard` el 2026-08-19; publicada y verificada a mano. Los demás dominios, **en espera** | [07_DASHBOARD.md](./07_DASHBOARD.md) |
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
 cierre y el usuario ordene continuar, se crea su sucesora desde
 `PLANTILLA_CAPA.md`, se registra el commit base vigente y se actualiza esta
 tabla.
 
-Las capas 0 a 6 están cerradas. **La capa activa es la 7, para el dominio
-`dashboard` y solo ese**, activada el 2026-08-17 por orden explícita del
-usuario; su primera subcapa, 7.0, está pendiente y no iniciada. Los demás
-dominios de la capa 7 siguen en espera y cada uno necesitará su propia bitácora
-y su propia orden. La capa 3 es la única del programa
+Las capas 0 a 6 están cerradas. **La capa 7 quedó cerrada para el dominio
+`dashboard`** el 2026-08-19, con sus subcapas 7.0 y 7.1 completas y la
+verificación manual hecha. **No existe una capa activa.** Los demás dominios de
+la capa 7 siguen **en espera** y cada uno necesitará su propia bitácora y su
+propia orden; ninguno se activa sin orden explícita del usuario. La capa 3 es la única del programa
 que modificó la base
 de datos real, con autorización explícita del usuario para cada paso; la capa 4
 solo la leyó; las capas 5 y 6 **no la tocaron en absoluto**, pese a ser las que
@@ -687,10 +687,25 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   Compuerta de cierre: **exit 0 con 756 pruebas**. Su rollback es de código,
   revertir hasta `123637e`; ese base **ya está desplegado**, así que revertir
   exigiría push y despliegue.
-- **Lo único que falta para cerrar la capa es la verificación manual**, definida
-  en su bitácora y **no ejecutada**. Cerrar la capa **no cancela los diez
-  hallazgos de 7.0**, que siguen vivos, empezando por el `activo` ausente de las
-  dos precondiciones de permiso.
+- **Verificación manual de la capa 7: hecha por el usuario y correcta**, el
+  2026-08-19, **en local** y con cobertura completa del guion. El artefacto se
+  confirmó **antes** de registrarla: a diferencia de la capa 6 no había
+  ambigüedad, porque el árbol estaba limpio y `HEAD` coincidía con `origin/main`,
+  así que lo ejercitado en local y lo publicado son **el mismo commit**. La
+  limitación que queda es de **entorno**: nadie ha repetido el guion contra el
+  despliegue.
+- **Estado de publicación de la capa 7**: **publicada y desplegada**. El reflog de
+  `origin/main` registra `update by push` de `8591816`, que arrastra los
+  **cuatro** commits de la capa —`fb303d5`, `59efda6`, `c75a5b7` y `8591816`—.
+  Producción ya corre este código y el rollback a `123637e` exigiría otro push y
+  otro despliegue.
+- Capa 7 **cerrada para `dashboard`** el 2026-08-19. Compuerta de cierre: **exit 0
+  con 756 pruebas**, Ruff correcto y `pip check` íntegro. La suite pasó de 714 al
+  activar la capa a 756. Cerrarla **no cancela los diez hallazgos de 7.0**, que
+  siguen vivos, empezando por el `activo` ausente de las dos precondiciones de
+  permiso: un profesor con la asignación desactivada conserva el acceso.
+- Capa activa: **ninguna**. Siguiente paso: **otro dominio de la capa 7**, sin
+  elegir y en espera.
 - El punto de decisión que quedó abierto al terminar 7.1, ya resuelto, era: la frontera de persistencia de
   dashboard ya está cerrada. Lo que queda del objetivo de la capa es la parte
   condicional del índice —`response_model`, errores de dominio y pruebas HTTP—,
@@ -821,8 +836,8 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
 
 ## Archivos de continuidad
 
-- [07_DASHBOARD.md](./07_DASHBOARD.md): **bitácora activa** de la capa 7 para el
-  dominio `dashboard`. Registra el commit base
+- [07_DASHBOARD.md](./07_DASHBOARD.md): **bitácora cerrada** de la capa 7 para
+  el dominio `dashboard`, y **fuente de continuidad**. Registra el commit base
   `123637ee80895023ecece9c32df526ef4eddd1e5`, la autorización y el marcador de
   dominio que llegó sin rellenar, el alcance limitado a un solo dominio, las
   verificaciones heredadas aceptadas como pendientes y el riesgo propio de
@@ -835,8 +850,10 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   `dashboard_repository` con su comparador AST de **16 de 16** literales, las
   dos guardias que fallaron como señal esperada y la decisión sobre dónde viven
   las precondiciones de permiso. Deja abierto el **punto de decisión** que
-  cierra o prolonga la capa; **7.2 no está definida ni pendiente**.
-  **Es el documento que un chat nuevo debe leer después de este índice.**
+  cerró la capa sin abrir una 7.2, el cierre con su rollback, su staging, su
+  verificación manual y su estado de publicación, y los **riesgos que deja
+  abiertos**. **Es el documento que un chat nuevo debe leer después de este
+  índice.**
 - [06_ASIGNACIONES_ESTUDIANTES.md](./06_ASIGNACIONES_ESTUDIANTES.md): **bitácora
   cerrada** de la capa 6 y fuente de continuidad **hasta que se activó la capa
   7**. Registra el commit base

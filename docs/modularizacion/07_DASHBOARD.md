@@ -1,12 +1,12 @@
 # Capa 7: dashboard
 
-Última revisión: 2026-08-17.
+Última revisión: 2026-08-19.
 
 ## Control
 
-- Estado: **Activa** desde el 2026-08-17. Sus dos subcapas están cerradas y el
-  **cierre de la capa queda supeditado a la verificación manual**, que el
-  usuario decide si ejecuta, acepta como pendiente o deja abierta.
+- Estado: **Cerrada** el 2026-08-19, con sus dos subcapas **7.0 y 7.1**
+  completas y la **verificación manual ejecutada por el usuario con resultado
+  correcto**. Activada el 2026-08-17.
 - Commit base: `123637ee80895023ecece9c32df526ef4eddd1e5`.
 - Rama acordada: `main`.
 - Primera subcapa pendiente: **ninguna definida**. Las subcapas **7.0 y 7.1**
@@ -532,16 +532,31 @@ datos ni de SQL. Un despliegue prudente solo necesita comprobar que la
 aplicación arranca y que los siete paneles responden, que es lo que cubre la
 verificación manual.
 
-### Verificación manual: definida y **no ejecutada**
+### Verificación manual: **hecha y correcta**
 
 Es la única evidencia que no puede delegarse en un asistente, porque exige
 reconocer datos reales. En un panel de estadísticas eso es más cierto que en
 ningún otro dominio: **la cifra es el contrato**, y solo quien conoce el colegio
 sabe si un promedio cuadra.
 
-Guion propuesto, a ejecutar contra el artefacto que el usuario confirme —lección
-10 de la capa 5: hay que preguntar contra qué código se probó **antes** de
-registrarlo—:
+**Ejecutada por el usuario el 2026-08-19, en local, con resultado correcto y
+cobertura completa del guion.**
+
+**Artefacto verificado**: se confirmó expresamente **antes** de registrarla,
+conforme a la lección 10 de la capa 5. A diferencia de la capa 6, aquí **no había
+ambigüedad**: el árbol estaba limpio y `HEAD` coincidía con `origin/main` en
+`8591816`, así que el código ejercitado en local y el publicado son **el mismo
+commit**, y ese commit contiene la capa entera.
+
+**Limitación registrada, no disimulada**: la verificación fue **en local**. Que
+el commit sea el mismo que corre en producción no la convierte en una
+verificación del despliegue: no ejercita el endpoint agrupado de Neon, los
+timeouts reales, el proxy ni la latencia. Nadie ha repetido el guion contra el
+despliegue. Es aceptable aquí por lo que la capa es —una refactorización con SQL
+equivalente demostrado y sin ningún acceso a la base de datos—; no lo sería en
+una capa que cambiara comportamiento o tocara datos.
+
+Guion ejecutado:
 
 - **Cumpleaños, como admin**: abrir el panel y comprobar que salen los de los
   próximos 7 días, en orden de fecha; cambiar el rango de días y comprobar que la
@@ -596,8 +611,68 @@ Estado de los ocho criterios al 2026-08-17:
 | Staging, rollback y verificación manual documentados | **Cumplido** el documentarlos; el rollback **no** necesita cubrir archivos porque 7.0 demostró que el dominio no los escribe |
 | Índice actualizado y ningún dominio activado | **Cumplido** |
 
-**Falta una sola cosa para cerrar: ejecutar la verificación manual**, o que el
-usuario la acepte explícitamente como pendiente. No se marca como cumplida.
+**Los ocho criterios quedan resueltos.** La verificación manual, que era lo
+único que faltaba, la ejecutó el usuario el 2026-08-19 con resultado correcto.
+
+## Cierre de la capa 7 para `dashboard`
+
+### Resultado frente a su objetivo
+
+El índice le pedía migrar el dominio con contratos y pruebas, priorizando uno a
+la vez, añadiendo `response_model` y errores de dominio **solo después** de
+caracterizar y conservar la respuesta, y sin crear abstracciones compartidas sin
+dos consumidores reales.
+
+| Objetivo | Resultado |
+|---|---|
+| Migrar el dominio con contratos y pruebas | `dashboard_controller.py` pasó de **336 a 146 líneas** y de **8 sentencias SQL inline a 0**; la persistencia vive en `dashboard_repository`, **ocho funciones** que reciben el cursor más dos fragmentos. **42 pruebas de caracterización** nuevas fijan payloads, permisos por rol, conteos de consultas **y de conexiones**, ciclo de vida y fórmulas de cálculo |
+| Un dominio a la vez | **Cumplido**: el diff no toca ningún otro dominio. Los demás siguen en espera, cada uno con su propia bitácora pendiente |
+| `response_model` solo tras caracterizar | **No se añadió**, por decisión explícita del usuario. No queda como deuda de la capa: es trabajo disponible que exigiría una orden |
+| Sin abstracciones sin dos consumidores | **Cumplido**: el repositorio por módulo es la convención de `app/repositories/README.md`, con cuatro precedentes |
+
+La suite pasó de **714 a 756** pruebas. Compuerta de cierre: **exit 0 con 756
+pruebas**, Ruff correcto y `pip check` íntegro.
+
+### Lo que esta capa NO hizo
+
+- **No tocó la base de datos**, ni siquiera para leer. Es la tercera capa
+  consecutiva que no abre una sola conexión a PostgreSQL, después de la 5 y la 6.
+- **No tocó archivos.** 7.0 lo demostró con prueba: solo branding y plan de
+  clases usan `storage`.
+- No cambió rutas, payloads, status codes, permisos, tenant, ownership,
+  transacciones, timeouts, dependencias ni configuración.
+- **No corrigió ninguno de los diez hallazgos** de 7.0. Siguen vivos.
+- **No necesitó autorizar ni un solo cambio de texto SQL**, como la capa 6.
+
+### Estado de publicación
+
+**Publicada y desplegada.** El reflog de `origin/main` registra `update by push`
+de `8591816`, que arrastra los **cuatro** commits de la capa —`fb303d5`,
+`59efda6`, `c75a5b7` y `8591816`—. Como un push a `main` dispara el despliegue,
+**producción ya corre este código**, y el rollback a `123637e` exigiría otro push
+y otro despliegue.
+
+Las líneas fechadas del registro de ejecución que dicen «sin publicar» describen
+el estado de su momento y **se conservan intactas**: eran ciertas entonces.
+
+### Riesgos que la capa deja abiertos
+
+- **Las dos precondiciones de permiso ignoran `activo`**: un profesor con la
+  asignación desactivada conserva el acceso al rendimiento de ese curso. Es el
+  riesgo más directo que deja esta capa, y **toca permisos**, así que corregirlo
+  exige una decisión explícita.
+- Las **siete entradas** devuelven 400 con el texto de la excepción, sin
+  registrar nada.
+- **Dos definiciones distintas de promedio** en el mismo panel, y una tercera en
+  estudiantes.
+- Hasta **cuatro conexiones por petición** en el camino más caro, con la
+  asignación académica resuelta dos veces. Pertenece a la auditoría de capacidad
+  de la capa 2.
+- El resto de los diez hallazgos de 7.0, más `response_model` sin añadir.
+- Heredados: calibración de `DB_STATEMENT_TIMEOUT_MS` de la capa 1, ausencia de
+  evidencia de GitHub Actions desde la capa 0, la credencial privilegiada de la
+  capa 4 sin rotar, los hallazgos abiertos de las capas 5 y 6 —incluida la clave
+  de idempotencia y la ausencia de lock frente a horarios solapados—.
 
 ## Decisiones
 
@@ -952,24 +1027,60 @@ usuario la acepte explícitamente como pendiente. No se marca como cumplida.
   acepta como pendiente.
 - Siguiente acción exacta: obtener del usuario el resultado de la verificación
   manual o su aceptación explícita como pendiente. Solo entonces marcar la capa
-  cerrada. **No activar ningún otro dominio.**
+  cerrada. **No activar ningún otro dominio.** *(Obtenido el 2026-08-19; ver el
+  cierre más abajo.)*
+
+### 2026-08-19 — cierre de la capa 7 para `dashboard`
+
+Con la verificación manual ejecutada, la capa queda cerrada.
+
+- Modo de acceso: mismo checkout local; Git validado directamente en
+  `C:\Users\David\Documents\sistema_escolar_api`.
+- Precondición Git: rama `main`, **árbol limpio**, `HEAD` `8591816`, el commit de
+  preparación del cierre que el usuario hizo entre turnos. El commit base
+  `123637e` existe y es ancestro, y los **cuatro** commits posteriores están
+  explicados en esta bitácora.
+- **Hecho nuevo detectado en este turno**: el usuario **publicó la capa**.
+  `origin/main` está en `8591816` y el reflog lo registra como `update by push`.
+  Producción ya corre este código. Se comprobó **antes** de registrar nada, y no
+  se dio por supuesto.
+- **Verificación manual**: el usuario informó primero «ya ejecuté las pruebas del
+  dashboard», una frase que admite dos lecturas —`pytest` o el guion manual—. Se
+  preguntó **antes** de registrarla, conforme a la lección 10 de la capa 5, y
+  confirmó: **prueba manual del dashboard, en local, cobertura completa y
+  resultado correcto**. No se infirió ni el tipo, ni el artefacto, ni el
+  resultado.
+- Artefacto: sin ambigüedad, a diferencia de la capa 6. Árbol limpio y `HEAD`
+  igual a `origin/main`, así que el código ejercitado en local y el desplegado
+  son **el mismo commit**. La limitación que queda es de **entorno**, no de
+  artefacto: nadie ha repetido el guion contra el despliegue.
+- Archivos modificados en este turno: esta bitácora,
+  `docs/modularizacion/README.md` y `docs/modularizacion/PROMPT_CONTINUACION.md`.
+  **Código de producto y pruebas: ninguno.**
+- PostgreSQL, migraciones, producción, commit, push y deploy: **ninguno por parte
+  del asistente**, ni en este turno ni en toda la capa. La publicación la hizo el
+  usuario.
+- Estado: **capa 7 cerrada para el dominio `dashboard`**. Los demás dominios de
+  la capa 7 quedan **en espera** y **ninguno fue activado**.
+- Siguiente acción exacta: esperar una orden explícita del usuario. Una
+  instrucción genérica de continuar no autoriza activar otro dominio.
 
 ## Entrega al próximo chat
 
 - Capa activa: **7, dashboard**, y solo ese dominio. Activada el 2026-08-17.
-- Última subcapa terminada: **7.1**, cerrada el 2026-08-17. Con ella **la
-  frontera de persistencia del dominio queda cerrada**.
-- Primera subcapa pendiente: **ninguna.** El usuario decidió el 2026-08-17
-  **cerrar la capa aquí**, sin abrir 7.2: `response_model` y los errores de
-  dominio **no se añaden** y no quedan como deuda de esta capa.
-- **Lo único que falta para cerrar es la verificación manual**, definida en esta
-  bitácora y **no ejecutada**. Hasta que el usuario la ejecute o la acepte
-  explícitamente como pendiente, la capa **no se marca cerrada**.
+- Última subcapa terminada: **7.1**, cerrada el 2026-08-17. Con ella la
+  frontera de persistencia del dominio quedó cerrada.
+- **Capa cerrada** el 2026-08-19. La verificación manual la ejecutó el usuario
+  ese día, en local, completa y con resultado **correcto**. No quedan bloqueos.
+- Primera subcapa pendiente: **ninguna.** El usuario decidió **cerrar la capa
+  aquí**, sin abrir 7.2: `response_model` y los errores de dominio **no se
+  añaden** y no quedan como deuda de esta capa, sino como trabajo que exigiría
+  una orden explícita.
 - Commit base: `123637ee80895023ecece9c32df526ef4eddd1e5`, rama `main`,
-  **publicado y desplegado**. Al preparar el cierre, `HEAD` es `c75a5b7` y hay
-  **tres commits locales por delante de `origin/main`** —activación, cierre de
-  7.0 y extracción de 7.1—, **sin publicar**. Producción sigue corriendo el
-  commit base.
+  **publicado y desplegado**. Al cerrar la capa, `HEAD` es `8591816` y **coincide
+  con `origin/main`**: los cuatro commits de la capa **están publicados**, y como
+  un push a `main` dispara el despliegue, **producción ya corre este código**. El
+  rollback a `123637e` exigiría otro push y otro despliegue.
 - Compuerta de cierre: **756 pruebas, exit 0**, Ruff correcto y `pip check`
   íntegro. La suite pasó de 714 al activar la capa a 756.
 - Bloqueos: ninguno. Verificaciones heredadas **pendientes y aceptadas**: valor
@@ -1013,8 +1124,9 @@ usuario la acepte explícitamente como pendiente. No se marca como cumplida.
   6. **Las dos precondiciones viven en `dashboard_repository` a propósito**, no
      en `asignaciones_repository`, para que nadie «arregle» su falta de `activo`
      por vecindad. La decisión y su evidencia están en Decisiones.
-- Siguiente acción exacta: obtener del usuario **el resultado de la verificación
-  manual**, o su aceptación explícita de dejarla pendiente. Solo entonces marcar
-  la capa cerrada y actualizar el índice. **No activar ningún otro dominio de la
-  capa 7 sin orden explícita**: una instrucción genérica de continuar no la
-  autoriza.
+- Siguiente acción exacta: **esperar una orden explícita del usuario**. La capa 7
+  sigue teniendo dominios en espera —`notas`, `boletin`, `asistencia`,
+  `observaciones`, `planilla`, `planeador_anual`, `plan_de_clases`, `ventas`,
+  `branding`— y **ninguno se activa sin orden**. Una instrucción genérica de
+  continuar no la autoriza. `PROMPT_CONTINUACION.md` conserva una autorización
+  preparada que exige rellenar el nombre del dominio antes de pegarla.

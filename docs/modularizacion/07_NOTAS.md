@@ -7,8 +7,11 @@
 - Estado: **Activa** desde el 2026-08-19.
 - Commit base: `eee8aec8725fc0bdd4a98fd2fd29cb88502c56e1`.
 - Rama acordada: `main`.
-- Primera subcapa pendiente: **7.1**, la extracción de la persistencia. La
-  subcapa **7.0 quedó cerrada** el 2026-08-19.
+- Primera subcapa pendiente: **ninguna definida**. Las subcapas **7.0 y 7.1**
+  quedaron **cerradas** el 2026-08-19. Con 7.1 la frontera de persistencia del
+  dominio queda cerrada. Lo que sigue exige una **decisión del usuario**: cerrar
+  la capa como refactorización pura, igual que hizo dashboard, o abrir una 7.2.
+  Ver «Punto de decisión abierto».
 - Código de producto modificado al activar: **ninguno**. Tampoco en 7.0: su diff
   es **un solo archivo de prueba nuevo** y ningún archivo rastreado modificado,
   igual que los de 5.0, 6.0 y 7.0 de dashboard.
@@ -244,8 +247,8 @@ dashboard. La suite pasó de **756 a 790** con la caracterización de 7.0.
 | Subcapa | Resultado | Estado |
 |---:|---|---|
 | 7.0 | Inventario, contratos, caracterización y línea base de consultas y conexiones | **Cerrada** |
-| 7.1 | Extraer la persistencia a `notas_repository` sin cambiar SQL, conteos ni ciclo de vida | **Pendiente**, definida y no iniciada |
-| 7.2 y siguientes | **Sin decidir** | Se deciden con el resultado de 7.1 |
+| 7.1 | Extraer la persistencia a `notas_repository` sin cambiar SQL, conteos ni ciclo de vida | **Cerrada** |
+| 7.2 | `response_model` y errores de dominio, **si el usuario los autoriza** | **Sin decidir**: es un punto de decisión, no una subcapa pendiente |
 
 El desglose se dejó deliberadamente sin decidir hasta tener la evidencia del
 inventario, igual que hicieron la capa 6 y la 7 para dashboard. Con esa
@@ -513,6 +516,62 @@ capas 5, 6 y 7 dejaron probado cuatro veces.
 11. Ejecutar pruebas específicas, Ruff del alcance, compuerta global y
     `git diff --check`; documentar y detenerse antes de decidir 7.2.
 
+## Resultado de 7.1
+
+Las **9 sentencias** salieron a `app/repositories/notas_repository.py`, **nueve
+funciones** que reciben el cursor existente. `notas_controller.py` pasó de **273
+a 170 líneas** y de **6 sentencias SQL inline a 0**; `nota_service.py` de **46 a
+31** y de **3 a 0**; la ruta seguía teniendo 0. El repositorio es el **séptimo**
+del proyecto.
+
+El comparador AST **contra el commit base de la capa**, `eee8aec`, confirmó **9
+literales SQL distintos antes y 9 después, conjunto idéntico**, ninguno perdido
+y ninguno nuevo, con **9 de 9 conservados byte a byte**, y **9 puntos de llamada
+antes y después**. **No hizo falta autorizar ningún cambio de texto SQL**, igual
+que en la capa 6 y en la 7 de dashboard.
+
+**Las tres guardias de línea base que 7.0 dejó puestas fallaron al extraer**,
+que era la señal esperada —lección 14 de la capa 6, aplicada por tercera vez—, y
+solo esas tres: las otras **49 pruebas pasaron sin cambiar de expectativa**,
+incluidos los diez conteos de consultas y conexiones y **las cinco pruebas de
+contrato HTTP por ASGI**. Se sustituyeron por cuatro versiones positivas.
+
+**Los conteos no cambiaron**: `POST /notas` sigue costando 4 conexiones y 5 como
+profesor, y el boletín detallado sigue siendo 1+N. Era la condición que hacía
+inviable unificar las validaciones en un solo cursor.
+
+## Punto de decisión abierto
+
+**La frontera de persistencia de `notas` ya está cerrada**: ni el controlador ni
+el servicio ni la ruta tienen SQL, y el repositorio existe. Lo que queda del
+objetivo que el índice fijó para la capa 7 es la parte condicional: «agregar
+`response_model`, errores de dominio y pruebas HTTP o de integración **solo
+después de caracterizar y conservar la respuesta existente**».
+
+Esa parte **no se inicia por inferencia**. Y aquí el dilema es **más agudo que
+en dashboard**, porque este dominio tiene dos hallazgos que `response_model` y
+los errores de dominio tocarían de lleno:
+
+- `POST /notas` responde **200 «Nota registrada» aunque no registre nada**;
+- su campo **`id` es un diccionario**, no un entero.
+
+Declarar un `response_model` para esa entrada **obligaría a decidir cuál de las
+dos formas es el contrato**, y convertir las validaciones en errores de dominio
+**cambiaría el status code de 200 a 4xx**. Las dos cosas son exactamente lo que
+el frontend desplegado consume hoy.
+
+Las salidas legítimas son tres:
+
+- **cerrar la capa aquí**, como refactorización pura, igual que la 5, la 6 y la
+  7 de dashboard, dejando los doce hallazgos vivos y registrados;
+- **abrir una 7.2 conservadora** que añada `response_model` a las **cuatro
+  entradas de lectura** y deje `POST /notas` intacta, demostrando payload por
+  payload que la respuesta no cambia;
+- **abrir una 7.2 que corrija el contrato de la escritura**, lo que **ya no
+  sería una refactorización** y exigiría coordinar con el frontend.
+
+Es decisión del usuario y **no está tomada**.
+
 ## Criterios de cierre de la capa
 
 - Todas las subcapas necesarias están cerradas o marcadas `No aplica` con
@@ -583,6 +642,38 @@ capas 5, 6 y 7 dejaron probado cuatro veces.
   caracterizadas por llamada directa, como el resto de la suite. Extender el
   patrón a todo el dominio sería ampliar el alcance sin que ningún hallazgo lo
   exija; `POST /notas` lo exigía porque **su status code es el hallazgo**.
+- **Las tres consultas de `nota_service` van a `notas_repository`, decidido en
+  7.1 con evidencia.** Era el punto sin precedente de esta subcapa: hasta ahora
+  el SQL a extraer vivía en controladores, no en servicios. Van al repositorio
+  porque son persistencia del dominio y dejarlas fuera habría cerrado la
+  frontera solo en dos tercios. **Y van al de `notas`, no a
+  `asignaciones_repository` ni a `estudiantes_repository`**, aunque consulten
+  esas tablas y ambos repositorios existan: es el criterio que 7.1 de dashboard
+  fijó y que aquí aplica con más fuerza todavía, porque **`buscar_asignacion` no
+  filtra por `activo`** y sus vecinas allí sí, de modo que ponerla al lado
+  invitaría a "arreglarla" —el hallazgo que esta capa tiene prohibido corregir—;
+  además `buscar_estudiante_en_curso_de_asignacion` **cruza las dos tablas**, así
+  que no pertenece a ninguno de los dos en exclusiva, y llevarlas allí ampliaría
+  el diff a módulos que la capa 6 cerró.
+- **`nota_service` conserva la propiedad de su conexión y no desaparece.** Cada
+  una de sus tres funciones sigue abriendo su propio `get_cursor()` y ahora
+  delega solo el SQL. Alternativa descartada: que el controlador abriera un
+  único cursor y lo pasara a las tres validaciones, que habría bajado las
+  conexiones de `POST /notas` de **4 a 1**. Es una mejora real, pero **cambiaría
+  los conteos que 7.0 fijó por aserción** y el trabajo exacto de 7.1 lo prohíbe
+  expresamente. Queda como trabajo disponible, no como deuda de esta subcapa.
+- **Es la primera vez en el programa que el dueño del cursor no es un
+  controlador.** La invariante que importa se conserva —el repositorio recibe el
+  cursor y no es dueño de ningún recurso—, pero quien lo abre es un servicio.
+  Se registra porque rompe una regularidad de las capas 4 a 7 y una prueba nueva
+  fija que el repositorio no importa nada ni toca el ciclo de vida.
+- **La guardia de dashboard se actualizó en vez de debilitarse.** Enumera el
+  conjunto exacto de repositorios y por eso se disparó al añadir el séptimo. Se
+  le añadió `notas_repository` conservando su severidad, más una aserción
+  explícita de que el de dashboard sigue existiendo, que es lo que la prueba
+  protege. Alternativa descartada: relajarla a «contiene dashboard_repository»,
+  que la habría vuelto insensible a futuras migraciones; **su severidad es
+  deliberada** y obliga a reconocer cada dominio nuevo.
 
 ## Riesgos
 
@@ -816,20 +907,110 @@ capas 5, 6 y 7 dejaron probado cuatro veces.
 - Siguiente acción exacta: ejecutar únicamente 7.1, la extracción de la
   persistencia a `notas_repository`, y detenerse antes de decidir 7.2. **El
   punto que exige decisión con evidencia dentro de 7.1 es si las tres consultas
-  de `nota_service` van al repositorio.**
+  de `nota_service` van al repositorio.** *(Ejecutada en el turno siguiente; ver
+  el cierre de 7.1 más abajo.)*
+
+### 2026-08-19 — cierre de 7.1
+
+- Modo de acceso: mismo checkout local en
+  `C:\Users\David\Documents\sistema_escolar_api`; Git validado directamente y
+  comprobado con `git rev-parse --show-toplevel` antes de nada.
+- Precondición Git: rama `main`, **árbol limpio**, `HEAD`
+  `a8bcf0a8201896458e322a17d0c70969364da3c1`, el cierre de 7.0 que el usuario
+  commiteó entre turnos. El commit base `eee8aec` existe y es ancestro;
+  `origin/main` sigue en el base, así que hay **dos commits locales por delante,
+  sin publicar**, ambos explicados aquí.
+- Alcance inspeccionado y modificado: los cuatro archivos del dominio y el
+  repositorio nuevo. Se leyeron además, **solo para seguir el patrón y sin
+  modificarlos**, `app/repositories/README.md` y la cabecera y dos funciones de
+  `dashboard_repository`. **No se inspeccionó ningún otro dominio.**
+- Archivos de producto: `app/controllers/notas_controller.py`,
+  `app/services/nota_service.py` y el nuevo
+  `app/repositories/notas_repository.py`. Pruebas modificadas:
+  `tests/test_notas_caracterizacion.py` y —por la consecuencia registrada más
+  abajo— `tests/test_dashboard_caracterizacion.py`.
+- **Decisión tomada con evidencia antes de mover**, que era el punto que 7.1
+  tenía marcado como sin precedente: **las tres consultas de `nota_service` van
+  al repositorio**, y van a `notas_repository`. Ver Decisiones.
+- Implementación: **nueve funciones** que reciben el cursor existente cubren los
+  nueve puntos de llamada. El controlador pasó de **273 a 170 líneas** y el
+  servicio de **46 a 31**; ninguno contiene ya SQL.
+- Técnica usada para no alterar el texto: las cadenas **no se transcribieron a
+  mano**. Un script extrajo cada literal por su **rango exacto de código
+  fuente** —`lineno`, `col_offset`, `end_lineno`, `end_col_offset` del nodo AST—
+  y generó el repositorio con esos trozos verbatim, así que cada cadena viaja
+  con su sangría original. Es la lección 17, aplicada por segunda vez.
+- Equivalencia SQL verificada con el comparador AST **contra el commit base de
+  la capa**, `eee8aec`, excluyendo docstrings: **9 literales SQL distintos antes
+  y 9 después, conjunto idéntico**, ninguno perdido y ninguno nuevo, **9 de 9
+  byte a byte**, y **9 puntos de llamada antes y después**. Ninguna autorización
+  de cambio de SQL fue necesaria.
+- **Señales esperadas, producidas y atendidas**: las tres guardias que 7.0 había
+  escrito sobre la línea base previa a la extracción —seis sentencias en el
+  controlador, tres en el servicio y ningún repositorio de notas— **fallaron**,
+  y solo esas tres. Las otras **49 pruebas pasaron sin cambiar de expectativa**,
+  incluidos los diez conteos y las cinco de contrato HTTP. Se sustituyeron por
+  **cuatro** versiones positivas, que fijan que el SQL vive solo en el
+  repositorio, que este es el séptimo, que sus nueve funciones públicas reciben
+  el cursor y que **no importa nada ni llama a otro método que `execute`,
+  `fetchone` y `fetchall`**.
+- **Consecuencia fuera del dominio, detectada por la compuerta global y no por
+  las pruebas de `notas`**: `tests/test_dashboard_caracterizacion.py` tenía una
+  guardia que enumera el conjunto **exacto** de repositorios del proyecto, y
+  añadir el séptimo la hizo fallar. **No es una rotura de contrato**: dashboard
+  sigue teniendo el suyo. Se añadió `notas_repository` al conjunto esperado, se
+  conservó la aserción explícita de que el de dashboard existe y se documentó en
+  su docstring que **esa guardia se disparará en cada migración futura**, que es
+  precisamente su función. Es el riesgo que 7.0 había registrado —que una rotura
+  ajena no aparecería en las pruebas del dominio— materializado y atendido.
+- **Error propio, detectado y corregido dentro de la subcapa**: la herramienta
+  de edición dejó `notas_controller.py` **entero en CRLF**, donde el repositorio
+  usa LF. Es el mismo error que cometió 7.1 de dashboard. Se detectó **leyendo
+  bytes**, no con `grep` —lección 19—, se normalizó a LF y se repitieron el
+  comparador, las pruebas y la compuerta.
+- Conteos conservados: los diez caminos que 7.0 fijó siguen costando lo mismo,
+  incluidos los de **4 y 5 conexiones** de la escritura y el **1+N** del boletín
+  detallado. Los de las capas 4 y 7 de dashboard no se tocan.
+- Pruebas específicas: **53 pasaron** sobre los tres archivos del dominio. Ruff
+  del alcance: **correcto**.
+- Compuerta global final: `.\venv\Scripts\python.exe scripts\verify.py`;
+  **791 pruebas pasaron**, 5 warnings heredadas, Ruff correcto, `pip check`
+  íntegro y exit 0. La suite pasó de 790 a 791.
+- Revisión final: `git diff --check` en exit 0. El diff contiene cinco archivos:
+  tres de producto —dos modificados y el repositorio nuevo— y dos de prueba. No
+  hubo cambios en rutas, payloads, status codes, permisos, tenant, ownership,
+  transacciones, timeouts, dependencias ni configuración.
+- PostgreSQL, migraciones, producción, commit, push y deploy: **ninguno**. La
+  evidencia de GitHub Actions posterior a la capa 0 continúa pendiente y no se
+  atribuye CI remota.
+- Estado: 7.1 **cerrada**. La frontera de persistencia del dominio queda
+  cerrada.
+- Siguiente acción exacta: **pedir al usuario la decisión** entre cerrar la capa
+  como refactorización pura o abrir una 7.2, que aquí tiene **dos variantes**
+  porque el contrato de la escritura está en juego. No se inicia ninguna sin
+  orden explícita.
 
 ## Entrega al próximo chat
 
 - Capa activa: **7, `notas`**, y solo ese dominio. Activada el 2026-08-19.
-- Última subcapa terminada: **7.0**, cerrada el 2026-08-19.
-- Primera subcapa pendiente: **7.1**, la extracción de la persistencia a
-  `notas_repository`. **Definida y no iniciada.**
+- Última subcapa terminada: **7.1**, cerrada el 2026-08-19. Con ella la frontera
+  de persistencia del dominio quedó cerrada.
+- Primera subcapa pendiente: **ninguna definida.** Lo que sigue es un **punto de
+  decisión del usuario**, con **tres salidas** y no dos, porque el contrato de
+  la escritura está en juego. Ver «Punto de decisión abierto».
 - Commit base: `eee8aec8725fc0bdd4a98fd2fd29cb88502c56e1`, rama `main`,
-  **publicado y desplegado**. Al cerrar 7.0, `HEAD` es `a56d55f` y hay **un
-  commit local por delante de `origin/main`**, la activación, más el trabajo de
-  7.0 sin commitear.
-- Compuerta al cerrar 7.0: **790 pruebas, exit 0**, Ruff correcto y `pip check`
-  íntegro. La suite pasó de 756 a 790.
+  **publicado y desplegado**. Al cerrar 7.1, `HEAD` es `a8bcf0a` y hay **dos
+  commits locales por delante de `origin/main`** —la activación y el cierre de
+  7.0—, más el trabajo de 7.1 sin commitear.
+- Compuerta al cerrar 7.1: **791 pruebas, exit 0**, Ruff correcto y `pip check`
+  íntegro. La suite pasó de 756 al activar la capa a 791.
+- Lo que consiguió 7.1: `notas_controller.py` pasó de **273 a 170 líneas** y de
+  **6 sentencias SQL inline a 0**; `nota_service.py` de **46 a 31** y de 3 a 0;
+  la persistencia vive en `app/repositories/notas_repository.py`, **nueve
+  funciones** que reciben el cursor. Comparador AST contra el commit base:
+  **conjunto de SQL idéntico, 9 de 9 literales byte a byte**, sin una sola
+  autorización de cambio de texto. **Ninguna prueba cambió de expectativa salvo
+  las tres guardias que debían fallar.**
 - Bloqueos: ninguno. Verificaciones heredadas **pendientes y aceptadas** por
   decisión explícita del usuario: valor operativo final de
   `DB_STATEMENT_TIMEOUT_MS` (capa 1) y evidencia de GitHub Actions posterior a la
@@ -855,15 +1036,21 @@ capas 5, 6 y 7 dejaron probado cuatro veces.
      primeros: `POST /notas` responde «Nota registrada» aunque no registre nada,
      y su campo `id` es un diccionario. **Los dos son contrato observable del
      que depende el frontend desplegado.**
-  4. **El punto que 7.1 debe decidir con evidencia** es si las tres consultas de
-     `nota_service` van al repositorio. No tiene precedente exacto: hasta ahora
-     el SQL a extraer vivía en controladores, no en servicios.
-  5. **No tocar el N+1** del boletín detallado ni las cuatro conexiones del
-     alta. Son trabajo de las capas 4 y 2 respectivamente.
-  6. **`notas_detalle` la leen siete módulos**, tres ya migrados. Romper un
+  4. **No tocar el N+1** del boletín detallado ni las cuatro conexiones del
+     alta. Son trabajo de las capas 4 y 2 respectivamente, y 7.1 dejó registrado
+     que reducirlas a una sola conexión es viable pero **cambiaría los conteos
+     fijados por aserción**.
+  5. **`notas_detalle` la leen siete módulos**, tres ya migrados. Romper un
      contrato ajeno **no haría fallar las pruebas de `notas`**: solo la
-     compuerta global. Ejecutarla siempre completa.
-  7. **La cifra es el contrato**, y este dominio añade la **cuarta** fórmula de
+     compuerta global. Ejecutarla siempre completa. En 7.1 esto **ya ocurrió**,
+     con una guardia de dashboard.
+  6. **La cifra es el contrato**, y este dominio añade la **cuarta** fórmula de
      promedio del sistema: `round(..., 2)` en Python.
-- Siguiente acción exacta: ejecutar **7.1 de `notas`**, y detenerse antes de
-  decidir 7.2. No iniciar dos subcapas en el mismo turno.
+  7. **Las tres validaciones viven en `notas_repository` a propósito**, no en
+     `asignaciones_repository` ni `estudiantes_repository`, para que nadie
+     «arregle» por vecindad el `activo` que falta. La decisión y su evidencia
+     están en Decisiones.
+  8. **`nota_service` sigue siendo dueño de sus tres conexiones.** Es la primera
+     vez en el programa que el dueño del cursor no es un controlador.
+- Siguiente acción exacta: **esperar la decisión del usuario** entre las tres
+  salidas del punto de decisión. No se inicia ninguna sin orden explícita.

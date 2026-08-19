@@ -1,4 +1,5 @@
 from app.database import get_cursor
+from app.repositories import notas_repository
 from app.services.asignacion_academica import resolver_asignacion_academica_id_cursor
 
 # 👇 IMPORTAMOS SERVICES
@@ -27,23 +28,13 @@ def crear_nota_controller(nota):
         asignacion_id = resolver_asignacion_academica_id_cursor(cursor, nota.asignacion_id)
 
         # 🧠 Insertar nota
-        cursor.execute("""
-            INSERT INTO notas_detalle (
-                estudiante_id,
-                asignacion_id,
-                nota,
-                descripcion
-            )
-            VALUES (%s, %s, %s, %s)
-            RETURNING id
-        """, (
+        nota_id = notas_repository.insertar_nota(
+            cursor,
             nota.estudiante_id,
             asignacion_id,
             nota.nota,
             nota.descripcion
-        ))
-
-        nota_id = cursor.fetchone()[0]
+        )
 
     return {"mensaje": "Nota creada", "id": nota_id}
 
@@ -52,15 +43,7 @@ def crear_nota_controller(nota):
 def notas_estudiante_controller(estudiante_id):
 
     with get_cursor() as cursor:
-        cursor.execute("""
-            SELECT
-                nd.nota,
-                nd.descripcion
-            FROM notas_detalle nd
-            WHERE nd.estudiante_id = %s
-        """, (estudiante_id,))
-
-        resultado = cursor.fetchall()
+        resultado = notas_repository.leer_notas_de_estudiante(cursor, estudiante_id)
 
     # 📊 Calcular promedio
     total = 0
@@ -86,40 +69,7 @@ def notas_estudiante_controller(estudiante_id):
 def boletin_estudiante_controller(estudiante_id):
 
     with get_cursor() as cursor:
-        cursor.execute("""
-            WITH asignaciones_academicas AS (
-                SELECT DISTINCT ON (COALESCE(a.asignacion_academica_id, a.id))
-                    COALESCE(a.asignacion_academica_id, a.id) AS id,
-                    a.curso_id,
-                    a.materia_id,
-                    COALESCE(a.orden_boletin, 100) AS orden_boletin
-                FROM asignaciones a
-                WHERE a.activo = TRUE
-                ORDER BY COALESCE(a.asignacion_academica_id, a.id), COALESCE(a.orden_boletin, 100), a.id
-            )
-            SELECT
-                e.nombre,
-                e.apellido,
-                c.nombre AS curso,
-                m.nombre AS materia,
-                COALESCE(AVG(nd.nota), 0) AS promedio_materia
-
-            FROM estudiantes e
-            JOIN cursos c ON e.curso_id = c.id
-            JOIN asignaciones_academicas a ON a.curso_id = c.id
-            JOIN materias m ON a.materia_id = m.id
-
-            LEFT JOIN notas_detalle nd
-                ON nd.estudiante_id = e.id
-                AND nd.asignacion_id = a.id
-
-            WHERE e.id = %s
-
-            GROUP BY e.nombre, e.apellido, c.nombre, m.nombre, a.orden_boletin
-            ORDER BY a.orden_boletin, m.nombre
-        """, (estudiante_id,))
-
-        resultado = cursor.fetchall()
+        resultado = notas_repository.leer_boletin_de_estudiante(cursor, estudiante_id)
 
     if not resultado:
         return {"mensaje": "Estudiante no encontrado"}
@@ -155,33 +105,7 @@ def planilla_asignacion_controller(asignacion_id):
     with get_cursor() as cursor:
         asignacion_id = resolver_asignacion_academica_id_cursor(cursor, asignacion_id)
 
-        cursor.execute("""
-            SELECT
-                e.id,
-                e.nombre,
-                e.apellido,
-                m.nombre AS materia,
-                c.nombre AS curso,
-                COALESCE(AVG(nd.nota), 0) AS promedio
-
-            FROM asignaciones a
-
-            JOIN cursos c ON a.curso_id = c.id
-            JOIN materias m ON a.materia_id = m.id
-            JOIN estudiantes e ON e.curso_id = c.id
-
-            LEFT JOIN notas_detalle nd
-                ON nd.estudiante_id = e.id
-                AND nd.asignacion_id = a.id
-
-            WHERE a.id = %s
-              AND COALESCE(LOWER(e.estado), 'activo') = 'activo'
-
-            GROUP BY e.id, e.nombre, e.apellido, m.nombre, c.nombre
-            ORDER BY e.nombre
-        """, (asignacion_id,))
-
-        resultado = cursor.fetchall()
+        resultado = notas_repository.leer_planilla_de_asignacion(cursor, asignacion_id)
 
     data = []
 
@@ -200,32 +124,9 @@ def planilla_asignacion_controller(asignacion_id):
 def boletin_detallado_controller(estudiante_id, periodo=1):
     with get_cursor() as cursor:
         # Obtener todas las materias asignadas al curso del estudiante
-        cursor.execute("""
-            WITH asignaciones_academicas AS (
-                SELECT DISTINCT ON (COALESCE(a.asignacion_academica_id, a.id))
-                    COALESCE(a.asignacion_academica_id, a.id) AS id,
-                    a.curso_id,
-                    a.materia_id,
-                    a.profesor_id,
-                    COALESCE(a.orden_boletin, 100) AS orden_boletin
-                FROM asignaciones a
-                WHERE a.activo = TRUE
-                ORDER BY COALESCE(a.asignacion_academica_id, a.id), COALESCE(a.orden_boletin, 100), a.id
-            )
-            SELECT
-                m.id,
-                m.nombre AS area,
-                p.nombre || ' ' || p.apellido AS docente,
-                a.id AS asignacion_id
-            FROM estudiantes e
-            JOIN cursos c ON e.curso_id = c.id
-            JOIN asignaciones_academicas a ON a.curso_id = c.id
-            JOIN materias m ON a.materia_id = m.id
-            JOIN profesor p ON a.profesor_id = p.id
-            WHERE e.id = %s
-            ORDER BY a.orden_boletin, m.nombre
-        """, (estudiante_id,))
-        asignaciones_estudiante = cursor.fetchall()
+        asignaciones_estudiante = notas_repository.leer_asignaciones_del_estudiante(
+            cursor, estudiante_id
+        )
 
         if not asignaciones_estudiante:
             return []
@@ -236,13 +137,9 @@ def boletin_detallado_controller(estudiante_id, periodo=1):
             materia_id, nombre_area, docente_nombre, asignacion_id = asig
 
             # Obtener las notas_detalle guardadas para este estudiante y asignacion, en este periodo
-            cursor.execute("""
-                SELECT id, descripcion, nota
-                FROM notas_detalle
-                WHERE estudiante_id = %s AND asignacion_id = %s AND periodo = %s
-                ORDER BY id ASC
-            """, (estudiante_id, asignacion_id, periodo))
-            notas = cursor.fetchall()
+            notas = notas_repository.leer_notas_de_asignacion_en_periodo(
+                cursor, estudiante_id, asignacion_id, periodo
+            )
 
             actividades = []
             if notas:

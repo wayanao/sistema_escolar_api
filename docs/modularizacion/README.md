@@ -42,7 +42,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 5 | Pagos y tipos de pago | Dominio financiero modularizado y protegido | **Cerrada**; SQL inline de 23 a 3, sin tocar la base | [05_PAGOS_TIPOS_PAGO.md](./05_PAGOS_TIPOS_PAGO.md) |
 | 6 | Asignaciones y estudiantes | Dominios grandes separados con contratos estables | **Cerrada**; SQL inline de 52 a 1, sin tocar la base | [06_ASIGNACIONES_ESTUDIANTES.md](./06_ASIGNACIONES_ESTUDIANTES.md) |
 | 7 | Resto de dominios — **`dashboard` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `dashboard` el 2026-08-19; publicada y verificada a mano | [07_DASHBOARD.md](./07_DASHBOARD.md) |
-| 7 | Resto de dominios — **`notas` en curso** | Migración individual con contratos y pruebas | **Activa** para `notas` desde el 2026-08-19; **7.0 cerrada**, 7.1 definida y pendiente. Los demás dominios, **en espera** | [07_NOTAS.md](./07_NOTAS.md) |
+| 7 | Resto de dominios — **`notas` en curso** | Migración individual con contratos y pruebas | **Activa** para `notas` desde el 2026-08-19; **7.0 y 7.1 cerradas**, con un punto de decisión abierto. Los demás dominios, **en espera** | [07_NOTAS.md](./07_NOTAS.md) |
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
 cierre y el usuario ordene continuar, se crea su sucesora desde
@@ -824,6 +824,47 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   **siete módulos**, tres de ellos ya migrados —asignaciones, dashboard y
   estudiantes—. Romper un contrato ajeno desde `notas` **no haría fallar sus
   propias pruebas**, solo la compuerta global.
+- Resultado de 7.1 de `notas`: las **9 sentencias** salieron a
+  `app/repositories/notas_repository.py`, **nueve funciones** que reciben el
+  cursor existente y **el séptimo repositorio** del proyecto.
+  `notas_controller.py` pasó de **273 a 170 líneas** y de 6 sentencias inline a
+  **0**; `nota_service.py` de **46 a 31** y de 3 a **0**; la ruta ya tenía 0. El
+  comparador AST contra el commit base confirmó **9 literales SQL distintos
+  antes y después, conjunto idéntico**, con **9 de 9 byte a byte**: **no hizo
+  falta autorizar ningún cambio de texto SQL**. Compuerta local: **791
+  pruebas**, Ruff y dependencias correctas.
+- **Las tres guardias de línea base que 7.0 dejó puestas fallaron al extraer**,
+  que era la señal esperada —lección 14 de la capa 6, aplicada por tercera vez—,
+  y solo esas tres: las otras **49 pruebas pasaron sin cambiar de expectativa**,
+  incluidos los diez conteos de consultas y conexiones y las cinco de contrato
+  HTTP. Se sustituyeron por cuatro versiones positivas.
+- Decisión de 7.1, tomada con evidencia y **sin precedente exacto en el
+  programa**: las tres consultas de `nota_service` **sí van al repositorio**,
+  porque dejarlas fuera habría cerrado la frontera solo en dos tercios; y van al
+  de `notas` y **no** a `asignaciones_repository` ni `estudiantes_repository`,
+  porque `buscar_asignacion` **no filtra por `activo`** y sus vecinas allí sí, y
+  porque una de las tres **cruza ambas tablas**. Es el criterio que 7.1 de
+  dashboard fijó. **`nota_service` conserva la propiedad de sus tres
+  conexiones**: unificarlas bajaría `POST /notas` de 4 conexiones a 1, que es
+  una mejora real pero **cambiaría los conteos fijados por aserción** y queda
+  como trabajo disponible. Es la **primera vez en el programa que el dueño del
+  cursor no es un controlador**.
+- **Consecuencia fuera del dominio, materializada en 7.1**: una guardia de
+  `test_dashboard_caracterizacion.py` que enumera el conjunto **exacto** de
+  repositorios falló al aparecer el séptimo. **No era una rotura de contrato**;
+  se actualizó conservando su severidad, porque esa severidad es deliberada y
+  obliga a reconocer cada migración nueva. Lo detectó **la compuerta global, no
+  las pruebas de `notas`**, que es exactamente el riesgo que 7.0 había
+  registrado.
+- **Punto de decisión abierto en `notas`**, y aquí tiene **tres salidas y no
+  dos**, a diferencia de dashboard: cerrar la capa como refactorización pura;
+  abrir una 7.2 conservadora que añada `response_model` solo a las **cuatro
+  entradas de lectura**; o abrir una 7.2 que **corrija el contrato de la
+  escritura**, lo que ya no sería una refactorización y exigiría coordinar con
+  el frontend. Declarar un `response_model` para `POST /notas` obligaría a
+  decidir si el contrato es el `id` anidado o el entero, y convertir sus
+  validaciones en errores de dominio **cambiaría el 200 por un 4xx**. **No está
+  tomada.**
 - El punto de decisión que quedó abierto al terminar 7.1, ya resuelto, era: la frontera de persistencia de
   dashboard ya está cerrada. Lo que queda del objetivo de la capa es la parte
   condicional del índice —`response_model`, errores de dominio y pruebas HTTP—,

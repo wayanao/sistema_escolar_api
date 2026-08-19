@@ -158,37 +158,81 @@ def instrumentado(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# Bloque 1 — guardias estructurales de la linea base
+# Bloque 1 — guardias estructurales
 #
-# Estas tres guardias describen el estado ANTERIOR a cualquier extraccion y
-# **deben fallar** cuando una subcapa posterior mueva la persistencia. Es la
-# leccion 14 de la capa 6, que la capa 7 de dashboard aplico dos veces: una
-# guardia que no puede fallar no esta protegiendo nada.
+# Las tres primeras describian en 7.0 el estado ANTERIOR a la extraccion y
+# **fallaron al ejecutarse 7.1**, que era la señal esperada: una guardia que no
+# puede fallar no esta protegiendo nada. Es la leccion 14 de la capa 6, aplicada
+# por tercera vez en el programa. Aqui estan ya en su version positiva.
 # ---------------------------------------------------------------------------
 
 
-def test_el_dominio_no_tiene_repositorio_propio():
+def test_el_repositorio_de_notas_es_el_septimo():
     repositorios = {p.stem for p in (RAIZ / "app" / "repositories").glob("*_repository.py")}
 
-    assert "notas_repository" not in repositorios
     assert repositorios == {
         "asignaciones_repository",
         "dashboard_repository",
         "estudiantes_repository",
+        "notas_repository",
         "pagos_repository",
         "plan_de_clases_repository",
         "reportes_repository",
     }
 
 
-def test_el_controlador_conserva_sus_seis_sentencias():
-    assert len(_literales_sql("app/controllers/notas_controller.py")) == 6
-    assert len(_puntos_de_ejecucion("app/controllers/notas_controller.py")) == 6
+def test_el_sql_del_dominio_vive_solo_en_el_repositorio():
+    """Las 9 sentencias salieron del controlador y del servicio, intactas."""
+    for modulo in (
+        "app/controllers/notas_controller.py",
+        "app/services/nota_service.py",
+        "app/routes/notas.py",
+    ):
+        assert _literales_sql(modulo) == set(), modulo
+        assert _puntos_de_ejecucion(modulo) == [], modulo
+
+    assert len(_literales_sql("app/repositories/notas_repository.py")) == 9
+    assert len(_puntos_de_ejecucion("app/repositories/notas_repository.py")) == 9
 
 
-def test_el_servicio_conserva_sus_tres_sentencias():
-    assert len(_literales_sql("app/services/nota_service.py")) == 3
-    assert len(_puntos_de_ejecucion("app/services/nota_service.py")) == 3
+def test_las_nueve_funciones_publicas_reciben_el_cursor():
+    import inspect
+
+    from app.repositories import notas_repository
+
+    publicas = {
+        nombre: funcion
+        for nombre, funcion in inspect.getmembers(notas_repository, inspect.isfunction)
+        if not nombre.startswith("_")
+    }
+
+    assert len(publicas) == 9
+    for nombre, funcion in publicas.items():
+        primero = list(inspect.signature(funcion).parameters)[0]
+        assert primero == "cursor", nombre
+
+
+def test_el_repositorio_no_es_dueno_de_ningun_recurso():
+    """No importa nada, no abre conexiones y no confirma ni revierte.
+
+    La propiedad del ciclo de vida sigue siendo del controlador y del servicio,
+    igual que en los seis repositorios anteriores.
+    """
+    arbol = ast.parse(
+        (RAIZ / "app" / "repositories" / "notas_repository.py").read_text(encoding="utf-8")
+    )
+
+    importaciones = [
+        nodo for nodo in ast.walk(arbol) if isinstance(nodo, (ast.Import, ast.ImportFrom))
+    ]
+    assert importaciones == []
+
+    metodos = {
+        nodo.func.attr
+        for nodo in ast.walk(arbol)
+        if isinstance(nodo, ast.Call) and isinstance(nodo.func, ast.Attribute)
+    }
+    assert metodos == {"execute", "fetchone", "fetchall"}
 
 
 def test_la_ruta_no_contiene_sql():

@@ -219,14 +219,23 @@ def test_el_sql_del_dominio_vive_solo_en_el_repositorio():
 
 
 def test_el_dominio_tiene_su_repositorio():
-    """Segunda senal esperada de 7.1: el repositorio existe y es el sexto."""
+    """Segunda senal esperada de 7.1 de dashboard: el repositorio existe.
+
+    La lista enumera **todos** los repositorios del proyecto, asi que esta
+    guardia se dispara en cada migracion de dominio nueva y obliga a
+    reconocerla. `notas_repository` se añadio al migrar `notas`, que lo
+    convirtio en el septimo; el de dashboard sigue existiendo y sigue siendo el
+    que esta prueba protege.
+    """
     repositorios = {
         path.stem for path in (RAIZ / "app" / "repositories").glob("*_repository.py")
     }
+    assert "dashboard_repository" in repositorios
     assert repositorios == {
         "asignaciones_repository",
         "dashboard_repository",
         "estudiantes_repository",
+        "notas_repository",
         "pagos_repository",
         "plan_de_clases_repository",
         "reportes_repository",

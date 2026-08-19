@@ -4,14 +4,15 @@
 
 ## Control
 
-- Estado: **Activa** desde el 2026-08-19.
+- Estado: **Cerrada** el 2026-08-19, con sus dos subcapas **7.0 y 7.1**
+  completas y la **verificación manual ejecutada por el usuario con resultado
+  correcto**. Activada el mismo 2026-08-19.
 - Commit base: `eee8aec8725fc0bdd4a98fd2fd29cb88502c56e1`.
 - Rama acordada: `main`.
 - Primera subcapa pendiente: **ninguna definida**. Las subcapas **7.0 y 7.1**
-  quedaron **cerradas** el 2026-08-19. Con 7.1 la frontera de persistencia del
-  dominio queda cerrada. Lo que sigue exige una **decisión del usuario**: cerrar
-  la capa como refactorización pura, igual que hizo dashboard, o abrir una 7.2.
-  Ver «Punto de decisión abierto».
+  quedaron **cerradas** el 2026-08-19, y con 7.1 la frontera de persistencia del
+  dominio quedó cerrada. **El usuario decidió cerrar la capa aquí**, sin abrir
+  7.2. Ver «Punto de decisión, resuelto el 2026-08-19».
 - Código de producto modificado al activar: **ninguno**. Tampoco en 7.0: su diff
   es **un solo archivo de prueba nuevo** y ningún archivo rastreado modificado,
   igual que los de 5.0, 6.0 y 7.0 de dashboard.
@@ -540,7 +541,7 @@ contrato HTTP por ASGI**. Se sustituyeron por cuatro versiones positivas.
 profesor, y el boletín detallado sigue siendo 1+N. Era la condición que hacía
 inviable unificar las validaciones en un solo cursor.
 
-## Punto de decisión abierto
+## Punto de decisión, resuelto el 2026-08-19
 
 **La frontera de persistencia de `notas` ya está cerrada**: ni el controlador ni
 el servicio ni la ruta tienen SQL, y el repositorio existe. Lo que queda del
@@ -560,7 +561,7 @@ dos formas es el contrato**, y convertir las validaciones en errores de dominio
 **cambiaría el status code de 200 a 4xx**. Las dos cosas son exactamente lo que
 el frontend desplegado consume hoy.
 
-Las salidas legítimas son tres:
+Las salidas legítimas eran tres:
 
 - **cerrar la capa aquí**, como refactorización pura, igual que la 5, la 6 y la
   7 de dashboard, dejando los doce hallazgos vivos y registrados;
@@ -570,7 +571,120 @@ Las salidas legítimas son tres:
 - **abrir una 7.2 que corrija el contrato de la escritura**, lo que **ya no
   sería una refactorización** y exigiría coordinar con el frontend.
 
-Es decisión del usuario y **no está tomada**.
+**El usuario eligió cerrar la capa aquí**, el 2026-08-19 y de forma explícita,
+tras preguntar expresamente si cerrar así «daña algo» y recibir el detalle de lo
+que el cierre conserva y de lo que no cura. Consecuencias registradas, ninguna
+de ellas una deuda oculta:
+
+- La capa 7 para `notas` es, como la 5, la 6 y la 7 de dashboard,
+  **exclusivamente una refactorización**. Ningún contrato observable cambió.
+- **`response_model` y los errores de dominio no se añaden.** No quedan como
+  trabajo pendiente de esta capa: quedan registrados como trabajo disponible que
+  exigiría una orden explícita.
+- Los **doce hallazgos de 7.0 siguen vivos y sin corregir**, incluidos los tres
+  que hoy tienen efecto real: el falso éxito de `POST /notas`, el tratamiento
+  divergente de `periodo` y el `activo` ausente de `validar_asignacion`. Cerrar
+  la capa **no los resuelve ni los cancela**, y **tampoco los introdujo**: los
+  tres son anteriores a este trabajo.
+
+## Staging, rollback y verificación manual de la capa 7 para `notas`
+
+### Lo que esta capa hizo y no hizo
+
+La capa 7 para `notas` es **exclusivamente una refactorización**, igual que la
+5, la 6 y la 7 de dashboard. No añadió funciones, no cambió reglas, no tocó
+rutas, payloads, status codes, permisos, tenant, ownership, transacciones,
+timeouts, dependencias ni configuración. Y **no abrió una sola conexión a
+PostgreSQL**: ni migraciones, ni DDL, ni DML, ni lecturas de medición. Toda la
+caracterización se hizo con dobles.
+
+Ese último punto importa más aquí que en las capas anteriores, porque **este
+dominio sí escribe**. La distinción quedó registrada: el rollback es de código
+**no porque el dominio sea de solo lectura —no lo es— sino porque la capa nunca
+ejecutó nada contra la base**.
+
+La evidencia de que el comportamiento observable no cambió es doble:
+
+1. un comparador AST contra el commit base `eee8aec` demuestra que los **9
+   literales SQL distintos son los mismos**, ninguno perdido y ninguno nuevo,
+   con **9 de 9 byte a byte**, y que hay **9 puntos de llamada antes y después**.
+   **No hizo falta autorizar ni un solo cambio de texto SQL**, como en la capa 6
+   y en la 7 de dashboard, y a diferencia de la 5, que necesitó dos;
+2. **34 pruebas de caracterización** fijan payloads, permisos por rol, conteos de
+   consultas **y de conexiones**, ciclo de vida, fórmulas de cálculo y —única vez
+   en el programa— **status codes HTTP reales medidos por ASGI**. **Ninguna
+   cambió de expectativa**; las tres únicas que fallaron fueron las guardias que
+   7.0 dejó *deliberadamente* sobre la línea base previa a la extracción, y que
+   debían fallar cuando 7.1 la moviera.
+
+### Rollback
+
+**Es puramente de código.** No hay nada que deshacer en datos ni en esquema.
+Revertir los commits de la capa hasta
+`eee8aec8725fc0bdd4a98fd2fd29cb88502c56e1` devuelve el controlador y el servicio
+a su versión anterior y elimina el repositorio nuevo. Como el SQL ejecutado es
+equivalente, revertir no cambia el comportamiento observable.
+
+**A diferencia de las capas 5, 6 y 7 de dashboard, al cerrar esta capa el
+rollback es una operación puramente local**: los tres commits **no están
+publicados**, así que revertir no exige push ni despliegue. Esa ventaja
+desaparece en cuanto se publiquen.
+
+No cambiar los timeouts durante el rollback.
+
+### Staging
+
+No se usó un entorno de staging y **no se considera necesario** para esta capa,
+por la misma razón que hace trivial el rollback: no hay cambio de esquema, de
+datos ni de SQL. Un despliegue prudente solo necesita comprobar que la
+aplicación arranca, que se puede registrar una nota y que las cuatro pantallas
+de lectura responden, que es lo que cubre la verificación manual.
+
+### Verificación manual: **hecha y correcta**
+
+Es la única evidencia que no puede delegarse en un asistente. En este dominio
+pesa más que en dashboard por una razón concreta: **dashboard era de solo
+lectura y aquí se escribe**. Si la extracción hubiera roto algo, la consecuencia
+no sería un panel con cifras raras sino **una calificación que no se guarda**.
+
+**Ejecutada por el usuario el 2026-08-19, en local, con resultado correcto y
+cobertura completa del guion.**
+
+**Artefacto verificado**: sin ambigüedad. El árbol estaba limpio y `HEAD` es
+`ade4c106e5f7b5a5fd4591b0f5380009493e9248`, el commit de 7.1, que contiene
+exactamente los siete archivos de la subcapa. El contenido ejercitado y el
+commiteado son idénticos, porque commitear no cambia los archivos.
+
+**Limitación registrada, no disimulada**: la verificación fue **en local**, y
+además **este código no está publicado**. Nadie lo ha ejercitado desplegado, ni
+puede: producción sigue corriendo el código anterior a la capa. Es aceptable por
+lo que la capa es —una refactorización con SQL equivalente demostrado y sin
+ningún acceso a la base de datos—; no lo sería en una capa que cambiara
+comportamiento o tocara datos.
+
+Guion ejecutado:
+
+- **Viaje de ida y vuelta**: registrar una nota real como profesor y comprobar
+  que aparece después en las notas del estudiante, con su valor y su descripción
+  exactos. Es lo que más vale del guion: ejercita `insertar_nota` y
+  `leer_notas_de_estudiante` juntas.
+- **Aritmética del promedio**: comprobar a mano que el promedio mostrado es la
+  media redondeada a **2 decimales**, no truncada.
+- **Boletín**: que salen todas las materias del curso **incluidas las que no
+  tienen ninguna nota**, con promedio 0; que el corte Aprobado/Reprobado está en
+  **3,0 exacto**; y que el promedio general cuadra.
+- **Boletín detallado**: en un periodo con notas salen las reales; en uno sin
+  notas fabrica **tres actividades en blanco**, que es lo esperado.
+- **Planilla**: estudiantes ordenados por nombre y **sin los inactivos**.
+- **Permisos**: probar como profesor y como admin —sus caminos difieren— y
+  comprobar que un profesor no accede a una asignación ni a un estudiante
+  ajenos.
+- Comprobar todo en **los dos tenants**, sin mezclar datos.
+
+Se entregó además, junto al guion, la lista de lo que **no** debía interpretarse
+como fallo de la refactorización: el falso éxito de `POST /notas`, la nota que
+no aparece en el boletín detallado por `periodo` y la lentitud del N+1. Los tres
+son hallazgos abiertos y anteriores a esta capa.
 
 ## Criterios de cierre de la capa
 
@@ -591,6 +705,94 @@ Es decisión del usuario y **no está tomada**.
   dashboard.
 - El índice maestro queda actualizado y **ningún otro dominio se activa sin
   orden explícita del usuario**.
+
+Estado de los ocho criterios al 2026-08-19:
+
+| Criterio | Estado |
+|---|---|
+| Subcapas cerradas o `No aplica` | **Cumplido**: 7.0 y 7.1 cerradas; no hubo más |
+| Dominio migrado sin arrastrar otros | **Cumplido**: el único archivo tocado fuera del dominio es una guardia de `test_dashboard_caracterizacion.py` que enumera repositorios, y **no es código de producto** |
+| `response_model` solo tras caracterizar | **No aplica**: el usuario decidió no añadirlo |
+| Ninguna abstracción sin dos consumidores | **Cumplido**: el repositorio por módulo es la convención de `app/repositories/README.md`, con seis precedentes |
+| Contratos del frontend y de la base intactos | **Cumplido**: comparador AST 9 de 9 y 49 pruebas sin cambio de expectativa, incluidas las cinco de contrato HTTP real |
+| Compuerta, Ruff, dependencias y `git diff --check` | **Cumplido**: 791 pruebas, exit 0 |
+| Staging, rollback y verificación manual documentados | **Cumplido.** El criterio exigía comprobar el rollback en datos por tratarse de un dominio que escribe: **se comprobó, y es de código**, porque la capa no ejecutó nada contra la base. La justificación es distinta de la de dashboard y queda registrada |
+| Índice actualizado y ningún dominio activado | **Cumplido** |
+
+**Los ocho criterios quedan resueltos.**
+
+## Cierre de la capa 7 para `notas`
+
+### Resultado frente a su objetivo
+
+El índice le pedía migrar el dominio con contratos y pruebas, priorizando uno a
+la vez, añadiendo `response_model` y errores de dominio **solo después** de
+caracterizar y conservar la respuesta, y sin crear abstracciones compartidas sin
+dos consumidores reales.
+
+| Objetivo | Resultado |
+|---|---|
+| Migrar el dominio con contratos y pruebas | `notas_controller.py` pasó de **273 a 170 líneas** y de **6 sentencias SQL inline a 0**; `nota_service.py` de **46 a 31** y de 3 a **0**; la persistencia vive en `notas_repository`, **nueve funciones** que reciben el cursor. **34 pruebas de caracterización** nuevas fijan payloads, permisos por rol, conteos de consultas **y de conexiones**, ciclo de vida, fórmulas de cálculo y **status codes HTTP reales** |
+| Un dominio a la vez | **Cumplido**: no se tocó código de producto de ningún otro dominio. Los demás siguen en espera, cada uno con su propia bitácora pendiente |
+| `response_model` solo tras caracterizar | **No se añadió**, por decisión explícita del usuario. No queda como deuda de la capa: es trabajo disponible que exigiría una orden |
+| Sin abstracciones sin dos consumidores | **Cumplido**: el repositorio por módulo es la convención documentada, con seis precedentes |
+
+La suite pasó de **756 a 791** pruebas. Compuerta de cierre: **exit 0 con 791
+pruebas**, Ruff correcto y `pip check` íntegro.
+
+### Lo que esta capa NO hizo
+
+- **No tocó la base de datos**, ni siquiera para leer. Es la cuarta capa
+  consecutiva que no abre una sola conexión a PostgreSQL, después de la 5, la 6
+  y la 7 de dashboard. **Y es la primera de esas cuatro cuyo dominio sí
+  escribe**, así que la propiedad no se hereda del dominio sino del método.
+- **No tocó archivos.** 7.0 lo demostró: ninguno de los cuatro archivos del
+  dominio menciona `storage`.
+- No cambió rutas, payloads, status codes, permisos, tenant, ownership,
+  transacciones, timeouts, dependencias ni configuración.
+- **No corrigió ninguno de los doce hallazgos** de 7.0. Siguen vivos.
+- **No redujo las cuatro conexiones** de `POST /notas` ni el **N+1** del boletín
+  detallado, aunque 7.1 dejó registrado que lo primero es viable. Cambiar
+  cualquiera de los dos alteraría los conteos que 7.0 fijó por aserción.
+- **No necesitó autorizar ni un solo cambio de texto SQL**, como la capa 6 y la
+  7 de dashboard.
+
+### Estado de publicación
+
+**No publicada.** `origin/main` sigue en `eee8aec`, el commit base de la capa, y
+hay **tres commits locales por delante** —`a56d55f`, `a8bcf0a` y `ade4c10`—.
+**Producción no corre este código**: sigue con el anterior a la capa.
+
+Es una diferencia real con las capas 5, 6 y 7 de dashboard, que estaban
+publicadas al cerrarse o poco después. Mientras siga así, **el rollback es una
+operación puramente local**. En cuanto se publique, y como un push a `main`
+dispara el despliegue, esa ventaja desaparece y revertir exigirá otro push.
+
+**No se atribuye ningún run de GitHub Actions**: esa evidencia sigue sin
+obtenerse desde la capa 0.
+
+### Riesgos que la capa deja abiertos
+
+- **`POST /notas` responde 200 «Nota registrada» aunque no registre nada** ante
+  una validación fallida. Es el riesgo más directo que deja esta capa y **el más
+  grave que ha registrado el programa en un camino de escritura**: es una
+  pérdida silenciosa de datos, activa hoy en producción y anterior a este
+  trabajo.
+- **El campo `id` de esa misma entrada es un diccionario**, no un entero.
+  Corregirlo toca el contrato que consume el frontend desplegado.
+- **`periodo` no se fija al escribir y solo una lectura filtra por él**: una nota
+  puede existir y no aparecer en el boletín detallado. El valor por defecto real
+  de la columna **no se comprobó**, porque exigiría tocar la base.
+- **`validar_asignacion` no filtra por `activo`**: se pueden registrar notas
+  contra una asignación desactivada. Tercera instancia del patrón, y la única
+  que afecta a una **escritura**.
+- **N+1** en el boletín detallado y **cuatro conexiones** para escribir una nota.
+- El resto de los doce hallazgos de 7.0, más `response_model` sin añadir.
+- Heredados: calibración de `DB_STATEMENT_TIMEOUT_MS` de la capa 1, ausencia de
+  evidencia de GitHub Actions desde la capa 0, la credencial privilegiada de la
+  capa 4 sin rotar, y los hallazgos abiertos de las capas 5, 6 y 7 de dashboard
+  —incluida la clave de idempotencia, la ausencia de lock frente a horarios
+  solapados y el `activo` ausente de las precondiciones de permiso de dashboard—.
 
 ## Decisiones
 
@@ -988,21 +1190,72 @@ Es decisión del usuario y **no está tomada**.
 - Siguiente acción exacta: **pedir al usuario la decisión** entre cerrar la capa
   como refactorización pura o abrir una 7.2, que aquí tiene **dos variantes**
   porque el contrato de la escritura está en juego. No se inicia ninguna sin
-  orden explícita.
+  orden explícita. *(Respondida en el turno siguiente: cerrar. Ver abajo.)*
+
+### 2026-08-19 — cierre de la capa 7 para `notas`
+
+Con la verificación manual ejecutada, la capa queda cerrada.
+
+- Modo de acceso: mismo checkout local en
+  `C:\Users\David\Documents\sistema_escolar_api`; Git validado directamente y
+  comprobado con `git rev-parse --show-toplevel`.
+- **Decisión del usuario, explícita**: cerrar la capa aquí, sin abrir 7.2. La
+  tomó tras preguntar expresamente si cerrar así «daña algo» y recibir el
+  detalle de qué conserva el cierre y qué no cura. La capa queda siendo una
+  refactorización pura, como la 5, la 6 y la 7 de dashboard.
+- Precondición Git: rama `main`, **árbol limpio**, `HEAD`
+  `ade4c106e5f7b5a5fd4591b0f5380009493e9248`, el commit de 7.1 que el usuario
+  hizo entre turnos. El commit base `eee8aec` existe y es ancestro, y los **tres**
+  commits posteriores están explicados aquí: la activación `a56d55f`, el cierre
+  de 7.0 `a8bcf0a` y la extracción de 7.1 `ade4c10`.
+- **Artefacto de la verificación confirmado antes de registrarla**, conforme a
+  la lección 10 de la capa 5. No había ambigüedad: el árbol está limpio, `HEAD`
+  es el commit de 7.1 y ese commit contiene **exactamente los siete archivos**
+  de la subcapa, comprobado con `git show --stat`. Lo que el usuario ejercitó y
+  lo que está commiteado son el mismo contenido.
+- **Verificación manual**: el usuario informó haberla ejecutado completa y con
+  resultado correcto, respondiendo al **guion concreto** que se le entregó en el
+  turno anterior —viaje de ida y vuelta de la escritura, aritmética del
+  promedio, las cuatro pantallas de lectura, permisos por rol y los dos
+  tenants—. No se infirió: el guion era explícito y la respuesta se dio sobre
+  él.
+- **Compuerta global de cierre**: `.\venv\Scripts\python.exe scripts\verify.py`;
+  **791 pruebas pasaron**, 5 warnings heredadas, Ruff correcto, `pip check`
+  íntegro y exit 0.
+- **Estado de publicación comprobado, no supuesto**: `origin/main` está en
+  `eee8aec`, el commit base. Hay **tres commits locales sin publicar** y
+  **producción no corre este código**. El reflog remoto no registra ningún push
+  posterior a `eee8aec`. **No se consultó ni se atribuye ningún run de GitHub
+  Actions.**
+- Archivos modificados en este turno: esta bitácora y
+  `docs/modularizacion/README.md`. **Código de producto y pruebas: ninguno.**
+- PostgreSQL, migraciones, producción, commit, push y deploy: **ninguno por
+  parte del asistente**, ni en este turno ni en toda la capa.
+- Estado: **capa 7 cerrada para el dominio `notas`**. Los demás dominios de la
+  capa 7 quedan **en espera** y **ninguno fue activado**.
+- Siguiente acción exacta: esperar una orden explícita del usuario. Una
+  instrucción genérica de continuar no autoriza activar otro dominio. Queda
+  además **pendiente la publicación**, que decide y ejecuta el usuario.
 
 ## Entrega al próximo chat
 
-- Capa activa: **7, `notas`**, y solo ese dominio. Activada el 2026-08-19.
+- Capa activa: **ninguna.** La capa 7 quedó **cerrada para `notas`** el
+  2026-08-19, el mismo día en que se activó.
 - Última subcapa terminada: **7.1**, cerrada el 2026-08-19. Con ella la frontera
   de persistencia del dominio quedó cerrada.
-- Primera subcapa pendiente: **ninguna definida.** Lo que sigue es un **punto de
-  decisión del usuario**, con **tres salidas** y no dos, porque el contrato de
-  la escritura está en juego. Ver «Punto de decisión abierto».
+- **Capa cerrada** el 2026-08-19. La verificación manual la ejecutó el usuario
+  ese día, en local, completa y con resultado **correcto**. No quedan bloqueos.
+- Primera subcapa pendiente: **ninguna.** El usuario decidió **cerrar la capa
+  aquí**, sin abrir 7.2: `response_model` y los errores de dominio **no se
+  añaden** y no quedan como deuda de esta capa, sino como trabajo que exigiría
+  una orden explícita.
 - Commit base: `eee8aec8725fc0bdd4a98fd2fd29cb88502c56e1`, rama `main`,
-  **publicado y desplegado**. Al cerrar 7.1, `HEAD` es `a8bcf0a` y hay **dos
-  commits locales por delante de `origin/main`** —la activación y el cierre de
-  7.0—, más el trabajo de 7.1 sin commitear.
-- Compuerta al cerrar 7.1: **791 pruebas, exit 0**, Ruff correcto y `pip check`
+  **publicado y desplegado**. Al cerrar la capa, `HEAD` es `ade4c10` y
+  `origin/main` **sigue en el commit base**: los **tres** commits de la capa
+  —`a56d55f`, `a8bcf0a` y `ade4c10`— **no están publicados**, así que
+  **producción no corre este código** y el rollback es una operación **puramente
+  local** mientras siga así.
+- Compuerta de cierre: **791 pruebas, exit 0**, Ruff correcto y `pip check`
   íntegro. La suite pasó de 756 al activar la capa a 791.
 - Lo que consiguió 7.1: `notas_controller.py` pasó de **273 a 170 líneas** y de
   **6 sentencias SQL inline a 0**; `nota_service.py` de **46 a 31** y de 3 a 0;
@@ -1052,5 +1305,14 @@ Es decisión del usuario y **no está tomada**.
      están en Decisiones.
   8. **`nota_service` sigue siendo dueño de sus tres conexiones.** Es la primera
      vez en el programa que el dueño del cursor no es un controlador.
-- Siguiente acción exacta: **esperar la decisión del usuario** entre las tres
-  salidas del punto de decisión. No se inicia ninguna sin orden explícita.
+- **Lo más importante que deja abierto**, y conviene que lo sepa quien siga:
+  `POST /notas` **responde 200 «Nota registrada» aunque no registre nada** ante
+  una validación fallida. Es una pérdida silenciosa de datos, activa en
+  producción y **anterior a esta capa**. Cerrarla no la resolvió ni la introdujo.
+- **Pendiente la publicación.** Los tres commits siguen en local. Publicar
+  dispara el despliegue, así que es decisión y acción del usuario.
+- Siguiente acción exacta: **esperar una orden explícita del usuario**. La capa 7
+  sigue teniendo dominios en espera —`boletin`, `asistencia`, `observaciones`,
+  `planilla`, `planeador_anual`, `plan_de_clases`, `ventas`, `branding`,
+  `profesores`, `super_admin`— y **ninguno se activa sin orden**. Una
+  instrucción genérica de continuar no la autoriza.

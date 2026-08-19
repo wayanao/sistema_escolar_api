@@ -42,7 +42,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 5 | Pagos y tipos de pago | Dominio financiero modularizado y protegido | **Cerrada**; SQL inline de 23 a 3, sin tocar la base | [05_PAGOS_TIPOS_PAGO.md](./05_PAGOS_TIPOS_PAGO.md) |
 | 6 | Asignaciones y estudiantes | Dominios grandes separados con contratos estables | **Cerrada**; SQL inline de 52 a 1, sin tocar la base | [06_ASIGNACIONES_ESTUDIANTES.md](./06_ASIGNACIONES_ESTUDIANTES.md) |
 | 7 | Resto de dominios — **`dashboard` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `dashboard` el 2026-08-19; publicada y verificada a mano | [07_DASHBOARD.md](./07_DASHBOARD.md) |
-| 7 | Resto de dominios — **`notas` en curso** | Migración individual con contratos y pruebas | **Activa** para `notas` desde el 2026-08-19; **7.0 y 7.1 cerradas**, con un punto de decisión abierto. Los demás dominios, **en espera** | [07_NOTAS.md](./07_NOTAS.md) |
+| 7 | Resto de dominios — **`notas` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `notas` el 2026-08-19; verificada a mano y **sin publicar**. Los demás dominios, **en espera** | [07_NOTAS.md](./07_NOTAS.md) |
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
 cierre y el usuario ordene continuar, se crea su sucesora desde
@@ -51,9 +51,9 @@ tabla.
 
 Las capas 0 a 6 están cerradas. **La capa 7 quedó cerrada para el dominio
 `dashboard`** el 2026-08-19, con sus subcapas 7.0 y 7.1 completas y la
-verificación manual hecha. **La capa activa es la 7 para el dominio `notas`**,
-activada el 2026-08-19 por orden explícita del usuario, con su subcapa 7.0
-**pendiente y no iniciada**.
+verificación manual hecha. **La capa 7 quedó también cerrada para el dominio
+`notas`** el 2026-08-19, el mismo día en que se activó, con sus subcapas 7.0 y
+7.1 completas y la verificación manual hecha. **No existe una capa activa.**
 
 La capa 7 se cierra **por dominio**, no de una vez: cada uno tiene su propia
 bitácora, su propio commit base y su propio cierre, y **las subcapas se numeran
@@ -130,21 +130,21 @@ parte del contrato de seguridad.
 **Dominio migrado y cerrado: `dashboard`.** Lo eligió el usuario el 2026-08-17 y
 su bitácora es [07_DASHBOARD.md](./07_DASHBOARD.md).
 
-**Dominio activo: `notas`.** Lo eligió el usuario el 2026-08-19, tras pedir que
-se le explicara qué es un dominio en este programa y qué quedaba en espera; **no
-se dedujo por inferencia**. Su bitácora es [07_NOTAS.md](./07_NOTAS.md) y su
-alcance se limita a ese dominio.
+**Dominio migrado y cerrado: `notas`.** Lo eligió el usuario el 2026-08-19, tras
+pedir que se le explicara qué es un dominio en este programa y qué quedaba en
+espera; **no se dedujo por inferencia**. Su bitácora es
+[07_NOTAS.md](./07_NOTAS.md) y quedó **cerrada el mismo día**.
 
 Ningún otro se activa por inferencia: boletín, asistencia, observaciones,
 planilla, planeador anual, plan de clases, ventas, branding, profesores y super
 admin siguen en espera, y cada uno exigirá su propia bitácora y una orden
 explícita.
 
-Advertencia de perfil, registrada al activar `notas` y **sin verificar**:
-`dashboard` resultó ser de **solo lectura**, y no hay ninguna razón para esperar
-lo mismo aquí. Si `notas` escribe —lo probable en un dominio de
-calificaciones—, su perfil de riesgo es el de la **capa 5**, no el de dashboard.
-Su subcapa 7.0 debe responderlo antes de cualquier extracción.
+La advertencia de perfil que se registró al activar `notas` **quedó confirmada**:
+a diferencia de `dashboard`, que resultó de solo lectura, **`notas` escribe**, y
+su perfil de riesgo es el de la capa 5. Aun así la capa **no tocó la base de
+datos**, ni siquiera para leer, así que su rollback es de código —por el método
+empleado, no por la naturaleza del dominio—.
 
 ## Paquete mínimo de contexto para un chat nuevo
 
@@ -856,15 +856,43 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   obliga a reconocer cada migración nueva. Lo detectó **la compuerta global, no
   las pruebas de `notas`**, que es exactamente el riesgo que 7.0 había
   registrado.
-- **Punto de decisión abierto en `notas`**, y aquí tiene **tres salidas y no
-  dos**, a diferencia de dashboard: cerrar la capa como refactorización pura;
-  abrir una 7.2 conservadora que añada `response_model` solo a las **cuatro
-  entradas de lectura**; o abrir una 7.2 que **corrija el contrato de la
-  escritura**, lo que ya no sería una refactorización y exigiría coordinar con
-  el frontend. Declarar un `response_model` para `POST /notas` obligaría a
-  decidir si el contrato es el `id` anidado o el entero, y convertir sus
-  validaciones en errores de dominio **cambiaría el 200 por un 4xx**. **No está
-  tomada.**
+- **Decisión del usuario el 2026-08-19: cerrar la capa aquí**, sin abrir 7.2. La
+  tomó tras preguntar expresamente si cerrar así «daña algo» y recibir el
+  detalle de qué conserva el cierre y qué no cura. El punto de decisión tenía
+  **tres salidas y no dos**, a diferencia de dashboard, porque el contrato de la
+  escritura estaba en juego: declarar un `response_model` para `POST /notas`
+  habría obligado a decidir si el contrato es el `id` anidado o el entero, y
+  convertir sus validaciones en errores de dominio **habría cambiado el 200 por
+  un 4xx**. `response_model` y los errores de dominio **no se añaden** y **no
+  quedan como deuda de esta capa**: pasan a ser trabajo disponible que exigiría
+  una orden explícita.
+- **Verificación manual de la capa 7 para `notas`: hecha por el usuario y
+  correcta**, el 2026-08-19, **en local** y con cobertura completa del guion
+  —viaje de ida y vuelta de la escritura, aritmética del promedio, las cuatro
+  pantallas de lectura, permisos por rol y los dos tenants—. El artefacto se
+  confirmó **antes** de registrarla: árbol limpio y `HEAD` en `ade4c10`, el
+  commit de 7.1, que contiene exactamente los siete archivos de la subcapa.
+  Pesaba más que en dashboard porque **este dominio escribe**: un fallo de la
+  extracción no habría dado cifras raras sino **una calificación no guardada**.
+- Capa 7 **cerrada para `notas`** el 2026-08-19, el mismo día en que se activó.
+  Compuerta de cierre: **exit 0 con 791 pruebas**, Ruff correcto y `pip check`
+  íntegro. La suite pasó de 756 al activar la capa a 791. Cerrarla **no cancela
+  los doce hallazgos de 7.0**, que siguen vivos, empezando por el falso éxito de
+  `POST /notas`.
+- **Estado de publicación de la capa 7 para `notas`: NO publicada.**
+  `origin/main` sigue en el commit base `eee8aec` y hay **tres commits locales
+  por delante** —`a56d55f`, `a8bcf0a` y `ade4c10`—. **Producción no corre este
+  código.** Es una diferencia real con las capas 5, 6 y 7 de dashboard, que
+  estaban publicadas al cerrarse o poco después, y tiene una consecuencia
+  favorable: mientras siga así, **el rollback es una operación puramente local**
+  y no exige push ni despliegue. La publicación la decide y la ejecuta el
+  usuario.
+- **La capa 7 para `notas` no tocó la base de datos**, ni siquiera para leer. Es
+  la cuarta consecutiva que no abre una conexión a PostgreSQL, y **la primera de
+  esas cuatro cuyo dominio sí escribe**: la propiedad viene del método empleado,
+  no de la naturaleza del dominio.
+- Capa activa: **ninguna**. Siguiente paso: **otro dominio de la capa 7**, sin
+  elegir y en espera.
 - El punto de decisión que quedó abierto al terminar 7.1, ya resuelto, era: la frontera de persistencia de
   dashboard ya está cerrada. Lo que queda del objetivo de la capa es la parte
   condicional del índice —`response_model`, errores de dominio y pruebas HTTP—,
@@ -995,8 +1023,8 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
 
 ## Archivos de continuidad
 
-- [07_NOTAS.md](./07_NOTAS.md): **bitácora ACTIVA** de la capa 7 para el dominio
-  `notas`. Registra el commit base
+- [07_NOTAS.md](./07_NOTAS.md): **bitácora cerrada** de la capa 7 para el
+  dominio `notas`, y **fuente de continuidad**. Registra el commit base
   `eee8aec8725fc0bdd4a98fd2fd29cb88502c56e1`, la autorización del usuario, el
   alcance limitado a un solo dominio y la decisión explícita de continuar
   aceptando las verificaciones heredadas como pendientes. Conserva el inventario
@@ -1009,11 +1037,16 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   es el de la capa 5; que **hay N+1**, el primero desde la capa 4; que la cifra
   es el contrato y este dominio añade la **cuarta** fórmula de promedio; y que
   `notas_detalle` la leen **siete módulos**, tres ya migrados, de modo que
-  romper un contrato ajeno no haría fallar las pruebas de `notas`. Deja
-  **7.1 definida y no iniciada**, con su punto de decisión propio: si las tres
-  consultas de `nota_service` van al repositorio, que **no tiene precedente
-  exacto**. **Es el documento que un chat nuevo debe leer después de este
-  índice.**
+  romper un contrato ajeno no haría fallar las pruebas de `notas`. Registra
+  también el cierre de **7.1**, la extracción a `notas_repository` con su
+  comparador AST de **9 de 9** literales, las tres guardias que fallaron como
+  señal esperada, la guardia de dashboard que se disparó fuera del dominio, y la
+  decisión **sin precedente exacto** de llevar al repositorio las tres consultas
+  de `nota_service` conservando en el servicio la propiedad de sus conexiones.
+  Deja resuelto el **punto de decisión** que cerró la capa sin abrir una 7.2, el
+  cierre con su rollback —**local, porque la capa sigue sin publicar**—, su
+  staging, su verificación manual y los **riesgos que deja abiertos**. **Es el
+  documento que un chat nuevo debe leer después de este índice.**
 - [07_DASHBOARD.md](./07_DASHBOARD.md): **bitácora cerrada** de la capa 7 para
   el dominio `dashboard`, y **fuente de continuidad**. Registra el commit base
   `123637ee80895023ecece9c32df526ef4eddd1e5`, la autorización y el marcador de

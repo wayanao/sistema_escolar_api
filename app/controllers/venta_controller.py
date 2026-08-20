@@ -1,4 +1,5 @@
 from app.database import get_connection
+from app.repositories import ventas_repository
 import datetime
 from zoneinfo import ZoneInfo
 
@@ -24,23 +25,11 @@ def obtener_ventas():
     cursor = conn.cursor()
     try:
         # Obtener ventas
-        cursor.execute('''
-            SELECT v.id, e.nombre, e.apellido, v.fecha, v.tipo_venta, v.total, v.estado, v.notas, v.estudiante_id,
-                   v.motivo_anulacion, v.fecha_anulacion
-            FROM ventas v
-            LEFT JOIN estudiantes e ON v.estudiante_id = e.id
-            ORDER BY v.fecha DESC, v.id DESC
-        ''')
-        ventas_rows = cursor.fetchall()
-        
+        ventas_rows = ventas_repository.leer_ventas_con_estudiante(cursor)
+
         # Obtener todos los detalles
-        cursor.execute('''
-            SELECT vd.venta_id, i.nombre, vd.cantidad, vd.precio_unitario, vd.subtotal
-            FROM ventas_detalle vd
-            JOIN inventario i ON vd.inventario_id = i.id
-        ''')
-        detalles_rows = cursor.fetchall()
-        
+        detalles_rows = ventas_repository.leer_detalles_de_todas_las_ventas(cursor)
+
         # Agrupar detalles por venta_id
         detalles_por_venta = {}
         for dr in detalles_rows:
@@ -84,36 +73,17 @@ def obtener_ventas_paginado(limit=50, offset=0, busqueda=None, estudiante_id=Non
 
         where_sql = f"WHERE {' AND '.join(filtros)}" if filtros else ""
 
-        cursor.execute(f'''
-            SELECT COUNT(*)
-            FROM ventas v
-            LEFT JOIN estudiantes e ON v.estudiante_id = e.id
-            {where_sql}
-        ''', params)
-        total = cursor.fetchone()[0]
+        total = ventas_repository.contar_ventas(cursor, where_sql, params)
 
-        cursor.execute(f'''
-            SELECT v.id, e.nombre, e.apellido, v.fecha, v.tipo_venta, v.total, v.estado, v.notas, v.estudiante_id,
-                   v.motivo_anulacion, v.fecha_anulacion
-            FROM ventas v
-            LEFT JOIN estudiantes e ON v.estudiante_id = e.id
-            {where_sql}
-            ORDER BY v.fecha DESC, v.id DESC
-            LIMIT %s OFFSET %s
-        ''', params + [limit, offset])
-        ventas_rows = cursor.fetchall()
+        ventas_rows = ventas_repository.leer_pagina_de_ventas(
+            cursor, where_sql, params + [limit, offset]
+        )
 
         if not ventas_rows:
             return {"total": total, "limit": limit, "offset": offset, "items": []}
 
         venta_ids = [v[0] for v in ventas_rows]
-        cursor.execute('''
-            SELECT vd.venta_id, i.nombre, vd.cantidad, vd.precio_unitario, vd.subtotal
-            FROM ventas_detalle vd
-            JOIN inventario i ON vd.inventario_id = i.id
-            WHERE vd.venta_id = ANY(%s)
-        ''', (venta_ids,))
-        detalles_rows = cursor.fetchall()
+        detalles_rows = ventas_repository.leer_detalles_de_ventas(cursor, venta_ids)
 
         detalles_por_venta = {}
         for dr in detalles_rows:
@@ -142,28 +112,18 @@ def obtener_ventas_pendientes(estudiante_id):
     cursor = conn.cursor()
     try:
         # Obtener ventas pendientes del estudiante
-        cursor.execute('''
-            SELECT v.id, v.fecha, v.total, v.estado, v.notas, COALESCE(v.pagado, 0) 
-            FROM ventas v
-            WHERE v.estudiante_id = %s AND v.estado = 'Pendiente'
-            ORDER BY v.fecha ASC
-        ''', (estudiante_id,))
-        ventas_rows = cursor.fetchall()
-        
+        ventas_rows = ventas_repository.leer_ventas_pendientes_de_estudiante(
+            cursor, estudiante_id
+        )
+
         # Obtener detalles para esas ventas
         if not ventas_rows:
             return []
-            
+
         venta_ids = tuple([v[0] for v in ventas_rows])
-        
-        cursor.execute('''
-            SELECT vd.venta_id, i.nombre, vd.cantidad, vd.precio_unitario, vd.subtotal
-            FROM ventas_detalle vd
-            JOIN inventario i ON vd.inventario_id = i.id
-            WHERE vd.venta_id IN %s
-        ''', (venta_ids,))
-        detalles_rows = cursor.fetchall()
-        
+
+        detalles_rows = ventas_repository.leer_detalles_de_ventas_en(cursor, venta_ids)
+
         # Agrupar detalles por venta_id
         detalles_por_venta = {}
         for dr in detalles_rows:
@@ -181,12 +141,12 @@ def obtener_ventas_pendientes(estudiante_id):
             # Crear un string descriptivo con los productos
             detalles = detalles_por_venta.get(v[0], [])
             desc_productos = ", ".join([f"{d['cantidad']}x {d['producto']}" for d in detalles])
-            
+
             saldo_pendiente = float(v[2]) - float(v[5])
-            
+
             resultado.append({
-                "id": v[0], 
-                "fecha": str(v[1]), 
+                "id": v[0],
+                "fecha": str(v[1]),
                 "total": saldo_pendiente,
                 "estado": v[3],
                 "descripcion": f"Abono a Cargo #{v[0]} ({desc_productos})" if float(v[5]) > 0 else f"Cargo de Inventario #{v[0]}: {desc_productos}"
@@ -201,16 +161,7 @@ def validar_producto_vendible(cursor, inventario_id, cantidad):
     if int(cantidad or 0) <= 0:
         raise ValueError("La cantidad de cada producto debe ser mayor a cero.")
 
-    cursor.execute(
-        """
-        SELECT nombre, COALESCE(stock_actual, 0), COALESCE(LOWER(estado), 'activo')
-        FROM inventario
-        WHERE id = %s
-        FOR UPDATE
-        """,
-        (inventario_id,),
-    )
-    producto = cursor.fetchone()
+    producto = ventas_repository.leer_producto_para_vender(cursor, inventario_id)
 
     if not producto:
         raise ValueError("Uno de los productos seleccionados no existe.")
@@ -237,30 +188,27 @@ def crear_venta(datos):
 
         for inventario_id, cantidad in cantidades_por_producto.items():
             validar_producto_vendible(cursor, inventario_id, cantidad)
-        
-        cursor.execute(
-            """INSERT INTO ventas (estudiante_id, tipo_venta, total, estado, notas) 
-               VALUES (%s, %s, %s, %s, %s) RETURNING id""",
-            (datos.estudiante_id, datos.tipo_venta, datos.total, estado_inicial, datos.notas)
+
+        venta_id = ventas_repository.insertar_venta(
+            cursor,
+            datos.estudiante_id,
+            datos.tipo_venta,
+            datos.total,
+            estado_inicial,
+            datos.notas,
         )
-        venta_id = cursor.fetchone()[0]
-        
+
         for det in datos.detalles:
-            cursor.execute(
-                """INSERT INTO ventas_detalle (venta_id, inventario_id, cantidad, precio_unitario, subtotal) 
-                   VALUES (%s, %s, %s, %s, %s)""",
-                (venta_id, det.inventario_id, det.cantidad, det.precio_unitario, det.subtotal)
+            ventas_repository.insertar_detalle_de_venta(
+                cursor,
+                venta_id,
+                det.inventario_id,
+                det.cantidad,
+                det.precio_unitario,
+                det.subtotal,
             )
-            cursor.execute(
-                """
-                UPDATE inventario
-                SET stock_actual = stock_actual - %s
-                WHERE id = %s
-                  AND COALESCE(LOWER(estado), 'activo') = 'activo'
-                """,
-                (det.cantidad, det.inventario_id)
-            )
-            
+            ventas_repository.descontar_stock(cursor, det.cantidad, det.inventario_id)
+
         conn.commit()
         return {"id": venta_id, "mensaje": "Venta exitosa registrada!"}
     except Exception as e:
@@ -276,7 +224,7 @@ def eliminar_venta(venta_id):
     try:
         # Recuperar stock antes de eliminar los detalles indirectamente (si quisieramos).
         # Por simplicidad ahora solo lo eliminamos y perdemos el track de reponer devoluciones automáticamente.
-        cursor.execute("DELETE FROM ventas WHERE id = %s", (venta_id,))
+        ventas_repository.borrar_venta(cursor, venta_id)
         conn.commit()
         return {"mensaje": "Venta eliminada"}
     finally:
@@ -292,13 +240,7 @@ def anular_venta(venta_id, motivo, admin_id):
     conn = get_connection()
     cursor = conn.cursor()
     try:
-        cursor.execute("""
-            SELECT id, estado
-            FROM ventas
-            WHERE id = %s
-            FOR UPDATE
-        """, (venta_id,))
-        venta = cursor.fetchone()
+        venta = ventas_repository.leer_venta_y_estado_para_anular(cursor, venta_id)
 
         if not venta:
             raise ValueError("La venta no existe.")
@@ -306,52 +248,25 @@ def anular_venta(venta_id, motivo, admin_id):
         if str(venta[1]).strip().lower() == "anulada":
             raise ValueError("Esta venta ya está anulada.")
 
-        cursor.execute("""
-            SELECT inventario_id, cantidad
-            FROM ventas_detalle
-            WHERE venta_id = %s
-        """, (venta_id,))
-        detalles = cursor.fetchall()
+        detalles = ventas_repository.leer_detalles_para_reponer_stock(cursor, venta_id)
 
         for inventario_id, cantidad in detalles:
-            cursor.execute("""
-                UPDATE inventario
-                SET stock_actual = COALESCE(stock_actual, 0) + %s
-                WHERE id = %s
-            """, (cantidad, inventario_id))
+            ventas_repository.reponer_stock(cursor, cantidad, inventario_id)
 
         fecha_anulacion = datetime.datetime.now(ZONA_HORARIA_LOCAL).replace(tzinfo=None)
 
-        cursor.execute("""
-            UPDATE pagos
-            SET estado = 'Anulado',
-                motivo_anulacion = COALESCE(motivo_anulacion, %s),
-                fecha_anulacion = COALESCE(fecha_anulacion, %s),
-                anulado_por = COALESCE(anulado_por, %s),
-                venta_id = COALESCE(venta_id, %s)
-            WHERE COALESCE(estado, 'Pagado') <> 'Anulado'
-              AND (
-                    venta_id = %s
-                    OR descripcion ILIKE %s
-                  )
-        """, (
+        ventas_repository.anular_pagos_de_la_venta(
+            cursor,
             f"Venta anulada: {motivo_limpio}",
             fecha_anulacion,
             admin_id,
             venta_id,
-            venta_id,
             f"%Cargo #{venta_id}%",
-        ))
+        )
 
-        cursor.execute("""
-            UPDATE ventas
-            SET estado = 'Anulada',
-                pagado = 0,
-                motivo_anulacion = %s,
-                fecha_anulacion = %s,
-                anulado_por = %s
-            WHERE id = %s
-        """, (motivo_limpio, fecha_anulacion, admin_id, venta_id))
+        ventas_repository.marcar_venta_anulada(
+            cursor, motivo_limpio, fecha_anulacion, admin_id, venta_id
+        )
 
         conn.commit()
         return {"mensaje": "Venta anulada correctamente", "venta_id": venta_id}

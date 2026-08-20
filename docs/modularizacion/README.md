@@ -43,7 +43,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 6 | Asignaciones y estudiantes | Dominios grandes separados con contratos estables | **Cerrada**; SQL inline de 52 a 1, sin tocar la base | [06_ASIGNACIONES_ESTUDIANTES.md](./06_ASIGNACIONES_ESTUDIANTES.md) |
 | 7 | Resto de dominios — **`dashboard` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `dashboard` el 2026-08-19; publicada y verificada a mano | [07_DASHBOARD.md](./07_DASHBOARD.md) |
 | 7 | Resto de dominios — **`notas` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `notas` el 2026-08-19; verificada a mano. **Publicada el 2026-08-20**, después de escribirse su bitácora | [07_NOTAS.md](./07_NOTAS.md) |
-| 7 | Resto de dominios — **`ventas` en migración** | Migración individual con contratos y pruebas | **Activa** desde el 2026-08-20; **7.0 cerrada**, **7.1 pendiente**. Los demás dominios, **en espera** | [07_VENTAS.md](./07_VENTAS.md) |
+| 7 | Resto de dominios — **`ventas` en migración** | Migración individual con contratos y pruebas | **Activa** desde el 2026-08-20; **7.0 y 7.1 cerradas**, punto de decisión abierto. Los demás dominios, **en espera** | [07_VENTAS.md](./07_VENTAS.md) |
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
 cierre y el usuario ordene continuar, se crea su sucesora desde
@@ -1007,6 +1007,49 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   `POST /notas` **no está aquí**. Medido por ASGI, `POST /api/ventas/` responde
   **400** ante una validación fallida y su campo `id` es **un entero plano**,
   no un diccionario. Este dominio sí usa el mecanismo de error de FastAPI.
+- Resultado de 7.1 de `ventas`: las **17 sentencias** salieron del controlador a
+  `app/repositories/ventas_repository.py`, **17 funciones** que reciben el
+  cursor existente y **el octavo repositorio** del proyecto.
+  `venta_controller.py` pasó de **363 a 278 líneas** y de 17 sentencias inline a
+  **0**; la ruta ya tenía 0. El comparador AST contra el commit base confirmó
+  **17 literales SQL distintos antes y después, conjunto idéntico**, con **17 de
+  17 byte a byte**: **no hizo falta autorizar ningún cambio de texto SQL**.
+  Compuerta local: **835 pruebas**, Ruff y dependencias correctas.
+- **Fallaron seis pruebas al extraer y las seis eran previsibles**, que era la
+  señal esperada —lección 14 de la capa 6, aplicada por cuarta vez—: las **dos**
+  guardias de línea base declaradas, **dos pruebas de hallazgo que también
+  estaban ancladas al controlador** sin estar rotuladas como guardias, y las
+  **dos** enumeraciones de repositorios de dashboard y notas. Las otras **37
+  pruebas del dominio pasaron sin cambiar de expectativa**, incluidos los ocho
+  conteos de consultas y conexiones y las cinco de contrato HTTP real.
+- **Lección nueva de 7.1, que corrige lo que la propia bitácora había previsto**:
+  anunciaba dos fallos dentro del dominio y fueron cuatro, porque **una prueba
+  de hallazgo anclada a un archivo concreto es también una guardia de línea
+  base**, aunque no se rotule así. Las dos se reapuntaron al repositorio
+  conservando exactamente lo que denuncian.
+- **Consecuencia fuera del dominio, por segunda vez en el programa**: las dos
+  guardias que enumeran el conjunto **exacto** de repositorios fallaron al
+  aparecer el octavo. **No era una rotura de contrato**; se actualizaron
+  conservando su severidad, que es deliberada. Lo detectó **la compuerta global,
+  no las pruebas de `ventas`**. En 7.1 de notas ocurrió con una sola guardia;
+  ahora son dos, porque notas añadió la suya.
+- Decisión de 7.1, tomada con evidencia: el **`UPDATE pagos`** vive en
+  `ventas_repository` y **no** en `pagos_repository`, en un bloque rotulado como
+  «el efecto de anular una venta sobre sus pagos». Es **simetría exacta** con lo
+  que la capa 5 dejó escrito al revés —un bloque en `pagos_repository` con cinco
+  sentencias sobre `ventas`—; llevarlo allí ampliaría el diff a un módulo que
+  esa capa cerró y obligaría al controlador de ventas a importarlo, creando una
+  dependencia entre dominios que 7.1 no está autorizada a introducir. La
+  alternativa **no queda cerrada**: sigue siendo defendible y exigiría orden
+  explícita. El bloque lleva una advertencia en el propio código sobre el
+  `ILIKE` sin delimitar, para que nadie lo «arregle» por vecindad.
+- **Punto de decisión abierto al terminar 7.1**, con **tres** salidas y no dos:
+  dónde vive el `UPDATE pagos`, `response_model` para las cuatro lecturas, y los
+  errores de dominio. La tercera es **más fácil aquí que en `notas`**: este
+  dominio **ya usa** el mecanismo de error de FastAPI, así que convertir sus
+  `ValueError` en errores de dominio **no cambiaría ningún status code** y sería
+  una refactorización pura. Ninguna de las tres entra por inferencia. Queda
+  pendiente también la **verificación manual**.
 - Diferencia favorable de `ventas` frente a `notas`, y es un hecho registrado:
   **`ventas` no estuvo entre las ocho tablas averiadas** de `tenant_2005` que la
   capa 3 reparó. Riesgo propio en contrapartida: **es el dominio financiero**,

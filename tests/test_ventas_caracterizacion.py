@@ -33,6 +33,7 @@ RAIZ = Path(__file__).resolve().parents[1]
 
 CONTROLADOR = "app/controllers/venta_controller.py"
 RUTA = "app/routes/ventas.py"
+REPOSITORIO = "app/repositories/ventas_repository.py"
 
 ADMIN = {"id": 7, "rol": "admin", "tenant": "tenant_demo"}
 
@@ -174,15 +175,15 @@ def _venta(detalles=None, tipo_venta="Credito", estudiante_id=11, total=3000.0):
 
 
 # ---------------------------------------------------------------------------
-# Bloque 1 — guardias estructurales de la linea base
+# Bloque 1 — estructura de la frontera de persistencia
 #
-# Estas tres pruebas describen el estado ANTERIOR a cualquier extraccion y
-# DEBEN fallar cuando 7.1 mueva la persistencia. Es la leccion 14 de la capa 6,
-# que ya sirvio en 7.1 de dashboard y en 7.1 de notas.
+# Las cuatro guardias que 7.0 dejo describiendo el estado ANTERIOR a la
+# extraccion fallaron en 7.1, que era la señal esperada —leccion 14 de la capa
+# 6, aplicada por cuarta vez—. Aqui quedan sus versiones positivas.
 # ---------------------------------------------------------------------------
 
 
-def test_el_dominio_todavia_no_tiene_repositorio_propio():
+def test_el_repositorio_de_ventas_es_el_octavo():
     repositorios = {
         ruta.stem
         for ruta in (RAIZ / "app" / "repositories").glob("*.py")
@@ -197,12 +198,51 @@ def test_el_dominio_todavia_no_tiene_repositorio_propio():
         "pagos_repository",
         "plan_de_clases_repository",
         "reportes_repository",
+        "ventas_repository",
     }
-    assert "ventas_repository" not in repositorios
 
 
-def test_las_diecisiete_sentencias_viven_hoy_en_el_controlador():
-    assert len(_puntos_de_ejecucion(CONTROLADOR)) == 17
+def test_el_sql_del_dominio_vive_solo_en_el_repositorio():
+    """Las 17 sentencias salieron del controlador, intactas."""
+    assert _literales_sql(CONTROLADOR) == set()
+    assert _puntos_de_ejecucion(CONTROLADOR) == []
+    assert len(_puntos_de_ejecucion(REPOSITORIO)) == 17
+
+
+def test_las_diecisiete_funciones_publicas_reciben_el_cursor():
+    arbol = ast.parse((RAIZ / REPOSITORIO).read_text(encoding="utf-8"))
+    funciones = [
+        nodo
+        for nodo in arbol.body
+        if isinstance(nodo, ast.FunctionDef) and not nodo.name.startswith("_")
+    ]
+
+    assert len(funciones) == 17
+    for funcion in funciones:
+        assert funcion.args.args[0].arg == "cursor", funcion.name
+
+
+def test_el_repositorio_no_es_dueno_de_ningun_recurso():
+    """No abre, no cierra, no confirma y no revierte: eso sigue en el controlador."""
+    fuente = (RAIZ / REPOSITORIO).read_text(encoding="utf-8")
+
+    for prohibido in ("get_connection", "get_cursor", "commit()", "rollback()", ".close()"):
+        assert prohibido not in fuente, prohibido
+
+
+def test_el_controlador_conserva_la_propiedad_del_ciclo_de_vida():
+    """Seis aperturas, seis cierres, tres `commit` y dos `rollback`.
+
+    Son seis y no cinco porque `eliminar_venta`, el codigo muerto del hallazgo
+    4, tambien abre su conexion y commitea. 7.1 no lo retira.
+    """
+    fuente = (RAIZ / CONTROLADOR).read_text(encoding="utf-8")
+
+    assert fuente.count("get_connection()") == 6
+    assert fuente.count("conn.commit()") == 3
+    assert fuente.count("conn.rollback()") == 2
+    assert fuente.count("conn.close()") == 6
+    assert fuente.count("cursor.close()") == 6
 
 
 def test_la_ruta_no_contiene_sql():
@@ -440,17 +480,32 @@ def test_anular_venta_escribe_inventario_pagos_y_ventas(instrumentado):
     assert registro.conexion().committed is True
 
 
-def test_la_escritura_de_pagos_vive_inline_en_el_dominio_de_ventas():
+def test_la_escritura_de_pagos_vive_en_el_repositorio_de_ventas():
     """`pagos` tiene repositorio desde la capa 5 y aun asi se escribe desde aqui.
 
-    No es un defecto de esta capa ni se corrige en ella: se fija para que quede
-    constancia de que la frontera de pagos tiene un escritor fuera de si misma.
+    7.1 movio esta sentencia del controlador a `ventas_repository` y **no** a
+    `pagos_repository`, por simetria con el bloque que la capa 5 dejo alli con
+    cinco sentencias sobre la tabla `ventas`. La decision y su alternativa
+    descartada estan en la bitacora.
+
+    Lo que la prueba fija no es donde vive, sino que el dominio de ventas sigue
+    siendo quien escribe `pagos`: la frontera que la capa 5 dio por cerrada
+    tiene un escritor fuera de si misma, y eso no lo cambio la extraccion.
     """
-    literales = _literales_sql(CONTROLADOR)
-    escrituras_de_pagos = [sql for sql in literales if "UPDATE pagos" in sql]
+    escrituras_de_pagos = [
+        sql for sql in _literales_sql(REPOSITORIO) if "UPDATE pagos" in sql
+    ]
 
     assert len(escrituras_de_pagos) == 1
-    assert "pagos_repository" not in (RAIZ / CONTROLADOR).read_text(encoding="utf-8")
+    assert "UPDATE pagos" not in str(_literales_sql(CONTROLADOR))
+
+    # Ninguno de los dos modulos del dominio importa el repositorio de pagos:
+    # la mencion que hay en el nuevo repositorio es prosa que explica la
+    # decision, no una dependencia.
+    for archivo in (CONTROLADOR, REPOSITORIO):
+        fuente = (RAIZ / archivo).read_text(encoding="utf-8")
+        assert "import pagos_repository" not in fuente
+        assert "pagos_repository." not in fuente.split('"""')[-1]
 
 
 def test_el_dominio_no_toca_almacenamiento_de_archivos():
@@ -568,11 +623,10 @@ def test_eliminar_venta_es_codigo_muerto_que_borra_fisicamente():
     el codigo muerto registrado en vez de borrarlo.
     """
     fuente_ruta = (RAIZ / RUTA).read_text(encoding="utf-8")
-    literales = _literales_sql(CONTROLADOR)
 
     assert hasattr(venta_controller, "eliminar_venta")
     assert "eliminar_venta" not in fuente_ruta
-    assert "DELETE FROM ventas WHERE id = %s" in literales
+    assert "DELETE FROM ventas WHERE id = %s" in _literales_sql(REPOSITORIO)
 
 
 def test_obtener_ventas_no_tiene_limite(instrumentado):

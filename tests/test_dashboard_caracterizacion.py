@@ -224,8 +224,12 @@ def test_el_dominio_tiene_su_repositorio():
     La lista enumera **todos** los repositorios del proyecto, asi que esta
     guardia se dispara en cada migracion de dominio nueva y obliga a
     reconocerla. `notas_repository` se añadio al migrar `notas`, que lo
-    convirtio en el septimo; el de dashboard sigue existiendo y sigue siendo el
+    convirtio en el septimo, y `ventas_repository` al migrar `ventas`, que lo
+    convirtio en el octavo; el de dashboard sigue existiendo y sigue siendo el
     que esta prueba protege.
+
+    La severidad de enumerar el conjunto exacto es **deliberada** y se conserva:
+    obliga a que cada migracion nueva se reconozca aqui a proposito.
     """
     repositorios = {
         path.stem for path in (RAIZ / "app" / "repositories").glob("*_repository.py")
@@ -239,6 +243,7 @@ def test_el_dominio_tiene_su_repositorio():
         "pagos_repository",
         "plan_de_clases_repository",
         "reportes_repository",
+        "ventas_repository",
     }
 
 

@@ -178,6 +178,7 @@ def test_el_repositorio_de_notas_es_el_septimo():
         "pagos_repository",
         "plan_de_clases_repository",
         "reportes_repository",
+        "ventas_repository",
     }
 
 

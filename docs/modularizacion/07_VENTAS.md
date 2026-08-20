@@ -4,17 +4,17 @@
 
 ## Control
 
-- Estado: **Activa** desde el 2026-08-20, con la subcapa **7.0 cerrada** ese
-  mismo día.
+- Estado: **Activa** desde el 2026-08-20, con las subcapas **7.0 y 7.1
+  cerradas** ese mismo día.
 - Commit base: `58c5233afc4772ba040da690f4d719b518bb1b0a`.
 - Rama acordada: `main`.
-- Primera subcapa pendiente: **7.1**, no iniciada. Con la evidencia de 7.0 ya
-  queda definida: extraer las **17 sentencias** del controlador a
-  `app/repositories/ventas_repository.py`, sin cambiar SQL, conteos ni ciclo de
-  vida.
+- Primera subcapa pendiente: **ninguna definida**. Con 7.1 la frontera de
+  persistencia del dominio quedó cerrada. Queda un **punto de decisión** abierto
+  que el usuario debe resolver: ver «Punto de decisión, abierto».
 - Código de producto modificado al activar: **ninguno**. Tampoco en 7.0: su diff
   es **un solo archivo de prueba nuevo** y ningún archivo rastreado modificado,
-  igual que los de 5.0, 6.0, 7.0 de dashboard y 7.0 de notas.
+  igual que los de 5.0, 6.0, 7.0 de dashboard y 7.0 de notas. **7.1 sí modifica
+  producto**: el controlador y un repositorio nuevo.
 - Dominio de esta capa: **ventas, y solo ese**. La capa 7 del índice es «resto
   de dominios» y ordena expresamente **priorizar uno a la vez**, así que esta
   bitácora cubre un único dominio. Los demás quedan fuera y necesitarán su
@@ -344,8 +344,8 @@ y no dos.
 | Subcapa | Resultado | Estado |
 |---:|---|---|
 | 7.0 | Inventario, contratos, caracterización y línea base de consultas y conexiones | **Cerrada** el 2026-08-20 |
-| 7.1 | Extraer las 17 sentencias a `ventas_repository` sin cambiar SQL, conteos ni ciclo de vida | **Pendiente**, no iniciada |
-| 7.2 | Punto de decisión sobre las cinco sentencias de `pagos_repository`, y cierre | **Sin decidir**: depende de 7.1 y de una orden explícita |
+| 7.1 | Extraer las 17 sentencias a `ventas_repository` sin cambiar SQL, conteos ni ciclo de vida | **Cerrada** el 2026-08-20 |
+| 7.2 | Punto de decisión sobre las cinco sentencias de `pagos_repository`, `response_model` y errores de dominio | **Sin decidir**: es un punto de decisión, no una subcapa pendiente |
 
 El desglose se dejó deliberadamente sin decidir hasta tener la evidencia del
 inventario, igual que hicieron la capa 6 y las dos capas 7 anteriores. Con esa
@@ -493,10 +493,130 @@ Estado de los ocho criterios al 2026-08-20:
 
 **Los ocho criterios quedan resueltos. La subcapa 7.0 queda cerrada.**
 
-## Subcapa 7.1 — trabajo exacto, pendiente y no iniciada
+## Resultado de 7.1
 
-Con la evidencia de 7.0, la extracción queda definida. **No se inicia en el
-turno que cerró 7.0.**
+**Las 17 sentencias salieron del controlador a
+`app/repositories/ventas_repository.py`, 17 funciones que reciben el cursor
+existente y el octavo repositorio del proyecto.**
+
+| Métrica | Antes | Después |
+|---|---:|---:|
+| `venta_controller.py`, líneas | **363** | **278** |
+| `venta_controller.py`, sentencias SQL inline | **17** | **0** |
+| `app/routes/ventas.py`, sentencias SQL inline | 0 | 0 |
+| Repositorios del proyecto | 7 | **8** |
+
+**Comparador AST contra el commit base `58c5233`: 17 literales SQL distintos
+antes y después, conjunto idéntico, con 17 de 17 byte a byte**, y 17 puntos de
+llamada antes y después. **No hizo falta autorizar ningún cambio de texto SQL**,
+como en la capa 6 y en las dos capas 7 anteriores, y a diferencia de la 5, que
+necesitó dos.
+
+Conservar los literales byte a byte exigió reproducir la sangría interior de
+cada uno en su nueva ubicación, aunque quede visualmente rara, y **escribir con
+un escape explícito `\x20` los tres espacios finales** que traían los literales
+de `leer_ventas_pendientes_de_estudiante`, `insertar_venta` e
+`insertar_detalle_de_venta`. Es la misma solución que 5.1 adoptó en
+`pagos_repository.abonar_a_venta`: el valor en tiempo de ejecución no cambia y
+`git diff --check` sigue limpio.
+
+**El controlador conserva la propiedad del ciclo de vida**: seis aperturas de
+conexión, seis cierres, tres `commit` y dos `rollback`, fijados por aserción. El
+repositorio **no abre, no cierra, no confirma y no revierte** nada, y también
+está fijado por prueba. Son seis y no cinco porque `eliminar_venta` —el código
+muerto del hallazgo 4— también abre su conexión y commitea; **7.1 no lo retira**.
+
+### Las guardias que fallaron, que era la señal esperada
+
+**Fallaron seis pruebas al extraer**, y las seis eran previsibles. Es la lección
+14 de la capa 6, aplicada por cuarta vez.
+
+| Prueba | Por qué falló |
+|---|---|
+| `test_el_dominio_todavia_no_tiene_repositorio_propio` | Guardia de línea base declarada. Apareció el octavo repositorio |
+| `test_las_diecisiete_sentencias_viven_hoy_en_el_controlador` | Guardia de línea base declarada. El controlador bajó a 0 |
+| `test_la_escritura_de_pagos_vive_inline_en_el_dominio_de_ventas` | **No estaba declarada como guardia**: 7.0 la escribió como prueba de hallazgo, y describía el `UPDATE pagos` en el controlador |
+| `test_eliminar_venta_es_codigo_muerto_que_borra_fisicamente` | Igual que la anterior: buscaba el `DELETE` entre los literales del controlador |
+| `test_dashboard_caracterizacion.py::test_el_dominio_tiene_su_repositorio` | **Fuera del dominio.** Enumera el conjunto exacto de repositorios |
+| `test_notas_caracterizacion.py::test_el_repositorio_de_notas_es_el_septimo` | **Fuera del dominio.** Mismo motivo |
+
+**Corrección de lo que 7.1 había previsto**: la bitácora anunciaba que fallarían
+**dos** guardias, las dos declaradas como tales en el bloque 1. Fallaron
+**cuatro** dentro del dominio, porque **dos pruebas de hallazgo también estaban
+ancladas al controlador** sin que 7.0 las hubiera clasificado como guardias de
+línea base. No cambiaron de expectativa: se reapuntaron al repositorio
+**conservando exactamente lo que denuncian**, que es que el dominio de ventas
+sigue siendo quien escribe `pagos` y que el `DELETE` sigue sin consumidor.
+Es una lección para la próxima subcapa 0: **una prueba de hallazgo anclada a un
+archivo concreto es también una guardia de línea base**, aunque no se rotule así.
+
+**Las otras 37 pruebas del dominio pasaron sin cambiar de expectativa**,
+incluidos los ocho conteos de consultas y conexiones y las cinco de contrato
+HTTP real. Esa es la evidencia de que nada observable cambió.
+
+**Consecuencia fuera del dominio, por segunda vez en el programa**: las dos
+guardias que enumeran el conjunto exacto de repositorios fallaron al aparecer el
+octavo. **No era una rotura de contrato**; se actualizaron conservando su
+severidad, porque esa severidad es deliberada y obliga a reconocer cada
+migración nueva. Lo detectó **la compuerta global, no las pruebas de `ventas`**,
+que es exactamente el riesgo que 7.0 había registrado. En 7.1 de `notas` ocurrió
+lo mismo con una sola guardia; ahora son dos, porque `notas` añadió la suya.
+
+### Decisión de 7.1 sobre el `UPDATE pagos`
+
+Era la decisión difícil que 7.0 dejó planteada. **La sentencia vive en
+`ventas_repository`, no en `pagos_repository`**, en un bloque rotulado como **el
+efecto de anular una venta sobre sus pagos**.
+
+Evidencia:
+
+- es **simetría exacta** con lo que la capa 5 dejó escrito. `pagos_repository`
+  tiene un bloque rotulado «el efecto de un pago sobre una venta» que conserva
+  cinco sentencias sobre la tabla `ventas`, precisamente porque no son
+  persistencia general de ventas. Esta es la operación inversa y responde al
+  mismo criterio;
+- llevarla a `pagos_repository` **ampliaría el diff a un módulo que la capa 5
+  cerró**, que es lo que 7.1 de dashboard rechazó hacer con las precondiciones
+  de permiso;
+- y obligaría a `venta_controller` a **importar `pagos_repository`**, creando
+  una dependencia entre dominios que 7.1 no está autorizada a introducir.
+
+Alternativa descartada y **no cerrada**: moverla a `pagos_repository`, que es su
+dueño natural por tabla. Sigue siendo defendible y **exigiría orden explícita**.
+Queda en el punto de decisión.
+
+El bloque lleva además una advertencia en el propio código sobre el `ILIKE` sin
+delimitar, para que nadie lo «arregle» por vecindad. Es el criterio que 7.1 de
+dashboard fijó y que 7.1 de notas repitió.
+
+## Punto de decisión, abierto
+
+**La frontera de persistencia de `ventas` ya está cerrada**: ni el controlador
+ni la ruta tienen SQL, y el repositorio existe. Lo que queda del objetivo que el
+índice fijó para la capa 7 es la parte condicional, más una decisión propia de
+este dominio que no tienen las dos bitácoras anteriores.
+
+Son tres cosas, y **ninguna se inicia por inferencia**:
+
+1. **Dónde vive el `UPDATE pagos`.** Hoy está en `ventas_repository` por las
+   tres razones de arriba. Moverlo a `pagos_repository` es la alternativa
+   descartada, sigue siendo defendible y **exige orden explícita** porque toca
+   un módulo cerrado.
+2. **`response_model`.** Las cuatro entradas de lectura podrían declararlo
+   demostrando payload por payload que la respuesta no cambia. Riesgo propio: en
+   este dominio los payloads llevan **importes**, y `response_model` **filtra**
+   los campos que no declara, así que un campo recortado puede ser un saldo.
+3. **Errores de dominio.** Aquí el dilema es **menor que en `notas`**, y esa es
+   la diferencia importante: `ventas` **ya usa** el mecanismo de error —responde
+   400 ante una validación fallida— así que convertir sus `ValueError` en
+   errores de dominio **no cambiaría ningún status code**. Es la única de las
+   tres que sería una refactorización pura.
+
+Las salidas legítimas son las mismas que en las dos capas anteriores: **cerrar
+la capa aquí** como refactorización pura, o **abrir una 7.2** con una de las
+tres. Es decisión del usuario y **no está tomada**.
+
+## Subcapa 7.1 — trabajo exacto, ejecutado y cerrado
 
 1. Crear `app/repositories/ventas_repository.py`, **el octavo repositorio** del
    proyecto, con funciones que **reciben el cursor existente** y no abren ni
@@ -743,23 +863,83 @@ turno que cerró 7.0.**
   **7.1 pendiente y no iniciada**.
 - Siguiente acción exacta: ejecutar únicamente **7.1** conforme a su trabajo
   exacto y detenerse antes de cualquier otra subcapa. **No se inició en este
-  turno.**
+  turno.** *(Ejecutada en el turno siguiente; ver el cierre de 7.1 más abajo.)*
+
+### 2026-08-20 — cierre de 7.1
+
+- Modo de acceso: mismo checkout local; Git validado directamente.
+- Autorización: el usuario ordenó continuar. Con capa activa y 7.1 como primera
+  subcapa pendiente, esa orden autoriza ejecutarla.
+- Precondición Git: rama `main`, **árbol limpio**, `HEAD`
+  `2fbe83f8900fc6a9d817441492b72556a1eb24a6`, el commit de 7.0 que el usuario
+  hizo entre turnos. El commit base `58c5233` existe y es ancestro, y los **dos**
+  commits posteriores están explicados aquí: la activación `040b027` y el cierre
+  de 7.0 `2fbe83f`.
+- Archivos modificados: `app/controllers/venta_controller.py`,
+  `tests/test_ventas_caracterizacion.py`,
+  `tests/test_dashboard_caracterizacion.py` y
+  `tests/test_notas_caracterizacion.py`. Creado:
+  `app/repositories/ventas_repository.py`. Más esta bitácora y
+  `docs/modularizacion/README.md`. **Siete archivos**, ninguno fuera del
+  alcance de la subcapa.
+- **Comparador AST contra el commit base**: 17 literales SQL distintos antes y
+  después, **conjunto idéntico**, **17 de 17 byte a byte**, y 17 puntos de
+  llamada antes y después. Ningún cambio de texto SQL autorizado ni necesario.
+- Compuerta global: `.\venv\Scripts\python.exe scripts\verify.py` → **835
+  pruebas, exit 0**, Ruff correcto, `pip check` íntegro. La suite pasó de 832 a
+  835: se retiraron las dos guardias de línea base y se añadieron cinco pruebas
+  positivas.
+- `git diff --check`: **limpio**, incluidos los tres literales con espacio final,
+  que se escriben con escape `\x20`.
+- **Seis pruebas fallaron al extraer y las seis eran previsibles**: dos guardias
+  de línea base declaradas, **dos pruebas de hallazgo que también estaban
+  ancladas al controlador sin estar rotuladas como guardias**, y las dos
+  enumeraciones de repositorios de dashboard y notas. **Ninguna otra cambió de
+  expectativa.**
+- **Dos aserciones propias se escribieron mal y se corrigieron**, ninguna de
+  producto: el recuento del ciclo de vida decía cinco aperturas y son **seis**
+  —porque `eliminar_venta` también abre la suya—, y una comprobación de
+  independencia respecto de `pagos_repository` estaba escrita de forma tan
+  gruesa que la prosa del propio comentario la hacía fallar.
+- Hallazgos: **ninguno nuevo**. Los once de 7.0 siguen vivos y **ninguno se
+  corrigió**.
+- PostgreSQL, migraciones, producción, commit, push y deploy: **ninguno por
+  parte del asistente**.
+- Estado al cerrar el turno: capa 7 **activa** para `ventas`; **7.0 y 7.1
+  cerradas**; **punto de decisión abierto** con tres salidas.
+- Siguiente acción exacta: **esperar una decisión explícita del usuario** sobre
+  el punto de decisión. Ninguna de sus tres opciones se inicia por inferencia.
 
 ## Entrega al próximo chat
 
 - Capa activa: **7, para el dominio `ventas` y solo ese.** Activada el
   2026-08-20.
-- Última subcapa terminada: **7.0**, cerrada el 2026-08-20.
-- Primera subcapa pendiente: **7.1**, no iniciada. Su trabajo exacto está
-  arriba, en diez puntos.
+- Última subcapa terminada: **7.1**, cerrada el 2026-08-20. Con ella la frontera
+  de persistencia del dominio quedó cerrada.
+- Primera subcapa pendiente: **ninguna definida.** Queda un **punto de decisión
+  con tres salidas** —dónde vive el `UPDATE pagos`, `response_model` y los
+  errores de dominio— que **decide el usuario** y que no se inicia por
+  inferencia. La capa **no está cerrada**: falta esa decisión y la verificación
+  manual.
 - Commit base: `58c5233afc4772ba040da690f4d719b518bb1b0a`, rama `main`,
   **publicado y desplegado**, comprobado contra el remoto real.
 - Bloqueos: ninguno. Verificaciones heredadas **pendientes y aceptadas** por
   decisión explícita del usuario: valor operativo final de
   `DB_STATEMENT_TIMEOUT_MS` (capa 1) y evidencia de GitHub Actions posterior a
   la capa 0. La credencial privilegiada de la capa 4 sigue **sin rotar**.
-- Compuerta al cerrar 7.0: **832 pruebas, exit 0**, Ruff correcto y `pip check`
-  íntegro. La suite pasó de **791 a 832**.
+- Compuerta al cerrar 7.1: **835 pruebas, exit 0**, Ruff correcto y `pip check`
+  íntegro. La suite pasó de **791 al activar la capa a 835**.
+- Lo que consiguió 7.1: `venta_controller.py` pasó de **363 a 278 líneas** y de
+  **17 sentencias SQL inline a 0**; la persistencia vive en
+  `app/repositories/ventas_repository.py`, **17 funciones** que reciben el
+  cursor y **el octavo repositorio** del proyecto. Comparador AST contra el
+  commit base: **conjunto de SQL idéntico, 17 de 17 literales byte a byte**, sin
+  una sola autorización de cambio de texto. **Ninguna prueba cambió de
+  expectativa** salvo las seis que debían fallar.
+- **Decisión de 7.1 que sigue abierta a revisión**: el `UPDATE pagos` vive en
+  `ventas_repository`, por simetría con el bloque que la capa 5 dejó en
+  `pagos_repository`. Moverlo allí es la alternativa descartada y **exigiría
+  orden explícita**, porque toca un módulo cerrado.
 - Lo que 7.0 dejó medido: el dominio son **dos archivos**; **5 entradas HTTP**
   con **un solo modelo de permiso**, admin estricto; **cuatro tablas escritas**
   —`ventas`, `ventas_detalle`, `inventario` y **`pagos`**—; **dos transacciones
@@ -794,8 +974,9 @@ turno que cerró 7.0.**
      dashboard y notas dejaron abiertos.
   7. **El patrón del falso éxito de `POST /notas` no está aquí**, se buscó
      expresamente: esta escritura responde 400 y su `id` es un entero plano.
-  8. **Las cuatro guardias de línea base** deben fallar **las dos primeras** al
-     extraer y seguir en verde las dos últimas. Es la señal esperada.
+  8. **Una prueba de hallazgo anclada a un archivo concreto es también una
+     guardia de línea base**, aunque no se rotule así. 7.1 lo aprendió: preveía
+     dos fallos dentro del dominio y fueron cuatro.
 - **Lo más grave que 7.0 encontró**: anular una venta alcanza los pagos por
   `descripcion ILIKE '%Cargo #N%'`, sin delimitar el número, así que **anular la
   venta 4 marca como anulados los pagos de la venta 40**. Es dinero, está activo
@@ -803,5 +984,8 @@ turno que cerró 7.0.**
 - **Residuo documental abierto**: `07_NOTAS.md` describe la capa de `notas` como
   no publicada, y **sí lo está** desde el 2026-08-20. El índice ya lo registra;
   la bitácora cerrada no se editó. Corregirla exige una orden explícita.
-- Siguiente acción exacta: **ejecutar únicamente 7.1** y detenerse antes de
-  cualquier otra subcapa.
+- Siguiente acción exacta: **esperar una decisión explícita del usuario** sobre
+  el punto de decisión de tres salidas. Una instrucción genérica de continuar
+  **no la autoriza**, porque no queda ninguna subcapa pendiente definida.
+  Pendiente además la **verificación manual**, que en este dominio pesa: la
+  extracción tocó un camino de escritura que mueve dinero y stock.

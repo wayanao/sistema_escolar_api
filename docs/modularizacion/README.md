@@ -43,7 +43,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 6 | Asignaciones y estudiantes | Dominios grandes separados con contratos estables | **Cerrada**; SQL inline de 52 a 1, sin tocar la base | [06_ASIGNACIONES_ESTUDIANTES.md](./06_ASIGNACIONES_ESTUDIANTES.md) |
 | 7 | Resto de dominios — **`dashboard` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `dashboard` el 2026-08-19; publicada y verificada a mano | [07_DASHBOARD.md](./07_DASHBOARD.md) |
 | 7 | Resto de dominios — **`notas` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `notas` el 2026-08-19; verificada a mano. **Publicada el 2026-08-20**, después de escribirse su bitácora | [07_NOTAS.md](./07_NOTAS.md) |
-| 7 | Resto de dominios — **`ventas` en migración** | Migración individual con contratos y pruebas | **Activa** desde el 2026-08-20; **7.0 pendiente y no iniciada**. Los demás dominios, **en espera** | [07_VENTAS.md](./07_VENTAS.md) |
+| 7 | Resto de dominios — **`ventas` en migración** | Migración individual con contratos y pruebas | **Activa** desde el 2026-08-20; **7.0 cerrada**, **7.1 pendiente**. Los demás dominios, **en espera** | [07_VENTAS.md](./07_VENTAS.md) |
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
 cierre y el usuario ordene continuar, se crea su sucesora desde
@@ -966,6 +966,47 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   demuestra que la tabla se escribe pero **no** que la escriba este dominio. Su
   7.0 debe separar las dos cosas. Es la lección 12 de la capa 6, que ya sirvió
   tres veces.
+- Resultado de 7.0 de `ventas`: el dominio quedó inventariado en **2 archivos**
+  —el recuento sale al revés que en `notas`, donde eran cuatro y no dos—, **5
+  entradas HTTP**, **cuatro tablas escritas** —`ventas`, `ventas_detalle`,
+  `inventario` y **`pagos`**—, **dos transacciones propias** y **17 sentencias
+  SQL inline**, todas en el controlador y 0 en la ruta, protegido por **41
+  pruebas nuevas**. La compuerta local terminó con **832 pruebas**, Ruff y
+  dependencias correctas. No se modificó producto: el diff es un solo archivo
+  nuevo.
+- **Los doce supuestos que la activación registró quedaron resueltos en 7.0**:
+  once confirmados y **uno refutado**. El refutado es el de los permisos, y era
+  el único marcado como **inferencia de patrón** y no como resto de otra capa:
+  las **cinco entradas usan un solo modelo**, `get_current_active_admin`, admin
+  estricto. **Es el primer dominio del programa con permisos uniformes**, frente
+  a los cuatro modelos de dashboard y los dos de notas.
+- **No hay N+1 en `ventas`** y **todos sus caminos abren una sola conexión**,
+  frente a las cuatro de dashboard y las cuatro o cinco de notas. Los dos
+  conteos variables dependen del tamaño del carrito, no del número de
+  estudiantes. Es el dominio más barato que ha medido el programa.
+- **El hallazgo estructural de 7.0**: `anular_venta` **escribe `pagos` con SQL
+  inline**, aunque la capa 5 diera esa frontera por cerrada y `pagos_repository`
+  exista desde entonces. El controlador ni siquiera lo importa. Dónde vive ese
+  `UPDATE` es la decisión difícil de 7.1, y llevarlo al repositorio de pagos
+  **ampliaría el diff a un módulo cerrado** y exige orden explícita.
+- **El hallazgo más grave de 7.0, y es dinero**: anular una venta alcanza los
+  pagos por `descripcion ILIKE '%Cargo #N%'`, **sin delimitar el número**, así
+  que **anular la venta 4 marca como anulados los pagos de la venta 40**. El
+  mismo patrón tiene el defecto simétrico: **no reconoce** la otra descripción
+  que el propio dominio fabrica, «Cargo de Inventario #N», que solo se alcanza
+  por `venta_id`. Está activo en producción y es **anterior a esta capa**.
+- Hallazgos de 7.0 de `ventas`, **registrados y sin corregir**: son **once**.
+  Además de los dos anteriores, `eliminar_venta` es **código muerto que borra
+  físicamente** mientras su propia ruta responde 405 diciendo que las ventas no
+  se eliminan; `obtener_ventas()` **no tiene `LIMIT`**; el **`total` lo fija el
+  cliente** y no se compara con la suma de subtotales; el dinero se maneja con
+  **`float` de Python** y nunca `Decimal`; no se comprueba que el estudiante
+  exista; y los **esquemas Pydantic viven dentro de la ruta**, único caso del
+  programa.
+- **Lo que 7.0 buscó expresamente y no encontró**: el patrón del falso éxito de
+  `POST /notas` **no está aquí**. Medido por ASGI, `POST /api/ventas/` responde
+  **400** ante una validación fallida y su campo `id` es **un entero plano**,
+  no un diccionario. Este dominio sí usa el mecanismo de error de FastAPI.
 - Diferencia favorable de `ventas` frente a `notas`, y es un hecho registrado:
   **`ventas` no estuvo entre las ocho tablas averiadas** de `tenant_2005` que la
   capa 3 reparó. Riesgo propio en contrapartida: **es el dominio financiero**,

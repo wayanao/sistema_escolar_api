@@ -43,7 +43,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 6 | Asignaciones y estudiantes | Dominios grandes separados con contratos estables | **Cerrada**; SQL inline de 52 a 1, sin tocar la base | [06_ASIGNACIONES_ESTUDIANTES.md](./06_ASIGNACIONES_ESTUDIANTES.md) |
 | 7 | Resto de dominios — **`dashboard` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `dashboard` el 2026-08-19; publicada y verificada a mano | [07_DASHBOARD.md](./07_DASHBOARD.md) |
 | 7 | Resto de dominios — **`notas` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `notas` el 2026-08-19; verificada a mano. **Publicada el 2026-08-20**, después de escribirse su bitácora | [07_NOTAS.md](./07_NOTAS.md) |
-| 7 | Resto de dominios — **`ventas` en migración** | Migración individual con contratos y pruebas | **Activa** desde el 2026-08-20; **7.0 y 7.1 cerradas**, punto de decisión abierto. Los demás dominios, **en espera** | [07_VENTAS.md](./07_VENTAS.md) |
+| 7 | Resto de dominios — **`ventas` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `ventas` el 2026-08-20; verificada a mano y **sin publicar**. Los demás dominios, **en espera** | [07_VENTAS.md](./07_VENTAS.md) |
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
 cierre y el usuario ordene continuar, se crea su sucesora desde
@@ -54,10 +54,10 @@ Las capas 0 a 6 están cerradas. **La capa 7 quedó cerrada para el dominio
 `dashboard`** el 2026-08-19, con sus subcapas 7.0 y 7.1 completas y la
 verificación manual hecha. **La capa 7 quedó también cerrada para el dominio
 `notas`** el 2026-08-19, el mismo día en que se activó, con sus subcapas 7.0 y
-7.1 completas y la verificación manual hecha. **La capa activa es la 7 para el
-dominio `ventas`**, activada el 2026-08-20 por orden explícita del usuario, con
-su **7.0 pendiente y no iniciada**. Es la única capa activa; no hay ninguna
-otra.
+7.1 completas y la verificación manual hecha. **La capa 7 quedó también cerrada
+para el dominio `ventas`** el 2026-08-20, el mismo día en que se activó, con sus
+subcapas 7.0 y 7.1 completas y la verificación manual hecha. **No existe una
+capa activa.**
 
 La capa 7 se cierra **por dominio**, no de una vez: cada uno tiene su propia
 bitácora, su propio commit base y su propio cierre, y **las subcapas se numeran
@@ -139,11 +139,11 @@ pedir que se le explicara qué es un dominio en este programa y qué quedaba en
 espera; **no se dedujo por inferencia**. Su bitácora es
 [07_NOTAS.md](./07_NOTAS.md) y quedó **cerrada el mismo día**.
 
-**Dominio en migración: `ventas`.** Lo eligió el usuario el 2026-08-20, de la
-lista de los diez que quedaban en espera y tras recibir las advertencias que las
-bitácoras cerradas ya registraban sobre esa lista; **no se dedujo por
-inferencia**. Su bitácora es [07_VENTAS.md](./07_VENTAS.md) y quedó **activa**
-con su 7.0 pendiente.
+**Dominio migrado y cerrado: `ventas`.** Lo eligió el usuario el 2026-08-20, de
+la lista de los diez que quedaban en espera y tras recibir las advertencias que
+las bitácoras cerradas ya registraban sobre esa lista; **no se dedujo por
+inferencia**. Su bitácora es [07_VENTAS.md](./07_VENTAS.md) y quedó **cerrada el
+mismo día**.
 
 Ningún otro se activa por inferencia: boletín, asistencia, observaciones,
 planilla, planeador anual, plan de clases, branding, profesores y super admin
@@ -1043,6 +1043,51 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   alternativa **no queda cerrada**: sigue siendo defendible y exigiría orden
   explícita. El bloque lleva una advertencia en el propio código sobre el
   `ILIKE` sin delimitar, para que nadie lo «arregle» por vecindad.
+- **Verificación manual de la capa 7 para `ventas`: hecha por el usuario y
+  correcta**, el 2026-08-20, en local. El artefacto se confirmó **antes** de
+  registrarla y **sin ambigüedad**: árbol limpio y `HEAD` en `8948e40`, con el
+  código de 7.1 en `76f76e7`, que es ancestro. **Cobertura registrada sin
+  inflarla**: el usuario la reportó **de forma global** y **no punto por punto
+  contra los once pasos** del guion, así que **no consta** el retorno exacto del
+  stock tras anular con abono parcial, la prueba cruzada de importes contra el
+  expediente y la cartera, ni el aislamiento entre los dos tenants. Es evidencia
+  **más débil** que la de `notas`, cuya respuesta sí se dio sobre un guion
+  explícito. Lo que sí respalda la capa es la evidencia automática, que aquí es
+  la más fuerte del programa.
+- **Evidencia nueva que esta capa aporta al programa entero**: el comparador AST
+  que usaron las capas 4 a 7 compara **texto SQL pero no parámetros**, así que
+  un intercambio de argumentos al extraer **no se detectaría**. 7.1 cerró ese
+  hueco ejecutando el controlador del commit base y el actual con las mismas
+  entradas: **los seis caminos emiten la misma secuencia de `(SQL, parámetros)` y
+  devuelven lo mismo**. Es una comprobación de un solo uso; fijarla como prueba
+  permanente queda como trabajo disponible. **Las extracciones anteriores no
+  tienen esa evidencia.**
+- **Estado de publicación de la capa 7 para `ventas`: NO publicada.**
+  `origin/main` sigue en el commit base `58c5233` y hay **cuatro commits
+  locales** por delante, más el del cierre. **Producción no corre este código**,
+  así que mientras siga así el rollback es **puramente local**. Es la misma
+  situación en que quedó `notas` al cerrarse, y allí duró un día.
+- **Decisión del usuario el 2026-08-20: cerrar la capa aquí**, sin abrir 7.2. Se
+  le ofrecieron **cuatro** salidas —cerrar, una 7.2 con los errores de dominio,
+  una 7.2 que moviera el `UPDATE pagos`, o completar antes los tres pasos del
+  guion que no constan— y eligió cerrar. El `UPDATE pagos` **se queda** en
+  `ventas_repository`; `response_model` y los errores de dominio **no se
+  añaden** y **no quedan como deuda de esta capa**: pasan a ser trabajo
+  disponible que exigiría una orden explícita. Los **tres pasos del guion que no
+  constan siguen sin constar** y no se marcan como cumplidos.
+- Capa 7 **cerrada para `ventas`** el 2026-08-20, el mismo día en que se activó.
+  Compuerta de cierre: **exit 0 con 835 pruebas**, Ruff correcto y `pip check`
+  íntegro. La suite pasó de 791 al activar la capa a 835. Cerrarla **no cancela
+  los once hallazgos de 7.0**, que siguen vivos, empezando por la colisión del
+  `ILIKE` que hace que anular una venta alcance los pagos de otra.
+- **La capa 7 para `ventas` no tocó la base de datos**, ni siquiera para leer.
+  Es la **quinta consecutiva** que no abre una conexión a PostgreSQL, y la
+  **segunda de esas cinco cuyo dominio sí escribe**.
+- Capa activa: **ninguna**. Siguiente paso: **otro dominio de la capa 7**, sin
+  elegir y en espera. Quedan **nueve**: `boletin`, `asistencia`,
+  `observaciones`, `planilla`, `planeador_anual`, `plan_de_clases`, `branding`,
+  `profesores` y `super_admin`. Dos de ellos, `boletin` y `planilla`, **no son
+  fronteras limpias**: `notas` ya posee esas rutas, como registró su 7.0.
 - **Punto de decisión abierto al terminar 7.1**, con **tres** salidas y no dos:
   dónde vive el `UPDATE pagos`, `response_model` para las cuatro lecturas, y los
   errores de dominio. La tercera es **más fácil aquí que en `notas`**: este
@@ -1186,24 +1231,26 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
 
 ## Archivos de continuidad
 
-- [07_VENTAS.md](./07_VENTAS.md): **bitácora activa** de la capa 7 para el
-  dominio `ventas`. Registra el commit base
-  `58c5233afc4772ba040da690f4d719b518bb1b0a` —**publicado y desplegado**,
-  comprobado contra el remoto real—, la autorización del usuario, el alcance
-  limitado a un solo dominio y la decisión explícita de continuar aceptando las
-  verificaciones heredadas como pendientes. Fija el objetivo, las dependencias
-  de las siete capas anteriores, el alcance autorizado, lo que queda fuera, las
-  invariantes y los **doce supuestos heredados** que su 7.0 debe resolver uno a
-  uno, once de ellos **sin verificar**. Registra el **punto de decisión propio y
-  más importante** de la capa —si las cinco sentencias sobre `ventas` que la
-  capa 5 dejó en `pagos_repository` se quedan o se mueven, con las dos salidas y
-  sus precedentes— y deja escrito que **mover ese código no está autorizado** sin
-  una orden posterior a la evidencia. Define el **trabajo exacto de 7.0 en doce
-  puntos**, sus criterios de cierre, los de la capa, las decisiones tomadas al
-  activar con sus alternativas descartadas y los riesgos, encabezados por que
-  **este es el dominio financiero**. Anota además el **residuo documental
-  abierto** sobre el estado de publicación de `notas`. **Es el documento que un
-  chat nuevo debe leer después de este índice.**
+- [07_VENTAS.md](./07_VENTAS.md): **bitácora cerrada** de la capa 7 para el
+  dominio `ventas`, y **fuente de continuidad**. Conserva el inventario de
+  **7.0**: sus **2 archivos** —el recuento sale al revés que en `notas`—, sus 5
+  entradas HTTP con **un solo modelo de permiso**, las **cuatro tablas
+  escritas** incluida `pagos`, la línea base de consultas y conexiones de cinco
+  caminos, los **doce supuestos resueltos** —once confirmados y **uno
+  refutado**, el de los permisos— y los **once hallazgos sin corregir**,
+  encabezados por la colisión del `ILIKE` que hace que anular una venta alcance
+  los pagos de otra. Registra el cierre de **7.1**, la extracción a
+  `ventas_repository` con su comparador AST de **17 de 17** literales y, sobre
+  todo, **la comprobación de equivalencia de `(SQL, parámetros)` y de retorno en
+  los seis caminos**, que cierra un hueco de evidencia que arrastran las capas 4
+  a 7. Registra las seis guardias que fallaron y la lección de que **una prueba
+  de hallazgo anclada a un archivo es también una guardia de línea base**; la
+  decisión sobre dónde vive el `UPDATE pagos` con su alternativa **abierta**; el
+  **punto de decisión resuelto** que cerró la capa sin abrir una 7.2; el cierre
+  con su rollback —**local, porque la capa sigue sin publicar**—, su staging, su
+  verificación manual **con la cobertura real que el usuario reportó** y los
+  **riesgos que deja abiertos**. **Es el documento que un chat nuevo debe leer
+  después de este índice.**
 - [07_NOTAS.md](./07_NOTAS.md): **bitácora cerrada** de la capa 7 para el
   dominio `notas`, y **fuente de continuidad**. Registra el commit base
   `eee8aec8725fc0bdd4a98fd2fd29cb88502c56e1`, la autorización del usuario, el
@@ -1261,8 +1308,8 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   usuario decidió conservar—, las cuatro extracciones de 6.1 a 6.5 con sus
   decisiones tomadas con evidencia, el supuesto de `storage` **refutado**, y el
   cierre de la capa con su rollback, su verificación manual local y la advertencia
-  de que **no llegó a publicarse**. Es el documento que un chat nuevo debe leer
-  después de este índice.
+  de que **no llegó a publicarse**. Fue la fuente de continuidad **hasta que se
+  activó la capa 7**; sus diez hallazgos siguen vivos.
 - [05_PAGOS_TIPOS_PAGO.md](./05_PAGOS_TIPOS_PAGO.md): **bitácora cerrada** de la
   capa 5. Conserva los siete hallazgos registrados sin corregir y el paso 2
   acordado y no iniciado, la clave de idempotencia de `POST /pagos`.
@@ -1273,7 +1320,8 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   extracciones de 5.1 a 5.3 con la unificación SQL autorizada y la decisión sobre
   dónde vive el contacto con `ventas`, y el cierre de la capa con su rollback,
   su verificación manual local y la advertencia de que **no llegó a publicarse**.
-  Es el documento que un chat nuevo debe leer después de este índice.
+  Fue la fuente de continuidad **hasta que se activó la capa 6**; sus ocho
+  hallazgos siguen vivos.
 - [04_REPORTES_FINANCIEROS.md](./04_REPORTES_FINANCIEROS.md): **bitácora
   cerrada** de la capa 4. Conserva el cierre de 4.3 con su medición sobre
   producción y la verificación manual del usuario, el hallazgo de que el informe

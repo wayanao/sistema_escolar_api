@@ -4,13 +4,15 @@
 
 ## Control
 
-- Estado: **Activa** desde el 2026-08-20, con las subcapas **7.0 y 7.1
-  cerradas** ese mismo día.
+- Estado: **Cerrada** el 2026-08-20, con sus dos subcapas **7.0 y 7.1**
+  completas y la **verificación manual ejecutada por el usuario con resultado
+  correcto**. Activada el mismo 2026-08-20.
 - Commit base: `58c5233afc4772ba040da690f4d719b518bb1b0a`.
 - Rama acordada: `main`.
-- Primera subcapa pendiente: **ninguna definida**. Con 7.1 la frontera de
-  persistencia del dominio quedó cerrada. Queda un **punto de decisión** abierto
-  que el usuario debe resolver: ver «Punto de decisión, abierto».
+- Primera subcapa pendiente: **ninguna definida**. Las subcapas **7.0 y 7.1**
+  quedaron **cerradas** el 2026-08-20, y con 7.1 la frontera de persistencia del
+  dominio quedó cerrada. **El usuario decidió cerrar la capa aquí**, sin abrir
+  7.2. Ver «Punto de decisión, resuelto el 2026-08-20».
 - Código de producto modificado al activar: **ninguno**. Tampoco en 7.0: su diff
   es **un solo archivo de prueba nuevo** y ningún archivo rastreado modificado,
   igual que los de 5.0, 6.0, 7.0 de dashboard y 7.0 de notas. **7.1 sí modifica
@@ -653,13 +655,61 @@ por la misma razón que hace trivial el rollback: no hay cambio de esquema, de
 datos ni de SQL. Un despliegue prudente solo necesita comprobar que la
 aplicación arranca y lo que cubre el guion de abajo.
 
-### Verificación manual: **guion preparado, pendiente de ejecutar**
+### Verificación manual: **hecha, con la cobertura que el usuario reportó**
+
+**Ejecutada por el usuario el 2026-08-20, en local, con resultado correcto.**
+
+**Artefacto confirmado antes de registrarla**, conforme a la lección 10 de la
+capa 5, y **sin ambigüedad**: el árbol estaba limpio y `HEAD` era
+`8948e409075115d1bf5f4ee1a1769396fbeaa029`; el código de 7.1 vive en
+`76f76e7`, que es ancestro suyo. Lo ejercitado y lo commiteado son el mismo
+contenido.
+
+**Alcance real de la evidencia, registrado sin inflarlo.** El usuario informó el
+resultado **de forma global** —«ya verifiqué y se ve bien por ahora»— y **no
+punto por punto contra los once pasos** del guion. Es una diferencia real con
+`notas`, donde la respuesta se dio sobre un guion explícito y por eso su
+bitácora pudo afirmar que no se infirió nada. Aquí **no consta** cuáles de los
+once pasos se recorrieron ni si se comprobaron los dos tenants, la prueba
+cruzada contra el expediente y la cartera, o el retorno exacto del stock tras
+anular.
+
+**Qué respalda entonces la capa**, y es bastante:
+
+- la evidencia automática, que en esta subcapa es la más fuerte del programa:
+  **17 de 17 literales SQL byte a byte** y, sobre todo, **los seis caminos
+  emitiendo la misma secuencia de `(SQL, parámetros)` y devolviendo lo mismo**
+  que el commit base;
+- **835 pruebas en verde**, con los conteos de consultas y conexiones y los
+  contratos HTTP fijados por aserción, y ninguna que cambiara de expectativa;
+- el uso real que el usuario le dio a la aplicación, sin encontrar nada raro.
+
+**Qué no respalda.** Que la aplicación «se vea bien» en un recorrido general
+**no equivale** a haber comprobado el retorno exacto del stock tras una
+anulación con abono parcial, ni la prueba cruzada de importes, ni el aislamiento
+entre los dos tenants. Son los tres puntos del guion que más valor tenían en
+este dominio, y **quedan sin evidencia registrada**.
+
+**Limitación adicional**: la verificación fue **en local** y **este código no
+está publicado**. Nadie lo ha ejercitado desplegado, ni puede: producción sigue
+corriendo el código anterior a la capa.
+
+Es aceptable por lo que la capa es —una refactorización con SQL y parámetros
+demostrados equivalentes y sin ningún acceso a la base de datos—; no lo sería en
+una capa que cambiara comportamiento o tocara datos. **El guion completo se
+conserva abajo** por si el usuario quiere completar los pasos que no consten.
+
+### Guion entregado
 
 Es la única evidencia que no puede delegarse en un asistente. En este dominio
 pesa más que en `dashboard` y algo más que en `notas`, por una razón concreta:
 si la extracción hubiera roto algo, la consecuencia no sería un panel con cifras
 raras ni una calificación perdida, sino **dinero mal contado y stock
 descuadrado**.
+
+Este es el guion que se entregó el 2026-08-20. Se conserva íntegro: la
+verificación se reportó de forma global y no contra sus pasos, así que sigue
+siendo la lista de lo que faltaría comprobar si se quisiera cerrar ese hueco.
 
 Lo que la evidencia automática ya cubre, y que por tanto el guion **no** tiene
 que buscar: que el SQL es el mismo —17 de 17 byte a byte—, que los parámetros y
@@ -735,32 +785,49 @@ abiertos y **anteriores** a esta capa; están en la lista de los once:
 - que `DELETE /api/ventas/{id}` aparezca en la documentación de la API aunque
   solo responda 405 —hallazgo 10—.
 
-## Punto de decisión, abierto
+## Punto de decisión, resuelto el 2026-08-20
 
 **La frontera de persistencia de `ventas` ya está cerrada**: ni el controlador
-ni la ruta tienen SQL, y el repositorio existe. Lo que queda del objetivo que el
-índice fijó para la capa 7 es la parte condicional, más una decisión propia de
-este dominio que no tienen las dos bitácoras anteriores.
+ni la ruta tienen SQL, y el repositorio existe. Lo que quedaba del objetivo que
+el índice fijó para la capa 7 era la parte condicional, más una decisión propia
+de este dominio que no tenían las dos bitácoras anteriores.
 
-Son tres cosas, y **ninguna se inicia por inferencia**:
+Eran tres cosas, y **ninguna entra por inferencia**:
 
-1. **Dónde vive el `UPDATE pagos`.** Hoy está en `ventas_repository` por las
-   tres razones de arriba. Moverlo a `pagos_repository` es la alternativa
-   descartada, sigue siendo defendible y **exige orden explícita** porque toca
-   un módulo cerrado.
+1. **Dónde vive el `UPDATE pagos`.** Está en `ventas_repository` por las tres
+   razones registradas en la decisión de 7.1. Moverlo a `pagos_repository` era
+   la alternativa descartada, sigue siendo defendible y **exige orden
+   explícita** porque toca un módulo cerrado.
 2. **`response_model`.** Las cuatro entradas de lectura podrían declararlo
    demostrando payload por payload que la respuesta no cambia. Riesgo propio: en
    este dominio los payloads llevan **importes**, y `response_model` **filtra**
    los campos que no declara, así que un campo recortado puede ser un saldo.
-3. **Errores de dominio.** Aquí el dilema es **menor que en `notas`**, y esa es
+3. **Errores de dominio.** Aquí el dilema era **menor que en `notas`**, y esa es
    la diferencia importante: `ventas` **ya usa** el mecanismo de error —responde
    400 ante una validación fallida— así que convertir sus `ValueError` en
-   errores de dominio **no cambiaría ningún status code**. Es la única de las
-   tres que sería una refactorización pura.
+   errores de dominio **no cambiaría ningún status code**. Era la única de las
+   tres que habría sido una refactorización pura.
 
-Las salidas legítimas son las mismas que en las dos capas anteriores: **cerrar
-la capa aquí** como refactorización pura, o **abrir una 7.2** con una de las
-tres. Es decisión del usuario y **no está tomada**.
+**El usuario eligió cerrar la capa aquí**, el 2026-08-20 y de forma explícita,
+entre cuatro opciones planteadas —cerrar, abrir una 7.2 con los errores de
+dominio, abrir una 7.2 que moviera el `UPDATE pagos`, o completar antes los tres
+pasos del guion que no constan—. Consecuencias registradas, ninguna de ellas una
+deuda oculta:
+
+- La capa 7 para `ventas` es, como la 5, la 6 y las dos capas 7 anteriores,
+  **exclusivamente una refactorización**. Ningún contrato observable cambió.
+- **El `UPDATE pagos` se queda en `ventas_repository`.** La alternativa no se
+  descarta para siempre: queda como trabajo disponible que exigiría una orden.
+- **`response_model` y los errores de dominio no se añaden.** No quedan como
+  trabajo pendiente de esta capa: quedan registrados como trabajo disponible.
+- Los **once hallazgos de 7.0 siguen vivos y sin corregir**, incluidos los tres
+  que hoy tienen efecto real sobre dinero: la colisión del `ILIKE` al anular, el
+  `total` que fija el cliente y el `DELETE` muerto. Cerrar la capa **no los
+  resuelve ni los cancela**, y **tampoco los introdujo**: los once son
+  anteriores a este trabajo.
+- **Los tres pasos del guion que no constan siguen sin constar.** El usuario
+  eligió cerrar sin completarlos, sabiendo que la evidencia manual queda más
+  débil que la de `notas`. No se marcan como cumplidos.
 
 ## Subcapa 7.1 — trabajo exacto, ejecutado y cerrado
 
@@ -822,6 +889,103 @@ tres. Es decisión del usuario y **no está tomada**.
   puede declararse «puramente de código» sin comprobarlo.
 - El índice maestro queda actualizado y **ningún otro dominio se activa sin
   orden explícita del usuario**.
+
+Estado de los ocho criterios al 2026-08-20:
+
+| Criterio | Estado |
+|---|---|
+| Subcapas cerradas o `No aplica` | **Cumplido**: 7.0 y 7.1 cerradas; no hubo más |
+| Dominio migrado sin arrastrar otros | **Cumplido**: los únicos archivos tocados fuera del dominio son dos guardias de `test_dashboard_caracterizacion.py` y `test_notas_caracterizacion.py` que enumeran repositorios, y **no son código de producto** |
+| `response_model` solo tras caracterizar | **No aplica**: el usuario decidió no añadirlo |
+| Ninguna abstracción sin dos consumidores | **Cumplido**: el repositorio por módulo es la convención de `app/repositories/README.md`, con siete precedentes |
+| Contratos del frontend y de la base intactos | **Cumplido**: comparador AST 17 de 17, **equivalencia de `(SQL, parámetros)` y de retorno en los seis caminos**, y 37 pruebas del dominio sin cambio de expectativa, incluidas las cinco de contrato HTTP real |
+| Punto de decisión sobre `pagos_repository` resuelto | **Cumplido**: el `UPDATE pagos` vive en `ventas_repository`, con su evidencia y su alternativa descartada registradas; **las cinco funciones de `pagos_repository` no se movieron** |
+| Compuerta, Ruff, dependencias y `git diff --check` | **Cumplido**: 835 pruebas, exit 0 |
+| Staging, rollback y verificación manual documentados | **Cumplido con matiz.** El criterio exigía que, por tratarse de un dominio que escribe, el rollback cubriera datos explícitamente: **se comprobó, y es de código**, porque la capa no ejecutó nada contra la base. La verificación manual está documentada **con su cobertura real**, que es más débil de lo que el guion pedía |
+| Índice actualizado y ningún dominio activado | **Cumplido** |
+
+**Los ocho criterios quedan resueltos**, el último con su matiz registrado.
+
+## Cierre de la capa 7 para `ventas`
+
+### Resultado frente a su objetivo
+
+| Objetivo | Resultado |
+|---|---|
+| Migrar el dominio con contratos y pruebas | `venta_controller.py` pasó de **363 a 278 líneas** y de **17 sentencias SQL inline a 0**; la persistencia vive en `ventas_repository`, **17 funciones** que reciben el cursor. **41 pruebas de caracterización** nuevas fijan payloads, permisos, conteos de consultas **y de conexiones**, ciclo de vida, aritmética del dinero y **status codes HTTP reales** |
+| Un dominio a la vez | **Cumplido**: no se tocó código de producto de ningún otro dominio. Los ocho restantes siguen en espera |
+| `response_model` solo tras caracterizar | **No se añadió**, por decisión explícita del usuario. No queda como deuda |
+| Sin abstracciones sin dos consumidores | **Cumplido**: el repositorio por módulo es la convención documentada, con siete precedentes |
+
+La suite pasó de **791 a 835** pruebas. Compuerta de cierre: **exit 0 con 835
+pruebas**, Ruff correcto y `pip check` íntegro.
+
+### Lo que esta capa NO hizo
+
+- **No tocó la base de datos**, ni siquiera para leer. Es la **quinta capa
+  consecutiva** que no abre una sola conexión a PostgreSQL, y la **segunda de
+  esas cinco cuyo dominio sí escribe**.
+- **No tocó archivos.** 7.0 lo comprobó: ninguno de los dos archivos del dominio
+  menciona `storage`.
+- No cambió rutas, payloads, status codes, permisos, tenant, ownership,
+  transacciones, timeouts, dependencias ni configuración.
+- **No corrigió ninguno de los once hallazgos** de 7.0. Siguen vivos.
+- **No movió las cinco funciones** que la capa 5 dejó en `pagos_repository`, ni
+  retiró el código muerto de `eliminar_venta`.
+- **No necesitó autorizar ni un solo cambio de texto SQL**, como la capa 6 y las
+  dos capas 7 anteriores.
+
+### Lo que esta capa aporta al programa, más allá de su dominio
+
+**Descubrió un hueco de evidencia que afecta a las capas 4 a 7 enteras**: el
+comparador AST en que se apoyaron todas las extracciones compara **texto SQL
+pero no parámetros**, así que un intercambio de argumentos habría pasado
+inadvertido. 7.1 lo cerró **para esta capa** comparando la secuencia de
+`(SQL, parámetros)` y el retorno de los seis caminos contra el commit base.
+**Las extracciones anteriores no tienen esa evidencia**, y revisarlas es trabajo
+ajeno a esta capa que queda anotado.
+
+### Estado de publicación
+
+**No publicada.** `origin/main` sigue en `58c5233`, el commit base de la capa, y
+hay **cuatro commits locales por delante** —`040b027`, `2fbe83f`, `76f76e7` y
+`8948e40`—, más el del cierre. **Producción no corre este código**: sigue con el
+anterior a la capa.
+
+Mientras siga así, **el rollback es una operación puramente local**. En cuanto
+se publique, y como un push a `main` dispara el despliegue, esa ventaja
+desaparece y revertir exigirá otro push. La publicación la decide y la ejecuta
+el usuario.
+
+**No se atribuye ningún run de GitHub Actions**: esa evidencia sigue sin
+obtenerse desde la capa 0.
+
+### Riesgos que la capa deja abiertos
+
+- **Anular una venta alcanza los pagos de otra.** El `ILIKE '%Cargo #N%'` no
+  delimita el número, así que anular la venta 4 marca como anulados los pagos de
+  la venta 40. Es el riesgo más directo que deja esta capa, es **dinero**, está
+  activo en producción y es **anterior a este trabajo**.
+- **El mismo patrón no reconoce la otra descripción** que el propio dominio
+  fabrica, «Cargo de Inventario #N», que solo se alcanza por `venta_id`.
+- **`eliminar_venta` sigue siendo código muerto que borra físicamente**, con su
+  `DELETE FROM ventas` y su `commit`, mientras su ruta responde 405.
+- **El `total` de la venta lo fija el cliente** y no se compara con la suma de
+  los subtotales.
+- **El dinero se maneja como `float`**, nunca `Decimal`.
+- **`anular_venta` escribe `pagos`** desde fuera de la frontera que la capa 5
+  dio por cerrada. La extracción lo movió de sitio pero **no lo cambió**.
+- **Tres pasos del guion de verificación manual no constan**: retorno del stock
+  tras anular con abono parcial, prueba cruzada de importes y aislamiento entre
+  tenants.
+- El resto de los once hallazgos de 7.0, más `response_model` sin añadir.
+- **Hueco de evidencia heredado**: las extracciones de las capas 4 a 7 anteriores
+  no comprobaron equivalencia de parámetros, solo de texto SQL.
+- Heredados: calibración de `DB_STATEMENT_TIMEOUT_MS` de la capa 1, ausencia de
+  evidencia de GitHub Actions desde la capa 0, la credencial privilegiada de la
+  capa 4 sin rotar, y los hallazgos abiertos de las capas 5, 6 y 7 —incluidas la
+  clave de idempotencia, la ausencia de lock frente a horarios solapados, los
+  diez de dashboard y los doce de notas—.
 
 ## Decisiones
 
@@ -1056,17 +1220,103 @@ tres. Es decisión del usuario y **no está tomada**.
 - Siguiente acción exacta: **esperar una decisión explícita del usuario** sobre
   el punto de decisión. Ninguna de sus tres opciones se inicia por inferencia.
 
+### 2026-08-20 — verificación manual registrada
+
+- Modo de acceso: mismo checkout local; Git validado directamente.
+- **Artefacto confirmado antes de registrar la verificación**, conforme a la
+  lección 10 de la capa 5 y **sin ambigüedad**: rama `main`, árbol **limpio**,
+  `HEAD` `8948e409075115d1bf5f4ee1a1769396fbeaa029`. Los **cuatro** commits
+  posteriores al base están explicados en esta bitácora: la activación
+  `040b027`, el cierre de 7.0 `2fbe83f`, la extracción de 7.1 `76f76e7` y la
+  documentación del guion `8948e40`.
+- **Verificación manual**: el usuario informó el 2026-08-20 haberla ejecutado
+  con resultado correcto. **Lo reportó de forma global** —«ya verifiqué y se ve
+  bien por ahora»— **y no punto por punto contra los once pasos del guion**. Se
+  registra así, sin inflarla: **no consta** qué pasos se recorrieron, y en
+  concreto no consta el retorno exacto del stock tras una anulación con abono
+  parcial, la prueba cruzada de importes contra el expediente y la cartera, ni
+  el aislamiento entre los dos tenants. Es evidencia **más débil** que la de
+  `notas`, cuya bitácora sí pudo afirmar que la respuesta se dio sobre un guion
+  explícito.
+- **Estado de publicación comprobado, no supuesto**: `origin/main` está en
+  `58c5233`, el commit base. Hay **cuatro commits locales sin publicar** y
+  **producción no corre este código**. Mientras siga así, el rollback es una
+  operación **puramente local**. No se consulta ni se atribuye ningún run de
+  GitHub Actions.
+- Archivos modificados en este turno: esta bitácora. **Código de producto y
+  pruebas: ninguno.**
+- Estado: capa 7 **activa** para `ventas`, con **7.0 y 7.1 cerradas** y la
+  verificación manual registrada con su limitación. **La capa no está cerrada**:
+  falta resolver el punto de decisión.
+- Siguiente acción exacta: **esperar la decisión del usuario** entre las tres
+  salidas del punto de decisión. Una instrucción genérica de continuar no la
+  sustituye. *(Tomada en el mismo turno; ver el cierre más abajo.)*
+
+### 2026-08-20 — cierre de la capa 7 para `ventas`
+
+Con la verificación manual registrada y el punto de decisión resuelto, la capa
+queda cerrada.
+
+- Modo de acceso: mismo checkout local; Git validado directamente.
+- **Decisión del usuario, explícita**: cerrar la capa aquí, sin abrir 7.2. Se le
+  ofrecieron **cuatro** salidas —cerrar, una 7.2 con los errores de dominio, una
+  7.2 que moviera el `UPDATE pagos`, o completar antes los tres pasos del guion
+  que no constan— y eligió cerrar. La capa queda siendo una refactorización
+  pura, como la 5, la 6 y las dos capas 7 anteriores.
+- Precondición Git: rama `main`, `HEAD`
+  `8948e409075115d1bf5f4ee1a1769396fbeaa029`. El commit base `58c5233` existe y
+  es ancestro, y los **cuatro** commits posteriores están explicados aquí: la
+  activación `040b027`, el cierre de 7.0 `2fbe83f`, la extracción de 7.1
+  `76f76e7` y la documentación del guion `8948e40`.
+- **Compuerta global de cierre**: `.\venv\Scripts\python.exe scripts\verify.py`;
+  **835 pruebas pasaron**, 5 warnings heredadas, Ruff correcto, `pip check`
+  íntegro y exit 0. La suite pasó de 791 al activar la capa a 835.
+- `git diff --check`: **limpio**.
+- **Estado de publicación comprobado, no supuesto**: `origin/main` está en
+  `58c5233`, el commit base. **Producción no corre este código** y el rollback
+  sigue siendo **puramente local**. El reflog remoto no registra ningún push
+  posterior a `58c5233`. **No se consultó ni se atribuye ningún run de GitHub
+  Actions.**
+- **Lo que el cierre NO marca como cumplido**: los tres pasos del guion que no
+  constan, y las verificaciones heredadas de las capas 0 y 1. Ninguno cambia de
+  estado por cerrar la capa.
+- Archivos modificados en este turno: esta bitácora y
+  `docs/modularizacion/README.md`. **Código de producto y pruebas: ninguno.**
+- **Dos residuos del índice corregidos al cerrar, y se registran.** Primero, un
+  recuento propio: se había escrito «los ocho dominios restantes» y son
+  **nueve** —`boletin`, `asistencia`, `observaciones`, `planilla`,
+  `planeador_anual`, `plan_de_clases`, `branding`, `profesores` y
+  `super_admin`—. Segundo, un residuo **anterior a esta capa**: las entradas de
+  continuidad de las capas 5 y 6 seguían declarándose «el documento que un chat
+  nuevo debe leer después de este índice», de modo que **tres documentos lo
+  afirmaban a la vez**. Se marcaron como fuentes de continuidad superadas, sin
+  tocar el resto de su texto ni sus bitácoras. Corregirlo entra en el criterio
+  de cierre «el índice maestro queda actualizado», y sin ello el índice quedaba
+  ambiguo sobre qué leer.
+- PostgreSQL, migraciones, producción, commit, push y deploy: **ninguno por
+  parte del asistente**, ni en este turno ni en toda la capa.
+- Estado: **capa 7 cerrada para el dominio `ventas`**. Los **nueve** dominios
+  restantes de la capa 7 quedan **en espera** y **ninguno fue activado**.
+- Siguiente acción exacta: esperar una orden explícita del usuario. Una
+  instrucción genérica de continuar no autoriza activar otro dominio. Queda
+  además **pendiente la publicación**, que decide y ejecuta el usuario.
+
 ## Entrega al próximo chat
 
-- Capa activa: **7, para el dominio `ventas` y solo ese.** Activada el
-  2026-08-20.
+- Capa activa: **ninguna.** La capa 7 quedó **cerrada para `ventas`** el
+  2026-08-20, el mismo día en que se activó.
 - Última subcapa terminada: **7.1**, cerrada el 2026-08-20. Con ella la frontera
   de persistencia del dominio quedó cerrada.
-- Primera subcapa pendiente: **ninguna definida.** Queda un **punto de decisión
-  con tres salidas** —dónde vive el `UPDATE pagos`, `response_model` y los
-  errores de dominio— que **decide el usuario** y que no se inicia por
-  inferencia. La capa **no está cerrada**: falta esa decisión y la verificación
-  manual.
+- **Capa cerrada** el 2026-08-20. No quedan bloqueos.
+- Primera subcapa pendiente: **ninguna.** El usuario decidió **cerrar la capa
+  aquí**, sin abrir 7.2: el `UPDATE pagos` se queda en `ventas_repository`, y
+  `response_model` y los errores de dominio **no se añaden**. Los tres pasan a
+  ser trabajo disponible que exigiría una orden explícita.
+- **Verificación manual: hecha** el 2026-08-20, en local y con resultado
+  correcto, pero **reportada de forma global y no contra los once pasos del
+  guion**. No consta el retorno del stock tras anular con abono parcial, la
+  prueba cruzada de importes ni el aislamiento entre tenants. El guion íntegro
+  se conserva por si se quiere cerrar ese hueco.
 - Commit base: `58c5233afc4772ba040da690f4d719b518bb1b0a`, rama `main`,
   **publicado y desplegado**, comprobado contra el remoto real.
 - Bloqueos: ninguno. Verificaciones heredadas **pendientes y aceptadas** por
@@ -1099,7 +1349,7 @@ tres. Es decisión del usuario y **no está tomada**.
   405 en el borrado y 422 ante payload inválido.
 - Lo que hay que recordar antes de tocar nada:
   1. **Un solo dominio.** `dashboard` y `notas` ya están cerrados en sus propias
-     bitácoras y los otros ocho siguen en espera.
+     bitácoras y los otros nueve siguen en espera.
   2. **Es el dominio financiero.** Los contratos de la capa 4 y la frontera de
      pagos de la capa 5 rodean este código. Un error aquí es dinero, no una
      cifra rara.
@@ -1130,8 +1380,11 @@ tres. Es decisión del usuario y **no está tomada**.
 - **Residuo documental abierto**: `07_NOTAS.md` describe la capa de `notas` como
   no publicada, y **sí lo está** desde el 2026-08-20. El índice ya lo registra;
   la bitácora cerrada no se editó. Corregirla exige una orden explícita.
-- Siguiente acción exacta: **esperar una decisión explícita del usuario** sobre
-  el punto de decisión de tres salidas. Una instrucción genérica de continuar
-  **no la autoriza**, porque no queda ninguna subcapa pendiente definida.
-  Pendiente además la **verificación manual**, que en este dominio pesa: la
-  extracción tocó un camino de escritura que mueve dinero y stock.
+- **Pendiente la publicación.** Los commits siguen en local; `origin/main` está
+  en el commit base. Publicar dispara el despliegue, así que es decisión y
+  acción del usuario.
+- Siguiente acción exacta: **esperar una orden explícita del usuario**. La capa
+  7 sigue teniendo dominios en espera —`boletin`, `asistencia`,
+  `observaciones`, `planilla`, `planeador_anual`, `plan_de_clases`, `branding`,
+  `profesores` y `super_admin`— y **ninguno se activa sin orden**. Una
+  instrucción genérica de continuar no la autoriza.

@@ -526,6 +526,35 @@ repositorio **no abre, no cierra, no confirma y no revierte** nada, y también
 está fijado por prueba. Son seis y no cinco porque `eliminar_venta` —el código
 muerto del hallazgo 4— también abre su conexión y commitea; **7.1 no lo retira**.
 
+### Equivalencia en tiempo de ejecución, incluida la de parámetros
+
+**El comparador AST compara texto SQL, no parámetros.** Un intercambio de
+argumentos al extraer —pasar `inventario_id` donde iba `cantidad`, por
+ejemplo— produciría un conjunto de literales idéntico y **no lo detectaría**. Es
+un hueco de evidencia que arrastran todas las extracciones del programa, porque
+todas se apoyaron en ese comparador.
+
+Se cerró para esta subcapa con una comprobación adicional: **ejecutar el
+controlador del commit base y el actual con las mismas entradas y comparar la
+secuencia exacta de `(SQL, parámetros)` y el valor devuelto**. Se cargó
+`git show 58c5233:app/controllers/venta_controller.py` como módulo aparte, se
+doblaron `get_connection` y el reloj, y se recorrieron los seis caminos.
+
+| Camino | Consultas | `(SQL, parámetros)` idénticos | Retorno idéntico |
+|---|---:|---|---|
+| `obtener_ventas` | 2 | sí | sí |
+| `obtener_ventas_paginado` | 3 | sí | sí |
+| `obtener_ventas_pendientes` | 2 | sí | sí |
+| `crear_venta`, dos productos distintos | 7 | sí | sí |
+| `eliminar_venta` | 1 | sí | sí |
+| `anular_venta`, dos líneas | 6 | sí | sí |
+
+**Los seis idénticos.** Es la evidencia más fuerte que ha producido una
+extracción en este programa, porque cubre lo que el comparador AST no ve. **Es
+una comprobación de un solo uso, no una prueba permanente**: fijarla en la suite
+exigiría conservar el archivo del commit base, y hacerlo queda como trabajo
+disponible.
+
 ### Las guardias que fallaron, que era la señal esperada
 
 **Fallaron seis pruebas al extraer**, y las seis eran previsibles. Es la lección
@@ -588,6 +617,123 @@ Queda en el punto de decisión.
 El bloque lleva además una advertencia en el propio código sobre el `ILIKE` sin
 delimitar, para que nadie lo «arregle» por vecindad. Es el criterio que 7.1 de
 dashboard fijó y que 7.1 de notas repitió.
+
+## Staging, rollback y verificación manual
+
+### Lo que esta capa hizo y no hizo
+
+Hasta 7.1, la capa 7 para `ventas` es **exclusivamente una refactorización**,
+igual que la 5, la 6 y las dos capas 7 anteriores. No añadió funciones, no
+cambió reglas, no tocó rutas, payloads, status codes, permisos, tenant,
+ownership, transacciones, timeouts, dependencias ni configuración. Y **no abrió
+una sola conexión a PostgreSQL**: ni migraciones, ni DDL, ni DML, ni lecturas de
+medición. Toda la caracterización se hizo con dobles.
+
+Es la **quinta capa consecutiva** que no abre una conexión a PostgreSQL, y la
+segunda de esas cinco cuyo dominio escribe.
+
+### Rollback
+
+**Es puramente de código.** No hay nada que deshacer en datos ni en esquema.
+Revertir los commits de la capa hasta
+`58c5233afc4772ba040da690f4d719b518bb1b0a` devuelve el controlador a su versión
+anterior y elimina el repositorio nuevo.
+
+**Mientras la capa siga sin publicar, el rollback es una operación puramente
+local.** Esa ventaja desaparece en cuanto se publique, porque un push a `main`
+dispara el despliegue. Es la misma advertencia que `notas` registró, y que en su
+caso dejó de aplicar al día siguiente.
+
+No cambiar los timeouts durante el rollback.
+
+### Staging
+
+No se usó un entorno de staging y **no se considera necesario** para esta capa,
+por la misma razón que hace trivial el rollback: no hay cambio de esquema, de
+datos ni de SQL. Un despliegue prudente solo necesita comprobar que la
+aplicación arranca y lo que cubre el guion de abajo.
+
+### Verificación manual: **guion preparado, pendiente de ejecutar**
+
+Es la única evidencia que no puede delegarse en un asistente. En este dominio
+pesa más que en `dashboard` y algo más que en `notas`, por una razón concreta:
+si la extracción hubiera roto algo, la consecuencia no sería un panel con cifras
+raras ni una calificación perdida, sino **dinero mal contado y stock
+descuadrado**.
+
+Lo que la evidencia automática ya cubre, y que por tanto el guion **no** tiene
+que buscar: que el SQL es el mismo —17 de 17 byte a byte—, que los parámetros y
+los valores devueltos son los mismos en los seis caminos, y que los conteos de
+consultas y conexiones no cambiaron. Lo que **solo** puede ver una persona es lo
+que ocurre contra PostgreSQL real, con las claves foráneas de la capa 3 puestas
+y con los dos tenants.
+
+**Antes de empezar, confirmar el artefacto**: qué commit o árbol se está
+ejercitando. Si el árbol tiene cambios sin commitear, lo verificado es el árbol,
+no `HEAD`. Es la lección 10 de la capa 5.
+
+Guion, en once pasos:
+
+1. **Arranque.** La aplicación levanta sin error de importación. El repositorio
+   nuevo es un módulo más y un error de import sería inmediato.
+2. **Alta a crédito, ida y vuelta.** Crear una venta a crédito para un
+   estudiante con **dos productos distintos** y cantidades distintas.
+   Comprobar: responde `{"id": N, "mensaje": "Venta exitosa registrada!"}` con
+   `id` **entero**; la venta aparece en el listado con su cliente, total y
+   estado `Pendiente`; **el stock de los dos productos bajó exactamente lo
+   vendido**; y el cargo aparece en los pendientes del estudiante con la
+   descripción «Cargo de Inventario #N: …».
+3. **Alta de contado.** La misma operación con `tipo_venta: "Contado"` queda en
+   estado **`Pagado`** y **no** aparece en pendientes.
+4. **Las tres validaciones y su rollback.** Intentar vender un producto
+   **inactivo**, uno con **stock insuficiente** y uno con **cantidad 0**. Las
+   tres deben responder **400** con el mensaje correspondiente, y en las tres
+   hay que comprobar después que **no se creó ninguna venta y que el stock no se
+   movió**. Es lo que ejercita el `rollback`, que sigue siendo del controlador.
+5. **Dos líneas del mismo producto.** Una venta con dos líneas del mismo
+   artículo debe descontar **la suma** de las dos cantidades, y respetar el
+   stock disponible para el total agregado, no para cada línea por separado.
+6. **Paginación y filtros.** Probar `limit` y `offset`, y los filtros por
+   `busqueda` —que mira nombre, apellido y notas—, `estudiante_id` y `estado`.
+   Comprobar que el campo `total` de la respuesta cuadra con el número real de
+   filas que cumplen el filtro, y que el orden es por fecha descendente.
+7. **Anulación completa**, el paso más delicado. Anular una venta a crédito que
+   **tenga un abono parcial registrado**. Comprobar: responde 200; la venta
+   queda en estado **`Anulada`** con `pagado` en **0** y con motivo, fecha y
+   responsable puestos; **el stock vuelve exactamente** a lo que había antes de
+   la venta; y **los pagos de esa venta quedan en estado `Anulado`** con su
+   motivo.
+   **Elegir para esta prueba una venta cuyo id no sea prefijo de otro id
+   existente** —por ejemplo, no usar la venta 4 si existe una venta 40—. Si se
+   usa un id que sí es prefijo, se verá el hallazgo 2 y **no es un fallo de esta
+   refactorización**: ver la lista de abajo.
+8. **Los dos rechazos de la anulación.** Un motivo de menos de 5 caracteres
+   responde **400**; anular una venta **ya anulada** responde **400**. En los dos
+   casos comprobar que el stock **no** se movió una segunda vez.
+9. **El borrado.** `DELETE /api/ventas/{id}` responde **405** con el mensaje que
+   remite al endpoint de anulación. No borra nada.
+10. **Permisos y consumidores ajenos.** Con un usuario **profesor**, las cinco
+    entradas responden **403**. Y con admin, comprobar que los importes de esta
+    venta coinciden **al céntimo** en los dos sitios ajenos que leen estas
+    tablas: el **expediente del estudiante** y el reporte de **cartera vencida**.
+    La extracción no los tocó, pero leen lo mismo y son la mejor prueba cruzada.
+11. **Los dos tenants.** Repetir el alta y la anulación en el segundo colegio y
+    comprobar que **no se mezclan datos**: las ventas de uno no aparecen en el
+    otro y el stock de cada uno es independiente.
+
+**Lo que NO debe interpretarse como fallo de la refactorización.** Son hallazgos
+abiertos y **anteriores** a esta capa; están en la lista de los once:
+
+- que anular la venta 4 alcance pagos de la venta 40, por el `ILIKE` sin
+  delimitar —hallazgo 2—, y que en cambio no alcance por texto los cargos cuya
+  descripción es «Cargo de Inventario #N» —hallazgo 3—;
+- que el listado sin `limit` traiga la tabla entera y tarde —hallazgo 5—;
+- que se pueda crear una venta con un `total` que no cuadre con la suma de sus
+  líneas, si se manda a mano —hallazgo 6—;
+- que se pueda crear una venta con un `estudiante_id` inexistente, si la clave
+  foránea lo permite —hallazgo 8—;
+- que `DELETE /api/ventas/{id}` aparezca en la documentación de la API aunque
+  solo responda 405 —hallazgo 10—.
 
 ## Punto de decisión, abierto
 

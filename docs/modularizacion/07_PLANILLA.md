@@ -374,8 +374,11 @@ aplica` con explicación. Nunca se ejecutan dos en el mismo turno.
 
 ## Staging
 
-No se ejecutó staging en este cierre. Guion documentado para un entorno no
-productivo con schema tenant representativo:
+El asistente no ejecutó staging en este cierre. Después, el usuario completó el
+guion manual y reportó todos sus puntos correctos, pero no indicó si lo hizo en
+local o en staging; por eso no se presenta como evidencia específica de
+staging. El guion para un entorno no productivo con schema tenant representativo
+es:
 
 1. desplegar el commit revisado que contenga 7.1, sin aplicar migraciones;
 2. como admin y como profesor propietario, registrar una nota numérica y una de
@@ -406,14 +409,19 @@ productivo con schema tenant representativo:
 
 ## Verificación manual
 
-- Estado al cerrar: **pendiente y no ejecutada ni reportada por el usuario**.
-- El guion de staging anterior es también el guion manual de cierre. La
-  compuerta automática sí cubre los tres contratos HTTP, parámetros, retornos,
-  consultas, conexiones y transacciones, pero no sustituye una prueba contra un
-  entorno desplegado representativo.
-- Esta verificación no se marca como cumplida. Antes de activar otro dominio el
-  usuario deberá elegir explícitamente entre completarla o continuar localmente
-  aceptándola —junto con las heredadas— como pendiente.
+- Estado al cerrar: pendiente. **Estado posterior al cierre: completada por el
+  usuario y correcta** el 2026-08-21.
+- Cobertura reportada: **8 de 8 puntos correctos** —nota numérica; reemplazo de
+  la misma descripción y periodo sin duplicado visible; evaluación de
+  desarrollo y exclusión del promedio; JSON, columnas, orden y promedio de la
+  planilla; borrado aislado por periodo; permisos de admin/profesor y 403;
+  validaciones 422; lectura relacionada de `notas` y aislamiento entre
+  tenants—.
+- El entorno no fue especificado. La evidencia confirma el flujo manual, pero
+  no se atribuye a local, staging ni al despliegue, y tampoco demuestra GitHub
+  Actions.
+- La verificación manual propia ya no está pendiente. Las verificaciones
+  heredadas siguen en su estado anterior y no se marcan como cumplidas.
 
 ## Decisiones
 
@@ -453,9 +461,10 @@ productivo con schema tenant representativo:
 - **Cerrar la capa sin abrir 7.2.** El usuario ordenó «cierra» después de revisar
   el resultado de 7.1. `response_model`, errores de dominio y la carrera
   concurrente no se implementan y requerirán una orden propia si se retoman.
-- **Cerrar con verificación manual pendiente.** No se inventa evidencia: no hubo
-  reporte manual en este turno. El cierre conserva el guion y obliga a resolver
-  o aceptar expresamente este pendiente antes de activar otro dominio.
+- **Cerrar inicialmente con verificación manual pendiente.** No hubo reporte en
+  el turno de cierre y así quedó registrado. El usuario ejecutó después los
+  ocho puntos solicitados y reportó «todo ok»; el pendiente propio queda
+  resuelto, con el entorno marcado como no especificado.
 
 ## Riesgos
 
@@ -478,11 +487,10 @@ productivo con schema tenant representativo:
   Actions posterior a la capa 0; pasos manuales no confirmados de `ventas`,
   `asistencia`, `boletin` y `observaciones`; y la credencial privilegiada de la
   capa 4 sin rotar.
-- **Verificación manual propia pendiente.** `planilla` se cierra con evidencia
-  automática fuerte, pero sin ejecutar el guion de staging/manual. Riesgo: una
-  diferencia exclusiva de un entorno desplegado no fue observada. No bloquea
-  este cierre por orden explícita, pero sí exige una decisión antes de activar
-  el siguiente dominio.
+- **Verificación manual propia completada.** Los ocho puntos fueron correctos
+  según el usuario. Riesgo residual de evidencia: no indicó si ejercitó local,
+  staging o el despliegue, así que no se puede afirmar nada específico del
+  entorno ni del artefacto publicado.
 
 ## Registro de ejecución
 
@@ -662,6 +670,28 @@ productivo con schema tenant representativo:
   aceptándola junto con las heredadas como pendiente; después, el usuario debe
   nombrar uno de los cinco dominios en espera.
 
+### 2026-08-21 — verificación manual posterior al cierre
+
+- Estado inicial del turno: rama `main`, árbol limpio y `HEAD` en
+  `838b71b557d6f4068089d3f13ea9f3b5b1862100`, el commit documental de cierre.
+- El commit contiene exactamente esta bitácora y el índice maestro, tal como
+  registró el cierre; es el cuarto descendiente explicado del base de la capa.
+- El usuario recibió un guion de ocho puntos y respondió «todo ok». Se registra
+  **8 de 8 correctos**, sin inflar la evidencia más allá de esa respuesta.
+- Cobertura: escritura numérica, reemplazo, desarrollo, lectura JSON y promedio,
+  borrado por periodo, permisos, validaciones y comprobación cruzada de
+  `notas`/tenant.
+- Entorno y artefacto: no especificados por el usuario. No se atribuye la prueba
+  a local, staging, producción ni a un commit desplegado concreto.
+- Resultado: la verificación manual propia de `planilla` pasa de pendiente a
+  **completada y correcta**. Las verificaciones heredadas siguen pendientes.
+- Código, pruebas, base de datos, migraciones, configuración, commit, push y
+  deploy modificados o ejecutados por el asistente: **ninguno**; este registro
+  es exclusivamente documental.
+- Siguiente acción exacta: no hay capa activa. Para activar otra, el usuario
+  debe decidir si continúa aceptando las verificaciones heredadas y nombrar uno
+  de los cinco dominios en espera.
+
 ## Entrega al próximo chat
 
 - Capa activa: **ninguna**.
@@ -677,11 +707,12 @@ productivo con schema tenant representativo:
   de N+1.
 - Pruebas: 32 de caracterización propia; compuerta final con **957 pruebas**,
   Ruff y dependencias correctos.
-- Verificación manual propia: **pendiente**. Las verificaciones heredadas siguen
-  también pendientes y aceptadas; ninguna se marca como cumplida.
+- Verificación manual propia: **completada y correcta**, 8 de 8 puntos
+  reportados por el usuario; entorno no especificado. Las verificaciones
+  heredadas siguen pendientes y aceptadas; ninguna se marca como cumplida.
 - Bloqueos: ninguno.
 - Dominios en espera: `planeador_anual`, `plan_de_clases`, `branding`,
   `profesores` y `super_admin`.
-- Siguiente acción exacta: resolver o aceptar explícitamente la verificación
-  manual pendiente y nombrar el siguiente dominio. No activar ninguno por una
-  orden genérica de continuar.
+- Siguiente acción exacta: decidir explícitamente si se continúa aceptando las
+  verificaciones heredadas y nombrar el siguiente dominio. No activar ninguno
+  por una orden genérica de continuar.

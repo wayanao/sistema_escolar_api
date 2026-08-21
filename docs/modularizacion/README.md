@@ -47,7 +47,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 7 | Resto de dominios — **`asistencia` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `asistencia` el 2026-08-21; verificada a mano. **Publicada el 2026-08-21**, después de escribirse su bitácora | [07_ASISTENCIA.md](./07_ASISTENCIA.md) |
 | 7 | Resto de dominios — **`boletin` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `boletin` el 2026-08-21; verificada a mano y **sin publicar**. Ver la advertencia de desfase más abajo | [07_BOLETIN.md](./07_BOLETIN.md) |
 | 7 | Resto de dominios — **`observaciones` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `observaciones` el 2026-08-21; verificada a mano. **Publicada el 2026-08-21**, después de escribirse su bitácora | [07_OBSERVACIONES.md](./07_OBSERVACIONES.md) |
-| 7 | Resto de dominios — **`planilla` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `planilla` el 2026-08-21; verificación manual pendiente y sin publicación comprobada | [07_PLANILLA.md](./07_PLANILLA.md) |
+| 7 | Resto de dominios — **`planilla` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `planilla` el 2026-08-21; verificación manual correcta y sin publicación comprobada | [07_PLANILLA.md](./07_PLANILLA.md) |
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
 cierre y el usuario ordene continuar, se crea su sucesora desde
@@ -86,7 +86,9 @@ N+1 y 30 pruebas nuevas. La compuerta terminó con **955 pruebas**. Su 7.1 está
 cambiar parámetros, retornos, conexiones ni transacciones. La compuerta terminó
 con **957 pruebas**. El usuario ordenó cerrarla el mismo día: 7.2 quedó **No
 aplica**, la compuerta sobre el commit limpio volvió a pasar con 957 pruebas y
-la verificación manual propia quedó **pendiente**, sin marcarse como cumplida.
+la verificación manual propia quedó inicialmente pendiente. El usuario ejecutó
+después los ocho puntos solicitados y reportó **todo correcto**; el entorno no
+fue especificado.
 
 La capa 7 se cierra **por dominio**, no de una vez: cada uno tiene su propia
 bitácora, su propio commit base y su propio cierre, y **las subcapas se numeran
@@ -203,7 +205,8 @@ de los seis que quedaban en espera, y lo **nombró explícitamente** al aceptar
 continuar localmente con las verificaciones pendientes. Su bitácora es
 [07_PLANILLA.md](./07_PLANILLA.md); sus **7.0 y 7.1 están cerradas**, 7.2 es No
 aplica y la capa quedó cerrada por orden explícita. Su verificación manual sigue
-pendiente.
+**completada y correcta**, con 8 de 8 puntos reportados por el usuario y entorno
+no especificado.
 
 Ningún otro se activa por inferencia: planeador anual, plan de clases, branding,
 profesores y super admin siguen en espera —son **cinco**—, y cada uno

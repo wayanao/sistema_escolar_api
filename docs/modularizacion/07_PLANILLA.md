@@ -4,12 +4,12 @@
 
 ## Control
 
-- Estado: **Activa** desde el 2026-08-21.
+- Estado: **Cerrada** el 2026-08-21, por orden explícita del usuario y sin abrir
+  7.2.
 - Commit base: `580c0ad6f0d14d16af5cbd8b2a4a9e4532485b89`.
 - Rama acordada: `main`.
-- Primera subcapa pendiente: **ninguna definida**. Las 7.0 y 7.1 quedaron
-  cerradas el 2026-08-21; la capa sigue activa en el punto de decisión entre
-  cerrarla aquí o autorizar una 7.2 concreta.
+- Primera subcapa pendiente: **ninguna**. Las 7.0 y 7.1 quedaron cerradas y 7.2
+  se marca **No aplica** por la decisión explícita de cerrar aquí.
 - Código de producto modificado al activar: **Ninguno**.
 - Código de producto modificado en 7.0: **Ninguno**. Su diff funcional es un
   solo archivo de caracterización nuevo; los demás cambios son documentación.
@@ -291,7 +291,7 @@ mismo conteo con uno y con tres estudiantes.
 |---:|---|---|
 | 7.0 | Delimitar la frontera, inventariar contratos y caracterizar el comportamiento y la línea base | **Cerrada** el 2026-08-21 |
 | 7.1 | Extraer las cinco sentencias propias a un único repositorio conservando recursos y contratos | **Cerrada** el 2026-08-21 |
-| 7.2 | Cambio adicional, solo si el usuario elige y define uno en el punto de decisión | **Sin definir; no iniciada** |
+| 7.2 | Cambio adicional posterior a la extracción | **No aplica**; el usuario eligió cerrar sin abrirla |
 
 Las subcapas se adaptarán a la evidencia. Las innecesarias se marcarán `No
 aplica` con explicación. Nunca se ejecutan dos en el mismo turno.
@@ -372,6 +372,49 @@ aplica` con explicación. Nunca se ejecutan dos en el mismo turno.
 - La capa queda cerrada y el siguiente dominio permanece en espera hasta una
   nueva orden explícita.
 
+## Staging
+
+No se ejecutó staging en este cierre. Guion documentado para un entorno no
+productivo con schema tenant representativo:
+
+1. desplegar el commit revisado que contenga 7.1, sin aplicar migraciones;
+2. como admin y como profesor propietario, registrar una nota numérica y una de
+   desarrollo, y comprobar status, payload e ids;
+3. reemplazar la misma descripción y periodo, confirmando que queda una sola
+   fila lógica y que la transacción conserva el dato anterior si el `INSERT`
+   falla;
+4. consultar `/planilla-excel/{asignacion_id}/{periodo}` y comparar columnas,
+   orden, valoraciones, promedio a dos decimales y `""` sin nota numérica;
+5. eliminar un tipo en un periodo y comprobar que otro periodo no cambia;
+6. confirmar que un estudiante ajeno conserva el `200` con el diccionario de
+   error actual y que los 403/422 no cambiaron;
+7. comprobar la lectura relacionada de `notas`, el aislamiento entre dos
+   tenants y la ausencia de errores nuevos en logs.
+
+## Rollback
+
+- La capa no modificó la base de datos, migraciones, configuración ni
+  dependencias. No existe rollback de datos ni DDL.
+- En el estado observado al cerrar, `HEAD` está en `5019fd2` y la referencia
+  local `origin/main` sigue en el base `580c0ad`; no se consultó el remoto real.
+  Por tanto el código de 7.1 todavía puede retirarse localmente mediante un
+  **revert** controlado de `5019fd2`, sin reescribir historia.
+- El punto de rollback completo del dominio es
+  `580c0ad6f0d14d16af5cbd8b2a4a9e4532485b89`. Si la capa se publica, volver a
+  él exigirá un commit de reversión, push y despliegue autorizados por el
+  usuario; no debe usarse un reset destructivo sobre historia compartida.
+
+## Verificación manual
+
+- Estado al cerrar: **pendiente y no ejecutada ni reportada por el usuario**.
+- El guion de staging anterior es también el guion manual de cierre. La
+  compuerta automática sí cubre los tres contratos HTTP, parámetros, retornos,
+  consultas, conexiones y transacciones, pero no sustituye una prueba contra un
+  entorno desplegado representativo.
+- Esta verificación no se marca como cumplida. Antes de activar otro dominio el
+  usuario deberá elegir explícitamente entre completarla o continuar localmente
+  aceptándola —junto con las heredadas— como pendiente.
+
 ## Decisiones
 
 - **Activar `planilla` y solo ese dominio.** Motivo: el usuario lo nombró
@@ -407,6 +450,12 @@ aplica` con explicación. Nunca se ejecutan dos en el mismo turno.
 - **No corregir los diez hallazgos.** En particular permanecen la carrera del
   reemplazo sin lock ni restricción única, el 200 de la validación fallida y el
   `periodo` nulo. 7.1 es una extracción, no una corrección funcional.
+- **Cerrar la capa sin abrir 7.2.** El usuario ordenó «cierra» después de revisar
+  el resultado de 7.1. `response_model`, errores de dominio y la carrera
+  concurrente no se implementan y requerirán una orden propia si se retoman.
+- **Cerrar con verificación manual pendiente.** No se inventa evidencia: no hubo
+  reporte manual en este turno. El cierre conserva el guion y obliga a resolver
+  o aceptar expresamente este pendiente antes de activar otro dominio.
 
 ## Riesgos
 
@@ -429,6 +478,11 @@ aplica` con explicación. Nunca se ejecutan dos en el mismo turno.
   Actions posterior a la capa 0; pasos manuales no confirmados de `ventas`,
   `asistencia`, `boletin` y `observaciones`; y la credencial privilegiada de la
   capa 4 sin rotar.
+- **Verificación manual propia pendiente.** `planilla` se cierra con evidencia
+  automática fuerte, pero sin ejecutar el guion de staging/manual. Riesgo: una
+  diferencia exclusiva de un entorno desplegado no fue observada. No bloquea
+  este cierre por orden explícita, pero sí exige una decisión antes de activar
+  el siguiente dominio.
 
 ## Registro de ejecución
 
@@ -572,14 +626,50 @@ aplica` con explicación. Nunca se ejecutan dos en el mismo turno.
   ejemplo `response_model`, errores de dominio o la carrera concurrente—. No
   iniciar ninguna opción por inferencia.
 
+### 2026-08-21 — cierre de la capa para `planilla`
+
+- Orden explícita del usuario: «cierra». Se eligió cerrar como refactorización
+  pura y no abrir 7.2.
+- Estado previo: rama `main`, árbol limpio y `HEAD` en
+  `5019fd2eebd1fb8c3f1789b8e0e15a8fa6b95fed`, el commit local de 7.1.
+- Auditoría del commit: contiene exactamente el repositorio nuevo, sus tres
+  llamadores, la caracterización propia, las cuatro enumeraciones históricas y
+  los dos documentos registrados en 7.1. No incluye archivos ajenos.
+- Continuidad: los tres commits posteriores al base están explicados:
+  `50d6d41` activa, `e8e3336` cierra 7.0 y `5019fd2` cierra 7.1. El base es
+  ancestro y no existe divergencia local documentada.
+- Publicación observada solo localmente: `origin/main` está en `580c0ad` y
+  `HEAD` tiene tres commits a favor y cero en contra. No se consultó el remoto
+  real, no se atribuye GitHub Actions y no se afirma que producción ejecute la
+  capa.
+- Compuerta sobre el `HEAD` limpio: **957 pruebas, 5 warnings heredadas, exit
+  0**, Ruff correcto y `pip check` íntegro.
+- `git diff --check` del cierre: exit 0; los avisos son únicamente de
+  normalización futura LF/CRLF. El diff final de cierre contiene solo esta
+  bitácora y el índice maestro.
+- Staging y rollback quedaron documentados. Ninguno se ejecutó; no hubo base de
+  datos, migraciones, producción, deploy, push ni commit por parte del
+  asistente.
+- Verificación manual de `planilla`: **pendiente**. No fue ejecutada ni
+  reportada y no se marca como cumplida.
+- Los diez hallazgos de 7.0 siguen vivos. Cerrarla no corrige la carrera del
+  reemplazo, el 200 de validación fallida, el periodo nulo ni ningún otro.
+- Resultado: capa 7 para `planilla` **cerrada**; 7.0 y 7.1 completas, 7.2 **No
+  aplica**. Los cinco dominios restantes quedan en espera y ninguno se activa
+  por esta orden.
+- Siguiente acción exacta: antes de activar otro dominio, pedir una decisión
+  explícita entre completar la verificación manual de `planilla` o continuar
+  aceptándola junto con las heredadas como pendiente; después, el usuario debe
+  nombrar uno de los cinco dominios en espera.
+
 ## Entrega al próximo chat
 
-- Capa activa: **7 para `planilla`, y solo ese dominio**.
-- Última capa cerrada: **7 para `observaciones`**, con 7.0 y 7.1 completas.
+- Capa activa: **ninguna**.
+- Última capa cerrada: **7 para `planilla`**, con 7.0 y 7.1 completas y 7.2 No
+  aplica.
 - Commit base: `580c0ad6f0d14d16af5cbd8b2a4a9e4532485b89`.
 - Última subcapa terminada: **7.1 de `planilla`**, cerrada el 2026-08-21.
-- Primera subcapa pendiente: **ninguna definida**; existe un punto de decisión
-  antes de cerrar o abrir 7.2.
+- Primera subcapa pendiente: **ninguna**; la capa está cerrada.
 - Código de producto modificado en 7.1: repositorio nuevo y tres llamadores;
   cinco sentencias inline pasaron a **0** fuera del repositorio.
 - Frontera actual: seis archivos propios, tres entradas HTTP, un modelo de
@@ -587,8 +677,11 @@ aplica` con explicación. Nunca se ejecutan dos en el mismo turno.
   de N+1.
 - Pruebas: 32 de caracterización propia; compuerta final con **957 pruebas**,
   Ruff y dependencias correctos.
-- Verificaciones heredadas: pendientes y aceptadas; ninguna se marca como
-  cumplida.
+- Verificación manual propia: **pendiente**. Las verificaciones heredadas siguen
+  también pendientes y aceptadas; ninguna se marca como cumplida.
 - Bloqueos: ninguno.
-- Siguiente acción exacta: pedir la decisión explícita entre cerrar la capa aquí
-  o definir una sola 7.2. No cerrar ni iniciar 7.2 por inferencia.
+- Dominios en espera: `planeador_anual`, `plan_de_clases`, `branding`,
+  `profesores` y `super_admin`.
+- Siguiente acción exacta: resolver o aceptar explícitamente la verificación
+  manual pendiente y nombrar el siguiente dominio. No activar ninguno por una
+  orden genérica de continuar.

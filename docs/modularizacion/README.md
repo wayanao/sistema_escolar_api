@@ -47,7 +47,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 7 | Resto de dominios — **`asistencia` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `asistencia` el 2026-08-21; verificada a mano. **Publicada el 2026-08-21**, después de escribirse su bitácora | [07_ASISTENCIA.md](./07_ASISTENCIA.md) |
 | 7 | Resto de dominios — **`boletin` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `boletin` el 2026-08-21; verificada a mano y **sin publicar**. Ver la advertencia de desfase más abajo | [07_BOLETIN.md](./07_BOLETIN.md) |
 | 7 | Resto de dominios — **`observaciones` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `observaciones` el 2026-08-21; verificada a mano. **Publicada el 2026-08-21**, después de escribirse su bitácora | [07_OBSERVACIONES.md](./07_OBSERVACIONES.md) |
-| 7 | Resto de dominios — **`planilla`** | Migración individual con contratos y pruebas | **Activa** desde el 2026-08-21; **7.0 y 7.1 cerradas**, punto de decisión pendiente | [07_PLANILLA.md](./07_PLANILLA.md) |
+| 7 | Resto de dominios — **`planilla` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `planilla` el 2026-08-21; verificación manual pendiente y sin publicación comprobada | [07_PLANILLA.md](./07_PLANILLA.md) |
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
 cierre y el usuario ordene continuar, se crea su sucesora desde
@@ -84,8 +84,9 @@ N+1 y 30 pruebas nuevas. La compuerta terminó con **955 pruebas**. Su 7.1 está
 **cerrada**: las cinco sentencias pasaron a un único
 `planilla_repository`, con 5 de 5 literales SQL idénticos byte a byte y sin
 cambiar parámetros, retornos, conexiones ni transacciones. La compuerta terminó
-con **957 pruebas**. La capa sigue activa en su punto de decisión; no se abre
-7.2 ni se cierra por inferencia.
+con **957 pruebas**. El usuario ordenó cerrarla el mismo día: 7.2 quedó **No
+aplica**, la compuerta sobre el commit limpio volvió a pasar con 957 pruebas y
+la verificación manual propia quedó **pendiente**, sin marcarse como cumplida.
 
 La capa 7 se cierra **por dominio**, no de una vez: cada uno tiene su propia
 bitácora, su propio commit base y su propio cierre, y **las subcapas se numeran
@@ -197,11 +198,12 @@ posee ya las rutas `/boletin/{id}` y `/boletin/detallado/{id}`, como fijó su
 explícitamente**; **no se dedujo por inferencia**. Su bitácora es
 [07_OBSERVACIONES.md](./07_OBSERVACIONES.md) y quedó **cerrada el mismo día**.
 
-**Dominio activo: `planilla`.** Lo eligió el usuario el 2026-08-21, de la lista
+**Dominio migrado y cerrado: `planilla`.** Lo eligió el usuario el 2026-08-21, de la lista
 de los seis que quedaban en espera, y lo **nombró explícitamente** al aceptar
 continuar localmente con las verificaciones pendientes. Su bitácora es
-[07_PLANILLA.md](./07_PLANILLA.md); sus **7.0 y 7.1 están cerradas**. La capa
-permanece activa en el punto de decisión posterior a la extracción.
+[07_PLANILLA.md](./07_PLANILLA.md); sus **7.0 y 7.1 están cerradas**, 7.2 es No
+aplica y la capa quedó cerrada por orden explícita. Su verificación manual sigue
+pendiente.
 
 Ningún otro se activa por inferencia: planeador anual, plan de clases, branding,
 profesores y super admin siguen en espera —son **cinco**—, y cada uno
@@ -1709,16 +1711,19 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   operación puramente local: conforme al flujo documentado del repositorio,
   exige otro push y otro despliegue. En este turno no se consultó el remoto real
   ni se atribuye ningún run de GitHub Actions.
-- Capa activa: **7 para `planilla`, y solo ese dominio**. Su commit base es
-  `580c0ad6f0d14d16af5cbd8b2a4a9e4532485b89`; sus **7.0 y 7.1 están cerradas**
-  y la capa espera una decisión explícita entre cerrar aquí o definir una 7.2.
-  Quedan **cinco** dominios en espera: `planeador_anual`,
-  `plan_de_clases`, `branding`, `profesores` y `super_admin`. `planilla` llega
-  con una frontera documental no limpia ya delimitada: `notas` posee
-  `/planilla/{asignacion_id}` y `boletin` conserva una función muerta con ese
-  nombre; ninguna de las dos piezas se movió en 7.1. Las cinco sentencias
-  propias viven ahora en el duodécimo repositorio del proyecto y los tres
-  llamadores conservan sus recursos y comportamiento.
+- Capa activa: **ninguna**. La capa 7 para `planilla` quedó cerrada el
+  2026-08-21 por orden explícita del usuario, sin abrir 7.2. Sus cinco
+  sentencias propias viven en el duodécimo repositorio y los tres llamadores
+  conservan sus recursos y comportamiento; las piezas nominales de `notas` y
+  `boletin` permanecen intactas. Compuerta sobre el commit limpio: **957
+  pruebas**, Ruff correcto y dependencias íntegras.
+- **Verificación manual de `planilla`: pendiente.** No fue ejecutada ni
+  reportada y no se marca como cumplida. Antes de activar otro dominio el
+  usuario debe elegir expresamente entre completarla o continuar aceptándola,
+  junto con las heredadas, como pendiente.
+- Quedan **cinco** dominios en espera: `planeador_anual`, `plan_de_clases`,
+  `branding`, `profesores` y `super_admin`. Ninguno se activa por la orden de
+  cierre ni por una instrucción genérica de continuar.
 - **Punto de decisión abierto al terminar 7.1**, con **tres** salidas y no dos:
   dónde vive el `UPDATE pagos`, `response_model` para las cuatro lecturas, y los
   errores de dominio. La tercera es **más fácil aquí que en `notas`**: este
@@ -1862,8 +1867,9 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
 
 ## Archivos de continuidad
 
-- [07_PLANILLA.md](./07_PLANILLA.md): **bitácora activa** de la capa 7 para el
-  dominio `planilla`, y **fuente de continuidad**. **Es el documento que un
+- [07_PLANILLA.md](./07_PLANILLA.md): **bitácora cerrada** de la capa 7 para el
+  dominio `planilla`, y **fuente de continuidad más reciente** porque conserva
+  su verificación manual pendiente. **Es el documento que un
   chat nuevo debe leer después de este índice.** Registra el commit base limpio
   `580c0ad6f0d14d16af5cbd8b2a4a9e4532485b89`, la orden explícita del usuario
   nombrando el dominio, la decisión de continuar localmente aceptando todas las
@@ -1879,8 +1885,9 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   transacciones, y dejó los controladores y el servicio sin SQL inline. Las
   ocho guardias que fallaron al extraer eran la señal esperada —cuatro propias
   y cuatro enumeraciones históricas—; la compuerta final terminó con **957
-  pruebas**, Ruff correcto y dependencias íntegras. La capa sigue activa en el
-  punto de decisión y no inicia 7.2 por inferencia.
+  pruebas**, Ruff correcto y dependencias íntegras. El usuario eligió cerrar sin
+  7.2; staging y rollback están documentados, la verificación manual no se
+  ejecutó y los cinco dominios restantes siguen en espera.
 - [07_OBSERVACIONES.md](./07_OBSERVACIONES.md): **bitácora cerrada** de la capa
   7 para el dominio `observaciones`. Fue la fuente de continuidad **hasta que
   se activó `planilla`**. Registra el

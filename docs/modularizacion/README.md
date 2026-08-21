@@ -1312,6 +1312,53 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   que quedaron `notas` y `ventas` al cerrarse, y en los dos casos duró poco: si
   se publica, **conviene volver aquí y registrar el cambio**, porque las dos
   veces anteriores la documentación quedó desfasada.
+- **Medición del N+1 en conexiones de `asistencia`, hecha el 2026-08-21 y
+  aplazada por decisión explícita del usuario a la ronda de defectos.** Se
+  investigó a fondo a petición suya, sin tocar código. **Corrige una
+  caracterización anterior demasiado alarmista**: este hallazgo **no puede
+  agotar el pool ni tumbar la aplicación**. Las conexiones son **secuenciales,
+  no simultáneas** —cada `require_estudiante_in_asignacion` abre, consulta y
+  cierra en su `finally` antes de la siguiente—, `get_connection()` reutiliza
+  del `ThreadedConnectionPool` sin handshake nuevo, y el limitador de la capa 2
+  topa la concurrencia en **5 workers** contra un pool de **10**. El coste real
+  es **latencia y throughput**, no caída.
+- **Números de esa medición**, contando los round-trips reales e incluyendo los
+  **dos que `get_connection()` emite siempre** —`SET search_path` y
+  `SELECT set_config(...)`—: pasar lista a un curso de 30 cuesta **31 conexiones
+  y 155 round-trips** siendo admin, y **61 y 275** siendo profesor. Contra Neon,
+  a 2–5 ms por round-trip, son **0,5 a 1,4 s** por petición como profesor; con 5
+  workers, del orden de **3–10 peticiones por segundo** en ese endpoint. El
+  efecto esperable es **cola y lentitud** cuando varios profesores pasan lista a
+  la vez, no un error.
+- **Plan de corrección ya diseñado, para la ronda de defectos**, en dos pasos y
+  equivalente en comportamiento —mismo 403, mismo mensaje, mismo orden de
+  precedencia—: **(A)** llamar `require_asignacion_access` **una sola vez**,
+  porque la ruta ya validó en el bucle anterior que los N registros comparten
+  `asignacion_id`; solo toca `app/routes/asistencia.py` y elimina 30 de las 60
+  conexiones del profesor. **(B)** comprobar la pertenencia del lote **en una
+  consulta**, con una función **nueva** en `permissions.py` que use
+  `estudiante_id = ANY(%s)` y compare el conteo, **sin cambiar la existente**,
+  que tiene otros tres puntos de llamada —uno en `boletines` y dos en
+  `observaciones`, **ninguno en bucle**—. Con A+B: **2 conexiones y ~39
+  round-trips** como admin, **3 y ~43** como profesor.
+- **Coste conocido de ese plan, para que no aparezca como sorpresa**: obligaría a
+  cambiar tres aserciones de conteo de `test_asistencia_caracterizacion.py` y
+  **una prueba heredada de la capa 1**, `test_guardar_asistencia_valida_permisos_y_envia_lote`,
+  que hoy fija `asignaciones_validadas == [(10, 3), (10, 3)]`. **Sería la primera
+  vez en el programa que se cambia la expectativa de una prueba heredada**; es
+  legítimo porque fija un conteo y no una regla de seguridad, pero debe quedar
+  como decisión registrada y no como efecto colateral.
+- **Alternativa descartada** en esa misma medición: pasar el cursor a las
+  funciones de permiso para que compartan la conexión del controlador. Es lo
+  arquitectónicamente correcto, pero cambia la firma de funciones que usan otras
+  cuatro rutas y obliga a abrir la conexión antes de validar. No compensa hoy.
+- **Cómo debe abordarse cuando llegue esa ronda**: **no dentro de la migración de
+  otro dominio**. Toca `app/core/permissions.py`, infraestructura compartida que
+  las seis capas anteriores declararon expresamente fuera de alcance, así que
+  exige **bitácora propia y orden explícita**. La caracterización necesaria ya
+  existe: las 37 pruebas de `asistencia` más las 12 heredadas cubren este camino.
+  **`07_ASISTENCIA.md` no se editó**: está cerrada y corregirla exige una orden
+  propia; esta es la línea que conserva la evidencia.
 - Capa activa: **ninguna**. Siguiente paso: **otro dominio de la capa 7**, sin
   elegir y en espera. Quedan **ocho**: `boletin`,
   `observaciones`, `planilla`, `planeador_anual`, `plan_de_clases`, `branding`,

@@ -1,4 +1,5 @@
 from app.database import get_cursor
+from app.repositories import planilla_repository
 from app.services.asignacion_academica import resolver_asignacion_academica_id_cursor
 from app.services.planilla_service import validar_estudiante_asignacion
 
@@ -17,34 +18,23 @@ def registrar_nota_planilla_controller(data):
         valoracion = getattr(data, "valoracion", None) if tipo_evaluacion == "desarrollo" else None
 
         # 🔥 Evitar duplicados: Primero eliminamos si ya existe la nota para ese tipo, luego insertamos
-        cursor.execute("""
-            DELETE FROM notas_detalle
-            WHERE estudiante_id = %s AND asignacion_id = %s AND periodo = %s AND LOWER(TRIM(descripcion)) = LOWER(TRIM(%s))
-        """, (data.estudiante_id, asignacion_id, data.periodo, data.descripcion))
-
-        cursor.execute("""
-            INSERT INTO notas_detalle (
-                estudiante_id,
-                asignacion_id,
-                periodo,
-                nota,
-                descripcion,
-                tipo_evaluacion,
-                valoracion
-            )
-            VALUES (%s, %s, %s, %s, TRIM(%s), %s, %s)
-            RETURNING id
-        """, (
+        planilla_repository.borrar_nota_existente(
+            cursor,
+            data.estudiante_id,
+            asignacion_id,
+            data.periodo,
+            data.descripcion,
+        )
+        nota_id = planilla_repository.insertar_nota(
+            cursor,
             data.estudiante_id,
             asignacion_id,
             data.periodo,
             nota,
             data.descripcion,
             tipo_evaluacion,
-            valoracion
-        ))
-
-        nota_id = cursor.fetchone()[0]
+            valoracion,
+        )
 
     return {
         "mensaje": "Nota registrada correctamente",
@@ -59,10 +49,11 @@ def eliminar_tipo_controller(asignacion_id, descripcion, periodo: int = 1):
     with get_cursor(commit=True) as cursor:
         asignacion_id = resolver_asignacion_academica_id_cursor(cursor, asignacion_id)
 
-        cursor.execute("""
-            DELETE FROM notas_detalle
-            WHERE asignacion_id = %s AND periodo = %s
-            AND LOWER(TRIM(descripcion)) = LOWER(TRIM(%s))
-        """, (asignacion_id, periodo, descripcion))
+        planilla_repository.eliminar_tipo(
+            cursor,
+            asignacion_id,
+            periodo,
+            descripcion,
+        )
 
     return {"mensaje": "Tipo eliminado correctamente"}

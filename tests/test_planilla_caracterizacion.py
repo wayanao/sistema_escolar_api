@@ -1,9 +1,9 @@
-"""Caracterizacion de la subcapa 7.0 del dominio ``planilla``.
+"""Caracterizacion de las subcapas 7.0 y 7.1 de ``planilla``.
 
 Complementa las diez pruebas de ``test_planilla_controlador.py`` y las dos del
 servicio en ``test_servicios_validacion.py``. Esas pruebas fijan la transaccion
 y el armado del JSON; este archivo fija la frontera, el contrato HTTP real, la
-estructura previa a cualquier extraccion y los conteos de consultas y
+estructura de la frontera de persistencia y los conteos de consultas y
 conexiones a traves de las rutas.
 
 Nada de lo observado se corrige aqui. Varias aserciones preservan rarezas o
@@ -167,11 +167,11 @@ def instrumentado(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# Frontera y guardias estructurales previas a una extraccion
+# Frontera y guardias estructurales de la extraccion
 # ---------------------------------------------------------------------------
 
 
-def test_la_frontera_ejecutable_propia_son_cinco_archivos():
+def test_la_frontera_ejecutable_propia_son_seis_archivos():
     archivos = {
         archivo.relative_to(RAIZ).as_posix()
         for archivo in (RAIZ / "app").rglob("*planilla*.py")
@@ -180,6 +180,7 @@ def test_la_frontera_ejecutable_propia_son_cinco_archivos():
     assert archivos == {
         "app/controllers/planilla_controller.py",
         "app/controllers/planilla_excel_controller.py",
+        "app/repositories/planilla_repository.py",
         "app/routes/planilla.py",
         "app/schemas/planilla.py",
         "app/services/planilla_service.py",
@@ -216,6 +217,7 @@ def test_el_helper_de_boletin_es_un_sexto_sql_fuera_de_la_frontera_propia():
         "app/routes/planilla.py",
         "app/controllers/planilla_controller.py",
         "app/controllers/planilla_excel_controller.py",
+        "app/repositories/planilla_repository.py",
         "app/services/planilla_service.py",
     )
     assert all(
@@ -224,20 +226,20 @@ def test_el_helper_de_boletin_es_un_sexto_sql_fuera_de_la_frontera_propia():
     )
 
 
-def test_el_dominio_ejecutable_tiene_cinco_sentencias_sql_inline():
+def test_las_cinco_sentencias_viven_solo_en_el_repositorio():
     assert _literales_sql("app/routes/planilla.py") == []
-    assert len(_literales_sql("app/controllers/planilla_controller.py")) == 3
-    assert len(_literales_sql("app/controllers/planilla_excel_controller.py")) == 1
-    assert len(_literales_sql("app/services/planilla_service.py")) == 1
+    assert _literales_sql("app/controllers/planilla_controller.py") == []
+    assert _literales_sql("app/controllers/planilla_excel_controller.py") == []
+    assert _literales_sql("app/services/planilla_service.py") == []
+    assert len(_literales_sql("app/repositories/planilla_repository.py")) == 5
 
 
-def test_planilla_todavia_no_tiene_repositorio_y_hay_once_en_total():
+def test_el_repositorio_de_planilla_es_el_duodecimo():
     repositorios = {
         archivo.stem
         for archivo in (RAIZ / "app" / "repositories").glob("*_repository.py")
     }
 
-    assert "planilla_repository" not in repositorios
     assert repositorios == {
         "asignaciones_repository",
         "asistencia_repository",
@@ -248,15 +250,54 @@ def test_planilla_todavia_no_tiene_repositorio_y_hay_once_en_total():
         "observaciones_repository",
         "pagos_repository",
         "plan_de_clases_repository",
+        "planilla_repository",
         "reportes_repository",
         "ventas_repository",
     }
 
 
+def test_las_cinco_funciones_publicas_reciben_el_cursor():
+    arbol = ast.parse(
+        (RAIZ / "app/repositories/planilla_repository.py").read_text(
+            encoding="utf-8"
+        )
+    )
+    funciones = {
+        nodo.name: nodo
+        for nodo in arbol.body
+        if isinstance(nodo, ast.FunctionDef) and not nodo.name.startswith("_")
+    }
+
+    assert set(funciones) == {
+        "borrar_nota_existente",
+        "buscar_estudiante_en_asignacion",
+        "eliminar_tipo",
+        "insertar_nota",
+        "leer_filas_de_planilla",
+    }
+    assert all(funcion.args.args[0].arg == "cursor" for funcion in funciones.values())
+
+
+def test_el_repositorio_no_es_dueno_de_recursos():
+    arbol = ast.parse(
+        (RAIZ / "app/repositories/planilla_repository.py").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert not any(isinstance(nodo, (ast.Import, ast.ImportFrom)) for nodo in arbol.body)
+
+    llamadas = {
+        nodo.func.attr
+        for nodo in ast.walk(arbol)
+        if isinstance(nodo, ast.Call) and isinstance(nodo.func, ast.Attribute)
+    }
+    assert llamadas.isdisjoint({"commit", "rollback", "close"})
+
+
 def test_la_unica_tabla_escrita_es_notas_detalle():
     escrituras = [
         literal
-        for literal in _literales_sql("app/controllers/planilla_controller.py")
+        for literal in _literales_sql("app/repositories/planilla_repository.py")
         if literal.lstrip().upper().startswith(("DELETE", "INSERT", "UPDATE"))
     ]
 

@@ -7,18 +7,26 @@
 - Estado: **Activa** desde el 2026-08-21.
 - Commit base: `580c0ad6f0d14d16af5cbd8b2a4a9e4532485b89`.
 - Rama acordada: `main`.
-- Primera subcapa pendiente: **7.1**, todavía **sin alcance definido ni
-  autorizado**. La 7.0 quedó cerrada el 2026-08-21.
+- Primera subcapa pendiente: **ninguna definida**. Las 7.0 y 7.1 quedaron
+  cerradas el 2026-08-21; la capa sigue activa en el punto de decisión entre
+  cerrarla aquí o autorizar una 7.2 concreta.
 - Código de producto modificado al activar: **Ninguno**.
 - Código de producto modificado en 7.0: **Ninguno**. Su diff funcional es un
   solo archivo de caracterización nuevo; los demás cambios son documentación.
+- Código de producto modificado en 7.1: los dos controladores y el servicio
+  delegan sus cinco sentencias al nuevo
+  `app/repositories/planilla_repository.py`; rutas y esquemas no cambiaron.
 - Dominio de esta capa: **planilla, y solo ese**. Los otros cinco dominios que
   siguen en espera necesitan su propia bitácora y su propia orden.
 - Autorización: orden explícita del usuario el 2026-08-21, nombrando el dominio:
   «el dominio es planilla».
-- La autorización de este turno cubre **solo la activación documental**. No
+- La autorización de activación cubrió **solo la activación documental**. No
   autoriza inspeccionar código de `planilla`, ejecutar 7.0, modificar producto,
   tocar la base de datos, hacer commit, push ni deploy.
+- Autorización de 7.1: después de presentar el alcance exacto —un único
+  repositorio para las cinco sentencias, conservando en los llamadores la
+  propiedad de conexiones, cursores y transacciones—, el usuario confirmó que
+  era lo siguiente y ordenó «sigue».
 
 ## Objetivo
 
@@ -154,6 +162,10 @@ cinco sentencias SQL.
 | Suite global después | `.\venv\Scripts\python.exe scripts\verify.py` | **955 pruebas, 5 warnings heredadas, exit 0**, Ruff correcto y dependencias íntegras |
 | Ruff | `.\venv\Scripts\python.exe -m ruff check tests\test_planilla_caracterizacion.py` | **Correcto** |
 | Dependencias | Incluido en `scripts\verify.py` | **Íntegras antes y después** |
+| Señal de guardias al extraer 7.1 | `pytest` sobre la caracterización propia y las cuatro enumeraciones históricas | **8 fallaron y 26 pasaron**: cuatro guardias propias y cuatro enumeraciones; ninguna falla funcional inesperada |
+| Pruebas específicas finales de 7.1 | Caracterización, pruebas heredadas de controlador/servicio, frontera de `boletin` y cuatro enumeraciones | **55 pasaron**, 5 warnings heredadas |
+| Equivalencia SQL de 7.1 | Comparador AST contra `HEAD` limpio previo | **5 de 5 literales idénticos byte a byte**; el comparador final exige además el conteo exacto de cinco |
+| Compuerta final de 7.1 | `.\venv\Scripts\python.exe scripts\verify.py` | Dentro del sandbox: 928 pasaron y 29 errores de setup por el temporal; repetida fuera: **957 pruebas, 5 warnings heredadas, exit 0**, Ruff correcto y dependencias íntegras |
 
 ## Inventario y contratos fijados en 7.0
 
@@ -278,8 +290,8 @@ mismo conteo con uno y con tres estudiantes.
 | Subcapa | Resultado | Estado |
 |---:|---|---|
 | 7.0 | Delimitar la frontera, inventariar contratos y caracterizar el comportamiento y la línea base | **Cerrada** el 2026-08-21 |
-| 7.1 | Primera extracción protegida | **Pendiente de definición y orden; no iniciada** |
-| 7.2 | Segunda extracción, integración o punto de decisión | **Sin definir** |
+| 7.1 | Extraer las cinco sentencias propias a un único repositorio conservando recursos y contratos | **Cerrada** el 2026-08-21 |
+| 7.2 | Cambio adicional, solo si el usuario elige y define uno en el punto de decisión | **Sin definir; no iniciada** |
 
 Las subcapas se adaptarán a la evidencia. Las innecesarias se marcarán `No
 aplica` con explicación. Nunca se ejecutan dos en el mismo turno.
@@ -322,6 +334,35 @@ aplica` con explicación. Nunca se ejecutan dos en el mismo turno.
 - `git diff --check` correcto y diff exclusivo de 7.0.
 - Bitácora actualizada con resultados, decisiones, riesgos y siguiente acción.
 
+## Subcapa 7.1: trabajo exacto, ejecutado y cerrado
+
+1. Crear un único `planilla_repository.py` para las cinco sentencias propias;
+   no crear repositorios para las piezas ajenas de `notas` o `boletin`.
+2. Hacer que sus cinco funciones reciban el cursor existente y ejecuten una
+   sentencia cada una.
+3. Conservar en los dos controladores y el servicio la apertura y cierre de
+   conexiones, la resolución académica, ambas transacciones, validaciones,
+   cálculos, `fetch`, retornos y payloads.
+4. Conservar texto SQL, parámetros y orden: borrar e insertar siguen dentro del
+   mismo `get_cursor(commit=True)` y la validación sigue en conexión separada.
+5. Convertir las cuatro guardias propias de 7.0 y las cuatro enumeraciones
+   históricas a su estado positivo, sin cambiar expectativas funcionales.
+6. Ejecutar pruebas específicas, comparador AST, Ruff, compuerta global,
+   `git diff --check` y revisión de alcance.
+7. Actualizar bitácora e índice y detenerse en el punto de decisión sin iniciar
+   7.2 ni cerrar la capa por inferencia.
+
+### Criterios de cierre de la subcapa 7.1
+
+- Los controladores, el servicio y la ruta quedan sin SQL inline propio.
+- El repositorio contiene exactamente cinco funciones y cinco sentencias; cada
+  función recibe primero el cursor y no administra recursos.
+- Los cinco literales SQL son idénticos byte a byte al `HEAD` limpio previo.
+- Parámetros, retornos, conexiones, transacciones y contratos HTTP conservan
+  las expectativas fijadas en 7.0 y en las pruebas heredadas.
+- Pruebas específicas, Ruff, compuerta, dependencias y `git diff --check`
+  correctos; diff exclusivo de 7.1 y su documentación.
+
 ## Criterios de cierre de la capa
 
 - Todas las subcapas necesarias están cerradas.
@@ -352,6 +393,20 @@ aplica` con explicación. Nunca se ejecutan dos en el mismo turno.
   que decidir si las cinco sentencias van a uno o más repositorios y qué hacer
   con el servicio. Esa decisión queda para el usuario antes de modificar
   producto.
+- **Un único repositorio para las cinco sentencias.** Decisión autorizada por el
+  usuario antes de ejecutar 7.1. El servicio forma parte de la frontera propia y
+  dejar su consulta inline habría cerrado solo cuatro quintos de la persistencia;
+  separarlo en otro repositorio no tendría una segunda frontera ni dos usos
+  reales.
+- **Los llamadores conservan los recursos.** Los controladores mantienen sus
+  transacciones y el servicio su conexión separada. Unificarla reduciría
+  conexiones, pero cambiaría la línea base de 7.0 y no estaba autorizado.
+- **No mover las piezas de `notas` y `boletin`.** El repositorio nuevo contiene
+  solo las cinco sentencias ejecutables propias ya delimitadas; la lectura de
+  `notas` y la función muerta de `boletin` permanecen intactas.
+- **No corregir los diez hallazgos.** En particular permanecen la carrera del
+  reemplazo sin lock ni restricción única, el 200 de la validación fallida y el
+  `periodo` nulo. 7.1 es una extracción, no una corrección funcional.
 
 ## Riesgos
 
@@ -363,8 +418,9 @@ aplica` con explicación. Nunca se ejecutan dos en el mismo turno.
   nombre podría crear una función sin consumidor o reabrir `boletin`.
   Mitigación: confirmar consumidores antes de decidir. Responsable: 7.0.
 - **Perfil de riesgo resuelto: el dominio escribe.** Borra e inserta notas y
-  elimina tipos para todos los estudiantes. La 7.1 necesita proteger
-  transacciones, parámetros y retorno además del texto SQL.
+  elimina tipos para todos los estudiantes. 7.1 protegió transacciones,
+  parámetros y retorno además del texto SQL; el riesgo residual es que una
+  corrección futura confunda extracción con cambio funcional.
 - **Las cifras pueden ser el contrato.** Las capas anteriores encontraron
   varias fórmulas de promedio. Mitigación: caracterizar cada cálculo antes de
   moverlo. Responsable: 7.0.
@@ -464,21 +520,75 @@ aplica` con explicación. Nunca se ejecutan dos en el mismo turno.
 - Siguiente acción exacta: **esperar la definición y orden de 7.1**. No se
   inicia en este turno.
 
+### 2026-08-21 — cierre de 7.1
+
+- Modo de acceso: mismo checkout local; rama `main` y árbol limpio antes de
+  modificar, comprobado con `git status --porcelain=v1` sin salida.
+- `HEAD` previo: `e8e3336ddbec9a155f56ea245b968713e3f89aab`. El commit base
+  `580c0ad6f0d14d16af5cbd8b2a4a9e4532485b89` es ancestro. Sus dos
+  descendientes están explicados: `50d6d41` activa documentalmente `planilla` y
+  `e8e3336` contiene exactamente la caracterización y documentación de 7.0.
+- Autorización: después de presentar el alcance exacto de un único repositorio
+  con los cinco SQL y recursos conservados en sus llamadores, el usuario
+  confirmó que era el paso siguiente y ordenó «sigue».
+- Cambio de producto: se creó `app/repositories/planilla_repository.py`, con
+  cinco funciones que reciben cursor; los dos controladores y
+  `planilla_service` delegan en él. Rutas, esquemas, permisos, resolutor,
+  cálculos, payloads y transacciones no cambiaron.
+- Alcance excluido: no se modificó `notas`, `boletin`, la base, migraciones,
+  configuración ni dependencias; ninguno de los diez hallazgos de 7.0 se
+  corrigió.
+- Señal de guardias: al mover el SQL, **8 pruebas fallaron y 26 pasaron**.
+  Fallaron exactamente las cuatro guardias estructurales propias y las cuatro
+  enumeraciones históricas de repositorios; no apareció ninguna falla
+  funcional inesperada. Se convirtieron a versiones positivas y se añadieron
+  dos guardias de propiedad de cursor y recursos.
+- Equivalencia de texto: el primer intento del comparador contó el docstring
+  «Inserta» como si fuera `INSERT`; el segundo escapó mal el salto de línea y
+  produjo un 0/0 no aceptable. La versión final excluye docstrings por forma y
+  exige el conteo exacto: **5 de 5 literales SQL idénticos byte a byte** contra
+  el `HEAD` limpio previo.
+- Equivalencia observable: las pruebas heredadas y las de 7.0 conservan las
+  secuencias y parámetros de las cinco ejecuciones, los retornos, los conteos
+  de consultas y conexiones, los dos `commit=True`, el JSON y los tres
+  contratos HTTP.
+- Pruebas específicas finales: **55 pasaron**, con 5 warnings heredadas.
+- Ruff sobre los nueve archivos de producto y pruebas tocados: **correcto**.
+- Compuerta global: dentro del sandbox terminó con 928 pruebas pasadas y 29
+  errores de setup por `PermissionError` sobre el temporal de pytest; repetida
+  fuera del sandbox, sin cambiar archivos: **957 pruebas, 5 warnings heredadas,
+  exit 0**, Ruff correcto y `pip check` íntegro.
+- `git diff --check`: exit 0; los avisos son únicamente de normalización futura
+  LF/CRLF. La revisión de alcance muestra solo el repositorio nuevo, sus tres
+  llamadores, la caracterización propia, las cuatro enumeraciones históricas y
+  los dos documentos de continuidad.
+- Archivos de producto: repositorio nuevo y tres llamadores modificados.
+  Pruebas: caracterización propia y cuatro enumeraciones históricas. Documentos:
+  esta bitácora y el índice maestro.
+- Commit, push, deploy, conexión a PostgreSQL, acceso a producción y migraciones
+  reales: **ninguno**.
+- La capa sigue **activa**. Siguiente acción exacta: elegir explícitamente entre
+  cerrar `planilla` aquí como refactorización pura o definir una única 7.2 —por
+  ejemplo `response_model`, errores de dominio o la carrera concurrente—. No
+  iniciar ninguna opción por inferencia.
+
 ## Entrega al próximo chat
 
 - Capa activa: **7 para `planilla`, y solo ese dominio**.
 - Última capa cerrada: **7 para `observaciones`**, con 7.0 y 7.1 completas.
 - Commit base: `580c0ad6f0d14d16af5cbd8b2a4a9e4532485b89`.
-- Última subcapa terminada: **7.0 de `planilla`**, cerrada el 2026-08-21.
-- Primera subcapa pendiente: **7.1**, sin alcance definido ni orden de
-  ejecución.
-- Código de producto modificado en 7.0: **ninguno**.
-- Línea base: cinco archivos propios, 216 líneas, tres entradas HTTP, un modelo
-  de permiso, cinco SQL inline, una tabla escrita y ninguna forma de N+1.
-- Pruebas: 30 nuevas; compuerta final con **955 pruebas**, Ruff y dependencias
-  correctos.
+- Última subcapa terminada: **7.1 de `planilla`**, cerrada el 2026-08-21.
+- Primera subcapa pendiente: **ninguna definida**; existe un punto de decisión
+  antes de cerrar o abrir 7.2.
+- Código de producto modificado en 7.1: repositorio nuevo y tres llamadores;
+  cinco sentencias inline pasaron a **0** fuera del repositorio.
+- Frontera actual: seis archivos propios, tres entradas HTTP, un modelo de
+  permiso, cinco SQL en un único repositorio, una tabla escrita y ninguna forma
+  de N+1.
+- Pruebas: 32 de caracterización propia; compuerta final con **957 pruebas**,
+  Ruff y dependencias correctos.
 - Verificaciones heredadas: pendientes y aceptadas; ninguna se marca como
   cumplida.
 - Bloqueos: ninguno.
-- Siguiente acción exacta: definir con el usuario el alcance de 7.1 antes de
-  modificar producto. No iniciar 7.1 por inferencia.
+- Siguiente acción exacta: pedir la decisión explícita entre cerrar la capa aquí
+  o definir una sola 7.2. No cerrar ni iniciar 7.2 por inferencia.

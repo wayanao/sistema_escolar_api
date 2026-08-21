@@ -4,11 +4,15 @@
 
 ## Control
 
-- Estado: **Activa** desde el 2026-08-21.
+- Estado: **Activa** desde el 2026-08-21, con su subcapa **7.0 cerrada** el
+  mismo día.
 - Commit base: `fd3f93a2ad97daa0a34081eb2f95504dd1a9e4df`.
 - Rama acordada: `main`.
-- Primera subcapa pendiente: **7.0**, pendiente y **no iniciada**.
-- Código de producto modificado al activar: **Ninguno**.
+- Primera subcapa pendiente: **7.1**, **sin definir todavía**. La define la
+  evidencia de 7.0, que está abajo. No se inicia sin orden.
+- Código de producto modificado al activar: **Ninguno**. Tampoco en 7.0: su diff
+  es **un solo archivo de prueba nuevo** y ningún archivo rastreado modificado,
+  igual que los de 5.0, 6.0 y las cinco 7.0 anteriores.
 - Dominio de esta capa: **observaciones, y solo ese**. La capa 7 del índice es
   «resto de dominios» y ordena expresamente **priorizar uno a la vez**, así que
   esta bitácora cubre un único dominio. Los demás quedan fuera y necesitarán su
@@ -134,21 +138,28 @@ Ninguno de los de abajo procede de haber leído el código de `observaciones`.
 Todos son restos de lo que las capas 0, 1, 2, 3 y 6 observaron desde fuera. La
 columna de origen dice de dónde sale cada uno.
 
-**Los once están NO VERIFICADOS.**
+**Los once quedaron resueltos en 7.0**, uno por uno y con evidencia. **Diez se
+confirmaron y uno resultó incompleto.** **Ninguno resultó falso**, como en
+`asistencia`.
 
-| # | Supuesto | Origen documental | Estado |
+**Y esta vez ninguno estaba mal atribuido**, a diferencia de `boletin`, donde
+cinco de trece describían código de `notas`. La colisión con `plan_de_clases`
+resultó ser **limpia**: dos routers distintos, dos tablas distintas, cero
+solapamiento.
+
+| # | Supuesto | Origen documental | Resultado en 7.0 |
 |---:|---|---|---|
-| 1 | El dominio vive en `app/routes/observaciones.py` y en un `observacion_controller` | Inventario de contratos de 0.0 (router) y subcapa 6.0, que nombra `observacion_controller` entre los nueve consumidores del resolver | **NO VERIFICADO.** No consta la ruta exacta del controlador, ni si existen esquema, servicio o repositorio. En `boletin` este mismo supuesto quedó confirmado pero hubo que precisarlo |
-| 2 | **El dominio escribe**: «crea o actualiza observación académica» | Inventario de contratos de 0.0 | **NO VERIFICADO.** El «crea o actualiza» sugiere un `UPSERT`, como el de `boletin`. Si se confirma, perfil de riesgo de la capa 5 y la propiedad transaccional pasa a ser la invariante más delicada |
-| 3 | **La ruta ejecuta persistencia**: `obtener_observacion` hace un `SELECT` más el resolver, y abría su propia conexión antes de que 1.4 la migrara a `get_cursor()` | Subcapa 1.4 | **NO VERIFICADO hoy.** Es **la diferencia que manda en esta capa**. Ningún dominio anterior de la capa 7 llegó con SQL en la capa HTTP |
-| 4 | **El resolver se consume desde DOS sitios del dominio**: el controlador y la ruta | Subcapa 6.0, que enumeró nueve consumidores «además de `routes/observaciones.py`» | **NO VERIFICADO.** Refuerza el supuesto 3 y obliga a contar consultas en los dos sitios |
-| 5 | `require_estudiante_in_asignacion` tiene **dos puntos de llamada** en `observaciones`, **ninguno en bucle** | Medición del N+1 en conexiones de `asistencia`, registrada en el índice el 2026-08-21 | **NO VERIFICADO.** Son **dos**, el doble que `boletines`. Cada uno abre una conexión propia, así que la línea base de conexiones puede ser mayor que la de `boletin` sin que haya N+1 |
-| 6 | Contratos de 0.0: `200` con **dimensiones normalizadas**, `403` de ownership y **`422` con contenido vacío** | Inventario de contratos de 0.0 | **NO VERIFICADO.** El `422` sería **el primero propio de un dominio de la capa 7**; los cinco anteriores solo tenían 400, 403, 404 y 500. «Dimensiones normalizadas» no está definido en ninguna parte y 7.0 debe averiguar qué significa |
-| 7 | La ruta devuelve **`None`** cuando no hay observación guardada, en vez de `404` o diccionario vacío; y **los guards corren antes de tocar la base**: si uno rechaza, no se abre cursor ni se ejecuta consulta | Subcapa 1.4, fijado por `tests/test_observaciones_ruta.py` | **NO VERIFICADO hoy.** Es un contrato con el frontend y hay que conservarlo tal cual |
-| 8 | Pruebas heredadas: `tests/test_observaciones_validaciones.py`, que cubre **las validaciones del controlador**, y `tests/test_observaciones_ruta.py`, **4 pruebas** que creó 1.4 | Inventario de 0.0 y subcapa 1.4 | **NO VERIFICADO** el número total. En `asistencia` y `boletin` este supuesto quedó **incompleto** las dos veces |
-| 9 | `estudiantes_repository` **lee `observaciones`** en el bloque del expediente | Subcapa 6.2 | **NO VERIFICADO.** La capa 6 registró que al mover esa lectura quedó un `for r in cursor.fetchall()` consumiendo el cursor en vez de la lista devuelta; se corrigió antes de ejecutar nada. **Romper su contrato no haría fallar las pruebas de este dominio**, solo la compuerta global |
-| 10 | La tabla `observaciones` **no estuvo entre las ocho averiadas** de `tenant_2005` y **no aparece** entre las 7 claves foráneas a `asignaciones` ni entre las 9 a `estudiantes` | Capas 3 y 6, esta última **por ausencia** en sus dos listas | **NO VERIFICADO, y el más delicado de leer.** Es una inferencia por ausencia: que la capa 6 no la listara puede significar que no tiene esas claves, o que su inventario no la cubría. **7.0 no debe darlo por cierto en ninguna de las dos direcciones** |
-| 11 | **`plan_de_clases` tiene tres handlers con «observacion» en el nombre** —`crear_observacion_plan`, `listar_observaciones_plan`, `marcar_observacion_vista`— que **no** pertenecen a este dominio | Subcapa 2.0, que inventarió los once handlers de plan de clases | **NO VERIFICADO.** Es la trampa de frontera de esta capa. `plan_de_clases` está **en espera**, así que aquí no hay una frontera ya cerrada que respetar, pero **tampoco se puede invadir** |
+| 1 | El dominio vive en `app/routes/observaciones.py` y en un `observacion_controller` | Inventario de contratos de 0.0 (router) y subcapa 6.0 | **INCOMPLETO, y es el único.** Son **tres archivos**: el router (41 líneas), `app/controllers/observacion_controller.py` (43) y `app/schemas/observacion.py` (20). **No existe repositorio ni servicio.** Es la **tercera vez seguida** —tras `asistencia` y `boletin`— que el supuesto de frontera se queda corto **por el esquema**: conviene darlo por sabido y dejar de contarlo como sorpresa |
+| 2 | **El dominio escribe**: «crea o actualiza observación académica» | Inventario de contratos de 0.0 | **CONFIRMADO, y el `UPSERT` que se sospechaba existe.** `guardar_observacion_controller` emite **una sola sentencia**: `INSERT … ON CONFLICT (estudiante_id, asignacion_id, periodo) DO UPDATE` sobre las tres dimensiones, en **una transacción propia** con `commit` y `rollback` explícitos. **Una sola tabla escrita.** Perfil de riesgo de la capa 5, confirmado |
+| 3 | **La ruta ejecuta persistencia** | Subcapa 1.4 | **CONFIRMADO.** `obtener_observacion` resuelve la asignación académica y ejecuta el `SELECT` **dentro de la propia ruta**, en un `with get_cursor()`. Es **la diferencia que manda en esta capa** y ningún dominio anterior de la capa 7 la tuvo |
+| 4 | **El resolver se consume desde DOS sitios del dominio** | Subcapa 6.0 | **CONFIRMADO.** Línea 28 de la ruta y línea 10 del controlador. Cada uno cuesta **1 consulta** sobre el cursor que ya existe: ninguno abre conexión propia |
+| 5 | `require_estudiante_in_asignacion` tiene **dos puntos de llamada**, **ninguno en bucle** | Medición del N+1 en conexiones de `asistencia` | **CONFIRMADO y cuantificado.** Uno por entrada, líneas 14 y 25, **fuera de todo bucle**. El coste **no crece con nada**, pero el suelo es más alto que el de `boletin`: **2 conexiones como admin y 3 como profesor en las DOS entradas** |
+| 6 | `200` con **dimensiones normalizadas**, `403` y **`422` con contenido vacío** | Inventario de contratos de 0.0 | **CONFIRMADO y por fin explicado.** Las **dimensiones** son `conductual`, `cognitivo` y `lenguaje`. **Normalizar** es `str(valor or "").strip()`, un `field_validator` del esquema. El **`422`** lo produce un `model_validator` que rechaza las tres vacías con «Escribe al menos una observación antes de guardar.». Es **el primer 422 propio de un dominio de la capa 7** |
+| 7 | La ruta devuelve **`None`** sin observación guardada, y **los guards corren antes de tocar la base** | Subcapa 1.4 | **CONFIRMADO.** Ya lo fijaban las 4 pruebas de 1.4; 7.0 añade el **orden exacto** en el código, para que una extracción no lo invierta sin que nadie lo note |
+| 8 | Pruebas heredadas en `test_observaciones_validaciones.py` y `test_observaciones_ruta.py`, **4** de este último | Inventario de 0.0 y subcapa 1.4 | **CONFIRMADO y cuantificado, sin quedarse corto por una vez.** Son **8 heredadas**: 4 y 4. **El hueco sí era real**: ninguna medía conteos de consultas ni de conexiones, ninguna fijaba la frontera, ninguna miraba la forma del `UPSERT` ni el camino de `rollback`, y ninguna dejaba guardias estructurales |
+| 9 | `estudiantes_repository` **lee `observaciones`** | Subcapa 6.2 | **CONFIRMADO.** Una sola lectura, `leer_observaciones`, con `JOIN` a `asignaciones`, `materias` y `profesor` y `ORDER BY o.periodo DESC` |
+| 10 | La tabla **no tiene** las claves foráneas que la capa 6 inventarió | Capas 3 y 6, **por ausencia** | **CONFIRMADO, y por la razón fuerte, no por la débil.** El DDL de `migrations/base/` demuestra que la tabla **no tiene ninguna clave foránea**: `estudiante_id` y `asignacion_id` son `integer` sueltos. No es que la capa 6 la omitiera: es que **no hay nada que listar**. Lo único que la tabla garantiza es `UNIQUE (estudiante_id, asignacion_id, periodo)`, que es justo lo que sostiene el `UPSERT` |
+| 11 | **`plan_de_clases` tiene tres handlers con «observacion» en el nombre** que no son de este dominio | Subcapa 2.0 | **CONFIRMADO, y la frontera resultó limpia.** Son tres rutas bajo `/plan-de-clases` y `/admin/plan-de-clases`, **paths disjuntos** de las dos propias, y **escriben otra tabla**: `plan_de_clases_observaciones`. No hay ambigüedad que resolver, al contrario que en `boletin` |
 
 ## Alcance autorizado
 
@@ -232,25 +243,82 @@ columna de origen dice de dónde sale cada uno.
 - El SQL de dominio se conserva hasta que una subcapa autorice, con
   caracterización previa, un cambio concreto.
 
-## Línea base
-
-Se registrará al ejecutar 7.0. **No se ha ejecutado ningún comando de
-verificación en la activación.**
+## Línea base registrada en 7.0
 
 | Comprobación | Comando | Resultado |
 |---|---|---|
-| Compuerta heredada, antes de tocar nada | `.\venv\Scripts\python.exe scripts\verify.py` | Pendiente. Al cerrar `boletin` fueron **898 pruebas, exit 0** |
-| Pruebas específicas nuevas | `.\venv\Scripts\python.exe -m pytest -q -p no:cacheprovider tests\test_observaciones_caracterizacion.py` | Pendiente |
-| Suite global | `.\venv\Scripts\python.exe scripts\verify.py` | Pendiente |
-| Ruff | Ejecutado por la compuerta global y sobre los archivos nuevos | Pendiente |
-| Dependencias | Ejecutado por la compuerta global | Pendiente |
+| Compuerta heredada, **antes de tocar nada** | `.\venv\Scripts\python.exe scripts\verify.py` | **898 pruebas, exit 0.** Coincide exactamente con lo registrado al cerrar `boletin`: **no había deriva** |
+| Pruebas específicas nuevas | `.\venv\Scripts\python.exe -m pytest -q -p no:cacheprovider tests\test_observaciones_caracterizacion.py` | **25 pasaron** en 0,59 s |
+| Suite global | `.\venv\Scripts\python.exe scripts\verify.py` | **923 pasaron**, 5 warnings heredadas, exit 0 |
+| Ruff | Ejecutado por la compuerta global y sobre la prueba nueva | **Correcto** |
+| Dependencias | Ejecutado por la compuerta global | **Íntegras** |
+
+La suite pasó de **898 a 923** con la caracterización de 7.0.
+
+## Inventario y contratos fijados en 7.0
+
+**El dominio son tres archivos y 104 líneas**, y es **el que menos SQL tiene de
+todos los que ha migrado el programa**: 2 sentencias, frente a las 3 de
+`asistencia`, que era el récord anterior.
+
+| Archivo | Líneas | SQL inline |
+|---|---:|---:|
+| `app/routes/observaciones.py` | 41 | **1** |
+| `app/controllers/observacion_controller.py` | 43 | **1** |
+| `app/schemas/observacion.py` | 20 | 0 |
+
+**Dos entradas HTTP con un único modelo de permiso.** Es el **segundo dominio de
+la capa 7 con permisos uniformes**, después de `ventas`:
+
+| Método | Path | Permisos | Destino |
+|---|---|---|---|
+| POST | `/observaciones` | `get_current_user` + `require_asignacion_access` + `require_estudiante_in_asignacion` | `guardar_observacion_controller` |
+| GET | `/observaciones/{estudiante_id}/{asignacion_id}/{periodo}` | los mismos tres | **la propia ruta** |
+
+### Frontera, decidida con evidencia
+
+| Vive en | Rutas | Tabla |
+|---|---|---|
+| **`observaciones`**, este dominio | `POST /observaciones`, `GET /observaciones/{…}/{…}/{…}` | `observaciones` |
+| **`plan_de_clases`**, en espera | `POST /admin/plan-de-clases/{plan_id}/observaciones`, `GET /plan-de-clases/{plan_id}/observaciones`, `PATCH /plan-de-clases/{plan_id}/observaciones/{observacion_id}/vista` | `plan_de_clases_observaciones` |
+
+Los conjuntos de paths son **disjuntos** y las tablas son **distintas**. La
+frontera **queda donde está** y `plan_de_clases` no se toca.
+
+### Propiedad transaccional y los dos idiomas
+
+`guardar_observacion_controller` es la **única escritura**. Abre con
+`get_connection()`, es dueño de `commit` y `rollback`, cierra cursor y conexión
+en `finally` y **propaga la excepción** tras revertir. La lectura, en cambio,
+usa `with get_cursor()` **dentro de la ruta**. **Dos idiomas conviviendo**, la
+misma herencia que tuvo `asistencia`, y aquí además repartidos entre dos capas
+distintas.
+
+## Línea base de consultas y conexiones
+
+Medida herméticamente con dobles y **fijada por aserción**. Las consultas
+excluyen los dos round-trips que la apertura de conexión emite siempre.
+
+| Camino | Consultas | Conexiones (admin) | Conexiones (profesor) |
+|---|---:|---:|---:|
+| `POST /observaciones` | **2** — resolver + `UPSERT` | **2** | **3** |
+| `GET /observaciones/…` | **2** — resolver + `SELECT` | **2** | **3** |
+
+**Ningún camino tiene N+1**, ni en consultas ni en conexiones. Los dos guards se
+llaman **una vez cada uno y fuera de todo bucle**; `require_asignacion_access`
+**no abre conexión** siendo admin, porque retorna antes.
+
+El suelo es **más alto que el de `boletin`** —que gastaba 1 conexión de permisos
+en tres de sus cuatro entradas— porque aquí **las dos entradas** pagan los dos
+guards. No es un defecto: es el precio de comprobar la pertenencia del
+estudiante también en la lectura, que `boletin` no hace.
 
 ## Subcapas
 
 | Subcapa | Resultado | Estado |
 |---:|---|---|
-| 7.0 | Frontera con `plan_de_clases`, inventario en ruta y controlador, contratos, caracterización y línea base de consultas y conexiones | **Pendiente y no iniciada** |
-| 7.1 | Primera extracción protegida | Sin definir: depende de la evidencia de 7.0 |
+| 7.0 | Frontera con `plan_de_clases`, inventario en ruta y controlador, contratos, caracterización y línea base de consultas y conexiones | **Cerrada** el 2026-08-21 |
+| 7.1 | Primera extracción protegida | **Sin definir**: la evidencia de 7.0 la perfila, pero no está decidida |
 | 7.2 | Segunda extracción o punto de decisión | Sin definir |
 
 El desglose se deja deliberadamente **sin decidir** hasta tener la evidencia del
@@ -258,7 +326,64 @@ inventario, igual que hicieron la capa 6 y las cinco capas 7 anteriores. Las
 subcapas innecesarias se marcarán `No aplica` con explicación. **Nunca se
 ejecutan dos subcapas en el mismo turno.**
 
-## Subcapa 7.0 — trabajo exacto, pendiente y no iniciada
+## Hallazgos de 7.0, registrados y sin corregir
+
+Son **nueve**. Ninguno se corrige desde esta capa; corregir cualquiera exige una
+orden explícita. Van ordenados por gravedad.
+
+1. **La tabla no tiene ninguna clave foránea.** `estudiante_id` y
+   `asignacion_id` son `integer` sueltos: nada en la base impide una observación
+   huérfana, ni apuntando a un estudiante inexistente, ni sobreviviendo al
+   borrado de una asignación. **La integridad depende enteramente del código de
+   aplicación**, y ese código no la comprueba: el `UPSERT` escribe lo que le
+   den. Es el hallazgo más grave y el único de todo el programa sobre una tabla
+   sin restricciones hacia sus dos padres naturales.
+2. **Las tres dimensiones son `text` sin límite y la tabla no tiene ningún
+   `CHECK`.** Contrasta con `plan_de_clases_observaciones`, la tabla del dominio
+   vecino, que **sí** acota su texto entre 1 y 3000 caracteres. El dominio
+   académico está **menos protegido que el de planes de clase**, y nada impide
+   almacenar una observación de megabytes.
+3. **La lectura vive en la capa HTTP.** El `SELECT` y el resolver están en
+   `obtener_observacion`, dentro del router. Es el único caso del programa y la
+   razón por la que un inventario que solo mirara el controlador contaría **1 de
+   2** sentencias.
+4. **El `422` depende del esquema y es frágil.** Lo produce el `model_validator`
+   de `ObservacionCreate`, no el dominio. Si esa validación se moviera al
+   controlador en una extracción posterior, el status **pasaría de 422 a 500**
+   sin que ninguna prueba heredada lo notara. Ahora sí hay una que lo fija.
+5. **La normalización convierte cualquier valor falsy en cadena vacía.**
+   `str(valor or "").strip()` no distingue tipos: un **`0` numérico llega como
+   `""`, no como `"0"`**, y lo mismo `False` y las listas vacías. Un valor
+   truthy sí conserva su representación: `7` llega como `"7"`.
+6. **El `UPSERT` no comprueba que la asignación siga activa.** Es el mismo
+   hallazgo que dejaron abiertos `dashboard`, `notas` y `boletin`.
+7. **Ninguna de las dos entradas registra nada ante un fallo.** No hay
+   `try/except` ni `logger` en el router: una excepción sube y FastAPI la
+   convierte en un 500 genérico. **No se filtra el texto de la excepción**, que
+   es mejor que `dashboard` y `asistencia`, pero **tampoco queda traza**, que es
+   peor que `boletin`.
+8. **`periodo` es un `int` sin cota**, ni en el esquema ni en la base: nada
+   impide un periodo 99 ni negativo.
+9. **Defensa duplicada en el controlador.** Usa
+   `data.get("conductual", "")` para las tres dimensiones, pero el esquema ya
+   garantiza que las tres claves existen con default `""`. El `.get` solo
+   actuaría si alguien llamara al controlador **sin pasar por la ruta**, porque
+   recibe un `dict` y no el modelo.
+
+### Lo que 7.0 buscó expresamente y **no** encontró
+
+- **Ningún N+1**, ni en consultas ni en conexiones. Es el segundo dominio
+  seguido que sale limpio en esto, tras `boletin`.
+- **Ninguna fuga de conexión**: la escritura cierra en `finally` y la lectura
+  usa el gestor de contexto de la capa 1.
+- **Ninguna colisión de paths ni de tablas** con `plan_de_clases`. La trampa de
+  frontera que la activación anticipó **resultó limpia**, al contrario que la de
+  `boletin`.
+- **Ninguna filtración del texto de la excepción** al cliente.
+- **Ningún f-string en SQL** ni interpolación de parámetros.
+- **Ningún supuesto mal atribuido**, a diferencia de `boletin`.
+
+## Subcapa 7.0 — trabajo exacto, ejecutado y cerrado
 
 1. **Delimitar la frontera con `plan_de_clases` antes que nada.** Listar las
    rutas declaradas por `app/routes/observaciones.py` y las de
@@ -417,17 +542,107 @@ ejecutan dos subcapas en el mismo turno.**
 - Estado al cerrar el turno de activación: capa 7 **activa** para el dominio
   `observaciones`; **7.0 pendiente y no iniciada**.
 - Siguiente acción exacta: ejecutar únicamente **7.0** conforme al trabajo
-  exacto de arriba y detenerse antes de 7.1.
+  exacto de arriba y detenerse antes de 7.1. *(Ejecutada en el turno siguiente;
+  ver el cierre de 7.0 más abajo.)*
+
+### 2026-08-21 — cierre de 7.0
+
+- Commit observado: `dac6425`, el de activación, que el usuario creó entre los
+  dos turnos. Árbol limpio, verificado con `git status --porcelain=v1` con
+  salida vacía. El commit base `fd3f93a` sigue siendo el registrado y `dac6425`
+  es su único descendiente, explicado en esta bitácora.
+- Estado remoto: `origin/main` sigue en `fd3f93a`. **La activación y 7.0 están
+  sin publicar.**
+- Archivos modificados: **`tests/test_observaciones_caracterizacion.py`,
+  nuevo**, y esta bitácora. **Ningún archivo rastreado de producto fue
+  modificado**, verificado con `git status --porcelain=v1`, cuya única entrada
+  de código es `?? tests/test_observaciones_caracterizacion.py`.
+- Archivos inspeccionados sin modificar: `app/routes/observaciones.py`,
+  `app/controllers/observacion_controller.py`, `app/schemas/observacion.py`,
+  `tests/test_observaciones_ruta.py`, `tests/test_observaciones_validaciones.py`
+  y, **solo para delimitar la frontera y clasificar consumidores**,
+  `app/routes/plan_de_clases.py`, `app/core/permissions.py`,
+  `app/repositories/estudiantes_repository.py` y
+  `migrations/base/20260813_esquema_base_tenant.sql`. **Leer no fue mover**:
+  ninguno se tocó.
+- Pruebas antes: **8 heredadas**, 4 en `test_observaciones_ruta.py` y 4 en
+  `test_observaciones_validaciones.py`. **Ninguna** medía conteos de consultas o
+  conexiones, fijaba la frontera, miraba la forma del `UPSERT`, cubría el camino
+  de `rollback` ni dejaba guardias estructurales.
+- Cambio realizado: **solo caracterización**. 25 pruebas nuevas que fijan la
+  frontera con `plan_de_clases`, las dos entradas con su único modelo de
+  permiso, el `422` y su origen en el esquema, el `None` de la lectura y el
+  orden de los guards, la semántica transaccional completa incluida la
+  reversión, la normalización de las tres dimensiones con su rareza de los
+  valores falsy, la línea base de consultas y de conexiones, **el DDL de la
+  tabla y sus ausencias**, y **seis guardias estructurales**: número de
+  archivos, ausencia de repositorio y servicio, reparto 1+1 del SQL entre ruta y
+  controlador, los dos idiomas de conexión, el resolver en los dos lados y la
+  lectura ajena de `estudiantes_repository`.
+- Comandos y resultados:
+  - `.\venv\Scripts\python.exe scripts\verify.py` **antes**: **898 pruebas,
+    exit 0**, Ruff correcto, `pip check` íntegro. **Sin deriva** respecto al
+    cierre de `boletin`.
+  - `.\venv\Scripts\python.exe -m pytest -q -p no:cacheprovider tests\test_observaciones_caracterizacion.py`:
+    **25 pasaron** en 0,59 s, **a la primera**.
+  - Las **8 heredadas** ejecutadas junto a las nuevas: **33 pasaron**, sin tocar
+    ninguna aserción.
+  - `.\venv\Scripts\python.exe -m ruff check tests\test_observaciones_caracterizacion.py`:
+    **correcto**.
+  - `.\venv\Scripts\python.exe scripts\verify.py` **después**: **923 pruebas,
+    exit 0**, Ruff correcto, `pip check` íntegro.
+  - `git diff --check`: **sin problemas**.
+- **Ninguna prueba falló durante 7.0**, ni propia ni ajena. Es la primera 7.0 de
+  la capa 7 que no produce ninguna señal roja; en `boletin` hubo tres fallos de
+  andamiaje. Se afinó **un doble** después de que pasara, para que el resolver
+  recibiera un id plausible en vez de reutilizar la fila del `SELECT`: **no se
+  relajó ninguna aserción**, se añadió una sobre los parámetros.
+- Decisiones:
+  1. **La frontera se queda donde está.** Las tres rutas de observaciones de
+     `plan_de_clases` no se tocan: son otro dominio, otro router y **otra
+     tabla**. Motivo: `plan_de_clases` sigue en espera y tendrá su propia
+     bitácora.
+  2. **Los dos idiomas de conexión se conservan.** Unificarlos cambiaría los
+     conteos que 7.0 acaba de fijar por aserción, y no está autorizado.
+  3. **No se corrige la ausencia de claves foráneas**, pese a ser el hallazgo
+     más grave. Motivo: exigiría una migración real sobre la base, que esta capa
+     tiene expresamente fuera de alcance, y una decisión sobre qué hacer con las
+     filas huérfanas que ya existan.
+- Riesgos: el hallazgo 4 —el `422` que depende del esquema— **es un riesgo para
+  7.1**. Si la extracción tocara la validación, el status cambiaría en silencio.
+  Ahora hay una prueba que lo fija, y es la que debe protegerlo.
+- Siguiente acción exacta: **esperar la definición y la orden de 7.1.** No se
+  inició ni se decidió su alcance.
 
 ## Entrega al próximo chat
 
 - Capa activa: **7, para el dominio `observaciones` y solo ese.** Los otros seis
   dominios siguen en espera.
-- Última subcapa terminada: **ninguna** en esta bitácora. La anterior del
-  programa fue la 7.1 de `boletin`, cerrada el 2026-08-21.
-- Primera subcapa pendiente: **7.0**, pendiente y **no iniciada**.
+- Última subcapa terminada: **7.0**, cerrada el 2026-08-21, el mismo día en que
+  se activó la capa.
+- Primera subcapa pendiente: **7.1**, **sin definir y no iniciada**. La
+  evidencia de 7.0 la perfila —2 sentencias, una en la ruta y una en el
+  controlador, sin repositorio— pero **su alcance no está decidido**. No se
+  inicia sin orden.
 - Commit base: `fd3f93a2ad97daa0a34081eb2f95504dd1a9e4df`, rama `main`,
-  **publicado y desplegado**, comprobado contra el remoto real.
+  **publicado y desplegado**, comprobado contra el remoto real. La activación
+  quedó en `dac6425` y **7.0 está sin commitear** al cerrar este turno.
+- Compuerta al cerrar 7.0: **923 pruebas, exit 0**, Ruff correcto y `pip check`
+  íntegro. La suite pasó de **898 al activar la capa a 923**.
+- Lo que 7.0 dejó medido: el dominio son **tres archivos y 104 líneas**; **2
+  entradas HTTP** con **un único modelo de permiso**; **una sola tabla
+  escrita**; **una transacción propia**; **2 sentencias SQL**, **una en la ruta
+  y otra en el controlador**; **8 pruebas heredadas** más **25 nuevas**. **Es el
+  dominio con menos SQL que ha migrado el programa**, por debajo de las 3 de
+  `asistencia`. **Ningún N+1.**
+- **Los once supuestos quedaron resueltos**: **diez confirmados y uno
+  incompleto**, ninguno falso, y **ninguno mal atribuido** —la diferencia con
+  `boletin`—. El incompleto es el de siempre: el esquema como tercer archivo,
+  **tercera vez seguida**.
+- **El hallazgo que manda es que la tabla no tiene ninguna clave foránea.**
+  `estudiante_id` y `asignacion_id` son enteros sueltos y el `UPSERT` escribe lo
+  que le den: la integridad depende **enteramente** del código, que no la
+  comprueba.
 - Bloqueos: ninguno. Verificaciones heredadas **pendientes y aceptadas** por
   decisión explícita del usuario: valor operativo final de
   `DB_STATEMENT_TIMEOUT_MS` (capa 1), evidencia de GitHub Actions posterior a la
@@ -437,25 +652,31 @@ ejecutan dos subcapas en el mismo turno.**
   1. **Un solo dominio.** `dashboard`, `notas`, `ventas`, `asistencia` y
      `boletin` están cerrados en sus propias bitácoras y los otros seis siguen
      en espera.
-  2. **La ruta puede contener SQL.** Es lo que distingue a este dominio de los
-     cinco anteriores. Contar el SQL solo en el controlador daría un inventario
-     falso.
-  3. **`plan_de_clases` tiene tres handlers con «observacion» en el nombre y no
-     son de este dominio.** Delimitar la frontera es el **primer** paso de 7.0.
-  4. **El `422` por contenido vacío es un contrato** que ninguna prueba ajena
-     protege. Fijarlo por prueba antes de tocar nada.
+  2. **La ruta CONTIENE SQL**, confirmado. Es lo que distingue a este dominio de
+     los cinco anteriores, y 7.1 tendrá que decidir si esa sentencia se mueve y
+     adónde. Contar el SQL solo en el controlador da **1 de 2**.
+  3. **La frontera con `plan_de_clases` quedó decidida y es limpia**: paths
+     disjuntos y **tablas distintas**, `observaciones` frente a
+     `plan_de_clases_observaciones`. No se toca.
+  4. **El `422` por contenido vacío lo produce el ESQUEMA**, no el dominio. Si
+     7.1 mueve esa validación, el status pasa a **500** en silencio. Hay una
+     prueba que lo fija y es la que debe protegerlo.
   5. **El `None` de la observación ausente es un contrato con el frontend**, no
-     un descuido: 1.4 lo fijó por prueba.
+     un descuido: 1.4 lo fijó por prueba y 7.0 añadió el orden de los guards.
   6. **`app/core/permissions.py` está fuera de alcance**, incluida
      `require_estudiante_in_asignacion`, que este dominio llama **dos veces**.
   7. **El commit base ya está en producción.** El rollback de esta capa, si se
      publica, **no será local**.
-  8. **No corregir ninguno de los cincuenta y un hallazgos** que dashboard,
-     notas, ventas, asistencia y boletin dejaron abiertos.
+  8. **No corregir ninguno de los nueve hallazgos propios**, empezando por la
+     ausencia de claves foráneas, ni los cincuenta y uno que dashboard, notas,
+     ventas, asistencia y boletin dejaron abiertos.
   9. **Ejecutar siempre la compuerta completa**: `estudiantes_repository` lee
      esta tabla y no fallaría con las pruebas de este dominio.
-  10. **Un supuesto puede ser cierto y estar mal atribuido.** Es la lección de
-      `boletin`, donde cinco de trece hablaban de `notas`.
-- Siguiente acción exacta: ejecutar únicamente **7.0** y detenerse antes de 7.1.
-  Una instrucción genérica de continuar **sí** autoriza 7.0, porque la capa está
-  activa y 7.0 es su primera subcapa pendiente.
+  10. **Los dos idiomas de conexión se conservan.** Unificarlos cambiaría los
+      conteos que 7.0 fijó por aserción.
+  11. **Al aparecer un repositorio nuevo, cuatro guardias ajenas fallarán.** Es
+      el patrón registrado desde `asistencia`: cada migración añade una
+      enumeración de repositorios y el número crece en uno. Hoy son **diez**.
+- Siguiente acción exacta: **esperar la definición y la orden de 7.1.** 7.0 está
+  cerrada; su alcance no está decidido. Lo que 7.1 tendrá que resolver antes que
+  nada es **qué se hace con la sentencia que vive en la ruta**.

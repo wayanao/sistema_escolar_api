@@ -46,7 +46,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 7 | Resto de dominios — **`ventas` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `ventas` el 2026-08-20; verificada a mano. **Publicada el 2026-08-20**, después de escribirse su bitácora | [07_VENTAS.md](./07_VENTAS.md) |
 | 7 | Resto de dominios — **`asistencia` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `asistencia` el 2026-08-21; verificada a mano. **Publicada el 2026-08-21**, después de escribirse su bitácora | [07_ASISTENCIA.md](./07_ASISTENCIA.md) |
 | 7 | Resto de dominios — **`boletin` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `boletin` el 2026-08-21; verificada a mano y **sin publicar**. Ver la advertencia de desfase más abajo | [07_BOLETIN.md](./07_BOLETIN.md) |
-| 7 | Resto de dominios — **`observaciones` en migración** | Migración individual con contratos y pruebas | **Activa** desde el 2026-08-21; **7.0 pendiente y no iniciada**. Los demás dominios, **en espera** | [07_OBSERVACIONES.md](./07_OBSERVACIONES.md) |
+| 7 | Resto de dominios — **`observaciones` en migración** | Migración individual con contratos y pruebas | **Activa** desde el 2026-08-21; **7.0 cerrada** el mismo día, **7.1 sin definir**. Los demás dominios, **en espera** | [07_OBSERVACIONES.md](./07_OBSERVACIONES.md) |
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
 cierre y el usuario ordene continuar, se crea su sucesora desde
@@ -1577,6 +1577,44 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   `marcar_observacion_vista`—, inventariados por la capa 2, que **no** son de
   este dominio. En `boletin` el nombre colisionaba con un dominio ya cerrado;
   aquí, con uno que sigue en espera. Delimitarlo es el paso 1 de su 7.0.
+- Resultado de 7.0 de `observaciones`, **cerrada el 2026-08-21**, el mismo día
+  en que se activó la capa: el dominio quedó inventariado en **3 archivos y 104
+  líneas** —router, controlador y esquema—, **2 entradas HTTP** con **un único
+  modelo de permiso**, **2 sentencias SQL** —**una en la ruta y otra en el
+  controlador**—, **una sola tabla escrita** en **una transacción propia** y **8
+  pruebas heredadas** más **25 nuevas**. Compuerta: **923 pruebas, exit 0**; la
+  suite pasó de **898 al activar la capa a 923**. Diff de 7.0: **un solo archivo
+  de prueba nuevo y ningún archivo rastreado modificado**.
+- **`observaciones` es el dominio con menos SQL que ha migrado el programa**: 2
+  sentencias, por debajo de las 3 de `asistencia`. Y **el segundo con permisos
+  uniformes**, tras `ventas`: sus dos entradas exigen exactamente los mismos
+  tres guards. **Ningún N+1**, ni de consultas ni de conexiones; es el segundo
+  dominio seguido que sale limpio en esto.
+- **Los once supuestos quedaron resueltos**: **diez confirmados y uno
+  incompleto**, ninguno falso y **ninguno mal atribuido**, que era el riesgo que
+  dejó `boletin`. **La trampa de frontera resultó limpia**: las tres rutas de
+  observaciones de `plan_de_clases` tienen paths disjuntos y escriben **otra
+  tabla**, `plan_de_clases_observaciones`. El incompleto es el de siempre —el
+  esquema como tercer archivo—, y es la **tercera vez seguida** tras `asistencia`
+  y `boletin`: conviene darlo por sabido y dejar de contarlo como sorpresa.
+- **Quedó explicado por fin qué son las «dimensiones normalizadas»** que el
+  inventario de 0.0 registró sin definir: las dimensiones son `conductual`,
+  `cognitivo` y `lenguaje`, y normalizar es `str(valor or "").strip()` en un
+  `field_validator`. El **`422`** lo produce un `model_validator` que rechaza las
+  tres vacías. Es **el primer 422 propio de un dominio de la capa 7**.
+- Hallazgos de 7.0 de `observaciones`, **registrados y sin corregir**: son
+  **nueve**. El que manda es que **la tabla no tiene ninguna clave foránea**:
+  `estudiante_id` y `asignacion_id` son enteros sueltos, nada impide una
+  observación huérfana y el `UPSERT` escribe lo que le den, así que **la
+  integridad depende enteramente de un código que no la comprueba**. Le siguen
+  que las tres dimensiones son `text` **sin límite ni `CHECK`** —cuando la tabla
+  del dominio vecino sí acota su texto entre 1 y 3000, de modo que **el dominio
+  académico está menos protegido que el de planes de clase**—; que **la lectura
+  vive en la capa HTTP**; que el **`422` depende del esquema** y una extracción
+  que mueva esa validación lo convertiría en 500 en silencio; que la
+  normalización **convierte cualquier valor falsy en cadena vacía**, así que un
+  `0` numérico llega como `""`; y que **ninguna de las dos entradas registra
+  nada** ante un fallo.
 - Siguen en espera **seis** dominios: `planilla`, `planeador_anual`,
   `plan_de_clases`, `branding`, `profesores` y `super_admin`. `planilla` sigue
   **sin ser frontera limpia** por la misma razón que `boletin`: `notas` posee

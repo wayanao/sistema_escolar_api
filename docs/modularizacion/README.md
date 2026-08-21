@@ -200,11 +200,11 @@ posee ya las rutas `/boletin/{id}` y `/boletin/detallado/{id}`, como fijó su
 explícitamente**; **no se dedujo por inferencia**. Su bitácora es
 [07_OBSERVACIONES.md](./07_OBSERVACIONES.md) y quedó **cerrada el mismo día**.
 
-**Dominio migrado y cerrado: `planilla`.** Lo eligió el usuario el 2026-08-21, de la lista
-de los seis que quedaban en espera, y lo **nombró explícitamente** al aceptar
+**Dominio migrado y cerrado: `planilla`.** Lo eligió el usuario el 2026-08-21,
+de la lista de los seis que quedaban en espera, y lo **nombró explícitamente** al aceptar
 continuar localmente con las verificaciones pendientes. Su bitácora es
 [07_PLANILLA.md](./07_PLANILLA.md); sus **7.0 y 7.1 están cerradas**, 7.2 es No
-aplica y la capa quedó cerrada por orden explícita. Su verificación manual sigue
+aplica y la capa quedó cerrada por orden explícita. Su verificación manual quedó
 **completada y correcta**, con 8 de 8 puntos reportados por el usuario y entorno
 no especificado.
 
@@ -1720,10 +1720,10 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   conservan sus recursos y comportamiento; las piezas nominales de `notas` y
   `boletin` permanecen intactas. Compuerta sobre el commit limpio: **957
   pruebas**, Ruff correcto y dependencias íntegras.
-- **Verificación manual de `planilla`: pendiente.** No fue ejecutada ni
-  reportada y no se marca como cumplida. Antes de activar otro dominio el
-  usuario debe elegir expresamente entre completarla o continuar aceptándola,
-  junto con las heredadas, como pendiente.
+- **Verificación manual de `planilla`: completada y correcta.** El usuario
+  reportó correctos los ocho puntos: escritura, reemplazo, desarrollo, lectura,
+  borrado, permisos, validaciones y comprobación cruzada de notas/tenant. No
+  especificó el entorno, así que no se atribuye a local, staging ni despliegue.
 - Quedan **cinco** dominios en espera: `planeador_anual`, `plan_de_clases`,
   `branding`, `profesores` y `super_admin`. Ninguno se activa por la orden de
   cierre ni por una instrucción genérica de continuar.
@@ -1871,8 +1871,7 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
 ## Archivos de continuidad
 
 - [07_PLANILLA.md](./07_PLANILLA.md): **bitácora cerrada** de la capa 7 para el
-  dominio `planilla`, y **fuente de continuidad más reciente** porque conserva
-  su verificación manual pendiente. **Es el documento que un
+  dominio `planilla`, y **fuente de continuidad más reciente**. **Es el documento que un
   chat nuevo debe leer después de este índice.** Registra el commit base limpio
   `580c0ad6f0d14d16af5cbd8b2a4a9e4532485b89`, la orden explícita del usuario
   nombrando el dominio, la decisión de continuar localmente aceptando todas las
@@ -1889,8 +1888,9 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   ocho guardias que fallaron al extraer eran la señal esperada —cuatro propias
   y cuatro enumeraciones históricas—; la compuerta final terminó con **957
   pruebas**, Ruff correcto y dependencias íntegras. El usuario eligió cerrar sin
-  7.2; staging y rollback están documentados, la verificación manual no se
-  ejecutó y los cinco dominios restantes siguen en espera.
+  7.2; staging y rollback están documentados, y la verificación manual quedó
+  correcta con **8 de 8 puntos** reportados y entorno no especificado. Los cinco
+  dominios restantes siguen en espera.
 - [07_OBSERVACIONES.md](./07_OBSERVACIONES.md): **bitácora cerrada** de la capa
   7 para el dominio `observaciones`. Fue la fuente de continuidad **hasta que
   se activó `planilla`**. Registra el

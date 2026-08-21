@@ -46,7 +46,8 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 7 | Resto de dominios — **`ventas` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `ventas` el 2026-08-20; verificada a mano. **Publicada el 2026-08-20**, después de escribirse su bitácora | [07_VENTAS.md](./07_VENTAS.md) |
 | 7 | Resto de dominios — **`asistencia` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `asistencia` el 2026-08-21; verificada a mano. **Publicada el 2026-08-21**, después de escribirse su bitácora | [07_ASISTENCIA.md](./07_ASISTENCIA.md) |
 | 7 | Resto de dominios — **`boletin` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `boletin` el 2026-08-21; verificada a mano y **sin publicar**. Ver la advertencia de desfase más abajo | [07_BOLETIN.md](./07_BOLETIN.md) |
-| 7 | Resto de dominios — **`observaciones` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `observaciones` el 2026-08-21; verificada a mano y **sin publicar**. Los demás dominios, **en espera** | [07_OBSERVACIONES.md](./07_OBSERVACIONES.md) |
+| 7 | Resto de dominios — **`observaciones` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `observaciones` el 2026-08-21; verificada a mano. **Publicada el 2026-08-21**, después de escribirse su bitácora | [07_OBSERVACIONES.md](./07_OBSERVACIONES.md) |
+| 7 | Resto de dominios — **`planilla`** | Migración individual con contratos y pruebas | **Activa** desde el 2026-08-21; **7.0 pendiente y no iniciada** | [07_PLANILLA.md](./07_PLANILLA.md) |
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
 cierre y el usuario ordene continuar, se crea su sucesora desde
@@ -73,12 +74,18 @@ completas y la verificación manual hecha.
 
 **La capa 7 quedó activada para el dominio `observaciones`** el 2026-08-21, por
 orden explícita del usuario, y **cerrada el mismo día**, con sus subcapas 7.0 y
-7.1 completas y la verificación manual hecha. **No existe una capa activa.**
+7.1 completas y la verificación manual hecha.
+
+**La capa 7 quedó activada para el dominio `planilla`** el 2026-08-21, por orden
+explícita del usuario, que nombró el dominio y aceptó continuar localmente con
+las verificaciones heredadas pendientes. Su **7.0 está pendiente y no
+iniciada**. La activación fue únicamente documental y no inspeccionó código del
+dominio.
 
 La capa 7 se cierra **por dominio**, no de una vez: cada uno tiene su propia
 bitácora, su propio commit base y su propio cierre, y **las subcapas se numeran
 por bitácora**, así que existe una «7.0 de dashboard», cerrada, y una «7.0 de
-notas», pendiente. En prosa deben citarse siempre con el nombre del dominio. Los
+planilla», pendiente. En prosa deben citarse siempre con el nombre del dominio. Los
 demás dominios de la capa 7 siguen **en espera** y cada uno necesitará su propia
 bitácora y su propia orden; ninguno se activa sin orden explícita del usuario. La capa 3 es la única del programa
 que modificó la base
@@ -185,8 +192,13 @@ posee ya las rutas `/boletin/{id}` y `/boletin/detallado/{id}`, como fijó su
 explícitamente**; **no se dedujo por inferencia**. Su bitácora es
 [07_OBSERVACIONES.md](./07_OBSERVACIONES.md) y quedó **cerrada el mismo día**.
 
-Ningún otro se activa por inferencia: planilla, planeador anual, plan de clases,
-branding, profesores y super admin siguen en espera —son **seis**—, y cada uno
+**Dominio activo: `planilla`.** Lo eligió el usuario el 2026-08-21, de la lista
+de los seis que quedaban en espera, y lo **nombró explícitamente** al aceptar
+continuar localmente con las verificaciones pendientes. Su bitácora es
+[07_PLANILLA.md](./07_PLANILLA.md); su **7.0 está pendiente y no iniciada**.
+
+Ningún otro se activa por inferencia: planeador anual, plan de clases, branding,
+profesores y super admin siguen en espera —son **cinco**—, y cada uno
 exigirá su propia bitácora y una orden explícita.
 
 La advertencia de perfil que se registró al activar `notas` **quedó confirmada**:
@@ -1680,19 +1692,24 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   leer; solo leyó el fichero de la migración base para inventariar el DDL. Es la
   **octava consecutiva** que no abre una conexión a PostgreSQL, y la **quinta de
   esas ocho cuyo dominio sí escribe**.
-- **Estado de publicación de la capa 7 para `observaciones`: NO publicada.**
-  `origin/main` sigue en el commit base `fd3f93a` y hay **tres commits locales**
-  por delante: `dac6425` la activación, `eaa8115` la 7.0 y `4bceabb` la 7.1.
-  **Producción no corre este código**, así que mientras siga así el rollback es
-  **puramente local**. Es la misma situación en que quedaron `notas`, `ventas`,
-  `asistencia` y `boletin` al cerrarse, y en los **cuatro** casos duró poco: si
-  se publica, **conviene volver aquí y registrar el cambio**, porque las cuatro
-  veces anteriores la documentación quedó desfasada.
-- Capa activa: **ninguna**. Siguiente paso: **otro dominio de la capa 7**, sin
-  elegir y en espera. Quedan **seis**: `planilla`, `planeador_anual`,
-  `plan_de_clases`, `branding`, `profesores` y `super_admin`. `planilla` sigue
-  **sin ser frontera limpia** por la misma razón que `boletin`: `notas` posee
-  `/planilla/{asignacion_id}`.
+- **Estado al cerrar `observaciones`: no publicada.** En ese momento
+  `origin/main` seguía en `fd3f93a` y había tres commits locales por delante:
+  `dac6425` la activación, `eaa8115` la 7.0 y `4bceabb` la 7.1. Esta línea
+  conserva el hecho histórico del cierre.
+- **Estado de publicación de `observaciones`, corregido el 2026-08-21:
+  publicada.** `HEAD` y la referencia local `origin/main` coinciden en
+  `580c0ad6f0d14d16af5cbd8b2a4a9e4532485b89`, el commit de cierre, y el reflog
+  registra `update by push` a las **15:58:27 -0500**. El rollback ya no es una
+  operación puramente local: conforme al flujo documentado del repositorio,
+  exige otro push y otro despliegue. En este turno no se consultó el remoto real
+  ni se atribuye ningún run de GitHub Actions.
+- Capa activa: **7 para `planilla`, y solo ese dominio**. Su commit base es
+  `580c0ad6f0d14d16af5cbd8b2a4a9e4532485b89` y su **7.0 está pendiente y no
+  iniciada**. Quedan **cinco** dominios en espera: `planeador_anual`,
+  `plan_de_clases`, `branding`, `profesores` y `super_admin`. `planilla` llega
+  con una frontera documental no limpia: `notas` posee
+  `/planilla/{asignacion_id}` y `boletin` conserva una función muerta con ese
+  nombre; 7.0 debe delimitarla antes de contar o mover nada.
 - **Punto de decisión abierto al terminar 7.1**, con **tres** salidas y no dos:
   dónde vive el `UPDATE pagos`, `response_model` para las cuatro lecturas, y los
   errores de dominio. La tercera es **más fácil aquí que en `notas`**: este
@@ -1836,9 +1853,21 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
 
 ## Archivos de continuidad
 
+- [07_PLANILLA.md](./07_PLANILLA.md): **bitácora activa** de la capa 7 para el
+  dominio `planilla`, y **fuente de continuidad**. **Es el documento que un
+  chat nuevo debe leer después de este índice.** Registra el commit base limpio
+  `580c0ad6f0d14d16af5cbd8b2a4a9e4532485b89`, la orden explícita del usuario
+  nombrando el dominio, la decisión de continuar localmente aceptando todas las
+  verificaciones pendientes y la activación exclusivamente documental. Su
+  **7.0 está pendiente y no iniciada**. No se inspeccionó código de `planilla`.
+  Conserva la advertencia que manda en esta capa: la frontera no es limpia en
+  la documentación, porque `notas` posee `/planilla/{asignacion_id}` y
+  `boletin` dejó una función muerta con una sentencia de planilla; 7.0 debe
+  delimitar ownership, contratos, SQL, cálculos, transacciones, consultas y
+  conexiones antes de cualquier extracción.
 - [07_OBSERVACIONES.md](./07_OBSERVACIONES.md): **bitácora cerrada** de la capa
-  7 para el dominio `observaciones`, y **fuente de continuidad**. **Es el
-  documento que un chat nuevo debe leer después de este índice.** Registra el
+  7 para el dominio `observaciones`. Fue la fuente de continuidad **hasta que
+  se activó `planilla`**. Registra el
   cierre de **7.1**, la extracción a `observaciones_repository` —**el
   undécimo**— con su comparador AST de **2 de 2 literales byte a byte**, la
   equivalencia **en ejecución** de los dos caminos y tres escenarios, y el rasgo
@@ -1848,8 +1877,8 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   como señal esperada y la **segunda mordedura de la lección 13 de la capa 6**.
   Deja resuelto el **punto de decisión** que cerró la capa sin abrir una 7.2
   —anotando que `response_model` era aquí **la salida más barata del
-  programa**—, el cierre con su rollback —**local, porque la capa sigue sin
-  publicar**—, su staging, su **verificación manual con la cobertura real que el
+  programa**—, el cierre con el rollback que era local **en ese momento** y que
+  dejó de serlo tras el push del cierre, su staging, su **verificación manual con la cobertura real que el
   usuario reportó** —**ningún paso consta**, segundo dominio seguido en el tramo
   más débil— y los **nueve hallazgos** que deja abiertos, encabezados por la
   **ausencia total de claves foráneas** en la tabla. Registra también el commit
@@ -1857,8 +1886,8 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   `fd3f93a2ad97daa0a34081eb2f95504dd1a9e4df` —**publicado y desplegado**,
   comprobado contra el remoto real—, la autorización explícita del usuario
   nombrando el dominio, el alcance limitado a un solo dominio y las
-  verificaciones heredadas aceptadas como pendientes. Su **7.0 está pendiente y
-  no iniciada**. Conserva los **once supuestos heredados** con el origen
+  verificaciones heredadas aceptadas como pendientes. Sus **7.0 y 7.1 están
+  cerradas**. Conserva los **once supuestos heredados** con el origen
   documental de cada uno, uno de ellos marcado como **inferencia por ausencia**,
   y las dos cosas que distinguen a este dominio: **SQL en la capa HTTP**, que
   ningún dominio anterior tuvo, y la **colisión de nombres con

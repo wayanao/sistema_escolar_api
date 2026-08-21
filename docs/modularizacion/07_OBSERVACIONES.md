@@ -16,6 +16,11 @@
   es **un solo archivo de prueba nuevo** y ningún archivo rastreado modificado,
   igual que los de 5.0, 6.0 y las cinco 7.0 anteriores. **7.1 sí modifica
   producto**: la ruta, el controlador y un repositorio nuevo.
+- Estado de publicación, corregido el 2026-08-21 por orden explícita del
+  usuario: **publicada**. `HEAD` y la referencia local `origin/main` coinciden
+  en `580c0ad6f0d14d16af5cbd8b2a4a9e4532485b89`, y el reflog registra
+  `update by push` a las 15:58:27 -0500. En este turno no se consultó el remoto
+  real ni se atribuye ningún run de GitHub Actions.
 - Dominio de esta capa: **observaciones, y solo ese**. La capa 7 del índice es
   «resto de dominios» y ordena expresamente **priorizar uno a la vez**, así que
   esta bitácora cubre un único dominio. Los demás quedan fuera y necesitarán su
@@ -802,16 +807,16 @@ existan. **Los pasos del guion que no constan siguen sin constar.**
 
 ### Rollback
 
-**Puramente local, porque la capa sigue sin publicar.** `origin/main` está en el
-commit base `fd3f93a` y hay **tres commits locales** por delante: `dac6425` la
-activación, `eaa8115` la 7.0 y `4bceabb` la 7.1. Revertir a `fd3f93a` devuelve
-la sentencia a la ruta y el `UPSERT` al controlador, y elimina el repositorio
-nuevo y la caracterización. **Producción no corre este código.**
+Al cerrar la capa, el rollback era puramente local porque sus tres commits de
+implementación aún no estaban publicados. **Ese estado cambió después.**
 
-Si se publica, el rollback deja de ser local: exigiría otro push y otro
-despliegue. **Conviene volver aquí y registrar el cambio.** No es una
-formalidad: le ha pasado a `notas`, `ventas`, `asistencia` y `boletin`, **cuatro
-veces seguidas**, y las cuatro la documentación quedó desfasada.
+`HEAD` y la referencia local `origin/main` coinciden ahora en `580c0ad`, el
+commit de cierre, y el reflog registra `update by push`. Revertir a `fd3f93a`
+seguiría devolviendo la sentencia a la ruta y el `UPSERT` al controlador, y
+eliminaría el repositorio nuevo y la caracterización, pero **ya no es una
+operación puramente local**: requiere otro push y otro despliegue. No se
+consultó el remoto real en el turno de corrección y no se atribuye ninguna
+ejecución de GitHub Actions.
 
 ### Staging
 
@@ -885,8 +890,12 @@ conexiones que el commit base.
 
 ### Estado de publicación
 
-**NO publicada.** `origin/main` sigue en el commit base `fd3f93a` y hay **tres
-commits locales** por delante. **Producción no corre este código.**
+**Publicada, corrección autorizada el 2026-08-21.** `HEAD` y la referencia local
+`origin/main` están en `580c0ad6f0d14d16af5cbd8b2a4a9e4532485b89`, el
+commit de cierre. El reflog de esa referencia registra `update by push` el
+2026-08-21 a las 15:58:27 -0500. Conforme al flujo documentado del repositorio,
+el rollback exige otro push y otro despliegue. No se presenta GitHub Actions
+como verificada.
 
 ### Riesgos que la capa deja abiertos
 
@@ -900,9 +909,9 @@ commits locales** por delante. **Producción no corre este código.**
 
 ## Entrega al próximo chat
 
-- Capa activa: **ninguna.** La capa 7 quedó **cerrada para `observaciones`** el
-  2026-08-21, el mismo día en que se activó. Los otros seis dominios siguen en
-  espera.
+- Capa activa: **7 para `planilla`, y solo ese dominio**. La capa 7 quedó
+  **cerrada para `observaciones`** el 2026-08-21, el mismo día en que se activó.
+  Los otros cinco dominios siguen en espera.
 - Última subcapa terminada: **7.1**, cerrada el 2026-08-21. Con ella la frontera
   de persistencia del dominio quedó cerrada **y la capa HTTP se quedó sin SQL**.
 - **Capa cerrada** el 2026-08-21. No quedan bloqueos.
@@ -919,9 +928,11 @@ commits locales** por delante. **Producción no corre este código.**
   observación existente, y el **2**, comprobar que las tres dimensiones vacías
   siguen dando **422**.
 - Commit base: `fd3f93a2ad97daa0a34081eb2f95504dd1a9e4df`, rama `main`,
-  **publicado y desplegado**, comprobado contra el remoto real. Los tres commits
-  de la capa —`dac6425` la activación, `eaa8115` la 7.0 y `4bceabb` la 7.1—
-  están **sin publicar**.
+  **publicado y desplegado**, comprobado contra el remoto real al activar. Los
+  cuatro commits de la capa —`dac6425` la activación, `eaa8115` la 7.0,
+  `4bceabb` la 7.1 y `580c0ad` el cierre— están ahora alcanzados por la
+  referencia local `origin/main`; su reflog registra el cierre como
+  `update by push`.
 - Compuerta al cerrar 7.1: **925 pruebas, exit 0**, Ruff correcto y `pip check`
   íntegro. La suite pasó de **898 al activar la capa a 925**.
 - Lo que consiguió 7.1: la ruta pasó de **41 a 38 líneas** y el controlador de
@@ -958,9 +969,9 @@ commits locales** por delante. **Producción no corre este código.**
   capa 0, y los pasos no confirmados de los guiones de `ventas`, `asistencia` y
   `boletin`. La credencial privilegiada de la capa 4 sigue **sin rotar**.
 - Lo que hay que recordar antes de tocar nada:
-  1. **Un solo dominio.** `dashboard`, `notas`, `ventas`, `asistencia` y
-     `boletin` están cerrados en sus propias bitácoras y los otros seis siguen
-     en espera.
+  1. **Un solo dominio.** `planilla` está activa en su propia bitácora.
+     `dashboard`, `notas`, `ventas`, `asistencia`, `boletin` y `observaciones`
+     están cerrados; los otros cinco dominios siguen en espera.
   2. **La ruta YA NO contiene SQL.** Lo contenía —era lo que distinguía a este
      dominio— y 7.1 lo movió al repositorio por decisión explícita del usuario.
      **Pero la ruta sigue siendo dueña de su cursor** y llama al repositorio
@@ -993,10 +1004,9 @@ commits locales** por delante. **Producción no corre este código.**
   13. **El `422` lo sostiene solo el esquema.** Cualquier trabajo futuro sobre
       `app/schemas/observacion.py` puede convertirlo en un 500 sin que nada más
       falle. La prueba que lo protege **no debe retirarse**.
-- **Pendiente la publicación de esta capa.** Los commits se quedan en local
-  hasta que el usuario decida; publicar dispara el despliegue. Mientras siga
-  así, **el rollback es una operación puramente local**.
+- **Publicación corregida:** la referencia local `origin/main` alcanza el commit
+  de cierre `580c0ad` y su reflog registra `update by push`. El rollback ya no
+  es puramente local. No se atribuye ningún run de GitHub Actions.
 - Siguiente acción exacta: **ninguna dentro de esta capa.** Queda cerrada. El
-  siguiente paso del programa es **otro dominio de la capa 7**, sin elegir y en
-  espera; quedan **seis**. **No se activa ninguno sin orden explícita que lo
-  nombre.**
+  siguiente paso del programa es **7.0 de `planilla`**, pendiente y no iniciada,
+  conforme a `07_PLANILLA.md`.

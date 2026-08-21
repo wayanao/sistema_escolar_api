@@ -45,7 +45,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 7 | Resto de dominios — **`notas` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `notas` el 2026-08-19; verificada a mano. **Publicada el 2026-08-20**, después de escribirse su bitácora | [07_NOTAS.md](./07_NOTAS.md) |
 | 7 | Resto de dominios — **`ventas` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `ventas` el 2026-08-20; verificada a mano. **Publicada el 2026-08-20**, después de escribirse su bitácora | [07_VENTAS.md](./07_VENTAS.md) |
 | 7 | Resto de dominios — **`asistencia` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `asistencia` el 2026-08-21; verificada a mano. **Publicada el 2026-08-21**, después de escribirse su bitácora | [07_ASISTENCIA.md](./07_ASISTENCIA.md) |
-| 7 | Resto de dominios — **`boletin` en migración** | Migración individual con contratos y pruebas | **Activa** desde el 2026-08-21; **7.0 pendiente y no iniciada**. Los demás dominios, **en espera** | [07_BOLETIN.md](./07_BOLETIN.md) |
+| 7 | Resto de dominios — **`boletin` en migración** | Migración individual con contratos y pruebas | **Activa** desde el 2026-08-21; **7.0 cerrada** el mismo día, **7.1 sin definir**. Los demás dominios, **en espera** | [07_BOLETIN.md](./07_BOLETIN.md) |
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
 cierre y el usuario ordene continuar, se crea su sucesora desde
@@ -1416,6 +1416,50 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   frontera **no coincide con los nombres de archivo**: parte del boletín vive en
   un dominio ya migrado y cerrado. Es el riesgo que manda en esta capa y el que
   su 7.0 debe delimitar antes que ningún otro.
+- Resultado de 7.0 de `boletin`, **cerrada el 2026-08-21**, el mismo día en que
+  se activó la capa: el dominio quedó inventariado en **3 archivos** —
+  `app/routes/boletines.py`, `app/controllers/boletin_controller.py` y
+  `app/schemas/boletin.py`—, **4 entradas HTTP** con **tres modelos de
+  permiso**, **12 sentencias SQL inline** todas en el controlador, **dos tablas
+  escritas** en **una transacción propia** y **3 pruebas heredadas** más **24
+  nuevas**. Compuerta: **896 pruebas, exit 0**; la suite pasó de **872 al
+  activar la capa a 896**. Diff de 7.0: **un solo archivo de prueba nuevo y
+  ningún archivo rastreado modificado**.
+- **El resultado más importante de esa 7.0 no es el inventario, es la
+  frontera.** De los **trece supuestos heredados**, **doce se confirmaron y uno
+  quedó incompleto**, ninguno falso; pero **cinco de los trece describían código
+  que pertenece a `notas`**, no a este dominio: el N+1 del boletín detallado,
+  los ids sintéticos, el corte Aprobado/Reprobado en 3,0 y el promedio sin
+  redondear. **Más de un tercio de lo que el programa creía saber de `boletin`
+  hablaba del boletín de otro dominio.** Ningún dominio anterior tuvo un desvío
+  así, y justifica que la frontera fuera el paso 1.
+- **`boletin` es el primer dominio de la capa 7 que se inventaría y sale sin
+  N+1**, ni en consultas ni en conexiones. `require_estudiante_in_asignacion` se
+  llama **una vez y fuera de todo bucle**, así que el coste **no crece con el
+  número de estudiantes**: `POST /boletines/guardar` cuesta **2 conexiones**
+  siendo admin y **3** siendo profesor, frente a las **31 y 61** de
+  `asistencia`. La medición de la capa 4 —4 consultas para un boletín de 13
+  materias— **quedó reconciliada**: era de este dominio, y no contradecía el N+1
+  del detallado, que es de `notas`.
+- Hallazgos de 7.0 de `boletin`, **registrados y sin corregir**: son **diez**.
+  El que manda es que **las observaciones guardadas se emparejan por POSICIÓN y
+  no por identidad**, así que añadir, borrar o reordenar una nota de la planilla
+  **pega la observación a la nota equivocada**, en silencio. Le siguen que **la
+  capa 1 no migró este archivo** —sigue entero en `get_connection()`—; que el
+  dominio usa **dos formas de promediar**, `AVG()` en SQL y `sum()/len()` en
+  Python sin redondear; que una **definitiva guardada como 0 se trata como
+  ausente**; que **`obtener_notas_planilla_controller` es código muerto de
+  `planilla`** alojado en este controlador y sin un solo consumidor; y que el
+  reemplazo parcial **borra siempre**, aunque el lote venga vacío.
+- **Riesgo que 7.0 deja apuntado para 7.1**: el controlador tiene **14 líneas
+  con espacios finales**, una dentro de un literal SQL. `git diff --check`
+  obliga a limpiarlos, y eso **rompería la comparación byte a byte** que las
+  cuatro 7.1 anteriores exigieron. Hay que decidirlo **antes** de mover nada.
+- **Lo que 7.0 de `boletin` buscó y no encontró**, y conviene no perder: las
+  cuatro entradas mapean el fallo a **500 con un mensaje fijo** y **no devuelven
+  el texto de la excepción al cliente**, al contrario que `dashboard` y
+  `asistencia`; los guards corren **fuera del `try`**, así que un 403 nunca sale
+  como 500; y no hay fugas de conexión ni f-strings en SQL.
 - Siguen en espera **siete** dominios: `observaciones`, `planilla`,
   `planeador_anual`, `plan_de_clases`, `branding`, `profesores` y `super_admin`.
   `planilla` sigue sin ser frontera limpia por la misma razón que `boletin`.

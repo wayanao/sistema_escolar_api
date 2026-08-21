@@ -4,11 +4,15 @@
 
 ## Control
 
-- Estado: **Activa** desde el 2026-08-21.
+- Estado: **Activa** desde el 2026-08-21, con su subcapa **7.0 cerrada** el
+  mismo día.
 - Commit base: `8e61170f32a6d6a23ca23f9ead89d17bc209e7b6`.
 - Rama acordada: `main`.
-- Primera subcapa pendiente: **7.0**, pendiente y **no iniciada**.
-- Código de producto modificado al activar: **Ninguno**.
+- Primera subcapa pendiente: **7.1**, **sin definir todavía**. La define la
+  evidencia de 7.0, que está abajo. No se inicia sin orden.
+- Código de producto modificado al activar: **Ninguno**. Tampoco en 7.0: su diff
+  es **un solo archivo de prueba nuevo** y ningún archivo rastreado modificado,
+  igual que los de 5.0, 6.0 y las cuatro 7.0 anteriores.
 - Dominio de esta capa: **boletin, y solo ese**. La capa 7 del índice es «resto
   de dominios» y ordena expresamente **priorizar uno a la vez**, así que esta
   bitácora cubre un único dominio. Los demás quedan fuera y necesitarán su
@@ -139,23 +143,33 @@ Ninguno de los de abajo procede de haber leído el código de `boletin`. Todos s
 restos de lo que las capas 0, 1, 3, 4, 6 y 7 observaron desde fuera. La columna
 de origen dice de dónde sale cada uno, para que 7.0 pueda contrastarlo.
 
-**Los trece están NO VERIFICADOS.**
+**Los trece quedaron resueltos en 7.0**, uno por uno y con evidencia. **Doce se
+confirmaron y uno resultó incompleto.** **Ninguno resultó falso**, como en
+`asistencia`.
 
-| # | Supuesto | Origen documental | Estado |
+**El resultado que importa no es ese recuento, sino a quién describían.** Cinco
+de los trece —el 5, el 6, el 8, el 9 y el 10— **hablaban de código que no
+pertenece a este dominio**: viven en `notas`, migrado y cerrado. Es decir,
+**más de un tercio de lo que el programa creía saber de `boletin` describía en
+realidad el boletín de otro dominio**. Ningún dominio anterior tuvo un desvío
+así, y confirma que la decisión de poner la frontera como paso 1 era la
+correcta.
+
+| # | Supuesto | Origen documental | Resultado en 7.0 |
 |---:|---|---|---|
-| 1 | El dominio vive en `app/routes/boletines.py` y en un `boletin_controller` | Inventario de contratos de 0.0 y subcapa 6.0, que nombra `boletin_controller` entre los nueve consumidores del resolver | **NO VERIFICADO.** No consta la ruta exacta del controlador ni si existe esquema o servicio propio. Los cuatro dominios anteriores fallaron aquí dos veces |
-| 2 | **El dominio escribe**: guarda notas definitivas | Inventario de contratos de 0.0: «guarda definitivas o consulta respaldo/planilla vigente» | **NO VERIFICADO.** Si se confirma, el perfil de riesgo es el de la capa 5 y la propiedad transaccional pasa a ser la invariante más delicada |
-| 3 | **La frontera está partida**: `notas` posee `/boletin/{id}` y `/boletin/detallado/{id}` | Subcapa 7.0 de `notas`, supuesto 6, «confirmado y más fuerte de lo previsto» | **NO VERIFICADO en su alcance actual.** Lo confirmado es que esas rutas eran de `notas` en su 7.0. 7.0 debe re-comprobarlo sobre el código de hoy y **decidir el borde con evidencia** |
-| 4 | **No hay colisión de paths** entre `boletines.py` y las rutas de boletín de `notas` | Subcapa 7.0 de `notas`, que listó las rutas de `boletines.py` para descartarla | **NO VERIFICADO hoy.** Se comprobó entonces; los métodos y las formas de path difieren |
-| 5 | `boletin_estudiante_controller` y `boletin_detallado_controller` viven en `notas_controller.py` y usan `get_cursor()` | Subcapa 1.4, tabla de los cinco sitios | **NO VERIFICADO tras la 7.1 de `notas`**, que movió persistencia a `notas_repository`. El idioma de conexión pudo cambiar |
-| 6 | **Hay N+1**: `boletin_detallado_controller` ejecuta una consulta por asignación | Subcapa 1.4, fijado por prueba: dos asignaciones producen tres `execute` | **NO VERIFICADO tras la 7.1 de `notas`.** Sería el tercer N+1 vivo del programa, tras el de la capa 4 y el de `asistencia` |
-| 7 | Un camino de boletín de **13 materias cuesta 4 consultas** | Medición de 4.0 sobre producción | **NO VERIFICADO, y aparentemente en tensión con el supuesto 6.** 7.0 debe determinar **qué camino se midió**: 4 consultas no es un N+1 de 13 materias. Puede que se midiera `/boletin/{id}`, el del CTE, y no el detallado |
-| 8 | **Los ids de las actividades en blanco son sintéticos** y pueden colisionar con ids reales de `notas_detalle`: materia 5 produce 501, 502 y 503 | Subcapa 1.4, anotado como deuda conocida no corregida | **NO VERIFICADO.** Es deuda registrada, **no se corrige desde esta capa** salvo orden explícita |
-| 9 | **El corte Aprobado/Reprobado está en 3,0 inclusive**; el promedio general no tiene guarda de división por cero, inalcanzable por un `return` previo | Subcapa 1.4 | **NO VERIFICADO** |
-| 10 | **El promedio general del boletín promedia valores sin redondear**, aunque muestre los redondeados: 3,0/4,0/4,0 → **3,67**, donde `TRUNC` daría 3,66. Y el boletín detallado devuelve **`promedio: 0` fijo**, con el comentario «El frontend recalcula luego» | Subcapa 7.0 de `notas`, supuestos 7 y hallazgos | **NO VERIFICADO.** Si se confirma, **parte del cálculo vive en el cliente**, y eso condiciona qué puede comprobar una prueba de servidor |
-| 11 | `boletin_controller` **lee `notas_detalle`**, una de las siete lecturas de la tabla más compartida del programa | Subcapa 7.0 de `notas`, supuesto 5 | **NO VERIFICADO.** Relevante: `notas_detalle` ya tiene dueño migrado y cerrado |
-| 12 | Las tablas son `boletin_cabecera` y `boletin_detalles`, con **3 y 4 filas** en `tenant_2005`, `boletin_cabecera → estudiantes`, `boletin_detalles → boletin_cabecera` **con cascada**, y ambas estuvieron entre las **ocho averiadas** que reparó la capa 3 | Capas 3 y 6 | **Confirmado documentalmente**, sin cambio. Relevante si el supuesto 2 se confirma: **borrar una cabecera se lleva sus detalles** |
-| 13 | `require_estudiante_in_asignacion` tiene **un punto de llamada en `boletines`**, y **no está en un bucle** | Medición del N+1 en conexiones de `asistencia`, registrada en el índice el 2026-08-21 | **NO VERIFICADO.** Importa por partida doble: fija un modelo de permiso y dice que aquí **no** se repite el N+1 en conexiones de `asistencia` |
+| 1 | El dominio vive en `app/routes/boletines.py` y en un `boletin_controller` | Inventario de contratos de 0.0 y subcapa 6.0, que nombra `boletin_controller` entre los nueve consumidores del resolver | **CONFIRMADO y precisado.** Son **tres archivos**: `app/routes/boletines.py` (86 líneas), `app/controllers/boletin_controller.py` (457) y `app/schemas/boletin.py` (16). **No existe repositorio ni servicio propio.** Es el segundo dominio de la capa 7 que llega sin repositorio |
+| 2 | **El dominio escribe**: guarda notas definitivas | Inventario de contratos de 0.0: «guarda definitivas o consulta respaldo/planilla vigente» | **CONFIRMADO y cuantificado.** `guardar_boletin_controller` emite **1 UPSERT + 1 `DELETE` + N `INSERT`** en **una transacción propia** con `commit` y `rollback` explícitos. **Dos tablas escritas**, `boletin_cabecera` y `boletin_detalles`: es el único dominio de la capa 7 que escribe más de una. Perfil de riesgo de la capa 5, confirmado |
+| 3 | **La frontera está partida**: `notas` posee `/boletin/{id}` y `/boletin/detallado/{id}` | Subcapa 7.0 de `notas`, supuesto 6 | **CONFIRMADO sobre el código de hoy.** `notas.router` sigue declarando `/boletin/{estudiante_id}` y `/boletin/detallado/{estudiante_id}`. Fijado por prueba |
+| 4 | **No hay colisión de paths** entre `boletines.py` y las rutas de boletín de `notas` | Subcapa 7.0 de `notas` | **CONFIRMADO y ahora fijado por prueba.** El router del dominio lleva `prefix="/boletines"` y **las cuatro** entradas empiezan por `/boletines/`; los conjuntos de paths son **disjuntos** |
+| 5 | `boletin_estudiante_controller` y `boletin_detallado_controller` viven en `notas_controller.py` y usan `get_cursor()` | Subcapa 1.4, tabla de los cinco sitios | **CONFIRMADO con matiz, y AJENO al dominio.** Siguen en `notas_controller.py` y siguen usando `get_cursor()`, pero su SQL vive desde la 7.1 de `notas` en `notas_repository`. **No es código de esta capa** |
+| 6 | **Hay N+1**: `boletin_detallado_controller` ejecuta una consulta por asignación | Subcapa 1.4, fijado por prueba | **CONFIRMADO, y AJENO al dominio.** Sigue vivo, y `notas_repository` lo documenta en el docstring de `leer_notas_de_asignacion_en_periodo` como hallazgo abierto de **su** 7.0. **`boletin_controller` no tiene ningún N+1**: sus dos lecturas por lote usan `= ANY(%s)` |
+| 7 | Un camino de boletín de **13 materias cuesta 4 consultas** | Medición de 4.0 sobre producción | **CONFIRMADO y reconciliado; no había contradicción.** Las 4 consultas son las de `obtener_boletin_admin_controller`, de **este** dominio, medidas y fijadas por prueba. El N+1 del supuesto 6 está en **otro** camino y en otro dominio. Los dos hechos eran ciertos a la vez |
+| 8 | **Los ids de las actividades en blanco son sintéticos** y pueden colisionar con ids reales de `notas_detalle` | Subcapa 1.4 | **CONFIRMADO como AJENO.** Viven en `notas_repository`, dominio de `notas`. **No se corrigen desde esta capa** |
+| 9 | **El corte Aprobado/Reprobado está en 3,0 inclusive**; el promedio general no tiene guarda de división por cero | Subcapa 1.4 | **CONFIRMADO como AJENO.** Está en `boletin_estudiante_controller`, dentro de `notas_controller.py`. La guarda de división por cero sigue siendo inalcanzable por el `return` previo |
+| 10 | **El promedio general del boletín promedia valores sin redondear**; el detallado devuelve **`promedio: 0` fijo** | Subcapa 7.0 de `notas` | **INCOMPLETO, y es el único que lo queda.** Lo que describe es cierto, pero es de `notas`, y **omitía que este dominio tiene sus propias dos fórmulas**, distintas de esa: `AVG()` en SQL y `sum()/len()` en Python sin redondear. Ver el hallazgo 3 |
+| 11 | `boletin_controller` **lee `notas_detalle`** | Subcapa 7.0 de `notas`, supuesto 5 | **CONFIRMADO y ampliado.** La leen **cuatro de las cinco funciones** del controlador. `notas_detalle` sigue siendo la tabla más compartida del programa y su dueño está migrado y cerrado |
+| 12 | Las tablas son `boletin_cabecera` y `boletin_detalles`, con **3 y 4 filas** en `tenant_2005`, con cascada, y estuvieron entre las **ocho averiadas** de la capa 3 | Capas 3 y 6 | **Confirmado documentalmente**, sin cambio. Con el supuesto 2 ya confirmado, la cascada importa: **borrar una cabecera se lleva sus detalles** |
+| 13 | `require_estudiante_in_asignacion` tiene **un punto de llamada en `boletines`**, y **no está en un bucle** | Medición del N+1 en conexiones de `asistencia` | **CONFIRMADO y cuantificado.** Se llama **una sola vez**, en la línea 30 del router y **fuera de todo bucle**. El coste **no crece** con el número de estudiantes: es la diferencia favorable frente a `asistencia` |
 
 ## Alcance autorizado
 
@@ -241,25 +255,93 @@ de origen dice de dónde sale cada uno, para que 7.0 pueda contrastarlo.
 - El SQL de dominio se conserva hasta que una subcapa autorice, con
   caracterización previa, un cambio concreto.
 
-## Línea base
-
-Se registrará al ejecutar 7.0. **No se ha ejecutado ningún comando de
-verificación en la activación.**
+## Línea base registrada en 7.0
 
 | Comprobación | Comando | Resultado |
 |---|---|---|
-| Compuerta heredada, antes de tocar nada | `.\venv\Scripts\python.exe scripts\verify.py` | Pendiente. Al cerrar `asistencia` fueron **872 pruebas, exit 0** |
-| Pruebas específicas nuevas | `.\venv\Scripts\python.exe -m pytest -q -p no:cacheprovider tests\test_boletin_caracterizacion.py` | Pendiente |
-| Suite global | `.\venv\Scripts\python.exe scripts\verify.py` | Pendiente |
-| Ruff | Ejecutado por la compuerta global y sobre los archivos nuevos | Pendiente |
-| Dependencias | Ejecutado por la compuerta global | Pendiente |
+| Compuerta heredada, **antes de tocar nada** | `.\venv\Scripts\python.exe scripts\verify.py` | **872 pruebas, exit 0.** Coincide exactamente con lo registrado al cerrar `asistencia`: **no había deriva** |
+| Pruebas específicas nuevas | `.\venv\Scripts\python.exe -m pytest -q -p no:cacheprovider tests\test_boletin_caracterizacion.py` | **24 pasaron** en 0,60 s |
+| Suite global | `.\venv\Scripts\python.exe scripts\verify.py` | **896 pasaron**, 5 warnings heredadas, exit 0 |
+| Ruff | Ejecutado por la compuerta global y sobre la prueba nueva | **Correcto** |
+| Dependencias | Ejecutado por la compuerta global | **Íntegras** |
+
+La suite pasó de **872 a 896** con la caracterización de 7.0.
+
+## Inventario y contratos fijados en 7.0
+
+**El dominio son tres archivos**, y es **el que más SQL inline conserva** de
+todos los que ha migrado el programa en la capa 7:
+
+| Archivo | Líneas | SQL inline |
+|---|---:|---:|
+| `app/routes/boletines.py` | 86 | 0 |
+| `app/controllers/boletin_controller.py` | 457 | **12** |
+| `app/schemas/boletin.py` | 16 | 0 |
+
+**Cuatro entradas HTTP con tres modelos de permiso**:
+
+| Método | Path | Permisos | Controlador |
+|---|---|---|---|
+| POST | `/boletines/guardar` | `get_current_user` + `require_asignacion_access` + `require_estudiante_in_asignacion` | `guardar_boletin_controller` |
+| GET | `/boletines/referencia/{asignacion_id}/{periodo}` | `get_current_user` + `require_asignacion_access` | `obtener_boletin_para_profesor_controller` |
+| GET | `/boletines/admin/generar/{estudiante_id}/{periodo}` | `get_current_active_admin` | `obtener_boletin_admin_controller` |
+| GET | `/boletines/admin/reporte-parcial/{estudiante_id}/{periodo}` | `get_current_active_admin` | `obtener_reporte_parcial_admin_controller` |
+
+Los cuatro guards corren **fuera del `try`**, así que un 403 **nunca se
+convierte en 500**. Las dos entradas de admin reenvían `HTTPException` antes del
+`except Exception`, así que su **404** tampoco. Fijado por prueba.
+
+**El controlador tiene cinco funciones**, y **una no pertenece al dominio**:
+`obtener_notas_planilla_controller` es de `planilla` y **no la importa nadie**.
+
+### Frontera, decidida con evidencia
+
+| Vive en | Rutas |
+|---|---|
+| **`boletin`**, este dominio | `/boletines/guardar`, `/boletines/referencia/…`, `/boletines/admin/generar/…`, `/boletines/admin/reporte-parcial/…` |
+| **`notas`**, migrado y cerrado | `/boletin/{estudiante_id}`, `/boletin/detallado/{estudiante_id}` |
+
+Los conjuntos de paths son **disjuntos** y el router del dominio lleva
+`prefix="/boletines"`. **La frontera queda donde está**: 7.0 no mueve nada, y
+mover las rutas de `notas` exigiría una orden explícita.
+
+### Propiedad transaccional
+
+`guardar_boletin_controller` es la **única escritura**. Abre con
+`get_connection()`, es dueño de `commit` y `rollback`, cierra cursor y conexión
+en `finally` y **propaga la excepción** tras revertir. El patrón es un
+**reemplazo parcial**: `UPSERT` de la cabecera con
+`ON CONFLICT (estudiante_id, asignacion_id, periodo) DO UPDATE`, `DELETE` de
+todos los detalles de ese boletín y N `INSERT`. Fijado por prueba, incluido el
+camino de error.
+
+## Línea base de consultas y conexiones
+
+Medida herméticamente con dobles y **fijada por aserción**. Las consultas
+excluyen los dos round-trips que `get_connection()` emite siempre.
+
+| Camino | Consultas | Conexiones (admin) | Conexiones (profesor) |
+|---|---:|---:|---:|
+| `POST /boletines/guardar` | **3 + N** | **2** | **3** |
+| `GET /boletines/referencia/…` | **3** | **1** | **2** |
+| `GET /boletines/admin/generar/…` | **4** | **1** | — |
+| `GET /boletines/admin/reporte-parcial/…` | **2** | **1** | — |
+
+**Ningún camino tiene N+1**, ni en consultas ni en conexiones. Las dos lecturas
+por lote usan `= ANY(%s)`. `require_asignacion_access` **no abre conexión**
+siendo admin —retorna antes— y `require_estudiante_in_asignacion` abre siempre
+una, pero **una sola vez y fuera de todo bucle**.
+
+Es la diferencia favorable frente a `asistencia`, donde pasar lista a un curso
+de 30 costaba **31 conexiones siendo admin y 61 siendo profesor**. Aquí el coste
+**no depende del número de estudiantes**.
 
 ## Subcapas
 
 | Subcapa | Resultado | Estado |
 |---:|---|---|
-| 7.0 | Frontera, inventario, contratos, caracterización y línea base de consultas y conexiones | **Pendiente y no iniciada** |
-| 7.1 | Primera extracción protegida | Sin definir: depende de la evidencia de 7.0 |
+| 7.0 | Frontera, inventario, contratos, caracterización y línea base de consultas y conexiones | **Cerrada** el 2026-08-21 |
+| 7.1 | Primera extracción protegida | **Sin definir**: la evidencia de 7.0 la perfila, pero no está decidida |
 | 7.2 | Segunda extracción o punto de decisión | Sin definir |
 
 El desglose se deja deliberadamente **sin decidir** hasta tener la evidencia del
@@ -267,7 +349,71 @@ inventario, igual que hicieron la capa 6 y las cuatro capas 7 anteriores. Las
 subcapas innecesarias se marcarán `No aplica` con explicación. **Nunca se
 ejecutan dos subcapas en el mismo turno.**
 
-## Subcapa 7.0 — trabajo exacto, pendiente y no iniciada
+## Hallazgos de 7.0, registrados y sin corregir
+
+Son **diez**. Ninguno se corrige desde esta capa; corregir cualquiera exige una
+orden explícita. Van ordenados por gravedad.
+
+1. **Las observaciones guardadas se emparejan por POSICIÓN, no por identidad.**
+   En `obtener_boletin_para_profesor_controller`, el bucle
+   `for i, nota in enumerate(est_data['notas'])` toma
+   `saved['observaciones'][i]`. Las notas vienen ordenadas por `nd.id` y las
+   observaciones por `bd.id`, dos secuencias independientes. **Si un profesor
+   añade, borra o reordena una nota de la planilla, la observación guardada se
+   pega a la nota equivocada.** Es el hallazgo más grave del dominio y es
+   silencioso: no falla, muestra el texto de otra evaluación.
+2. **La capa 1 no migró este archivo.** `boletin_controller.py` sigue entero en
+   `get_connection()` y **no usa `get_cursor()` ni una vez**. Es el archivo con
+   más SQL inline que queda sin repositorio, y el único dominio de la capa 7
+   que llega con **un solo idioma**, el antiguo. Fijado por guardia.
+3. **Dos formas de promediar dentro del propio dominio.**
+   `obtener_boletin_admin_controller` promedia con `AVG(nd.nota)` **en SQL**;
+   `obtener_reporte_parcial_admin_controller` lo hace con `sum()/len()` **en
+   Python y sin redondear**. Aplican los mismos filtros, pero una redondea según
+   `NUMERIC` de PostgreSQL y la otra devuelve el `float` crudo: con 3,0/4,0/4,0
+   el reporte parcial da **3,6666666666666665**, ni 3,67 ni 3,66. Fijado por
+   prueba.
+4. **Una definitiva guardada como 0 se trata como ausente.**
+   `COALESCE(NULLIF(bc.definitiva, 0), nd_prom.promedio_numerico)` sustituye el
+   0 por el promedio calculado. Un estudiante con definitiva 0 legítima **no ve
+   su 0**.
+5. **`obtener_notas_planilla_controller` es código muerto de otro dominio.**
+   Vive en el controlador de `boletin`, pertenece a `planilla`, gasta 1 de las
+   12 sentencias inline y **no tiene ni un consumidor** en `app/` ni en
+   `tests/`. Fijado por prueba, que recorre el árbol y lo comprueba.
+6. **El reemplazo parcial borra siempre.** Un `POST /boletines/guardar` con
+   `detalles: []` conserva la cabecera y **deja el boletín sin ningún detalle**.
+   No hay guarda ni aviso. Fijado por prueba.
+7. **`obtener_boletin_admin_controller` no cierra su cursor.** Su `finally`
+   solo hace `conn.close()`. Las otras cuatro funciones cierran cursor y
+   conexión. No es una fuga —cerrar la conexión cierra sus cursores—, pero es
+   la única de las cinco que rompe el patrón.
+8. **El `UPSERT` de la cabecera no filtra `activo`.** La asignación resuelta se
+   escribe sin comprobar que siga activa. Es el mismo hallazgo que `dashboard`
+   y `notas` dejaron abiertos en sus precondiciones de permiso.
+9. **Catorce líneas con espacios finales** en el controlador, entre ellas
+   `ON CONFLICT (estudiante_id, asignacion_id, periodo) `, dentro de un literal
+   SQL. **Importa para 7.1**: `git diff --check` obliga a limpiarlos, y eso
+   **rompería la comparación byte a byte** que las cuatro 7.1 anteriores
+   exigieron. Hay que decidirlo antes de mover, no durante.
+10. **`BoletinCreate` no valida rangos.** `periodo` es `int` sin cota y
+    `definitiva` y `nota` son `float` opcionales sin límite: nada impide un
+    periodo 99 ni una nota de 500.
+
+### Lo que 7.0 buscó expresamente y **no** encontró
+
+- **Ningún N+1**, ni en consultas ni en conexiones. Es el primer dominio de la
+  capa 7 que se inventaría y sale limpio en esto.
+- **Ninguna fuga de conexión**: las cinco funciones cierran en `finally`.
+- **Ningún `except Exception` que devuelva el texto de la excepción al
+  cliente.** Las cuatro entradas responden un mensaje fijo y registran con
+  `logger.exception`. Es lo contrario de lo que hacían `dashboard` y
+  `asistencia`, y **es un acierto del dominio que conviene no perder** en una
+  extracción posterior. Fijado por prueba.
+- **Ninguna colisión de paths** con las rutas de boletín de `notas`.
+- **Ningún f-string en SQL** ni interpolación de parámetros.
+
+## Subcapa 7.0 — trabajo exacto, ejecutado y cerrado
 
 1. **Determinar la frontera antes que nada.** Listar las rutas declaradas por
    `app/routes/boletines.py` y las rutas de boletín declaradas por
@@ -448,17 +594,103 @@ ejecutan dos subcapas en el mismo turno.**
 - Estado al cerrar el turno de activación: capa 7 **activa** para el dominio
   `boletin`; **7.0 pendiente y no iniciada**.
 - Siguiente acción exacta: ejecutar únicamente **7.0** conforme al trabajo
-  exacto de arriba y detenerse antes de 7.1.
+  exacto de arriba y detenerse antes de 7.1. *(Ejecutada en el turno siguiente;
+  ver el cierre de 7.0 más abajo.)*
+
+### 2026-08-21 — cierre de 7.0
+
+- Commit observado: `0f351c867b8a07e9c1f599b2cb31d82fdfc9fdc0`, el commit de
+  activación, que el usuario creó entre los dos turnos. Árbol limpio antes de
+  empezar, verificado con `git status --porcelain=v1` con salida vacía. El
+  commit base `8e61170` sigue siendo el registrado y `0f351c8` es su único
+  descendiente, explicado en esta bitácora.
+- Estado remoto: `origin/main` sigue en `8e61170`, comprobado contra el remoto
+  real. **La activación y 7.0 están sin publicar.**
+- Archivos modificados: **`tests/test_boletin_caracterizacion.py`, nuevo**, y
+  esta bitácora. **Ningún archivo rastreado de producto fue modificado**,
+  verificado con `git status --porcelain=v1`, cuya única entrada de código es
+  `?? tests/test_boletin_caracterizacion.py`.
+- Archivos inspeccionados sin modificar: `app/routes/boletines.py`,
+  `app/controllers/boletin_controller.py`, `app/schemas/boletin.py`,
+  `tests/test_boletines_reporte_parcial.py`, y **solo para delimitar la
+  frontera**, `app/routes/notas.py`, `app/controllers/notas_controller.py`,
+  `app/repositories/notas_repository.py`, `app/core/permissions.py`,
+  `app/services/asignacion_academica.py` y el registro de routers de
+  `app/main.py`. **Leer no fue mover**: ninguno se tocó.
+- Pruebas antes: **3 heredadas**, todas en `tests/test_boletines_reporte_parcial.py`,
+  y **ninguna** medía conteos de consultas o conexiones, ni fijaba la frontera,
+  ni cubría la escritura. El hueco era real y mayor que en `asistencia`.
+- Cambio realizado: **solo caracterización**. 24 pruebas nuevas que fijan la
+  frontera, las cuatro entradas con sus tres modelos de permiso, los status
+  codes 403/404/500, la semántica transaccional completa incluida la reversión,
+  las dos fórmulas de promedio, la línea base de consultas y de conexiones, y
+  **cinco guardias estructurales**: número de archivos, ausencia de repositorio
+  y servicio, conteo de 12 sentencias inline, idioma `get_connection` y el
+  código muerto de `planilla`.
+- Comandos y resultados:
+  - `.\venv\Scripts\python.exe scripts\verify.py` **antes**: **872 pruebas,
+    exit 0**, Ruff correcto, `pip check` íntegro. **Sin deriva** respecto al
+    cierre de `asistencia`.
+  - `.\venv\Scripts\python.exe -m pytest -q -p no:cacheprovider tests\test_boletin_caracterizacion.py`:
+    **24 pasaron** en 0,60 s.
+  - `.\venv\Scripts\python.exe -m ruff check tests\test_boletin_caracterizacion.py`:
+    **correcto**.
+  - `.\venv\Scripts\python.exe scripts\verify.py` **después**: **896 pruebas,
+    exit 0**, Ruff correcto, `pip check` íntegro.
+  - `git diff --check`: **sin problemas**.
+- **Tres pruebas fallaron en su primera ejecución** y se corrigieron **en el
+  doble, no en el producto**: el cursor falso servía el mismo resultado a todas
+  las consultas de un camino, y los tres controladores que emiten dos o más
+  lecturas distintas necesitaban una secuencia. Queda anotado porque **el fallo
+  era del andamiaje**: ninguna aserción sobre comportamiento se relajó para que
+  pasara.
+- Decisiones:
+  1. **La frontera se queda donde está.** Las dos rutas de boletín que posee
+     `notas` no se mueven. Motivo: su 7.1 cerró esa persistencia y moverlas
+     exigiría una orden explícita. Alternativa descartada: reunificar el boletín
+     en un solo dominio, que habría reabierto una capa cerrada.
+  2. **Los supuestos ajenos se marcan como ajenos, no como refutados.** Cinco
+     de los trece describían código de `notas` y eran ciertos; lo que fallaba
+     era la atribución. Registrarlos como falsos habría borrado información
+     correcta.
+  3. **No se corrige el emparejamiento por posición**, pese a ser el hallazgo
+     más grave. Motivo: 7.0 caracteriza, no corrige. Queda fijado por prueba el
+     comportamiento **actual**, para que una corrección futura tenga contra qué
+     compararse.
+- Riesgos: el hallazgo 9, los espacios finales dentro de un literal SQL, **es un
+  riesgo para 7.1 y no para hoy**. Obliga a decidir por adelantado si la
+  comparación byte a byte de las cuatro 7.1 anteriores se puede sostener aquí o
+  si hay que autorizar explícitamente la limpieza.
+- Siguiente acción exacta: **esperar la definición y la orden de 7.1.** No se
+  inició ni se decidió su alcance.
 
 ## Entrega al próximo chat
 
 - Capa activa: **7, para el dominio `boletin` y solo ese.** Los otros siete
   dominios siguen en espera.
-- Última subcapa terminada: **ninguna** en esta bitácora. La anterior del
-  programa fue la 7.1 de `asistencia`, cerrada el 2026-08-20.
-- Primera subcapa pendiente: **7.0**, pendiente y **no iniciada**.
+- Última subcapa terminada: **7.0**, cerrada el 2026-08-21, el mismo día en que
+  se activó la capa.
+- Primera subcapa pendiente: **7.1**, **sin definir y no iniciada**. La
+  evidencia de 7.0 la perfila —12 sentencias inline en un solo controlador, sin
+  repositorio— pero **su alcance no está decidido** y hay que resolver antes el
+  hallazgo 9. No se inicia sin orden.
 - Commit base: `8e61170f32a6d6a23ca23f9ead89d17bc209e7b6`, rama `main`,
-  **publicado y desplegado**, comprobado contra el remoto real.
+  **publicado y desplegado**, comprobado contra el remoto real. La activación
+  quedó en `0f351c8` y **7.0 está sin commitear** al cerrar este turno.
+- Compuerta al cerrar 7.0: **896 pruebas, exit 0**, Ruff correcto y `pip check`
+  íntegro. La suite pasó de **872 al activar la capa a 896**.
+- Lo que 7.0 dejó medido: el dominio son **tres archivos**; **4 entradas HTTP**
+  con **tres modelos de permiso**; **dos tablas escritas** —la primera vez en la
+  capa 7 que un dominio escribe más de una—; **una transacción propia**; **12
+  sentencias SQL inline**, todas en el controlador; **3 pruebas heredadas** más
+  **24 nuevas**. **Ningún N+1**, ni de consultas ni de conexiones.
+- **Los trece supuestos quedaron resueltos**: **doce confirmados y uno
+  incompleto**, ninguno falso. Pero el resultado que manda es otro: **cinco de
+  los trece describían código de `notas`, no de este dominio**. La frontera era
+  el problema, y por eso fue el paso 1.
+- **El hallazgo que manda es el emparejamiento por POSICIÓN** de las
+  observaciones guardadas en `obtener_boletin_para_profesor_controller`. Es
+  silencioso: no falla, muestra el texto de otra evaluación.
 - Bloqueos: ninguno. Verificaciones heredadas **pendientes y aceptadas** por
   decisión explícita del usuario: valor operativo final de
   `DB_STATEMENT_TIMEOUT_MS` (capa 1), evidencia de GitHub Actions posterior a la
@@ -468,23 +700,34 @@ ejecutan dos subcapas en el mismo turno.**
 - Lo que hay que recordar antes de tocar nada:
   1. **Un solo dominio.** `dashboard`, `notas`, `ventas` y `asistencia` están
      cerrados en sus propias bitácoras y los otros siete siguen en espera.
-  2. **La frontera está partida y eso se sabe de antemano.** `notas` posee
-     `/boletin/{id}` y `/boletin/detallado/{id}`. Determinar el borde con
-     evidencia es el **primer** paso de 7.0, no un detalle.
+  2. **La frontera quedó decidida y NO se mueve.** `notas` conserva
+     `/boletin/{estudiante_id}` y `/boletin/detallado/{estudiante_id}`; este
+     dominio son las cuatro rutas bajo `/boletines`. Los paths son disjuntos y
+     hay una prueba que lo fija.
   3. **Nada de `notas` se mueve.** Su 7.1 cerró esa frontera de persistencia.
-     Moverlo exige una orden explícita posterior a la evidencia.
-  4. **Las cifras son el contrato**: promedio sin redondear, corte en 3,0
-     inclusive, ids sintéticos y `promedio: 0` en el detallado. Fijarlas por
-     prueba antes de tocar nada.
-  5. **`app/core/permissions.py` está fuera de alcance**, incluido el N+1 en
-     conexiones que dejó `asistencia`.
-  6. **El commit base ya está en producción.** El rollback de esta capa, si se
+     Cinco de los trece supuestos hablaban de código suyo: el N+1 del detallado,
+     los ids sintéticos, el corte en 3,0 y el promedio sin redondear **son de
+     `notas`**, no de aquí.
+  4. **Las cifras de ESTE dominio son otras**: `AVG()` en SQL para el boletín de
+     admin y `sum()/len()` en Python **sin redondear** para el reporte parcial.
+     Ambas fijadas por prueba.
+  5. **Antes de mover una sola sentencia en 7.1, resolver el hallazgo 9**: hay
+     14 líneas con espacios finales, una dentro de un literal SQL.
+     `git diff --check` obliga a limpiarlos y eso **rompe la comparación byte a
+     byte** que las cuatro 7.1 anteriores exigieron. Es una decisión previa, no
+     un detalle de ejecución.
+  6. **`app/core/permissions.py` está fuera de alcance**, incluido el N+1 en
+     conexiones que dejó `asistencia`. Aquí ese N+1 **no existe**.
+  7. **El commit base ya está en producción.** El rollback de esta capa, si se
      publica, **no será local**.
-  7. **No corregir ninguno de los trece supuestos convertidos en hallazgos**, ni
-     los cuarenta y uno que dashboard, notas, ventas y asistencia dejaron
-     abiertos.
-  8. **Ejecutar siempre la compuerta completa**: los consumidores de
+  8. **No corregir ninguno de los diez hallazgos**, empezando por el
+     emparejamiento por posición, ni los cuarenta y uno que dashboard, notas,
+     ventas y asistencia dejaron abiertos.
+  9. **Ejecutar siempre la compuerta completa**: los consumidores de
      `notas_detalle` no fallan con las pruebas de este dominio.
-- Siguiente acción exacta: ejecutar únicamente **7.0** y detenerse antes de 7.1.
-  Una instrucción genérica de continuar **sí** autoriza 7.0, porque la capa está
-  activa y 7.0 es su primera subcapa pendiente.
+  10. **Conservar el manejo de errores.** Las cuatro entradas devuelven un
+      mensaje fijo y no filtran el texto de la excepción. Es un acierto del
+      dominio y una extracción descuidada lo perdería.
+- Siguiente acción exacta: **esperar la definición y la orden de 7.1.** 7.0 está
+  cerrada; su alcance no está decidido y el hallazgo 9 hay que resolverlo antes.
+  Una instrucción genérica de continuar **no** basta para fijar ese alcance.

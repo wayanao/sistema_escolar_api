@@ -47,7 +47,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 7 | Resto de dominios — **`asistencia` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `asistencia` el 2026-08-21; verificada a mano. **Publicada el 2026-08-21**, después de escribirse su bitácora | [07_ASISTENCIA.md](./07_ASISTENCIA.md) |
 | 7 | Resto de dominios — **`boletin` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `boletin` el 2026-08-21; verificada a mano y **sin publicar**. Ver la advertencia de desfase más abajo | [07_BOLETIN.md](./07_BOLETIN.md) |
 | 7 | Resto de dominios — **`observaciones` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `observaciones` el 2026-08-21; verificada a mano. **Publicada el 2026-08-21**, después de escribirse su bitácora | [07_OBSERVACIONES.md](./07_OBSERVACIONES.md) |
-| 7 | Resto de dominios — **`planilla`** | Migración individual con contratos y pruebas | **Activa** desde el 2026-08-21; **7.0 pendiente y no iniciada** | [07_PLANILLA.md](./07_PLANILLA.md) |
+| 7 | Resto de dominios — **`planilla`** | Migración individual con contratos y pruebas | **Activa** desde el 2026-08-21; **7.0 cerrada**, 7.1 pendiente de definición | [07_PLANILLA.md](./07_PLANILLA.md) |
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
 cierre y el usuario ordene continuar, se crea su sucesora desde
@@ -78,9 +78,10 @@ orden explícita del usuario, y **cerrada el mismo día**, con sus subcapas 7.0 
 
 **La capa 7 quedó activada para el dominio `planilla`** el 2026-08-21, por orden
 explícita del usuario, que nombró el dominio y aceptó continuar localmente con
-las verificaciones heredadas pendientes. Su **7.0 está pendiente y no
-iniciada**. La activación fue únicamente documental y no inspeccionó código del
-dominio.
+las verificaciones heredadas pendientes. Su **7.0 quedó cerrada el mismo día**:
+cinco archivos y cinco SQL inline, tres entradas HTTP, una tabla escrita, ningún
+N+1 y 30 pruebas nuevas. La compuerta terminó con **955 pruebas**. Su 7.1 está
+pendiente de definición y no se inicia por inferencia.
 
 La capa 7 se cierra **por dominio**, no de una vez: cada uno tiene su propia
 bitácora, su propio commit base y su propio cierre, y **las subcapas se numeran
@@ -195,7 +196,8 @@ explícitamente**; **no se dedujo por inferencia**. Su bitácora es
 **Dominio activo: `planilla`.** Lo eligió el usuario el 2026-08-21, de la lista
 de los seis que quedaban en espera, y lo **nombró explícitamente** al aceptar
 continuar localmente con las verificaciones pendientes. Su bitácora es
-[07_PLANILLA.md](./07_PLANILLA.md); su **7.0 está pendiente y no iniciada**.
+[07_PLANILLA.md](./07_PLANILLA.md); su **7.0 está cerrada** y su 7.1 pendiente
+de definición.
 
 Ningún otro se activa por inferencia: planeador anual, plan de clases, branding,
 profesores y super admin siguen en espera —son **cinco**—, y cada uno
@@ -1704,8 +1706,8 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   exige otro push y otro despliegue. En este turno no se consultó el remoto real
   ni se atribuye ningún run de GitHub Actions.
 - Capa activa: **7 para `planilla`, y solo ese dominio**. Su commit base es
-  `580c0ad6f0d14d16af5cbd8b2a4a9e4532485b89` y su **7.0 está pendiente y no
-  iniciada**. Quedan **cinco** dominios en espera: `planeador_anual`,
+  `580c0ad6f0d14d16af5cbd8b2a4a9e4532485b89`; su **7.0 está cerrada** y su 7.1
+  pendiente de definición. Quedan **cinco** dominios en espera: `planeador_anual`,
   `plan_de_clases`, `branding`, `profesores` y `super_admin`. `planilla` llega
   con una frontera documental no limpia: `notas` posee
   `/planilla/{asignacion_id}` y `boletin` conserva una función muerta con ese
@@ -1859,12 +1861,13 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   `580c0ad6f0d14d16af5cbd8b2a4a9e4532485b89`, la orden explícita del usuario
   nombrando el dominio, la decisión de continuar localmente aceptando todas las
   verificaciones pendientes y la activación exclusivamente documental. Su
-  **7.0 está pendiente y no iniciada**. No se inspeccionó código de `planilla`.
-  Conserva la advertencia que manda en esta capa: la frontera no es limpia en
-  la documentación, porque `notas` posee `/planilla/{asignacion_id}` y
-  `boletin` dejó una función muerta con una sentencia de planilla; 7.0 debe
-  delimitar ownership, contratos, SQL, cálculos, transacciones, consultas y
-  conexiones antes de cualquier extracción.
+  **7.0 está cerrada**: delimitó cinco archivos propios y tres entradas HTTP,
+  separó el `GET` de `notas` y la función muerta de `boletin`, contó cinco SQL,
+  una tabla escrita y ninguna forma de N+1, y añadió 30 pruebas. La compuerta
+  terminó con **955 pruebas**, Ruff correcto y dependencias íntegras. Deja diez
+  hallazgos sin corregir, encabezados por la carrera del borrar-e-insertar sin
+  lock ni restricción única y el 200 de la validación fallida. Su **7.1 está
+  pendiente de definición y no iniciada**.
 - [07_OBSERVACIONES.md](./07_OBSERVACIONES.md): **bitácora cerrada** de la capa
   7 para el dominio `observaciones`. Fue la fuente de continuidad **hasta que
   se activó `planilla`**. Registra el

@@ -7,9 +7,11 @@
 - Estado: **Activa** desde el 2026-08-21.
 - Commit base: `580c0ad6f0d14d16af5cbd8b2a4a9e4532485b89`.
 - Rama acordada: `main`.
-- Primera subcapa pendiente: **7.0**, inventario, frontera, contratos y
-  caracterización. **No iniciada**.
+- Primera subcapa pendiente: **7.1**, todavía **sin alcance definido ni
+  autorizado**. La 7.0 quedó cerrada el 2026-08-21.
 - Código de producto modificado al activar: **Ninguno**.
+- Código de producto modificado en 7.0: **Ninguno**. Su diff funcional es un
+  solo archivo de caracterización nuevo; los demás cambios son documentación.
 - Dominio de esta capa: **planilla, y solo ese**. Los otros cinco dominios que
   siguen en espera necesitan su propia bitácora y su propia orden.
 - Autorización: orden explícita del usuario el 2026-08-21, nombrando el dominio:
@@ -77,18 +79,23 @@ pruebas de `planilla`.
 Aplica la regla de las capas anteriores: cada supuesto heredado se marca como
 **no verificado** hasta contrastarlo con el código y las pruebas del dominio.
 
-| # | Supuesto documental | Origen | Estado al activar |
+**Los diez supuestos quedaron resueltos en 7.0:** siete confirmados, uno
+incompleto y dos refutados. La frontera documental sí estaba partida, pero la
+frontera ejecutable propia resultó nítida: cinco archivos, tres entradas HTTP y
+cinco sentencias SQL.
+
+| # | Supuesto documental | Origen | Resultado en 7.0 |
 |---:|---|---|---|
-| 1 | `planilla` es uno de los dominios pendientes de la capa 7 | Índice maestro | **Confirmado documentalmente; no delimita archivos** |
-| 2 | `notas` posee `/planilla/{asignacion_id}` | Cierre de 7.0 de `notas`, resumido por el índice | **No verificado contra el código vigente** |
-| 3 | `boletin_controller` conserva `obtener_notas_planilla_controller`, sin consumidores, con una sentencia inline | Cierre de 7.1 de `boletin`, resumido por el índice | **No verificado contra el código vigente** |
-| 4 | La frontera real de `planilla` atraviesa más de un archivo o dominio nominal | Consecuencia de los dos registros anteriores | **Inferencia; 7.0 debe confirmarla o refutarla** |
-| 5 | El dominio lee o escribe datos | No determinado por la documentación de continuidad | **Desconocido** |
-| 6 | Existen transacciones, cálculos o fórmulas que deban preservarse | No determinado | **Desconocido** |
-| 7 | Los permisos y modelos de ownership son uniformes | No determinado | **Desconocido** |
-| 8 | Existe repositorio o servicio propio de `planilla` | No determinado | **Desconocido** |
-| 9 | Hay N+1 de consultas o conexiones | No determinado | **Desconocido** |
-| 10 | Existen pruebas propias suficientes para una extracción | No determinado | **Desconocido** |
+| 1 | `planilla` es uno de los dominios pendientes de la capa 7 | Índice maestro | **CONFIRMADO.** El usuario lo activó y su frontera ejecutable propia son cinco archivos y 216 líneas |
+| 2 | `notas` posee `/planilla/{asignacion_id}` | Cierre de 7.0 de `notas`, resumido por el índice | **CONFIRMADO y separado.** Es un `GET` del router de `notas`, llama a `notas_controller` y persiste mediante `notas_repository`; no pertenece a las tres entradas propias |
+| 3 | `boletin_controller` conserva `obtener_notas_planilla_controller`, sin consumidores, con una sentencia inline | Cierre de 7.1 de `boletin`, resumido por el índice | **CONFIRMADO.** Tiene una sentencia SQL y cero llamadas AST en `app/`; sigue siendo código muerto dentro de un dominio cerrado |
+| 4 | La frontera real de `planilla` atraviesa más de un archivo o dominio nominal | Consecuencia de los dos registros anteriores | **CONFIRMADO con matiz.** Los nombres atraviesan tres dominios, pero la frontera ejecutable propia es nítida; los dos bordes ajenos se registran y no se mueven |
+| 5 | El dominio lee o escribe datos | No determinado por la documentación de continuidad | **CONFIRMADO: escribe.** `POST` borra e inserta y `DELETE` borra en `notas_detalle`; el `GET` lee cinco tablas |
+| 6 | Existen transacciones, cálculos o fórmulas que deban preservarse | No determinado | **CONFIRMADO.** Dos caminos confirman transacción; el JSON calcula promedio numérico a dos decimales y usa cadena vacía si no hay nota numérica |
+| 7 | Los permisos y modelos de ownership son uniformes | No determinado | **CONFIRMADO.** Las tres entradas usan `get_current_user` y `require_asignacion_access`; admin retorna temprano y profesor consulta ownership |
+| 8 | Existe repositorio o servicio propio de `planilla` | No determinado | **INCOMPLETO.** Existe `planilla_service`, pero no repositorio; las cinco sentencias siguen inline en dos controladores y el servicio |
+| 9 | Hay N+1 de consultas o conexiones | No determinado | **REFUTADO.** Los tres caminos tienen conteo constante; el Excel mantiene 2/3 consultas y 1/2 conexiones con uno o tres estudiantes |
+| 10 | Existen pruebas propias suficientes para una extracción | No determinado | **REFUTADO.** Había doce casos heredados útiles, pero ninguno fijaba frontera, contrato HTTP, DDL, repositorios ni conteos; 7.0 añadió 30 |
 
 ## Alcance autorizado
 
@@ -141,23 +148,143 @@ Aplica la regla de las capas anteriores: cada supuesto heredado se marca como
 
 | Comprobación | Comando | Resultado |
 |---|---|---|
-| Pruebas específicas | Se determinará en 7.0 a partir de las pruebas existentes del dominio | Pendiente; 7.0 no iniciada |
-| Suite global | `.\venv\Scripts\python.exe scripts\verify.py` | Pendiente; no se ejecuta en la activación documental |
-| Ruff | `.\venv\Scripts\python.exe -m ruff check` sobre el alcance de 7.0 | Pendiente |
-| Dependencias | Incluido en `scripts\verify.py` | Pendiente |
+| Compuerta heredada, antes de modificar | `.\venv\Scripts\python.exe scripts\verify.py` | Primer intento bloqueado por permisos del temporal de pytest dentro del sandbox; repetida fuera del sandbox: **925 pruebas, 5 warnings heredadas, exit 0**, Ruff correcto y dependencias íntegras |
+| Caracterización nueva | `.\venv\Scripts\python.exe -m pytest -q -p no:cacheprovider tests\test_planilla_caracterizacion.py` | **30 pasaron**, 5 warnings heredadas |
+| Pruebas específicas completas | `.\venv\Scripts\python.exe -m pytest -q -p no:cacheprovider tests\test_planilla_caracterizacion.py tests\test_planilla_controlador.py tests\test_servicios_validacion.py tests\test_boletin_caracterizacion.py::test_obtener_notas_planilla_controller_es_codigo_muerto_de_otro_dominio` | **49 pasaron**, 5 warnings heredadas; incluye la guardia ya existente sobre el consumidor muerto sin duplicarla |
+| Suite global después | `.\venv\Scripts\python.exe scripts\verify.py` | **955 pruebas, 5 warnings heredadas, exit 0**, Ruff correcto y dependencias íntegras |
+| Ruff | `.\venv\Scripts\python.exe -m ruff check tests\test_planilla_caracterizacion.py` | **Correcto** |
+| Dependencias | Incluido en `scripts\verify.py` | **Íntegras antes y después** |
+
+## Inventario y contratos fijados en 7.0
+
+La frontera ejecutable propia son **cinco archivos y 216 líneas**, sin
+repositorio y con **cinco sentencias SQL inline**:
+
+| Archivo | Líneas | SQL inline | Responsabilidad |
+|---|---:|---:|---|
+| `app/routes/planilla.py` | 38 | 0 | Tres entradas HTTP y permiso de asignación |
+| `app/controllers/planilla_controller.py` | 68 | 3 | Registrar nota y eliminar un tipo de nota |
+| `app/controllers/planilla_excel_controller.py` | 81 | 1 | Armar el JSON de la planilla por periodo |
+| `app/schemas/planilla.py` | 12 | 0 | Entrada del registro de nota |
+| `app/services/planilla_service.py` | 17 | 1 | Validar pertenencia del estudiante |
+
+### Frontera, delimitada antes de contar
+
+| Propietario | Entrada o artefacto | Decisión de 7.0 |
+|---|---|---|
+| **`planilla`** | `POST /planilla/nota`, `GET /planilla-excel/{asignacion_id}/{periodo}` y `DELETE /planilla/tipo` | Son las tres entradas ejecutables propias |
+| **`notas`, cerrado** | `GET /planilla/{asignacion_id}` | Se queda en `notas`: llama a su controlador y a `notas_repository`; no se cuenta ni se mueve |
+| **`boletin`, cerrado** | `obtener_notas_planilla_controller` | Es una función muerta con una sentencia y cero consumidores; se registra separada y no se mueve |
+
+Los paths propios y el de `notas` son disjuntos como pares `(método, path)`.
+La colisión era nominal y real en archivos, pero no obliga a reabrir ninguno de
+los dos dominios cerrados.
+
+### Entradas HTTP y permisos
+
+Las tres entradas tienen **un único modelo de permiso**:
+`get_current_user` más `require_asignacion_access`. Admin retorna sin consultar;
+profesor abre una conexión y comprueba `asignaciones.id/profesor_id`; cualquier
+otro rol recibe 403.
+
+| Método | Path | Entrada | Respuesta exitosa actual |
+|---|---|---|---|
+| POST | `/planilla/nota` | `NotaPlanillaCreate` | `200`, `{"mensaje": "Nota registrada correctamente", "nota_id": int}` |
+| GET | `/planilla-excel/{asignacion_id}/{periodo}` | Dos path params enteros | `200`, JSON con `columnas` y `data`; **no descarga un archivo** |
+| DELETE | `/planilla/tipo` | `asignacion_id`, `descripcion` y `periodo` por query | `200`, `{"mensaje": "Tipo eliminado correctamente"}` |
+
+Ninguna declara `response_model`. El 403 se propaga con `{"detail": "No
+autorizado"}`. Pydantic produce 422 para una nota fuera de 1..5 y FastAPI
+produce 422 si falta `descripcion` en el DELETE. Una validación interna fallida
+del POST, en cambio, devuelve **200** con `{"error": "El estudiante no
+pertenece a esta asignación"}`; la petición HTTP real lo confirma.
+
+### Escrituras, lectura y cálculos
+
+- La única tabla escrita es **`notas_detalle`**, compartida con el dominio
+  cerrado `notas`.
+- El POST valida al estudiante en una conexión separada y, si pasa, abre una
+  transacción con `get_cursor(commit=True)`: resuelve la asignación, borra la
+  fila del mismo estudiante/periodo/descripción e inserta la nueva.
+- El DELETE abre una transacción propia y borra para **todos los estudiantes**
+  de la asignación y periodo la descripción normalizada indicada.
+- El GET abre solo lectura, cruza `asignaciones`, `cursos`, `materias`,
+  `estudiantes` y `notas_detalle`, y devuelve JSON. Descarta la descripción
+  mágica `Desde React`, ordena columnas y estudiantes, promedia solo notas
+  numéricas con `round(..., 2)` y devuelve `""` si no hay ninguna.
+- El DDL permite `periodo NULL`, limita `descripcion` a 100 caracteres y
+  conserva las dos claves foráneas, pero **no tiene restricción única** sobre
+  estudiante, asignación, periodo y descripción.
+
+### Línea base de consultas y conexiones
+
+Medida herméticamente a través de las funciones de ruta, incluyendo el resolver
+y el permiso de profesor, pero sin autenticación ni round-trips de apertura:
+
+| Camino | Consultas admin/profesor | Conexiones admin/profesor | Transacción |
+|---|---:|---:|---|
+| POST válido | **4 / 5** | **2 / 3** | Sí, una para DELETE + INSERT |
+| POST rechazado por pertenencia, admin | **1** | **1** | No |
+| GET Excel/JSON | **2 / 3** | **1 / 2** | No |
+| DELETE tipo | **2 / 3** | **1 / 2** | Sí |
+
+**No hay N+1** de consultas ni de conexiones: el GET mantiene exactamente el
+mismo conteo con uno y con tres estudiantes.
+
+## Hallazgos de 7.0, registrados y sin corregir
+
+1. **El reemplazo borrar-e-insertar no tiene lock ni restricción única.** La
+   transacción protege un intento aislado, pero dos peticiones concurrentes
+   pueden borrar y luego insertar dos filas para la misma clave lógica.
+2. **Una validación fallida responde 200.** El controlador devuelve un
+   diccionario `error` y la ruta lo entrega como éxito HTTP; no es el falso
+   mensaje de `POST /notas`, pero sí un falso status de éxito.
+3. **`periodo` admite `null` de extremo a extremo.** Es `Optional[int]`, la
+   tabla no lo declara `NOT NULL` y las comparaciones `periodo = NULL` no
+   encuentran filas previas; el reemplazo puede dejar duplicados nulos.
+4. **`tipo_evaluacion` admite cualquier cadena.** Todo valor distinto de
+   `numerica` guarda `nota = NULL`, pero solo `desarrollo` conserva
+   `valoracion`; un valor desconocido puede guardar ambas en `NULL`.
+5. **La longitud se valida solo en PostgreSQL.** `descripcion`,
+   `tipo_evaluacion` y `valoracion` no tienen límites Pydantic, aunque la tabla
+   usa `varchar(100)`, `varchar(30)` y `varchar(30)`; un exceso termina como
+   error de base, no 422.
+6. **Una nota numérica también puede ser `None`.** El esquema la hace opcional
+   incluso cuando `tipo_evaluacion` conserva el default `numerica`.
+7. **El endpoint llamado Excel devuelve JSON.** No genera ni descarga un
+   archivo; es contrato actual y no se renombra ni rediseña.
+8. **La pertenencia se valida antes de abrir la transacción y en otra
+   conexión.** El POST cuesta dos conexiones como admin y tres como profesor;
+   no es N+1, pero la validación y la escritura no ven necesariamente el mismo
+   snapshot.
+9. **Las comprobaciones no filtran `asignaciones.activo`.** Tanto el permiso
+   como la validación del servicio aceptan una asignación desactivada si sus ids
+   y ownership coinciden, patrón ya visto en otros dominios.
+10. **La tabla escrita pertenece también a un dominio cerrado.** `planilla`
+    modifica `notas_detalle`, que leen varios módulos y cuya lectura principal
+    ya vive en `notas_repository`; romper un contrato ajeno puede aparecer solo
+    en la compuerta global.
+
+### Lo que 7.0 buscó y no encontró
+
+- Ningún N+1 de consultas o conexiones.
+- Ninguna fuga de conexión en los cinco archivos propios.
+- Ningún SQL en la ruta ni f-string SQL.
+- Ninguna colisión efectiva de `(método, path)` con la lectura de `notas`.
+- Ningún consumidor de la función muerta alojada en `boletin_controller`.
 
 ## Subcapas
 
 | Subcapa | Resultado | Estado |
 |---:|---|---|
-| 7.0 | Delimitar la frontera, inventariar contratos y caracterizar el comportamiento y la línea base | **Pendiente y no iniciada** |
-| 7.1 | Primera extracción protegida | **Sin definir hasta cerrar 7.0** |
-| 7.2 | Segunda extracción, integración o punto de decisión | **Sin definir hasta cerrar 7.0** |
+| 7.0 | Delimitar la frontera, inventariar contratos y caracterizar el comportamiento y la línea base | **Cerrada** el 2026-08-21 |
+| 7.1 | Primera extracción protegida | **Pendiente de definición y orden; no iniciada** |
+| 7.2 | Segunda extracción, integración o punto de decisión | **Sin definir** |
 
 Las subcapas se adaptarán a la evidencia. Las innecesarias se marcarán `No
 aplica` con explicación. Nunca se ejecutan dos en el mismo turno.
 
-## Subcapa activa: trabajo exacto de 7.0
+## Subcapa 7.0: trabajo exacto, ejecutado y cerrado
 
 1. **Delimitar la frontera antes de contar nada**: identificar las entradas y
    archivos propios de `planilla`, la ruta atribuida a `notas` y la función
@@ -176,8 +303,9 @@ aplica` con explicación. Nunca se ejecutan dos en el mismo turno.
    sin modificar expectativas heredadas salvo autorización explícita.
 8. Resolver los diez supuestos de esta bitácora uno por uno y registrar
    hallazgos sin corregirlos.
-9. Archivos permitidos en 7.0: pruebas de caracterización del dominio y esta
-   bitácora. **Ningún archivo de producto se modifica.**
+9. Archivos permitidos en 7.0: pruebas de caracterización del dominio, esta
+   bitácora y el estado correspondiente del índice maestro. **Ningún archivo de
+   producto se modifica.**
 10. Ejecutar pruebas específicas, Ruff sobre la caracterización, la compuerta
     global, `git diff --check` y revisar que el diff sea exclusivo de 7.0.
 11. Actualizar esta bitácora con archivos, comandos, resultados, decisiones,
@@ -216,17 +344,27 @@ aplica` con explicación. Nunca se ejecutan dos en el mismo turno.
 - **No resolver la frontera en la activación.** La documentación muestra una
   ruta en `notas` y una función en `boletin`, pero decidir qué pertenece al
   dominio requiere la evidencia de 7.0.
+- **Frontera resuelta en 7.0:** las tres entradas propias y sus cinco archivos
+  forman el dominio ejecutable; el `GET` de `notas` y la función muerta de
+  `boletin` quedan en sus dominios cerrados. Motivo: ownership, llamadores y
+  persistencia lo demuestran; moverlos ampliaría el alcance sin consumidor.
+- **No definir 7.1 por inferencia.** 7.0 demuestra que una extracción tendría
+  que decidir si las cinco sentencias van a uno o más repositorios y qué hacer
+  con el servicio. Esa decisión queda para el usuario antes de modificar
+  producto.
 
 ## Riesgos
 
-- **Frontera partida.** Evidencia: la documentación atribuye piezas con nombre
-  de planilla a dos dominios cerrados. Mitigación: delimitar antes de contar o
-  extraer. Responsable: 7.0.
+- **Frontera nominal partida, ya delimitada.** Las piezas de `notas` y
+  `boletin` están clasificadas y no se mueven. Riesgo residual: una extracción
+  guiada solo por nombres podría reabrir esos dominios; la caracterización lo
+  impide.
 - **Código documentado como muerto dentro de un dominio cerrado.** Moverlo por
   nombre podría crear una función sin consumidor o reabrir `boletin`.
   Mitigación: confirmar consumidores antes de decidir. Responsable: 7.0.
-- **Perfil de riesgo desconocido.** La activación no sabe aún si `planilla`
-  escribe ni qué cálculos realiza. Mitigación: no modificar producto en 7.0.
+- **Perfil de riesgo resuelto: el dominio escribe.** Borra e inserta notas y
+  elimina tipos para todos los estudiantes. La 7.1 necesita proteger
+  transacciones, parámetros y retorno además del texto SQL.
 - **Las cifras pueden ser el contrato.** Las capas anteriores encontraron
   varias fórmulas de promedio. Mitigación: caracterizar cada cálculo antes de
   moverlo. Responsable: 7.0.
@@ -275,15 +413,72 @@ aplica` con explicación. Nunca se ejecutan dos en el mismo turno.
 - Siguiente acción exacta: ejecutar únicamente 7.0 conforme al trabajo exacto
   de esta bitácora y detenerse antes de 7.1.
 
+### 2026-08-21 — cierre de 7.0
+
+- Commit observado: `50d6d4110a6aaffcd5bad6941ca993c512dbd036`, creado por
+  el usuario después de la activación. Es el único descendiente del commit base
+  y contiene exactamente los tres documentos explicados en el registro de
+  activación.
+- Estado antes de modificar: rama `main`, árbol limpio; confirmado con
+  `git status --porcelain=v1` sin salida. El commit base `580c0ad` es ancestro
+  de `HEAD`.
+- Archivos inspeccionados sin modificar: los cinco archivos propios de
+  `planilla`; `app/services/asignacion_academica.py`, la función de permiso y el
+  DDL de `notas_detalle`; y únicamente los fragmentos de `notas` y `boletin`
+  necesarios para delimitar la frontera. No se leyó el resto del repositorio.
+- Archivos modificados: `tests/test_planilla_caracterizacion.py` —nuevo—, esta
+  bitácora y el estado de 7.0 en el índice maestro. **Ningún archivo de producto
+  fue modificado.**
+- Pruebas antes: doce casos heredados propios —diez del controlador y dos del
+  servicio—. Eran útiles para la transacción y el JSON, pero no fijaban
+  frontera, HTTP real, DDL, repositorios, consultas ni conexiones.
+- Cambio realizado: **solo caracterización**. Treinta casos nuevos fijan los
+  cinco archivos y cinco SQL, los tres bordes nominales, los tres contratos
+  HTTP por ASGI, el único modelo de permiso, las rarezas del esquema, la tabla
+  escrita y sus restricciones, las dos transacciones, y la línea base completa
+  de consultas y conexiones.
+- Compuerta heredada antes de tocar pruebas: el primer intento dentro del
+  sandbox terminó con 896 pruebas pasadas y 29 errores de setup por
+  `PermissionError` al directorio temporal de pytest. Se repitió fuera del
+  sandbox, sin cambiar archivos: **925 pruebas, exit 0**, Ruff correcto y
+  `pip check` íntegro. El fallo inicial era del entorno, no del checkout.
+- Comandos y resultados:
+  - caracterización nueva: **30 pasaron**;
+  - caracterización más pruebas heredadas relacionadas, incluida la guardia de
+    frontera que ya existía en `boletin`: **49 pasaron**;
+  - Ruff sobre el archivo nuevo: **correcto**;
+  - compuerta final: **955 pruebas, exit 0**, Ruff correcto y `pip check`
+    íntegro;
+  - `git diff --check`: sin errores; los únicos avisos son la normalización
+    futura LF/CRLF;
+  - revisión de alcance: exclusivamente prueba nueva y documentación de 7.0.
+- Los diez supuestos quedaron resueltos: **siete confirmados, uno incompleto y
+  dos refutados**. El de N+1 quedó refutado y el de suficiencia de pruebas fue
+  el segundo refutado.
+- Decisiones: la frontera ejecutable propia son las tres entradas del router de
+  `planilla`; el `GET` de `notas` y la función muerta de `boletin` no se mueven.
+  No se define ni inicia 7.1 sin presentar primero su alcance.
+- Riesgos: permanecen los diez hallazgos de 7.0, encabezados por la carrera del
+  borrar-e-insertar sin lock ni restricción única y el 200 de la validación
+  fallida. Ninguno se corrigió.
+- Siguiente acción exacta: **esperar la definición y orden de 7.1**. No se
+  inicia en este turno.
+
 ## Entrega al próximo chat
 
 - Capa activa: **7 para `planilla`, y solo ese dominio**.
 - Última capa cerrada: **7 para `observaciones`**, con 7.0 y 7.1 completas.
 - Commit base: `580c0ad6f0d14d16af5cbd8b2a4a9e4532485b89`.
-- Primera subcapa pendiente: **7.0 de `planilla`, no iniciada**.
-- Código de `planilla` inspeccionado al activar: **ninguno**.
+- Última subcapa terminada: **7.0 de `planilla`**, cerrada el 2026-08-21.
+- Primera subcapa pendiente: **7.1**, sin alcance definido ni orden de
+  ejecución.
+- Código de producto modificado en 7.0: **ninguno**.
+- Línea base: cinco archivos propios, 216 líneas, tres entradas HTTP, un modelo
+  de permiso, cinco SQL inline, una tabla escrita y ninguna forma de N+1.
+- Pruebas: 30 nuevas; compuerta final con **955 pruebas**, Ruff y dependencias
+  correctos.
 - Verificaciones heredadas: pendientes y aceptadas; ninguna se marca como
   cumplida.
 - Bloqueos: ninguno.
-- Siguiente acción exacta: ejecutar solo 7.0, actualizar esta bitácora y
-  detenerse antes de 7.1.
+- Siguiente acción exacta: definir con el usuario el alcance de 7.1 antes de
+  modificar producto. No iniciar 7.1 por inferencia.

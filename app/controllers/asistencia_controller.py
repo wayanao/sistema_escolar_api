@@ -1,4 +1,9 @@
 from app.database import get_connection, get_cursor
+from app.repositories.asistencia_repository import (
+    borrar_asistencia_del_lote,
+    insertar_asistencia,
+    leer_historial_de_asignacion,
+)
 from app.services.asignacion_academica import resolver_asignacion_academica_id_cursor
 
 def guardar_asistencia_controller(data):
@@ -6,28 +11,23 @@ def guardar_asistencia_controller(data):
     cursor = conn.cursor()
     try:
         asignacion_id = resolver_asignacion_academica_id_cursor(cursor, data[0].asignacion_id)
-        cursor.execute("""
-            DELETE FROM asistencia
-            WHERE asignacion_id = %s AND fecha = %s AND periodo = %s
-              AND estudiante_id = ANY(%s)
-        """, (
+        borrar_asistencia_del_lote(
+            cursor,
             asignacion_id,
             data[0].fecha,
             data[0].periodo,
             [item.estudiante_id for item in data],
-        ))
+        )
 
         for item in data:
-            cursor.execute("""
-                INSERT INTO asistencia (estudiante_id, asignacion_id, fecha, estado, periodo)
-                VALUES (%s, %s, %s, %s, %s)
-            """, (
+            insertar_asistencia(
+                cursor,
                 item.estudiante_id,
                 asignacion_id,
                 item.fecha,
                 item.estado,
-                item.periodo
-            ))
+                item.periodo,
+            )
 
         conn.commit()
         return {"mensaje": "Asistencia guardada"}
@@ -44,22 +44,7 @@ def obtener_historial_asistencia(asignacion_id, periodo=1):
     with get_cursor() as cursor:
         asignacion_id = resolver_asignacion_academica_id_cursor(cursor, asignacion_id)
 
-        cursor.execute("""
-            SELECT
-                e.id,
-                e.nombre,
-                e.apellido,
-                a.fecha,
-                a.estado
-            FROM estudiantes e
-
-            JOIN asistencia a ON a.estudiante_id = e.id
-
-            WHERE a.asignacion_id = %s AND a.periodo = %s
-            ORDER BY e.apellido ASC, e.nombre ASC, a.fecha ASC
-        """, (asignacion_id, periodo))
-
-        rows = cursor.fetchall()
+        rows = leer_historial_de_asignacion(cursor, asignacion_id, periodo)
 
     resultado = {}
 

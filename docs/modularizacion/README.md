@@ -44,7 +44,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 7 | Resto de dominios — **`dashboard` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `dashboard` el 2026-08-19; publicada y verificada a mano | [07_DASHBOARD.md](./07_DASHBOARD.md) |
 | 7 | Resto de dominios — **`notas` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `notas` el 2026-08-19; verificada a mano. **Publicada el 2026-08-20**, después de escribirse su bitácora | [07_NOTAS.md](./07_NOTAS.md) |
 | 7 | Resto de dominios — **`ventas` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `ventas` el 2026-08-20; verificada a mano. **Publicada el 2026-08-20**, después de escribirse su bitácora | [07_VENTAS.md](./07_VENTAS.md) |
-| 7 | Resto de dominios — **`asistencia` en migración** | Migración individual con contratos y pruebas | **Activa** desde el 2026-08-20; **7.0 cerrada**, **7.1 pendiente y no iniciada**. Los demás dominios, **en espera** | [07_ASISTENCIA.md](./07_ASISTENCIA.md) |
+| 7 | Resto de dominios — **`asistencia` en migración** | Migración individual con contratos y pruebas | **Activa** desde el 2026-08-20; **7.0 y 7.1 cerradas**, punto de decisión abierto y verificación manual pendiente. Los demás dominios, **en espera** | [07_ASISTENCIA.md](./07_ASISTENCIA.md) |
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
 cierre y el usuario ordene continuar, se crea su sucesora desde
@@ -156,9 +156,9 @@ advertencias que las bitácoras cerradas ya registraban sobre esa lista; **no se
 dedujo por inferencia**. Una primera instrucción de «activar otro dominio de la
 capa» **no bastó**, porque no nombraba ninguno y habría dejado el alcance
 abierto; el trabajo se detuvo hasta que el usuario lo nombró. Su bitácora es
-[07_ASISTENCIA.md](./07_ASISTENCIA.md) y su **7.0 quedó cerrada el mismo día;
-7.1 está pendiente y no
-iniciada**.
+[07_ASISTENCIA.md](./07_ASISTENCIA.md); sus subcapas **7.0 y 7.1 quedaron
+cerradas el mismo día**, y la capa sigue **abierta** a la espera de la
+verificación manual y de la decisión del usuario.
 
 Ningún otro se activa por inferencia: boletín, observaciones, planilla,
 planeador anual, plan de clases, branding, profesores y super admin siguen en
@@ -1237,8 +1237,49 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   directamente— y **ninguna** deja guardias estructurales. **Ninguna se retiró ni
   se reescribió.** Es la limitación que 7.0 de `notas` destapó para todo el
   programa, y aquí se cierra para este dominio midiendo por interfaz ASGI cruda.
-- Capa activa: **la capa 7 para el dominio `asistencia`**, con **7.0 cerrada** y
-  **7.1 pendiente y no iniciada**. Quedan **ocho** dominios en espera: `boletin`,
+- Resultado de 7.1 de `asistencia`: las **3 sentencias** salieron del controlador
+  a `app/repositories/asistencia_repository.py`, **3 funciones** que reciben el
+  cursor existente y **el noveno repositorio** del proyecto.
+  `asistencia_controller.py` pasó de **84 a 69 líneas** y de 3 sentencias inline
+  a **0**; la ruta y el esquema ya tenían 0. El comparador AST contra el commit
+  base confirmó **3 literales SQL distintos antes y después, conjunto idéntico**,
+  con **3 de 3 byte a byte**: **no hizo falta autorizar ningún cambio de texto
+  SQL**. Compuerta local: **872 pruebas**, Ruff y dependencias correctas.
+- **7.1 repitió la comprobación de equivalencia en tiempo de ejecución** que
+  `ventas` incorporó al programa, y con tres sentencias y dos caminos salió
+  barata: **los dos caminos emiten la misma secuencia de `(SQL, parámetros)`,
+  devuelven lo mismo, abren el mismo número de conexiones y producen los mismos
+  eventos de ciclo de vida** que el commit base. Es la evidencia que el
+  comparador AST no da, porque compara texto y **no parámetros**.
+- **Fallaron cinco pruebas al extraer y las cinco eran previsibles**: las **dos**
+  guardias de línea base declaradas y las **tres** enumeraciones de repositorios
+  de dashboard, notas y ventas. **Dentro del dominio la previsión acertó**: no
+  falló ninguna prueba de hallazgo, porque el paso 9 del trabajo exacto obligó a
+  revisarlas **antes** de extraer. Es la lección de 7.1 de `ventas` aplicada por
+  adelantado en vez de descubierta después. **Las otras 44 pruebas del dominio
+  pasaron sin cambiar de expectativa**, incluidas **las doce heredadas de la
+  capa 1, que no se tocaron**.
+- **Patrón que conviene dejar escrito, y que esta subcapa corrigió sobre su
+  propia previsión**: la bitácora anunciaba **dos** enumeraciones ajenas y fueron
+  **tres**, porque `ventas` añadió la suya. **Cada dominio migrado añade una
+  guardia que enumera el conjunto exacto de repositorios**, así que el número
+  crece en uno con cada migración: una en 7.1 de notas, dos en la de ventas,
+  tres en esta, cuatro en la próxima. Se actualizan conservando su severidad,
+  que es deliberada.
+- Decisión de 7.1, tomada con evidencia: las **tres** sentencias viven en
+  `asistencia_repository` y la decisión fue **fácil**, a diferencia del
+  `UPDATE pagos` de `ventas`, porque ninguna escribe una tabla ajena. El único
+  matiz que la merecía: el `SELECT` del historial **arranca `FROM estudiantes e`**
+  y hace `JOIN asistencia`, así que su tabla conductora pertenece a un dominio ya
+  migrado. Vive aquí igual, por el criterio que 6.2 fijó con el expediente: es
+  **el historial de asistencia de una asignación**, no persistencia general de
+  estudiantes. **Las dos lecturas ajenas no se movieron.**
+- Capa activa: **la capa 7 para el dominio `asistencia`**, con **7.0 y 7.1
+  cerradas**, un **punto de decisión abierto** con tres salidas —el N+1 en
+  conexiones, `response_model` y los errores de dominio— y la **verificación
+  manual pendiente**, con su guion de ocho pasos ya entregado. **La capa no está
+  cerrada** y **no está publicada**: mientras siga así, su rollback es
+  **puramente local**. Quedan **ocho** dominios en espera: `boletin`,
   `observaciones`, `planilla`, `planeador_anual`, `plan_de_clases`, `branding`,
   `profesores` y `super_admin`. Dos de ellos, `boletin` y `planilla`, **no son
   fronteras limpias**: `notas` ya posee esas rutas, como registró su 7.0.

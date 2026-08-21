@@ -4,15 +4,18 @@
 
 ## Control
 
-- Estado: **Activa** desde el 2026-08-20. **7.0 cerrada** el 2026-08-20.
+- Estado: **Activa**. **7.0 y 7.1 cerradas** el 2026-08-20.
 - Commit base: `a894441f8676b0486e3395f88179cdf6cba61430`.
 - Rama acordada: `main`.
-- Primera subcapa pendiente: **7.1**, **no iniciada**. Su alcance queda definido
-  por la evidencia de 7.0; ver «Resultado de 7.0» y «Subcapa 7.1 — trabajo
-  exacto».
+- Primera subcapa pendiente: **ninguna definida**. Con 7.1 la **frontera de
+  persistencia del dominio quedó cerrada**. Queda un **punto de decisión** con
+  tres salidas, y **ninguna entra por inferencia**: ver «Punto de decisión,
+  abierto». **La capa no está cerrada**: falta la verificación manual y la
+  decisión del usuario.
 - Código de producto modificado al activar: **ninguno**. Tampoco en 7.0: su diff
   es **un solo archivo de prueba nuevo** y ningún archivo rastreado modificado,
-  igual que los de 5.0, 6.0 y las tres 7.0 anteriores.
+  igual que los de 5.0, 6.0 y las tres 7.0 anteriores. **7.1 sí modifica
+  producto**: el controlador y un repositorio nuevo.
 - Dominio de esta capa: **asistencia, y solo ese**. La capa 7 del índice es
   «resto de dominios» y ordena expresamente **priorizar uno a la vez**, así que
   esta bitácora cubre un único dominio. Los demás quedan fuera y necesitarán su
@@ -369,7 +372,7 @@ para su dominio midiendo por **interfaz ASGI cruda**, como hicieron `notas` y
 | Subcapa | Resultado | Estado |
 |---:|---|---|
 | 7.0 | Inventario, contratos, caracterización y línea base de consultas y conexiones | **Cerrada** el 2026-08-20 |
-| 7.1 | Extraer las 3 sentencias a `asistencia_repository` sin cambiar SQL, conteos ni ciclo de vida | **Pendiente, no iniciada** |
+| 7.1 | Extraer las 3 sentencias a `asistencia_repository` sin cambiar SQL, conteos ni ciclo de vida | **Cerrada** el 2026-08-20 |
 | 7.2 | Punto de decisión: `response_model`, errores de dominio y el N+1 en conexiones | **Sin decidir**: es un punto de decisión, no una subcapa pendiente |
 
 El desglose se dejó deliberadamente sin decidir hasta tener la evidencia del
@@ -509,9 +512,130 @@ Estado de los nueve criterios al 2026-08-20:
 
 **Los nueve criterios quedan resueltos. La subcapa 7.0 queda cerrada.**
 
-## Subcapa 7.1 — trabajo exacto
+## Resultado de 7.1
 
-Queda **definida por la evidencia de 7.0** y **no iniciada**.
+**Las 3 sentencias salieron del controlador a
+`app/repositories/asistencia_repository.py`, 3 funciones que reciben el cursor
+existente y el noveno repositorio del proyecto.**
+
+| Métrica | Antes | Después |
+|---|---:|---:|
+| `asistencia_controller.py`, líneas | **84** | **69** |
+| `asistencia_controller.py`, sentencias SQL inline | **3** | **0** |
+| `app/routes/asistencia.py`, sentencias SQL inline | 0 | 0 |
+| `app/schemas/asistencia.py`, sentencias SQL inline | 0 | 0 |
+| Repositorios del proyecto | 8 | **9** |
+
+**Comparador AST contra el commit base `a894441`: 3 literales SQL distintos
+antes y después, conjunto idéntico, con 3 de 3 byte a byte**, y 3 puntos de
+llamada antes y después. **No hizo falta autorizar ningún cambio de texto SQL**,
+como en la capa 6 y en las tres capas 7 anteriores, y a diferencia de la 5, que
+necesitó dos.
+
+Conservar los literales byte a byte exigió reproducir la sangría interior de
+cada uno en su nueva ubicación, aunque quede visualmente rara, y **dejar vacías
+las dos líneas en blanco interiores del `SELECT`**. Es exactamente la trampa que
+1.4g ya había registrado sobre este mismo literal: `git diff --check` rechaza
+líneas nuevas con espacios finales y la compuerta lo ejecuta. La comprobación
+pasó limpia.
+
+**El controlador conserva la propiedad del ciclo de vida, y en los dos
+idiomas**: la escritura sigue abriendo con `get_connection()` y cerrando en
+`finally`, con su `commit` y su `rollback`; la lectura sigue usando
+`with get_cursor() as cursor`. El repositorio **no abre, no cierra, no confirma
+y no revierte** nada, fijado por prueba sobre el AST: sus únicas llamadas son
+`execute` y `fetchall`, y **no importa nada**.
+
+### Equivalencia en tiempo de ejecución, incluida la de parámetros
+
+Se ejecutó el controlador del commit base y el actual con las mismas entradas,
+comparando la secuencia exacta de `(SQL, parámetros)`, el valor devuelto, el
+número de conexiones y los eventos del ciclo de vida. Con tres sentencias y dos
+caminos la comprobación es barata, así que no había razón para omitirla.
+
+| Camino | Consultas | `(SQL, parámetros)` | Retorno | Conexiones | Ciclo de vida |
+|---|---:|---|---|---|---|
+| `guardar_asistencia_controller`, tres estudiantes | 5 | idénticos | idéntico | 1 | `commit`, `close` |
+| `obtener_historial_asistencia` | 2 | idénticos | idéntico | 1 | `close` |
+
+**Los dos idénticos**, incluido el caso de una fila con `fecha` nula, que sigue
+apareciendo con historial vacío. Es la evidencia que el comparador AST no da,
+porque compara texto SQL y **no parámetros**.
+
+### Las guardias que fallaron, que era la señal esperada
+
+**Fallaron cinco pruebas al extraer**, y las cinco eran previsibles. Es la
+lección 14 de la capa 6, aplicada por quinta vez.
+
+| Prueba | Por qué falló |
+|---|---|
+| `test_el_dominio_todavia_no_tiene_repositorio_propio` | Guardia de línea base declarada. Apareció el noveno repositorio |
+| `test_las_tres_sentencias_viven_hoy_en_el_controlador` | Guardia de línea base declarada. El controlador bajó a 0 |
+| `test_dashboard_caracterizacion.py::test_el_dominio_tiene_su_repositorio` | **Fuera del dominio.** Enumera el conjunto exacto de repositorios |
+| `test_notas_caracterizacion.py::test_el_repositorio_de_notas_es_el_septimo` | **Fuera del dominio.** Mismo motivo |
+| `test_ventas_caracterizacion.py::test_el_repositorio_de_ventas_es_el_octavo` | **Fuera del dominio.** Mismo motivo |
+
+**Dentro del dominio la previsión acertó**: fallaron **solo las dos guardias
+declaradas**, y ninguna prueba de hallazgo. El paso 9 del trabajo exacto —revisar
+antes las pruebas de hallazgo ancladas a un archivo— **funcionó**: las tres
+candidatas que señalaba sobrevivieron, porque comprueban el texto de la ruta y
+del controlador, no el SQL. Es la lección de 7.1 de `ventas` aplicada **antes**
+de extraer en vez de descubierta después.
+
+**Corrección de lo que esta bitácora había previsto**: anunciaba **dos**
+enumeraciones ajenas y fueron **tres**. `ventas` añadió la suya en su propia 7.1
+y esta bitácora no la contó. El patrón ya es visible y conviene dejarlo escrito:
+**cada dominio migrado añade una guardia de enumeración, así que el número crece
+en uno con cada migración**. En 7.1 de `notas` falló una, en la de `ventas` dos,
+en esta tres, y la próxima tendrá cuatro.
+
+**Las otras 44 pruebas del dominio pasaron sin cambiar de expectativa**: las 32
+restantes del archivo de 7.0 —incluidos los seis conteos de consultas y
+conexiones y las cinco de contrato HTTP real— y **las 12 heredadas de la capa 1,
+que no se tocaron**. Esa es la evidencia de que nada observable cambió, y aquí
+vale más que en los dominios anteriores porque esas doce se escribieron **antes**
+de que existiera esta capa.
+
+**Consecuencia fuera del dominio, por tercera vez en el programa**: las tres
+guardias que enumeran el conjunto exacto de repositorios fallaron al aparecer el
+noveno. **No era una rotura de contrato**; se actualizaron conservando su
+severidad, que es deliberada y obliga a reconocer cada migración nueva. Lo
+detectó **la compuerta global, no las pruebas de `asistencia`**, que es
+exactamente el riesgo que 7.0 había registrado.
+
+### Decisión de 7.1 sobre dónde viven las tres sentencias
+
+**Las tres viven en `asistencia_repository`**, y esta vez la decisión fue fácil,
+a diferencia del `UPDATE pagos` de `ventas`. Ninguna de las tres escribe una
+tabla ajena.
+
+El único matiz que la merecía: **el `SELECT` del historial arranca `FROM
+estudiantes e` y hace `JOIN asistencia`**, así que su tabla conductora pertenece
+a un dominio ya migrado. Aun así vive aquí, por el criterio que 6.2 fijó con el
+expediente y que las tres 7.1 anteriores repitieron: **es el historial de
+asistencia de una asignación, no persistencia general de estudiantes**, y lo
+necesita este controlador y solo este. Llevarlo a `estudiantes_repository`
+ampliaría el diff a un módulo que la capa 6 cerró y crearía una dependencia
+entre dominios que 7.1 no está autorizada a introducir.
+
+**Las dos lecturas ajenas no se movieron**, como el trabajo exacto exigía:
+`contar_inasistencias` sigue en `estudiantes_repository` y las inasistencias por
+profesor en `dashboard_repository`. El módulo nuevo lleva una advertencia en su
+propio docstring sobre el `ILIKE 'ausente'` que ambas usan y que este dominio no
+usa, para que nadie lo «unifique» por vecindad. Es el criterio que 7.1 de
+dashboard fijó y que las de notas y ventas repitieron.
+
+### Lo que 7.1 no tocó, y estaba prohibido tocar
+
+- **Los dos idiomas de conexión se conservan.** Unificarlos bajaría
+  `POST /asistencia` de dos aperturas a una en el controlador, pero cambiaría
+  los conteos fijados por aserción. Trabajo disponible.
+- **El N+1 en conexiones sigue intacto.** Vive en `app/core/permissions.py`,
+  infraestructura compartida. Sigue siendo el hallazgo más grave de la capa.
+- **Ninguno de los ocho hallazgos se corrigió.**
+- **Ninguna prueba heredada se retiró ni se reescribió.**
+
+## Subcapa 7.1 — trabajo exacto, ejecutado y cerrado
 
 1. Crear `app/repositories/asistencia_repository.py`, **el noveno repositorio**
    del proyecto, con funciones que **reciben el cursor existente** y no abren ni
@@ -795,18 +919,168 @@ Queda **definida por la evidencia de 7.0** y **no iniciada**.
   cerrada**; **7.1 pendiente y no iniciada**.
 - Siguiente acción exacta: ejecutar únicamente **7.1** conforme a su trabajo
   exacto y detenerse antes de cualquier otra subcapa. **No se inició en este
-  turno.**
+  turno.** *(Ejecutada en el turno siguiente; ver el cierre de 7.1 más abajo.)*
+
+### 2026-08-20 — cierre de 7.1
+
+- Modo de acceso: mismo checkout local; Git validado directamente.
+- Autorización: el usuario ordenó continuar. Con capa activa y 7.1 como primera
+  subcapa pendiente, esa orden autoriza ejecutarla.
+- Precondición Git: rama `main`, **árbol limpio**, `HEAD`
+  `68ff9a4642c85ddf1af7f981ccc1af1a13df4806`, el commit de 7.0 que el usuario
+  hizo entre turnos. El commit base `a894441` existe y es ancestro, y los **dos**
+  commits posteriores están explicados aquí: la activación `4e38e6c` y el cierre
+  de 7.0 `68ff9a4`.
+- Archivos modificados: `app/controllers/asistencia_controller.py`,
+  `tests/test_asistencia_caracterizacion.py`,
+  `tests/test_dashboard_caracterizacion.py`,
+  `tests/test_notas_caracterizacion.py` y
+  `tests/test_ventas_caracterizacion.py`. Creado:
+  `app/repositories/asistencia_repository.py`. Más esta bitácora y
+  `docs/modularizacion/README.md`. **Siete archivos**, ninguno fuera del alcance
+  de la subcapa; los tres de dashboard, notas y ventas son **una línea cada uno**
+  y **no son código de producto**.
+- **Comparador AST contra el commit base**: 3 literales SQL distintos antes y
+  después, **conjunto idéntico**, **3 de 3 byte a byte**, y 3 puntos de llamada
+  antes y después. Ningún cambio de texto SQL autorizado ni necesario.
+- **Equivalencia en tiempo de ejecución**: los **dos** caminos emiten la misma
+  secuencia de `(SQL, parámetros)`, devuelven lo mismo, abren el mismo número de
+  conexiones y producen los mismos eventos de ciclo de vida que el commit base.
+- Compuerta global: `.\venv\Scripts\python.exe scripts\verify.py` → **872
+  pruebas, exit 0**, Ruff correcto, `pip check` íntegro. La suite pasó de 869 a
+  872: se retiraron las dos guardias de línea base y se añadieron cinco pruebas
+  positivas.
+- `git diff --check`: **limpio**, incluidas las dos líneas en blanco interiores
+  del `SELECT`, que se conservaron **vacías**. Era la trampa que 1.4g ya había
+  registrado sobre ese mismo literal.
+- **Cinco pruebas fallaron al extraer y las cinco eran previsibles**: las dos
+  guardias de línea base declaradas y las **tres** enumeraciones de repositorios
+  de dashboard, notas y ventas. **Ninguna otra cambió de expectativa**, y en
+  particular **ninguna de las doce heredadas de la capa 1**.
+- **Una aserción propia se escribió mal y se corrigió**, ninguna de producto:
+  `test_el_repositorio_no_es_dueno_de_ningun_recurso` buscaba `get_connection`
+  en el **texto** del módulo, y el docstring del repositorio lo menciona en
+  prosa al explicar que la propiedad se queda en el controlador. Se pasó a
+  comprobarlo sobre el **AST**. Es la lección 13 de la capa 6 otra vez: la prosa
+  que describe algo no puede contarse como si fuera ese algo.
+- Hallazgos: **ninguno nuevo**. Los ocho de 7.0 siguen vivos y **ninguno se
+  corrigió**.
+- PostgreSQL, migraciones, producción, commit, push y deploy: **ninguno por
+  parte del asistente**.
+- Estado al cerrar el turno: capa 7 **activa** para `asistencia`; **7.0 y 7.1
+  cerradas**; **punto de decisión abierto** con tres salidas y **verificación
+  manual pendiente**.
+- Siguiente acción exacta: **esperar la decisión del usuario**. Ninguna de las
+  tres salidas se inicia por inferencia, y la verificación manual no la puede
+  hacer un asistente.
+
+## Punto de decisión, abierto
+
+**La frontera de persistencia de `asistencia` ya está cerrada**: ni el
+controlador, ni la ruta, ni el esquema tienen SQL, y el repositorio existe. Lo
+que queda del objetivo que el índice fijó para la capa 7 es la parte
+condicional, más una decisión propia de este dominio.
+
+Son tres cosas, y **ninguna entra por inferencia**:
+
+1. **El N+1 en conexiones.** Es el hallazgo 1 y el más grave de la capa.
+   Corregirlo significa que `require_estudiante_in_asignacion` reciba un cursor
+   o compruebe el lote entero en una consulta, y **toca
+   `app/core/permissions.py`, infraestructura compartida que alcanza a otros
+   dominios**. Exigiría orden explícita y probablemente la auditoría de
+   capacidad que la capa 2 dejó pendiente. Es, con diferencia, la salida con más
+   valor operativo.
+2. **`response_model`.** Las dos entradas podrían declararlo demostrando payload
+   por payload que la respuesta no cambia. Riesgo propio: `response_model`
+   **filtra** los campos que no declara, y la respuesta del historial es una
+   lista de diccionarios anidados construida a mano.
+3. **Errores de dominio.** Aquí el dilema es **menor que en `notas`** y parecido
+   al de `ventas`: la ruta ya traduce sus tres validaciones a `HTTPException`
+   con 422, así que el trabajo no sería cambiar status codes sino **mover las
+   reglas del lote fuera de la capa HTTP**, que es el hallazgo 3. Eso **sí**
+   cambiaría el comportamiento de quien llame al controlador directamente, así
+   que no es una refactorización pura.
+
+Queda pendiente también la **verificación manual**, que es la única evidencia
+que no puede delegarse en un asistente.
+
+## Guion de verificación manual propuesto
+
+Lo que la evidencia automática ya cubre, y que por tanto el guion **no** tiene
+que buscar: que el SQL es el mismo —3 de 3 byte a byte—, que los parámetros y
+los valores devueltos son los mismos en los dos caminos, y que los conteos de
+consultas y conexiones no cambiaron. Lo que **solo** puede ver una persona es lo
+que ocurre contra PostgreSQL real, con las claves foráneas de la capa 3 puestas
+y con los dos tenants.
+
+**Antes de empezar, confirmar el artefacto**: qué commit o árbol se está
+ejercitando. Si el árbol tiene cambios sin commitear, lo verificado es el árbol,
+no `HEAD`. Es la lección 10 de la capa 5.
+
+Guion, en ocho pasos:
+
+1. **Arranque.** La aplicación levanta sin error de importación. El repositorio
+   nuevo es un módulo más y un error de import sería inmediato.
+2. **Pasar lista, ida y vuelta.** Guardar la asistencia de un curso completo con
+   una mezcla de `presente` y `ausente`. Comprobar que responde
+   `{"mensaje": "Asistencia guardada"}` y que el historial de esa asignación y
+   periodo muestra exactamente lo guardado, **agrupado por estudiante** y
+   ordenado por apellido, nombre y fecha.
+3. **El reemplazo parcial**, que es el paso más delicado. Volver a pasar lista
+   **el mismo día y periodo** cambiando el estado de **algunos** estudiantes, no
+   de todos. Comprobar que los cambiados se actualizan, que los demás
+   **conservan** su valor, y que **no aparecen filas duplicadas**.
+4. **Un lote que no incluye a todo el curso.** Enviar solo dos estudiantes.
+   Comprobar que la asistencia de los compañeros **no se borra**: el `DELETE`
+   acota por la lista de estudiantes del lote.
+5. **Las tres validaciones.** Un lote vacío, un lote con dos asignaciones o
+   fechas distintas, y un lote con un estudiante repetido. Los tres deben
+   responder **422** y **no dejar ninguna fila**.
+6. **Permisos.** Con un **profesor** dueño de la asignación, las dos entradas
+   funcionan. Con un profesor **ajeno**, ambas responden **403**. Y comprobar
+   que un estudiante que **no pertenece** a la asignación responde 403 al
+   intentar pasarle lista.
+7. **El consumidor ajeno, que es la mejor prueba cruzada.** Marcar a un
+   estudiante como `ausente` varias veces y comprobar que el número cuadra en
+   los **dos** sitios que leen esta tabla sin pasar por el dominio: las
+   **inasistencias del expediente del estudiante** y el panel de
+   **inasistencias por profesor** del dashboard, que muestra los tres peores de
+   cada curso. La extracción no los tocó, pero leen lo mismo.
+8. **Los dos tenants.** Repetir el paso 2 en el segundo colegio y comprobar que
+   **no se mezclan datos**.
+
+**Lo que NO debe interpretarse como fallo de la refactorización.** Son hallazgos
+abiertos y **anteriores** a esta capa; están en la lista de los ocho:
+
+- que pasar lista a un curso grande **tarde** o agote conexiones —hallazgo 1—;
+- que un fallo de infraestructura en la lectura salga como **500** y no como
+  4xx —hallazgo 7—;
+- que llamar al controlador **fuera de la ruta** admita un lote heterogéneo o un
+  `estado` que no sea `presente` ni `ausente` —hallazgos 3, 4 y 5—.
 
 ## Entrega al próximo chat
 
 - Capa activa: **la capa 7 para el dominio `asistencia`**, activada el
   2026-08-20. **Es el único dominio activo**; los otros ocho siguen en espera.
-- Última subcapa terminada: **7.0**, cerrada el 2026-08-20.
-- Primera subcapa pendiente: **7.1**, no iniciada. Su trabajo exacto está
-  arriba, en doce pasos, y el punto donde detenerse es antes de cualquier otra
-  subcapa.
-- Compuerta al cerrar 7.0: **869 pruebas, exit 0**, Ruff correcto y `pip check`
-  íntegro. La suite pasó de **835 al activar la capa a 869**.
+- Última subcapa terminada: **7.1**, cerrada el 2026-08-20. Con ella la frontera
+  de persistencia del dominio quedó cerrada.
+- Primera subcapa pendiente: **ninguna definida.** Queda un **punto de decisión**
+  con tres salidas —el N+1 en conexiones, `response_model` y los errores de
+  dominio— y la **verificación manual**, cuyo guion de ocho pasos está arriba.
+  **La capa no está cerrada.** Ninguna de las tres salidas se inicia por
+  inferencia.
+- Compuerta al cerrar 7.1: **872 pruebas, exit 0**, Ruff correcto y `pip check`
+  íntegro. La suite pasó de **835 al activar la capa a 872**.
+- Lo que consiguió 7.1: `asistencia_controller.py` pasó de **84 a 69 líneas** y
+  de **3 sentencias SQL inline a 0**; la persistencia vive en
+  `app/repositories/asistencia_repository.py`, **3 funciones** que reciben el
+  cursor y **el noveno repositorio** del proyecto. Comparador AST contra el
+  commit base: **conjunto de SQL idéntico, 3 de 3 literales byte a byte**, sin
+  una sola autorización de cambio de texto. **Los dos caminos emiten la misma
+  secuencia de `(SQL, parámetros)`, devuelven lo mismo y abren las mismas
+  conexiones** que el commit base. **Ninguna prueba cambió de expectativa** salvo
+  las cinco que debían fallar, y **las doce heredadas de la capa 1 no se
+  tocaron**.
 - Lo que 7.0 dejó medido: el dominio son **tres archivos** —el supuesto decía
   dos—; **2 entradas HTTP** con **dos modelos de permiso**; **una sola tabla
   escrita**, `asistencia`; **una transacción propia**; **3 sentencias SQL
@@ -859,6 +1133,12 @@ Queda **definida por la evidencia de 7.0** y **no iniciada**.
   verificación manual, cuando las dos cosas se resolvieron. Corregir cualquiera
   de los dos exige una orden explícita.
 - **Pendiente la publicación de esta capa.** Los commits se quedan en local
-  hasta que el usuario decida; publicar dispara el despliegue.
-- Siguiente acción exacta: ejecutar únicamente **7.1** y detenerse antes de
-  cualquier otra subcapa.
+  hasta que el usuario decida; publicar dispara el despliegue. Mientras siga
+  así, **el rollback es una operación puramente local**: revertir hasta
+  `a894441` devuelve el controlador a su versión anterior y elimina el
+  repositorio nuevo. **La capa no ha tocado la base de datos** ni siquiera para
+  leer; es la **sexta consecutiva** que no abre una conexión a PostgreSQL, y la
+  **tercera de esas seis cuyo dominio sí escribe**.
+- Siguiente acción exacta: **esperar la decisión del usuario** sobre el punto de
+  decisión y la verificación manual. Una instrucción genérica de continuar no la
+  sustituye.

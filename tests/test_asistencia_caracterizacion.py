@@ -7,7 +7,9 @@ heredadas de la capa 1, cosa que no le paso a `dashboard`, `notas` ni `ventas`:
 
 Lo que ninguno de los dos toca, y este archivo fija:
 
-- las guardias estructurales de la linea base previa a cualquier extraccion;
+- la frontera de persistencia, cerrada por 7.1 en el noveno repositorio. Las dos
+  guardias de linea base que 7.0 dejo puestas fallaron al extraer, que era la
+  senal esperada, y estan sustituidas por sus versiones positivas;
 - la frontera real del dominio, que resulto ser de tres archivos y no de dos;
 - los DOS idiomas de conexion que conviven, herencia de que 1.4g migrase
   1 sitio de 2;
@@ -39,6 +41,7 @@ RAIZ = Path(__file__).resolve().parents[1]
 CONTROLADOR = "app/controllers/asistencia_controller.py"
 RUTA = "app/routes/asistencia.py"
 ESQUEMA = "app/schemas/asistencia.py"
+REPOSITORIO = "app/repositories/asistencia_repository.py"
 
 ADMIN = {"id": 7, "rol": "admin", "tenant": "tenant_demo"}
 PROFESOR = {"id": 3, "rol": "profesor", "tenant": "tenant_demo"}
@@ -183,21 +186,29 @@ def _registro(estudiante_id=1, asignacion_id=10, fecha=date(2026, 7, 15), period
 
 
 # ---------------------------------------------------------------------------
-# Bloque 1: guardias de linea base.
+# Bloque 1: la frontera de persistencia, ya cerrada por 7.1.
 #
-# DECLARADAS COMO GUARDIAS. Las tres DEBEN fallar cuando 7.1 extraiga, y esa
-# es la senal esperada, no una rotura. Leccion 14 de la capa 6.
+# Las dos primeras pruebas de este bloque son las versiones POSITIVAS de las dos
+# guardias de linea base que 7.0 dejo puestas y que 7.1 hizo fallar, que era la
+# senal esperada. Leccion 14 de la capa 6, aplicada por quinta vez. La tercera
+# valia antes y sigue valiendo.
 # ---------------------------------------------------------------------------
 
 
-def test_el_dominio_todavia_no_tiene_repositorio_propio():
-    """GUARDIA DE LINEA BASE. Debe fallar cuando 7.1 cree el noveno."""
+def test_el_repositorio_de_asistencia_es_el_noveno():
+    """Sustituye a `test_el_dominio_todavia_no_tiene_repositorio_propio`.
+
+    Enumera el conjunto EXACTO a proposito: obliga a que cada migracion nueva se
+    reconozca en vez de colarse. Es la misma severidad deliberada que llevan las
+    guardias gemelas de dashboard, notas y ventas.
+    """
     repositorios = sorted(
         ruta.stem for ruta in (RAIZ / "app/repositories").glob("*_repository.py")
     )
 
     assert repositorios == [
         "asignaciones_repository",
+        "asistencia_repository",
         "dashboard_repository",
         "estudiantes_repository",
         "notas_repository",
@@ -206,22 +217,77 @@ def test_el_dominio_todavia_no_tiene_repositorio_propio():
         "reportes_repository",
         "ventas_repository",
     ]
-    assert "asistencia_repository" not in repositorios
+    assert len(repositorios) == 9
 
 
-def test_las_tres_sentencias_viven_hoy_en_el_controlador():
-    """GUARDIA DE LINEA BASE. Debe fallar cuando 7.1 las mueva."""
-    literales = _literales_sql(CONTROLADOR)
+def test_las_tres_sentencias_viven_ahora_en_el_repositorio():
+    """Sustituye a `test_las_tres_sentencias_viven_hoy_en_el_controlador`."""
+    literales = _literales_sql(REPOSITORIO)
 
     assert len(literales) == 3
     assert sum("DELETE FROM asistencia" in s for s in literales) == 1
     assert sum("INSERT INTO asistencia" in s for s in literales) == 1
     assert sum("JOIN asistencia a" in s for s in literales) == 1
 
+    assert _literales_sql(CONTROLADOR) == set()
+
 
 def test_la_ruta_no_contiene_sql():
-    """GUARDIA: hoy vale y debe seguir valiendo despues de 7.1."""
+    """GUARDIA: valia antes de 7.1 y sigue valiendo despues."""
     assert _literales_sql(RUTA) == set()
+
+
+def test_las_tres_funciones_publicas_reciben_el_cursor():
+    arbol = ast.parse((RAIZ / REPOSITORIO).read_text(encoding="utf-8"))
+    funciones = [
+        nodo
+        for nodo in arbol.body
+        if isinstance(nodo, ast.FunctionDef) and not nodo.name.startswith("_")
+    ]
+
+    assert [f.name for f in funciones] == [
+        "borrar_asistencia_del_lote",
+        "insertar_asistencia",
+        "leer_historial_de_asignacion",
+    ]
+    for funcion in funciones:
+        assert funcion.args.args[0].arg == "cursor"
+
+
+def test_el_repositorio_no_es_dueno_de_ningun_recurso():
+    """No abre, no cierra, no confirma y no revierte. Esa propiedad es del
+    controlador, y en los DOS idiomas."""
+    arbol = ast.parse((RAIZ / REPOSITORIO).read_text(encoding="utf-8"))
+
+    metodos = {
+        nodo.func.attr
+        for nodo in ast.walk(arbol)
+        if isinstance(nodo, ast.Call) and isinstance(nodo.func, ast.Attribute)
+    }
+    nombres = {
+        nodo.func.id
+        for nodo in ast.walk(arbol)
+        if isinstance(nodo, ast.Call) and isinstance(nodo.func, ast.Name)
+    }
+    importados = {
+        alias.name
+        for nodo in ast.walk(arbol)
+        if isinstance(nodo, (ast.Import, ast.ImportFrom))
+        for alias in nodo.names
+    }
+
+    assert metodos <= {"execute", "fetchall"}
+    assert "commit" not in metodos and "rollback" not in metodos and "close" not in metodos
+    assert nombres == set()
+    assert importados == set()
+
+
+def test_el_repositorio_no_conoce_detalles_http():
+    """Convencion de `app/repositories/README.md`: datos simples, nada de FastAPI."""
+    fuente = (RAIZ / REPOSITORIO).read_text(encoding="utf-8")
+
+    assert "fastapi" not in fuente.lower()
+    assert "HTTPException" not in fuente
 
 
 # ---------------------------------------------------------------------------

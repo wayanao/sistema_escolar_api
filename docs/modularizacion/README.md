@@ -44,7 +44,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 7 | Resto de dominios — **`dashboard` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `dashboard` el 2026-08-19; publicada y verificada a mano | [07_DASHBOARD.md](./07_DASHBOARD.md) |
 | 7 | Resto de dominios — **`notas` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `notas` el 2026-08-19; verificada a mano. **Publicada el 2026-08-20**, después de escribirse su bitácora | [07_NOTAS.md](./07_NOTAS.md) |
 | 7 | Resto de dominios — **`ventas` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `ventas` el 2026-08-20; verificada a mano. **Publicada el 2026-08-20**, después de escribirse su bitácora | [07_VENTAS.md](./07_VENTAS.md) |
-| 7 | Resto de dominios — **`asistencia` en migración** | Migración individual con contratos y pruebas | **Activa** desde el 2026-08-20; **7.0 pendiente y no iniciada**. Los demás dominios, **en espera** | [07_ASISTENCIA.md](./07_ASISTENCIA.md) |
+| 7 | Resto de dominios — **`asistencia` en migración** | Migración individual con contratos y pruebas | **Activa** desde el 2026-08-20; **7.0 cerrada**, **7.1 pendiente y no iniciada**. Los demás dominios, **en espera** | [07_ASISTENCIA.md](./07_ASISTENCIA.md) |
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
 cierre y el usuario ordene continuar, se crea su sucesora desde
@@ -156,7 +156,8 @@ advertencias que las bitácoras cerradas ya registraban sobre esa lista; **no se
 dedujo por inferencia**. Una primera instrucción de «activar otro dominio de la
 capa» **no bastó**, porque no nombraba ninguno y habría dejado el alcance
 abierto; el trabajo se detuvo hasta que el usuario lo nombró. Su bitácora es
-[07_ASISTENCIA.md](./07_ASISTENCIA.md) y su **7.0 está pendiente y no
+[07_ASISTENCIA.md](./07_ASISTENCIA.md) y su **7.0 quedó cerrada el mismo día;
+7.1 está pendiente y no
 iniciada**.
 
 Ningún otro se activa por inferencia: boletín, observaciones, planilla,
@@ -1184,11 +1185,63 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   1.4g, donde «sitio» significaba apertura de conexión y **no** función. Es la
   lección 12 de la capa 6, que ya sirvió tres veces, y marcar la inferencia como
   tal es lo que permitió refutar limpiamente el supuesto de permisos en `ventas`.
-- Capa activa: **la capa 7 para el dominio `asistencia`**, con **7.0 pendiente y
-  no iniciada**. Quedan **ocho** dominios en espera: `boletin`, `observaciones`,
-  `planilla`, `planeador_anual`, `plan_de_clases`, `branding`, `profesores` y
-  `super_admin`. Dos de ellos, `boletin` y `planilla`, **no son fronteras
-  limpias**: `notas` ya posee esas rutas, como registró su 7.0.
+- Resultado de 7.0 de `asistencia`: el dominio quedó inventariado en **3
+  archivos** —el supuesto decía dos—, **2 entradas HTTP** con **dos modelos de
+  permiso**, **una sola tabla escrita**, **una transacción propia** y **3
+  sentencias SQL inline**, todas en el controlador y 0 en la ruta y el esquema,
+  protegido por **34 pruebas nuevas** sobre las **12 heredadas** de la capa 1. Es
+  **el dominio más pequeño que ha migrado el programa**: 3 sentencias frente a
+  las 17 de `ventas`, las 9 de `notas` y las 8 de `dashboard`. La compuerta local
+  terminó con **869 pruebas**, Ruff y dependencias correctas. No se modificó
+  producto: el diff es un solo archivo nuevo.
+- **Los doce supuestos quedaron resueltos en 7.0**: **diez confirmados y dos
+  incompletos**, y **ninguno falso**. Es la primera vez en el programa que no
+  cae ninguno: en dashboard, notas y ventas siempre hubo uno falso o incompleto
+  que cambiaba algo importante. Los dos incompletos aquí son menores: el dominio
+  son **tres archivos y no dos** —el tercero es el esquema, con cero SQL, no un
+  tercio de la persistencia como en `notas`— y las pruebas heredadas son **doce
+  y no cinco**. **La inferencia de patrón se confirmó**, por primera vez: el
+  controlador sí tiene exactamente dos funciones, aunque acertó **por
+  casualidad**, porque «sitio» en la capa 1 significaba apertura de conexión y
+  no función.
+- **El hallazgo que manda es un N+1 en CONEXIONES, y es el peor perfil que ha
+  medido el programa.** `require_estudiante_in_asignacion` abre su propia
+  conexión y la ruta la llama **una vez por estudiante del lote**: guardar la
+  asistencia de un curso de 30 abre **31 conexiones en serie** siendo admin y
+  **61** siendo profesor, contra un pool de **10** y **5 workers**. **No se ve
+  midiendo el controlador**, que abre una sola conexión en sus dos caminos; solo
+  aparece al medir el camino HTTP completo. Es el **tercer caso** de conexiones
+  en serie tras los 4 de dashboard y los 4 o 5 de notas, y **el primero cuyo
+  número crece con el tamaño de la entrada**: la evidencia real que le faltaba a
+  `MAX_DB_CONNECTIONS_PER_THREADPOOL_WORKER = 2`. Se registra **sin actuar**, y
+  las dos funciones viven en `app/core/permissions.py`, **fuera de alcance**.
+- Hallazgos de 7.0 de `asistencia`, **registrados y sin corregir**: son **ocho**.
+  Además del N+1, el permiso de asignación **se comprueba N veces con el mismo
+  argumento** pese a que la ruta ya validó que todos comparten asignación; las
+  **tres validaciones de lote viven en la capa de rutas** y el controlador no las
+  repite, de modo que el `DELETE` toma fecha y periodo de `data[0]` mientras cada
+  `INSERT` usa los suyos; el controlador **no valida `estado`** y escribe lo que
+  reciba; el `ILIKE 'ausente'` vive **enteramente fuera del dominio**, en los dos
+  consumidores ya migrados; la lectura **no tiene `try/except`**, así que un
+  fallo sale como 500; y ninguna entrada declara `response_model`.
+- **Lo que 7.0 de `asistencia` buscó expresamente y no encontró**: el patrón del
+  falso éxito de `POST /notas` **no está aquí**. Medido por ASGI,
+  `POST /asistencia` responde **200** solo cuando la transacción confirma, y
+  **422** ante lote vacío, lote heterogéneo o `estado` desconocido. Tampoco hay
+  `SELECT *`, ni f-strings en SQL, ni código muerto, ni funciones duplicadas: el
+  dominio está limpio en todo lo que las tres capas 7 anteriores hallaron sucio.
+- **El hueco de las pruebas heredadas quedó medido punto por punto.** Las doce
+  que dejó la capa 1 cubren bien los contratos de la respuesta y la transacción,
+  pero **ninguna** mide conteos de consultas o conexiones, **ninguna** observa un
+  status code HTTP —las cuatro que comprueban un 422 llaman a la función de ruta
+  directamente— y **ninguna** deja guardias estructurales. **Ninguna se retiró ni
+  se reescribió.** Es la limitación que 7.0 de `notas` destapó para todo el
+  programa, y aquí se cierra para este dominio midiendo por interfaz ASGI cruda.
+- Capa activa: **la capa 7 para el dominio `asistencia`**, con **7.0 cerrada** y
+  **7.1 pendiente y no iniciada**. Quedan **ocho** dominios en espera: `boletin`,
+  `observaciones`, `planilla`, `planeador_anual`, `plan_de_clases`, `branding`,
+  `profesores` y `super_admin`. Dos de ellos, `boletin` y `planilla`, **no son
+  fronteras limpias**: `notas` ya posee esas rutas, como registró su 7.0.
 - **Punto de decisión abierto al terminar 7.1**, con **tres** salidas y no dos:
   dónde vive el `UPDATE pagos`, `response_model` para las cuatro lecturas, y los
   errores de dominio. La tercera es **más fácil aquí que en `notas`**: este

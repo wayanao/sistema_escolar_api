@@ -4,11 +4,15 @@
 
 ## Control
 
-- Estado: **Activa** desde el 2026-08-20.
+- Estado: **Activa** desde el 2026-08-20. **7.0 cerrada** el 2026-08-20.
 - Commit base: `a894441f8676b0486e3395f88179cdf6cba61430`.
 - Rama acordada: `main`.
-- Primera subcapa pendiente: **7.0**, **no iniciada**.
-- Código de producto modificado al activar: **ninguno**.
+- Primera subcapa pendiente: **7.1**, **no iniciada**. Su alcance queda definido
+  por la evidencia de 7.0; ver «Resultado de 7.0» y «Subcapa 7.1 — trabajo
+  exacto».
+- Código de producto modificado al activar: **ninguno**. Tampoco en 7.0: su diff
+  es **un solo archivo de prueba nuevo** y ningún archivo rastreado modificado,
+  igual que los de 5.0, 6.0 y las tres 7.0 anteriores.
 - Dominio de esta capa: **asistencia, y solo ese**. La capa 7 del índice es
   «resto de dominios» y ordena expresamente **priorizar uno a la vez**, así que
   esta bitácora cubre un único dominio. Los demás quedan fuera y necesitarán su
@@ -164,20 +168,24 @@ son restos de lo que las capas 0, 1, 3, 6 y 7 observaron desde fuera, **más una
 inferencia de patrón marcada como tal**. La columna de origen dice de dónde sale
 cada uno, para que 7.0 pueda contrastarlo.
 
-| # | Supuesto | Origen documental | Estado |
+**Los doce quedaron resueltos en 7.0**, uno por uno y con evidencia. **Diez se
+confirmaron y dos resultaron incompletos.** **Ninguno resultó falso**, a
+diferencia de `dashboard`, `notas` y `ventas`, donde siempre cayó uno.
+
+| # | Supuesto | Origen documental | Resultado en 7.0 |
 |---:|---|---|---|
-| 1 | El dominio vive en `app/routes/asistencia.py` y `app/controllers/asistencia_controller.py` | Inventario de contratos de 0.0 y subcapa 1.4g | **No verificado.** `notas` demostró que el recuento de archivos puede fallar: daba dos y eran cuatro, con un tercio de la persistencia en un servicio |
-| 2 | **El dominio escribe**, con un reemplazo parcial transaccional y `rollback` | Inventario de contratos de 0.0, que lo registra como efecto a preservar | **Documentado, no medido.** Es el supuesto que en los tres dominios anteriores fijaba el perfil de riesgo; aquí llega resuelto y 7.0 debe **cuantificarlo**: qué tablas, qué transacción y quién es dueño del ciclo de vida |
-| 3 | `guardar_asistencia_controller` conserva el idioma antiguo y `obtener_historial_asistencia` usa `get_cursor()` | Subcapa 1.4g, «1 sitio de 2» | **No verificado hoy.** Si sigue así, el dominio tiene **dos idiomas de conexión conviviendo**, cosa que no tenía ninguno de los tres anteriores |
-| 4 | **El controlador tiene exactamente dos funciones** | **Inferencia de patrón** a partir del «1 sitio de 2» de 1.4g | **No verificado, y marcado como inferencia.** «Sitio» en la capa 1 significaba apertura de conexión, **no** función. Un controlador puede tener funciones que no abran ninguna. Es el supuesto con más probabilidad de resultar falso, y se marca así a propósito: es lo que permitió refutar limpiamente el de los permisos en `ventas` |
-| 5 | **Los permisos no son uniformes**: usuario autenticado con acceso a la asignación, y el estudiante debe pertenecer a ella; `403` y lote inválido `422` | Inventario de contratos de 0.0 | **No verificado.** En `ventas` el supuesto equivalente resultó **falso** |
-| 6 | Consume `resolver_asignacion_academica_id_cursor` de `app/services/asignacion_academica.py` | Subcapa 6.0, que enumeró los nueve consumidores | **No verificado.** Ese servicio está **fuera de alcance**: se lee, no se toca |
-| 7 | `estudiantes_repository` **lee `asistencia`** en el bloque del expediente | Subcapa 6.2 | **No verificado desde este lado.** Consumidor **ya migrado**; romper su contrato no haría fallar las pruebas de `asistencia` |
-| 8 | `dashboard_repository` **lee `asistencia`** para `GET /dashboard/inasistencias/{profesor_id}`, contando solo `estado ILIKE 'ausente'` y devolviendo los tres peores de cada curso | Subcapas 7.0 y 7.1 de `dashboard` | **No verificado desde este lado.** Segundo consumidor **ya migrado** |
-| 9 | **El estado se compara por texto**, con `ILIKE 'ausente'` | Guion de verificación manual de la capa 6 y contrato de `dashboard` | **No verificado dentro del dominio.** 7.0 debe **mapear dónde** aparece ese criterio y si el propio dominio lo usa al escribir. Es el eco del hallazgo del `ILIKE` de `ventas`: **buscarlo, no corregirlo** |
-| 10 | Existen ya `tests/test_asistencia_historial.py` —5 pruebas— y `tests/test_asistencia_validaciones.py` | Subcapa 1.4g e inventario de 0.0 | **No verificado hoy.** 7.0 debe medir **qué cubren realmente** y no suponer que bastan |
-| 11 | Contratos ya fijados por 1.4g: una fila con `fecha` nula **aparece igualmente** con el historial vacío; `periodo` toma **1** por defecto; la agrupación reúne varias fechas del mismo estudiante en una sola entrada | Subcapa 1.4g, «comportamiento conservado que no era evidente» | **No verificado hoy.** Si siguen vigentes, son contratos que una extracción **no puede cambiar** |
-| 12 | `asistencia` fue una de las **ocho tablas averiadas** de `tenant_2005`, con ~3.125 filas, y tiene clave foránea **a `asignaciones`** con `ON DELETE CASCADE` y **a `estudiantes`** | Capa 3 y subcapa 6.0 | **Confirmado documentalmente**, sin cambio. Un `DELETE` introducido por una extracción borraría en cascada o fallaría contra la clave |
+| 1 | El dominio vive en `app/routes/asistencia.py` y `app/controllers/asistencia_controller.py` | Inventario de contratos de 0.0 y subcapa 1.4g | **INCOMPLETO.** Son **tres archivos, no dos**: existe además `app/schemas/asistencia.py`. Es el mismo tipo de fallo que en `notas`, pero **mucho menos grave**: allí el tercer y cuarto archivo escondían un tercio de la persistencia; aquí el tercero es el **contrato de entrada** y tiene **cero SQL**. No existe `app/services/asistencia_service.py` |
+| 2 | **El dominio escribe**, con un reemplazo parcial transaccional y `rollback` | Inventario de contratos de 0.0, que lo registra como efecto a preservar | **CONFIRMADO y cuantificado.** `guardar_asistencia_controller` emite **1 `DELETE` + N `INSERT`** en **una transacción propia** con `commit` y `rollback` explícitos. **Una sola tabla escrita: `asistencia`.** Es el dominio que menos tablas escribe de los que escriben —`notas` escribía 1 también, `ventas` 4, `pagos` 6— |
+| 3 | `guardar_asistencia_controller` conserva el idioma antiguo y `obtener_historial_asistencia` usa `get_cursor()` | Subcapa 1.4g, «1 sitio de 2» | **CONFIRMADO exactamente.** La escritura abre con `get_connection()` y cierra en `finally`; la lectura usa `with get_cursor() as cursor`. **Dos idiomas conviviendo**, fijado por aserción |
+| 4 | **El controlador tiene exactamente dos funciones** | **Inferencia de patrón** a partir del «1 sitio de 2» de 1.4g | **CONFIRMADO, y conviene decir por qué eso no lo valida.** La bitácora lo marcó como el supuesto **con más probabilidad de resultar falso**, porque «sitio» en la capa 1 significaba apertura de conexión y no función. Acertó **por casualidad**: el controlador tiene exactamente `guardar_asistencia_controller` y `obtener_historial_asistencia`. Es la primera vez en el programa que una inferencia de patrón marcada como tal **se confirma**; en `ventas` la equivalente se refutó |
+| 5 | **Los permisos no son uniformes** | Inventario de contratos de 0.0 | **CONFIRMADO.** El router exige `get_current_user` para las dos entradas; **ambas** exigen `require_asignacion_access`; **solo la escritura** exige además `require_estudiante_in_asignacion`. Son **dos modelos en dos entradas**. `ventas` sigue siendo el único dominio con permisos uniformes |
+| 6 | Consume `resolver_asignacion_academica_id_cursor` | Subcapa 6.0, que enumeró los nueve consumidores | **CONFIRMADO.** Lo llaman **los dos caminos**, y cuesta **1 consulta** sobre el cursor que recibe: no abre conexión propia |
+| 7 | `estudiantes_repository` **lee `asistencia`** en el bloque del expediente | Subcapa 6.2 | **CONFIRMADO.** Una sola lectura, `contar_inasistencias`, un `count(*)` con `estado ILIKE 'ausente'` |
+| 8 | `dashboard_repository` **lee `asistencia`** para `GET /dashboard/inasistencias/{profesor_id}` | Subcapas 7.0 y 7.1 de `dashboard` | **CONFIRMADO.** Una sola lectura, un CTE con `ROW_NUMBER()` por curso, `a.estado ILIKE 'ausente'` y `posicion_curso <= 3` |
+| 9 | **El estado se compara por texto**, con `ILIKE 'ausente'` | Guion de verificación manual de la capa 6 y contrato de `dashboard` | **CONFIRMADO y delimitado, que era el trabajo.** El criterio vive **enteramente fuera del dominio**: en los dos consumidores ajenos. **Ninguna de las tres sentencias del dominio usa `ILIKE`.** El dominio escribe un `estado` restringido por `Literal` a minúsculas y **los dos lectores no se apoyan en esa restricción** |
+| 10 | Existen ya `tests/test_asistencia_historial.py` —5 pruebas— y `tests/test_asistencia_validaciones.py` | Subcapa 1.4g e inventario de 0.0 | **INCOMPLETO, en la dirección favorable.** Son **12 pruebas heredadas, no 5**: 5 en historial y **7** en validaciones. Pero **el hueco es real**: ninguna mide conteos de consultas ni de conexiones, ninguna observa un status code HTTP —todas llaman a las funciones de ruta directamente— y ninguna deja guardias estructurales. Ver «El hueco de las pruebas heredadas» |
+| 11 | Contratos ya fijados por 1.4g: `fecha` nula, `periodo` 1 por defecto, agrupación | Subcapa 1.4g | **CONFIRMADO en código.** La guarda `if r[3]` conserva al estudiante con historial vacío, la firma es `periodo=1` y el diccionario agrupa por `estudiante_id` |
+| 12 | `asistencia` fue una de las **ocho tablas averiadas** de `tenant_2005`, con ~3.125 filas, y tiene clave foránea **a `asignaciones`** con `ON DELETE CASCADE` y **a `estudiantes`** | Capa 3 y subcapa 6.0 | **Confirmado documentalmente**, sin cambio. Relevante para 7.1: el dominio **sí emite un `DELETE`**, aunque acotado por `asignacion_id`, `fecha`, `periodo` y la lista de estudiantes |
 
 ## Alcance autorizado
 
@@ -260,32 +268,179 @@ cada uno, para que 7.0 pueda contrastarlo.
 - Ninguna escritura de archivos cambia de momento, de nombre ni de destino sin
   una decisión explícita y un rollback documentado.
 
-## Línea base
-
-Pendiente: la fija 7.0 antes de tocar nada.
+## Línea base registrada en 7.0
 
 | Comprobación | Comando | Resultado |
 |---|---|---|
-| Compuerta heredada, antes de tocar nada | `.\venv\Scripts\python.exe scripts\verify.py` | **Pendiente.** Debe dar **835 pruebas, exit 0**; si difiere, hay deriva y se investiga antes de seguir |
-| Pruebas específicas heredadas | `.\venv\Scripts\python.exe -m pytest -q -p no:cacheprovider tests\test_asistencia_historial.py tests\test_asistencia_validaciones.py` | Pendiente |
-| Pruebas específicas nuevas | Pendiente de nombrar en 7.0 | Pendiente |
-| Ruff | Ejecutado por la compuerta global y sobre los archivos nuevos | Pendiente |
-| Dependencias | Ejecutado por la compuerta global | Pendiente |
+| Compuerta heredada, **antes de tocar nada** | `.\venv\Scripts\python.exe scripts\verify.py` | **835 pruebas, exit 0.** Coincide exactamente con lo registrado al cerrar `ventas`: **no había deriva** |
+| Pruebas específicas nuevas | `.\venv\Scripts\python.exe -m pytest -q -p no:cacheprovider tests\test_asistencia_caracterizacion.py` | **34 pasaron** en 0,85 s |
+| Suite global | `.\venv\Scripts\python.exe scripts\verify.py` | **869 pasaron**, 5 warnings heredadas, exit 0 |
+| Ruff | Ejecutado por la compuerta global y sobre la prueba nueva | **Correcto** |
+| Dependencias | Ejecutado por la compuerta global | **Íntegras** |
+
+La suite pasó de **835 a 869** con la caracterización de 7.0.
+
+## Inventario y contratos fijados en 7.0
+
+**El dominio son tres archivos**, y es **el más pequeño que ha migrado el
+programa** en superficie y en SQL:
+
+| Archivo | Líneas | Sentencias SQL |
+|---|---:|---:|
+| `app/routes/asistencia.py` | 48 | **0** |
+| `app/controllers/asistencia_controller.py` | 84 | **3** |
+| `app/schemas/asistencia.py` | 10 | **0** |
+
+Tres sentencias frente a las 17 de `ventas`, las 9 de `notas` y las 8 de
+`dashboard`.
+
+**Dos entradas HTTP**, sin prefijo de router:
+
+| Método y path | Controlador | Escribe |
+|---|---|---|
+| `POST /asistencia` | `guardar_asistencia_controller` | **sí** |
+| `GET /asistencia/historial/{asignacion_id}/{periodo}` | `obtener_historial_asistencia` | no |
+
+**Permisos: dos modelos en dos entradas.** El router entero exige
+`Depends(get_current_user)`. Las dos entradas exigen `require_asignacion_access`
+—que deja pasar a `admin` sin consultar y comprueba `profesor_id` para un
+profesor—. **Solo la escritura** exige además `require_estudiante_in_asignacion`.
+No aparece `get_current_active_admin` por ninguna parte.
+
+### Propiedad transaccional y los dos idiomas
+
+La escritura abre con **`get_connection()`**, el idioma anterior a la capa 1, y
+cierra con `try` / `except` / `finally`: `commit` al final, `rollback` y `raise`
+ante cualquier excepción, `cursor.close()` y `conn.close()` siempre. La lectura
+usa **`with get_cursor() as cursor`**, migrada por 1.4g. **El controlador es
+dueño del ciclo de vida en los dos caminos**, fijado por aserción.
+
+**Una sola transacción propia** y **una sola tabla escrita**, `asistencia`, con
+`DELETE` e `INSERT`. La escritura es un **reemplazo parcial**: borra las filas
+de esa asignación, fecha y periodo **solo para los estudiantes del lote**, y
+reinserta.
+
+## Línea base de consultas y conexiones
+
+Medida con dobles. Aquí está el hallazgo principal de la subcapa, y **no se ve
+midiendo solo el controlador**: hay que medir el camino HTTP completo, porque el
+coste vive en el bucle de permisos de la ruta.
+
+| Camino | Conexiones | Consultas |
+|---|---:|---|
+| `guardar_asistencia_controller`, N estudiantes | 1 | **N + 2** |
+| `obtener_historial_asistencia` | 1 | **2** |
+| `POST /asistencia` como **admin**, N estudiantes | **N + 1** | 2N + 2 |
+| `POST /asistencia` como **profesor**, N estudiantes | **2N + 1** | 3N + 2 |
+| `GET /asistencia/historial/...` como admin | 1 | 2 |
+| `GET /asistencia/historial/...` como profesor | 2 | 3 |
+
+**No hay N+1 en consultas por estudiante ajeno al lote**: los conteos variables
+dependen del tamaño del lote, que es el curso que se está pasando. Pero **sí hay
+N+1 en CONEXIONES**, y es el hallazgo 1.
+
+Detalle medido: `resolver_asignacion_academica_id_cursor` cuesta **1 consulta**
+sobre el cursor que recibe y **no abre conexión propia**, en los dos caminos.
+
+## El hueco de las pruebas heredadas
+
+Este dominio llegó con **12 pruebas** —5 en `test_asistencia_historial.py` y 7
+en `test_asistencia_validaciones.py`—, más de las 5 que el supuesto 10
+anticipaba. **El hueco es real de todos modos**, y se midió punto por punto
+contra lo que fijaron las 7.0 de dashboard, notas y ventas:
+
+| Lo que una 7.0 fija | ¿Lo cubrían las heredadas? |
+|---|---|
+| Guardias estructurales de línea base | **No.** Ninguna |
+| Conteos de consultas | **No.** Ninguna |
+| Conteos de **conexiones** | **No.** Ninguna — y es donde estaba el hallazgo |
+| Status codes **HTTP reales** | **No.** Las cuatro que comprueban un 422 **llaman a la función de ruta directamente** y leen `HTTPException`, sin observar nunca una respuesta HTTP |
+| Frontera del dominio y modelo de permisos | **No** |
+| Contratos de la respuesta y de la agrupación | **Sí**, y bien: las 5 de historial |
+| Transacción, `rollback` y reemplazo parcial | **Sí**, dos de validaciones |
+
+Es exactamente la limitación que 7.0 de `notas` destapó para todo el programa:
+**no existe ni un solo `TestClient` en `tests/`**. 7.0 de `asistencia` la cierra
+para su dominio midiendo por **interfaz ASGI cruda**, como hicieron `notas` y
+`ventas`. **Ninguna prueba heredada se retiró ni se reescribió.**
 
 ## Subcapas
 
 | Subcapa | Resultado | Estado |
 |---:|---|---|
-| 7.0 | Inventario, contratos, caracterización y línea base de consultas y conexiones | **Pendiente, no iniciada** |
-| 7.1 | Primera extracción protegida | **Sin definir**: depende de la evidencia de 7.0 |
-| 7.2+ | Sin definir | **Sin definir** |
+| 7.0 | Inventario, contratos, caracterización y línea base de consultas y conexiones | **Cerrada** el 2026-08-20 |
+| 7.1 | Extraer las 3 sentencias a `asistencia_repository` sin cambiar SQL, conteos ni ciclo de vida | **Pendiente, no iniciada** |
+| 7.2 | Punto de decisión: `response_model`, errores de dominio y el N+1 en conexiones | **Sin decidir**: es un punto de decisión, no una subcapa pendiente |
 
-El desglose se deja deliberadamente sin decidir hasta tener la evidencia del
-inventario, igual que hicieron la capa 6 y las tres capas 7 anteriores. Las
-subcapas innecesarias se marcarán `No aplica` con explicación. **Nunca se
-ejecutan dos subcapas en el mismo turno.**
+El desglose se dejó deliberadamente sin decidir hasta tener la evidencia del
+inventario, igual que hicieron la capa 6 y las tres capas 7 anteriores. Con esa
+evidencia, **7.1 queda definida** y el resto sigue abierto. Las subcapas
+innecesarias se marcarán `No aplica` con explicación. **Nunca se ejecutan dos
+subcapas en el mismo turno.**
 
-## Subcapa 7.0 — trabajo exacto
+## Hallazgos de 7.0, registrados y sin corregir
+
+Son **ocho**. Ninguno se corrige en esta capa: 7.0 inventaría y caracteriza, no
+arregla. Todos quedan fijados por aserción para que una extracción posterior no
+los cambie sin que alguien lo note.
+
+1. **N+1 en CONEXIONES, y es el peor perfil que ha medido el programa.**
+   `require_estudiante_in_asignacion` **abre su propia conexión** y la ruta la
+   llama **una vez por estudiante del lote**. Siendo admin, guardar la
+   asistencia de un curso de 30 abre **31 conexiones en serie**; siendo
+   profesor, **61**, porque `require_asignacion_access` también abre la suya.
+   El pool tiene **10 conexiones** y el limitador de la capa 2 deriva **5
+   workers**. `dashboard` encontró 4 conexiones y `notas` 4 o 5; **este es el
+   primero cuyo número crece con el tamaño de la entrada.** Las dos funciones
+   viven en `app/core/permissions.py`, **infraestructura compartida y fuera de
+   alcance**, igual que `require_estudiante_access` lo estuvo para `notas`.
+   Verificado por aserción con lotes de cinco.
+2. **El permiso de asignación se comprueba N veces con el mismo argumento.** La
+   ruta **ya validó** que los N registros comparten `asignacion_id`, y aun así
+   llama a `require_asignacion_access` una vez por estudiante con el mismo
+   valor. Es desperdicio puro. La prueba heredada
+   `test_guardar_asistencia_valida_permisos_y_envia_lote` **ya lo fijaba por
+   aserción** —espera `[(10, 3), (10, 3)]`— sin señalarlo como defecto.
+3. **Las tres validaciones de lote viven en la capa de rutas.** Que el lote no
+   esté vacío, que los registros compartan asignación, fecha y periodo, y que no
+   haya estudiantes duplicados: las tres son **reglas de dominio** y ninguna se
+   repite en el controlador. Es el simétrico del hallazgo de `/mis-clases` de la
+   capa 6: allí había SQL de dominio en la ruta; aquí hay **reglas** de dominio.
+4. **Y esa ubicación tiene consecuencia medible.** El `DELETE` toma `fecha` y
+   `periodo` de **`data[0]`** mientras cada `INSERT` usa los **del item**. Hoy
+   es inocuo porque la ruta valida antes que coincidan, pero **quien llame al
+   controlador directamente** con un lote heterogéneo borraría por un contexto e
+   insertaría por otro. Fijado por aserción.
+5. **El controlador no valida `estado`.** Inserta `item.estado` crudo; el
+   `Literal["presente", "ausente"]` del esquema **solo protege el camino HTTP**.
+   Comprobado: llamando al controlador con `"EXCUSA"` se escribe `"EXCUSA"`.
+6. **El `ILIKE 'ausente'` vive enteramente fuera del dominio.** El dominio
+   escribe un valor restringido a minúsculas y **ninguna de sus tres sentencias
+   usa `ILIKE`**; los **dos** consumidores ajenos ya migrados sí lo usan, sin
+   apoyarse en esa restricción. No es un defecto activo —`ILIKE` sin comodines
+   es igualdad sin distinguir mayúsculas—, pero significa que **el contrato del
+   campo no está donde parece**: una fila heredada con `"Ausente"` la cuentan
+   los dos lectores y el dominio ya no puede producirla.
+7. **La lectura no tiene `try/except`.** Solo la escritura lo tiene, y su
+   `except` hace `rollback` y **reenvía**. Un fallo de infraestructura en
+   cualquiera de las dos entradas sale como **500**, no como 4xx. Es el mismo
+   hallazgo que 7.0 de `notas` registró para su dominio entero.
+8. **Ninguna de las dos entradas declara `response_model`.** No es un defecto;
+   se fija por aserción para que añadirlo **no entre por inferencia** en 7.1.
+
+### Lo que 7.0 buscó expresamente y **no** encontró
+
+- **El patrón del falso éxito de `POST /notas` no está aquí.** Medido por ASGI,
+  `POST /asistencia` responde **200** con `{"mensaje": "Asistencia guardada"}`
+  solo cuando la transacción confirma; un lote vacío responde **422**, un lote
+  heterogéneo **422** y un `estado` desconocido **422**, este último rechazado
+  por Pydantic antes de llegar al controlador. **El cliente siempre se entera.**
+- **No hay `SELECT *`**, ni f-strings en SQL, ni código muerto, ni una segunda
+  definición de ninguna función. El dominio es pequeño y está limpio en todo lo
+  que las tres capas 7 anteriores encontraron sucio.
+- **No toca `storage`**: el rollback no necesita cubrir archivos.
+
+## Subcapa 7.0 — trabajo exacto, ejecutado y cerrado
 
 1. **Reproducir la compuerta heredada antes de tocar nada** y comprobar que da
    **835 pruebas y exit 0**.
@@ -337,6 +492,70 @@ ejecutan dos subcapas en el mismo turno.**
 - Pruebas específicas, compuerta global, Ruff y dependencias correctos.
 - Diff exclusivo de la subcapa: un archivo de prueba nuevo y esta bitácora.
 - `git diff --check` correcto.
+
+Estado de los nueve criterios al 2026-08-20:
+
+| Criterio | Estado |
+|---|---|
+| Dominio inventariado | **Cumplido**: 3 archivos, 2 entradas, 2 modelos de permiso, 1 tabla escrita, 1 transacción propia y 3 sentencias inline |
+| Doce supuestos resueltos | **Cumplido**: **diez confirmados y dos incompletos**; ninguno falso |
+| Línea base de consultas y conexiones | **Cumplido**: seis caminos fijados por aserción, incluidos los dos de la ruta completa que destaparon el N+1 en conexiones |
+| Hueco de las pruebas heredadas medido | **Cumplido**: tabla punto por punto; **ninguna se retiró ni se reescribió** |
+| Punto de decisión sobre las lecturas ajenas documentado sin resolver | **Cumplido**: las dos lecturas quedan clasificadas y fijadas por prueba; **no se movió ninguna** |
+| Hallazgos registrados sin corregir | **Cumplido**: ocho, ninguno corregido |
+| Pruebas, compuerta, Ruff y dependencias | **Cumplido**: 34 específicas y **869 globales, exit 0** |
+| Diff exclusivo | **Cumplido**: un archivo de prueba nuevo; **ningún archivo rastreado modificado** |
+| `git diff --check` | **Cumplido**: limpio |
+
+**Los nueve criterios quedan resueltos. La subcapa 7.0 queda cerrada.**
+
+## Subcapa 7.1 — trabajo exacto
+
+Queda **definida por la evidencia de 7.0** y **no iniciada**.
+
+1. Crear `app/repositories/asistencia_repository.py`, **el noveno repositorio**
+   del proyecto, con funciones que **reciben el cursor existente** y no abren ni
+   cierran nada. La propiedad de conexión, `commit` y `rollback` **se queda en
+   el controlador**, en **los dos idiomas**: la escritura seguirá con
+   `get_connection()` y la lectura con `get_cursor()`.
+2. Mover las **3 sentencias** conservando su texto **byte a byte**. Si alguna
+   necesitara cambiar de texto, **pedir autorización explícita**, como hizo 5.1
+   y como no necesitaron la capa 6 ni las tres capas 7.
+3. **No unificar los dos idiomas de conexión.** Sería una mejora real y
+   **cambiaría los conteos fijados por aserción**: queda como trabajo
+   disponible.
+4. **No tocar el N+1 en conexiones.** Vive en `app/core/permissions.py`,
+   infraestructura compartida y fuera de alcance. Corregirlo exige orden
+   explícita y probablemente una auditoría de capacidad propia, que es el
+   pendiente que la capa 2 dejó abierto.
+5. **No mover las dos lecturas ajenas** de `estudiantes_repository` y
+   `dashboard_repository`. Ese es el punto de decisión de 7.2, no de 7.1, y
+   ampliaría el diff a módulos que las capas 6 y 7 cerraron.
+6. Conservar los **conteos de consultas y de conexiones** exactamente como 7.0
+   los fijó.
+7. Ejecutar el **comparador AST contra el commit base** `a894441` para demostrar
+   conjunto de SQL idéntico y literales byte a byte, **y además la comprobación
+   de `(SQL, parámetros)` y retorno** que 7.1 de `ventas` incorporó al programa.
+   Con tres sentencias y dos caminos es barata y cierra el hueco de evidencia.
+8. Las **tres guardias de línea base** que 7.0 dejó puestas
+   —`test_el_dominio_todavia_no_tiene_repositorio_propio`,
+   `test_las_tres_sentencias_viven_hoy_en_el_controlador` y
+   `test_la_ruta_no_contiene_sql`— **deben fallar las dos primeras y seguir en
+   verde la tercera**. Es la señal esperada, lección 14 de la capa 6, aplicada
+   por quinta vez. Se sustituyen por versiones positivas.
+9. **Revisar antes las pruebas de hallazgo ancladas a un archivo concreto.** Es
+   la lección que 7.1 de `ventas` aprendió: preveía dos fallos y fueron cuatro,
+   porque dos pruebas de hallazgo también eran guardias sin estar rotuladas. En
+   este archivo son candidatas `test_el_borrado_toma_el_contexto_del_primer_registro`,
+   `test_las_tres_validaciones_de_lote_viven_en_la_ruta` y
+   `test_el_dominio_no_tiene_ningun_try_except_propio_en_la_lectura`.
+10. **Ejecutar la compuerta completa**, no solo las pruebas del dominio: las
+    **dos** guardias que enumeran el conjunto exacto de repositorios, en
+    `test_dashboard_caracterizacion.py` y `test_notas_caracterizacion.py`,
+    **volverán a fallar al aparecer el noveno**, igual que con el séptimo y el
+    octavo. La de este archivo también.
+11. **No corregir ninguno de los ocho hallazgos.**
+12. Punto exacto donde detenerse: con 7.1 cerrada y su bitácora actualizada.
 
 ## Criterios de cierre de la capa
 
@@ -521,15 +740,88 @@ ejecutan dos subcapas en el mismo turno.**
 - Estado al cerrar el turno de activación: capa 7 **activa** para el dominio
   `asistencia`; **7.0 pendiente y no iniciada**.
 - Siguiente acción exacta: ejecutar únicamente **7.0** conforme al trabajo
-  exacto de arriba y detenerse antes de 7.1.
+  exacto de arriba y detenerse antes de 7.1. *(Ejecutada en el turno siguiente;
+  ver el cierre de 7.0 más abajo.)*
+
+### 2026-08-20 — cierre de 7.0
+
+- Modo de acceso: mismo checkout local; Git validado directamente en
+  `C:\Users\David\Documents\sistema_escolar_api`.
+- Autorización: el usuario ordenó continuar. **Con capa activa esa orden sí
+  autoriza**, porque el índice manda ejecutar la primera subcapa pendiente de la
+  bitácora activa; lo que una instrucción genérica no autoriza es **activar** una
+  capa cuando no hay ninguna, que era el caso de dos turnos antes.
+- Precondición Git: rama `main`, **árbol limpio**, `HEAD`
+  `4e38e6caf8f3598694b89e799e77966efa93aad7`, el commit de activación que el
+  usuario hizo entre turnos. El commit base `a894441` existe y es ancestro, y el
+  único commit posterior es esa activación, explicada en esta bitácora.
+- **Compuerta heredada reproducida antes de tocar nada**:
+  `.\venv\Scripts\python.exe scripts\verify.py` → **835 pruebas, exit 0**, Ruff
+  correcto, `pip check` íntegro. Coincide exactamente con lo registrado al
+  cerrar la capa 7 para `ventas`, así que la línea base no tenía deriva.
+- Archivos creados: `tests/test_asistencia_caracterizacion.py`, **34 pruebas**.
+  Archivos modificados: esta bitácora y `docs/modularizacion/README.md`.
+  **Código de producto: ninguno.** `git status` mostró un solo archivo sin
+  rastrear y **ningún archivo rastreado modificado**.
+- Compuerta tras la caracterización: **869 pruebas, exit 0**, Ruff correcto,
+  `pip check` íntegro. La suite pasó de **835 a 869**.
+- `git diff --check`: **limpio**.
+- **La frontera se buscó por tabla y por símbolo, no por nombre de archivo**, y
+  fue lo que destapó el tercer archivo: un `grep` de la tabla sobre `app/`
+  devolvió diez archivos, de los cuales tres son el dominio y dos son los
+  consumidores ya migrados.
+- **El hallazgo principal no se veía midiendo el controlador.** Los conteos del
+  controlador son buenos —1 conexión en los dos caminos—; el N+1 aparece solo al
+  medir **el camino HTTP completo**, porque el coste vive en el bucle de
+  permisos de la ruta. Es la confirmación más fuerte del criterio que las tres
+  capas 7 anteriores fijaron: **medir consultas sin medir conexiones esconde el
+  coste real**, y aquí además había que subir un nivel, hasta la ruta.
+- **La inferencia de patrón se confirmó**, por primera vez en el programa. El
+  supuesto 4 daba dos funciones al controlador y son dos. Se registra que
+  **acertó por casualidad**: «sitio» en la capa 1 significaba apertura de
+  conexión y no función, así que la deducción no era válida aunque el resultado
+  lo fuera. Marcarla como inferencia siguió siendo lo correcto.
+- **Evidencia que esta subcapa aporta al programa**: `asistencia` es el **tercer
+  caso** de camino con varias conexiones en serie —tras los 4 de `dashboard` y
+  los 4 o 5 de `notas`— y **el primero cuyo número crece con el tamaño de la
+  entrada**. Es la evidencia real que le faltaba a
+  `MAX_DB_CONNECTIONS_PER_THREADPOOL_WORKER = 2`, el pendiente que la capa 2
+  dejó abierto el 2026-08-17. **Se registra sin actuar**: cambiar esa constante
+  exige una auditoría de capacidad propia.
+- Hallazgos: **ocho**, todos **registrados y sin corregir**.
+- PostgreSQL, migraciones, producción, commit, push y deploy: **ninguno por
+  parte del asistente**.
+- Estado al cerrar el turno: capa 7 **activa** para `asistencia`; **7.0
+  cerrada**; **7.1 pendiente y no iniciada**.
+- Siguiente acción exacta: ejecutar únicamente **7.1** conforme a su trabajo
+  exacto y detenerse antes de cualquier otra subcapa. **No se inició en este
+  turno.**
 
 ## Entrega al próximo chat
 
 - Capa activa: **la capa 7 para el dominio `asistencia`**, activada el
   2026-08-20. **Es el único dominio activo**; los otros ocho siguen en espera.
-- Última subcapa terminada: **ninguna**.
-- Primera subcapa pendiente: **7.0**, no iniciada. Su trabajo exacto está
-  arriba, en quince pasos, y el punto donde detenerse es antes de 7.1.
+- Última subcapa terminada: **7.0**, cerrada el 2026-08-20.
+- Primera subcapa pendiente: **7.1**, no iniciada. Su trabajo exacto está
+  arriba, en doce pasos, y el punto donde detenerse es antes de cualquier otra
+  subcapa.
+- Compuerta al cerrar 7.0: **869 pruebas, exit 0**, Ruff correcto y `pip check`
+  íntegro. La suite pasó de **835 al activar la capa a 869**.
+- Lo que 7.0 dejó medido: el dominio son **tres archivos** —el supuesto decía
+  dos—; **2 entradas HTTP** con **dos modelos de permiso**; **una sola tabla
+  escrita**, `asistencia`; **una transacción propia**; **3 sentencias SQL
+  inline**, todas en el controlador y 0 en la ruta y el esquema; **34 pruebas de
+  caracterización** nuevas sobre las **12 heredadas** de la capa 1. Es **el
+  dominio más pequeño que ha migrado el programa**.
+- **Los doce supuestos quedaron resueltos**: **diez confirmados y dos
+  incompletos**, y **ninguno falso** —la primera vez que no cae ninguno—. Los
+  dos incompletos: el dominio son tres archivos y no dos, y las pruebas
+  heredadas son doce y no cinco.
+- **El hallazgo que manda es el N+1 en CONEXIONES** del bucle de permisos de la
+  ruta: guardar la asistencia de un curso de 30 abre **31 conexiones** siendo
+  admin y **61** siendo profesor, contra un pool de 10 y 5 workers. **No se ve
+  midiendo el controlador**, que abre una sola en los dos caminos. Vive en
+  `app/core/permissions.py`, **fuera de alcance**, y **7.1 no lo toca**.
 - Commit base: `a894441f8676b0486e3395f88179cdf6cba61430`, rama `main`,
   **publicado y desplegado**, comprobado contra el remoto real.
 - Bloqueos: ninguno. Verificaciones heredadas **pendientes y aceptadas** por
@@ -537,33 +829,36 @@ ejecutan dos subcapas en el mismo turno.**
   `DB_STATEMENT_TIMEOUT_MS` (capa 1), evidencia de GitHub Actions posterior a la
   capa 0, y los **tres pasos del guion de `ventas`** que no constan. La
   credencial privilegiada de la capa 4 sigue **sin rotar**.
-- Compuerta que 7.0 debe reproducir antes de tocar nada: **835 pruebas, exit 0**,
-  Ruff correcto y `pip check` íntegro. Si difiere, hay deriva.
 - Lo que hay que recordar antes de tocar nada:
   1. **Un solo dominio.** `dashboard`, `notas` y `ventas` están cerrados en sus
      propias bitácoras y los otros ocho siguen en espera.
-  2. **El dominio escribe, y eso ya está documentado por la capa 0**, no es un
-     supuesto abierto. Lo que falta es cuantificarlo.
-  3. **Llega con pruebas ya escritas**, cosa que no le pasó a ninguno de los
-     tres anteriores. **No suponer que bastan**: se escribieron para proteger el
-     ciclo de vida de conexiones, no el contrato HTTP.
-  4. **Llega parcialmente migrado por la capa 1**, con dos idiomas de conexión
-     conviviendo. Unificarlos cambiaría los conteos y **no es parte de la
-     extracción**.
+  2. **El dominio escribe una sola tabla en una sola transacción**, con un
+     reemplazo parcial: `DELETE` acotado más N `INSERT`. El `rollback` es del
+     controlador y 7.1 no puede moverlo.
+  3. **Los dos idiomas de conexión se conservan.** Unificarlos bajaría el coste
+     pero **cambiaría los conteos fijados por aserción**: trabajo disponible, no
+     parte de la extracción.
+  4. **El N+1 en conexiones no se toca.** Vive en `app/core/permissions.py`,
+     infraestructura compartida. Es el hallazgo más grave y **7.1 no lo corrige**.
   5. **Dos consumidores ajenos ya migrados** leen esta tabla:
      `estudiantes_repository` y `dashboard_repository`. Romper su contrato **no
      haría fallar las pruebas de `asistencia`**, solo la compuerta global.
-     Ejecutarla siempre completa.
-  6. **No fiarse de los nombres.** El supuesto 4 —que el controlador tiene dos
-     funciones— está marcado **como inferencia de patrón** a propósito: «sitio»
-     en la capa 1 significaba apertura de conexión, no función.
-  7. **No corregir ningún hallazgo**, ni los de esta capa ni los treinta y tres
-     que dashboard, notas y ventas dejaron abiertos.
-  8. **El `ILIKE 'ausente'` se mapea, no se arregla.**
+     Ejecutarla siempre completa: **dos guardias de repositorios volverán a
+     fallar** al aparecer el noveno.
+  6. **Una prueba de hallazgo anclada a un archivo es también una guardia de
+     línea base.** Lección de 7.1 de `ventas`: hay tres candidatas en el archivo
+     nuevo, listadas en el paso 9 del trabajo exacto de 7.1.
+  7. **No corregir ninguno de los ocho hallazgos**, ni los treinta y tres que
+     dashboard, notas y ventas dejaron abiertos.
+  8. **El `ILIKE 'ausente'` está mapeado y vive fuera del dominio.** No se
+     arregla.
 - **Residuos documentales abiertos**: `07_VENTAS.md` describe su capa como no
   publicada y su rollback como puramente local, y **ya no es cierto**; el índice
   lo registra corregido, la bitácora cerrada no se editó. Y el índice conserva
   un párrafo que declara abierto el punto de decisión de `ventas` y pendiente su
   verificación manual, cuando las dos cosas se resolvieron. Corregir cualquiera
   de los dos exige una orden explícita.
-- Siguiente acción exacta: ejecutar únicamente **7.0** y detenerse antes de 7.1.
+- **Pendiente la publicación de esta capa.** Los commits se quedan en local
+  hasta que el usuario decida; publicar dispara el despliegue.
+- Siguiente acción exacta: ejecutar únicamente **7.1** y detenerse antes de
+  cualquier otra subcapa.

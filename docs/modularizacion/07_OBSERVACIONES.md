@@ -4,13 +4,14 @@
 
 ## Control
 
-- Estado: **Activa** desde el 2026-08-21, con sus subcapas **7.0 y 7.1
-  cerradas**, ambas el mismo día.
+- Estado: **Cerrada** el 2026-08-21, con sus dos subcapas **7.0 y 7.1**
+  completas —ambas del mismo día— y la **verificación manual ejecutada por el
+  usuario con resultado correcto**. Activada el 2026-08-21.
 - Commit base: `fd3f93a2ad97daa0a34081eb2f95504dd1a9e4df`.
 - Rama acordada: `main`.
 - Primera subcapa pendiente: **ninguna definida**. Con 7.1 la **frontera de
-  persistencia del dominio quedó cerrada**. Queda un **punto de decisión**
-  abierto y la **verificación manual pendiente**; ver al final.
+  persistencia del dominio quedó cerrada**. **El usuario decidió cerrar la capa
+  aquí**, sin abrir 7.2. Ver «Punto de decisión, resuelto el 2026-08-21».
 - Código de producto modificado al activar: **Ninguno**. Tampoco en 7.0: su diff
   es **un solo archivo de prueba nuevo** y ningún archivo rastreado modificado,
   igual que los de 5.0, 6.0 y las cinco 7.0 anteriores. **7.1 sí modifica
@@ -715,44 +716,212 @@ orden explícita. Van ordenados por gravedad.
   decisión y la verificación manual. Una instrucción genérica de continuar no la
   sustituye.
 
-## Punto de decisión, abierto al terminar 7.1
+### 2026-08-21 — verificación manual y cierre de la capa
 
-La frontera de persistencia del dominio **está cerrada** y, a diferencia de los
-cinco dominios anteriores, **la capa HTTP se quedó sin SQL**. Lo que queda del
-objetivo de la capa es la parte condicional del índice, que **no entra por
-inferencia**. Hay **tres** salidas y ninguna está tomada:
+- Commit observado: `4bceabb`, el de 7.1. Árbol limpio, verificado con
+  `git status --porcelain=v1` con salida vacía. Los tres commits posteriores al
+  base —`dac6425` la activación, `eaa8115` la 7.0 y `4bceabb` la 7.1— están
+  explicados en esta bitácora.
+- **Estado remoto comprobado, no supuesto**: `origin/main` sigue en
+  `fd3f93a2ad97daa0a34081eb2f95504dd1a9e4df`, el commit base, confirmado contra
+  el remoto real con `git ls-remote origin main`. **La capa no está publicada.**
+- Compuerta de cierre: `.\venv\Scripts\python.exe scripts\verify.py` →
+  **925 pruebas, exit 0**, Ruff correcto, `pip check` íntegro.
+- `git diff --check`: sin problemas. Sin cambios de producto en este turno: el
+  cierre toca **solo documentación**.
+- **Verificación manual: hecha por el usuario, con resultado correcto**, el
+  2026-08-21, en local. **Registrada sin inflarla**: el usuario la reportó **de
+  forma global y con una reserva explícita** —«ya comprobé, y aparentemente está
+  bien»—. **No consta ningún paso del guion confirmado uno por uno**, porque no
+  se preguntó punto por punto antes de cerrar. **Es el segundo dominio
+  consecutivo en el tramo más débil**, tras `boletin`, y con la misma reserva
+  literal. `notas` sigue siendo la más fuerte; `asistencia` dejó constancia de
+  un paso de cuatro; `ventas`, `boletin` y ahora `observaciones`, de ninguno.
+- **Lo que más habría valido confirmar, y no consta**: guardar una observación
+  **sobre una que ya existía**, para ver el `UPSERT` sustituyendo las tres
+  dimensiones; y **enviar las tres vacías** para comprobar que sigue saliendo un
+  **422** y no un 500. El segundo importa especialmente porque **ese status lo
+  sostiene solo el esquema** —el hallazgo 4— y es lo que una extracción
+  descuidada habría roto en silencio.
+- **Atenuante registrado, que no sustituye a la verificación**: 7.1 demostró la
+  equivalencia **en ejecución** de los dos caminos y tres escenarios —lectura
+  con fila, lectura sin fila y `UPSERT`— contra el código del commit base,
+  incluyendo el **orden de los guards** dentro de la secuencia. Es la evidencia
+  automática más completa de las seis 7.1 del programa, pero **no observa la
+  base de datos real ni el frontend**, así que el hueco del guion sigue siendo
+  un hueco.
+- Decisiones: cerrar la capa sin abrir 7.2, registrada abajo.
+- Riesgos: los nueve hallazgos de 7.0 siguen vivos y sin corregir.
+- Siguiente acción exacta: **ninguna dentro de esta capa**. Queda cerrada. El
+  siguiente dominio de la capa 7 **no se activa sin orden explícita**.
+
+## Punto de decisión, resuelto el 2026-08-21
+
+La frontera de persistencia del dominio **quedó cerrada** con 7.1 y, a
+diferencia de los cinco dominios anteriores, **la capa HTTP se quedó sin SQL**.
+Lo que quedaba del objetivo de la capa era la parte condicional del índice, que
+**no entra por inferencia**. Se ofrecieron **tres** salidas y **el usuario
+eligió cerrar la capa aquí**, sin abrir 7.2:
 
 1. **Cerrar la capa aquí**, como refactorización pura, igual que hicieron las
-   capas 5 y 6 y los cinco dominios anteriores.
-2. **Abrir una 7.2 con `response_model`.** Aquí es **la más barata de todo el
+   capas 5 y 6 y los cinco dominios anteriores. ← **elegida**.
+2. **Abrir una 7.2 con `response_model`.** Aquí era **la más barata de todo el
    programa**: las dos respuestas son planas —un diccionario de tres cadenas y
-   un `{"mensaje": …}`— y no hay anidamiento. El único matiz es el `None` de la
+   un `{"mensaje": …}`— y no hay anidamiento. El único matiz era el `None` de la
    observación ausente, que obliga a un `Optional`.
-3. **Abrir una 7.2 con los errores de dominio.** Es **la más cara aquí**, y por
+3. **Abrir una 7.2 con los errores de dominio.** Era **la más cara aquí**, y por
    una razón concreta: el dominio **no usa `HTTPException` en ninguna parte**.
    Introducirla cambiaría cómo salen los fallos, que hoy suben desnudos hasta el
-   500 genérico de FastAPI. No sería una refactorización pura.
+   500 genérico de FastAPI. No habría sido una refactorización pura.
 
-Queda pendiente también la **verificación manual**, que no se ha hecho.
+**`response_model` y los errores de dominio no se añaden y no quedan como deuda
+de esta capa.** Son trabajo disponible que exigiría una orden propia. Queda
+anotado que la salida 2 era **la más barata que ha tenido ninguna capa 7**: si
+alguna vez se quiere probar `response_model` en el programa, este es el dominio
+donde menos cuesta.
 
-**No se propone corregir ninguno de los nueve hallazgos desde esta capa**, ni
-siquiera la ausencia de claves foráneas, que es el más grave: exigiría una
-migración real sobre la base y una decisión sobre las filas huérfanas
-existentes.
+**Ninguno de los nueve hallazgos se corrigió**, ni siquiera la ausencia de
+claves foráneas, que es el más grave: exigiría una migración real sobre la base
+—fuera del alcance de esta capa— y una decisión sobre las filas huérfanas que ya
+existan. **Los pasos del guion que no constan siguen sin constar.**
+
+## Staging, rollback y verificación manual
+
+### Lo que esta capa hizo y no hizo
+
+- **Hizo**: inventariar el dominio contando el SQL de la ruta además del del
+  controlador, delimitar la frontera con `plan_de_clases`, añadir 25 pruebas de
+  caracterización y extraer las 2 sentencias a `observaciones_repository`.
+- **No hizo**: tocar el esquema, los permisos, las rutas, los payloads, los
+  status codes, la normalización de las dimensiones, el `422` ni la semántica
+  transaccional. **No corrigió ningún hallazgo.**
+- **La capa no tocó la base de datos**, ni siquiera para leer; solo leyó el
+  fichero de la migración base para inventariar el DDL. Es la **octava
+  consecutiva** que no abre una conexión a PostgreSQL, y la **quinta de esas
+  ocho cuyo dominio sí escribe**.
+
+### Rollback
+
+**Puramente local, porque la capa sigue sin publicar.** `origin/main` está en el
+commit base `fd3f93a` y hay **tres commits locales** por delante: `dac6425` la
+activación, `eaa8115` la 7.0 y `4bceabb` la 7.1. Revertir a `fd3f93a` devuelve
+la sentencia a la ruta y el `UPSERT` al controlador, y elimina el repositorio
+nuevo y la caracterización. **Producción no corre este código.**
+
+Si se publica, el rollback deja de ser local: exigiría otro push y otro
+despliegue. **Conviene volver aquí y registrar el cambio.** No es una
+formalidad: le ha pasado a `notas`, `ventas`, `asistencia` y `boletin`, **cuatro
+veces seguidas**, y las cuatro la documentación quedó desfasada.
+
+### Staging
+
+No hay entorno de staging para código de aplicación en este programa. El
+equivalente disponible es lo ya ejecutado: la compuerta global en local, la
+comparación AST byte a byte del conjunto de SQL y la equivalencia en ejecución
+de los dos caminos contra el código del commit base.
+
+### Verificación manual: **hecha, con la cobertura que el usuario reportó**
+
+El usuario la ejecutó en local el 2026-08-21 y reportó **resultado correcto**.
+**Lo hizo de forma global y con una reserva explícita**: «ya comprobé, y
+aparentemente está bien». **No consta ningún paso del guion confirmado uno por
+uno.**
+
+Es el **segundo dominio consecutivo** en el tramo más débil de la capa 7. No se
+presenta como más fuerte de lo que es, y **no se marca como cumplido ningún paso
+concreto**.
+
+## Guion de verificación manual propuesto
+
+Se conserva íntegro por si se quiere cerrar el hueco. Ninguno de estos pasos
+consta como ejecutado.
+
+1. **Guardar una observación sobre una que ya existía**, para el mismo
+   estudiante, asignación y periodo, cambiando las tres dimensiones. Comprobar
+   que se sustituyen y que **no aparece una fila duplicada**. **Es el paso que
+   más vale**: única escritura, única transacción, y el `UPSERT` se apoya en la
+   única restricción que la tabla tiene.
+2. **Enviar las tres dimensiones vacías** y comprobar que responde **422**, no
+   500 ni 200. Ese status lo sostiene **solo el esquema** y es lo que una
+   extracción descuidada rompería en silencio.
+3. **Guardar rellenando una sola dimensión** y comprobar que las otras dos
+   quedan como cadena vacía, no como `null`.
+4. **Consultar una observación que no existe** y comprobar que la respuesta es
+   **`null` con 200**, no un `404` ni un `{}`. Es un contrato con el frontend.
+5. **Comprobar el 403** por partida doble: un profesor pidiendo una observación
+   de una asignación que no es suya, y un guardado con un estudiante que no
+   pertenece a la asignación. Las **dos** entradas exigen los **dos** guards.
+6. **Comprobar que no se cruzan con las observaciones de plan de clases**: crear
+   una observación académica y una de un plan, y verificar que cada pantalla
+   muestra la suya. Son tablas distintas y no deberían mezclarse.
+7. **Aislamiento entre tenants**: repetir el paso 1 en los dos colegios y
+   comprobar que ninguno ve datos del otro.
+
+## Cierre de la capa 7 para `observaciones`
+
+### Resultado frente a su objetivo
+
+El objetivo era migrar el dominio conservando su comportamiento observable.
+**Cumplido**: la persistencia vive en `observaciones_repository`, la ruta pasó
+de **41 a 38 líneas** y el controlador de **43 a 30**, los dos de **1 sentencia
+inline a 0**, y los dos caminos emiten el mismo SQL con los mismos parámetros,
+en el mismo orden respecto a los guards, devuelven lo mismo y abren las mismas
+conexiones que el commit base.
+
+### Lo que esta capa aporta al programa, más allá de su dominio
+
+- **La primera extracción que saca SQL de la capa HTTP.** Ningún dominio
+  anterior lo necesitó, y demuestra que se puede hacer **sin mover la propiedad
+  del cursor**: la ruta sigue abriendo y cerrando lo suyo y llama al repositorio
+  directamente, sin inventar un controlador intermedio.
+- **La confirmación de que el criterio estricto vuelve cuando el archivo lo
+  permite.** `boletin` necesitó una limpieza autorizada y una cadena de dos
+  pasos; aquí, comprobado que no había espacios finales, la comparación byte a
+  byte se sostuvo entera.
+- **La segunda mordedura de la lección 13 de la capa 6.** Excluir docstrings
+  antes de comparar texto de un módulo no es una precaución teórica: ha fallado
+  dos veces, y la segunda con un docstring escrito para negar justo lo que la
+  prueba buscaba.
+
+### Estado de publicación
+
+**NO publicada.** `origin/main` sigue en el commit base `fd3f93a` y hay **tres
+commits locales** por delante. **Producción no corre este código.**
+
+### Riesgos que la capa deja abiertos
+
+- Los **nueve hallazgos de 7.0**, encabezados por **la ausencia total de claves
+  foráneas** en la tabla.
+- La **verificación manual sin ningún paso que conste**, la segunda seguida.
+- **El `422` depende del esquema.** Cualquier trabajo futuro que toque
+  `app/schemas/observacion.py` puede convertirlo en un 500 sin que nada más
+  falle. Hay una prueba que lo protege y **no debe retirarse**.
+- Las verificaciones heredadas del programa, todas **pendientes y aceptadas**.
 
 ## Entrega al próximo chat
 
-- Capa activa: **7, para el dominio `observaciones` y solo ese.** Los otros seis
-  dominios siguen en espera.
+- Capa activa: **ninguna.** La capa 7 quedó **cerrada para `observaciones`** el
+  2026-08-21, el mismo día en que se activó. Los otros seis dominios siguen en
+  espera.
 - Última subcapa terminada: **7.1**, cerrada el 2026-08-21. Con ella la frontera
   de persistencia del dominio quedó cerrada **y la capa HTTP se quedó sin SQL**.
-- Primera subcapa pendiente: **ninguna definida.** Queda un **punto de decisión
-  con tres salidas** y la **verificación manual pendiente**. Ninguna entra por
-  inferencia.
+- **Capa cerrada** el 2026-08-21. No quedan bloqueos.
+- Primera subcapa pendiente: **ninguna.** El usuario decidió **cerrar la capa
+  aquí**, sin abrir 7.2: `response_model` y los errores de dominio **no se
+  abordan** y pasan a ser trabajo disponible que exigiría una orden explícita.
+  Queda anotado que **`response_model` era aquí la salida más barata de todo el
+  programa**, por si alguna vez se quiere probar en algún dominio.
+- **Verificación manual: hecha** el 2026-08-21, en local y con resultado
+  correcto, **reportada de forma global y con la reserva «aparentemente»**.
+  **No consta ningún paso del guion confirmado uno por uno**: es el **segundo
+  dominio consecutivo** en el tramo más débil, tras `boletin`. El guion íntegro
+  se conserva; los pasos que más valían son el **1**, guardar sobre una
+  observación existente, y el **2**, comprobar que las tres dimensiones vacías
+  siguen dando **422**.
 - Commit base: `fd3f93a2ad97daa0a34081eb2f95504dd1a9e4df`, rama `main`,
-  **publicado y desplegado**, comprobado contra el remoto real. La activación
-  quedó en `dac6425` y 7.0 en `eaa8115`; **7.1 está sin commitear** al cerrar
-  este turno.
+  **publicado y desplegado**, comprobado contra el remoto real. Los tres commits
+  de la capa —`dac6425` la activación, `eaa8115` la 7.0 y `4bceabb` la 7.1—
+  están **sin publicar**.
 - Compuerta al cerrar 7.1: **925 pruebas, exit 0**, Ruff correcto y `pip check`
   íntegro. La suite pasó de **898 al activar la capa a 925**.
 - Lo que consiguió 7.1: la ruta pasó de **41 a 38 líneas** y el controlador de
@@ -821,7 +990,13 @@ existentes.
   12. **Al comparar texto de un módulo, excluir los docstrings.** Es la lección
       13 de la capa 6 y en 7.1 volvió a morder: el docstring del repositorio
       nombra `get_connection` justo para explicar que no lo usa.
-- Siguiente acción exacta: **esperar la decisión del usuario** sobre el punto de
-  decisión —cerrar la capa, `response_model` o errores de dominio— y sobre la
-  **verificación manual**, que no se ha hecho. Una instrucción genérica de
-  continuar **no** la sustituye.
+  13. **El `422` lo sostiene solo el esquema.** Cualquier trabajo futuro sobre
+      `app/schemas/observacion.py` puede convertirlo en un 500 sin que nada más
+      falle. La prueba que lo protege **no debe retirarse**.
+- **Pendiente la publicación de esta capa.** Los commits se quedan en local
+  hasta que el usuario decida; publicar dispara el despliegue. Mientras siga
+  así, **el rollback es una operación puramente local**.
+- Siguiente acción exacta: **ninguna dentro de esta capa.** Queda cerrada. El
+  siguiente paso del programa es **otro dominio de la capa 7**, sin elegir y en
+  espera; quedan **seis**. **No se activa ninguno sin orden explícita que lo
+  nombre.**

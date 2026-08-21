@@ -45,7 +45,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 7 | Resto de dominios — **`notas` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `notas` el 2026-08-19; verificada a mano. **Publicada el 2026-08-20**, después de escribirse su bitácora | [07_NOTAS.md](./07_NOTAS.md) |
 | 7 | Resto de dominios — **`ventas` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `ventas` el 2026-08-20; verificada a mano. **Publicada el 2026-08-20**, después de escribirse su bitácora | [07_VENTAS.md](./07_VENTAS.md) |
 | 7 | Resto de dominios — **`asistencia` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `asistencia` el 2026-08-21; verificada a mano. **Publicada el 2026-08-21**, después de escribirse su bitácora | [07_ASISTENCIA.md](./07_ASISTENCIA.md) |
-| 7 | Resto de dominios — **`boletin` en migración** | Migración individual con contratos y pruebas | **Activa** desde el 2026-08-21; **7.0 y 7.1 cerradas** el mismo día. Punto de decisión abierto y **verificación manual pendiente**. Los demás dominios, **en espera** | [07_BOLETIN.md](./07_BOLETIN.md) |
+| 7 | Resto de dominios — **`boletin` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `boletin` el 2026-08-21; verificada a mano y **sin publicar**. Los demás dominios, **en espera** | [07_BOLETIN.md](./07_BOLETIN.md) |
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
 cierre y el usuario ordene continuar, se crea su sucesora desde
@@ -67,8 +67,8 @@ al día siguiente de activarse, con sus subcapas 7.0 y 7.1 completas y la
 verificación manual hecha.
 
 **La capa 7 quedó activada para el dominio `boletin`** el 2026-08-21, por orden
-explícita del usuario, con su **7.0 pendiente y no iniciada**. Es **la única
-capa activa**.
+explícita del usuario, y **cerrada el mismo día**, con sus subcapas 7.0 y 7.1
+completas y la verificación manual hecha. **No existe una capa activa.**
 
 La capa 7 se cierra **por dominio**, no de una vez: cada uno tiene su propia
 bitácora, su propio commit base y su propio cierre, y **las subcapas se numeran
@@ -165,7 +165,7 @@ abierto; el trabajo se detuvo hasta que el usuario lo nombró. Su bitácora es
 [07_ASISTENCIA.md](./07_ASISTENCIA.md); sus subcapas **7.0 y 7.1 quedaron
 cerradas el mismo día** y la capa quedó **cerrada al día siguiente**.
 
-**Dominio en migración y activo: `boletin`.** Lo eligió el usuario el
+**Dominio migrado y cerrado: `boletin`.** Lo eligió el usuario el
 2026-08-21, de la lista de los ocho que quedaban en espera y **nombrándolo
 explícitamente** en la misma orden que autorizó corregir el estado de
 publicación de `asistencia`; **no se dedujo por inferencia**. Recibió antes la
@@ -173,7 +173,7 @@ advertencia, que las bitácoras cerradas ya registraban y que el turno de
 activación le repitió, de que **`boletin` no es una frontera limpia**: `notas`
 posee ya las rutas `/boletin/{id}` y `/boletin/detallado/{id}`, como fijó su
 7.0. Eligió `boletin` sabiéndolo. Su bitácora es
-[07_BOLETIN.md](./07_BOLETIN.md).
+[07_BOLETIN.md](./07_BOLETIN.md) y quedó **cerrada el mismo día**.
 
 Ningún otro se activa por inferencia: observaciones, planilla, planeador anual,
 plan de clases, branding, profesores y super admin siguen en espera —son
@@ -1498,9 +1498,42 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   tres**, porque las cuatro entradas ya mapean a `HTTPException` con mensajes
   fijos y no habría status code que cambiar. Ninguna entra por inferencia.
   Queda pendiente también la **verificación manual**.
-- Siguen en espera **siete** dominios: `observaciones`, `planilla`,
+- **Verificación manual de la capa 7 para `boletin`: hecha por el usuario y
+  correcta**, el 2026-08-21, en local. El artefacto se confirmó antes de
+  registrarla: árbol limpio, `HEAD` en `865a062` —el commit de 7.1— y
+  `origin/main` todavía en el commit base, comprobado contra el remoto real.
+  **Cobertura registrada sin inflarla**: el usuario la reportó **de forma global
+  y con una reserva explícita**, «aparentemente está todo bien», y **no consta
+  ningún paso del guion confirmado uno por uno**, porque no se preguntó punto
+  por punto antes de cerrar. Es la evidencia **más débil de los cinco dominios
+  de la capa 7**: `notas` fue la más fuerte, `asistencia` dejó constancia de un
+  paso de cuatro y `ventas` de ninguno. **Lo que más habría valido confirmar, y
+  no consta, es guardar un boletín que ya existía**: la única escritura y la
+  única transacción del dominio.
+- **Decisión del usuario el 2026-08-21: cerrar la capa aquí**, sin abrir 7.2. Se
+  le ofrecieron **tres** salidas —cerrar, una 7.2 con `response_model` o una con
+  los errores de dominio— y eligió cerrar. `response_model` y los errores de
+  dominio **no se añaden** y **no quedan como deuda de esta capa**. Los **diez
+  hallazgos siguen vivos**, empezando por el emparejamiento por posición.
+- Capa 7 **cerrada para `boletin`** el 2026-08-21, el mismo día en que se
+  activó. Compuerta de cierre: **exit 0 con 898 pruebas**, Ruff correcto y
+  `pip check` íntegro. La suite pasó de **872 al activar la capa a 898**.
+- **La capa 7 para `boletin` no tocó la base de datos**, ni siquiera para leer.
+  Es la **séptima consecutiva** que no abre una conexión a PostgreSQL, y la
+  **cuarta de esas siete cuyo dominio sí escribe**.
+- **Estado de publicación de la capa 7 para `boletin`: NO publicada.**
+  `origin/main` sigue en el commit base `8e61170` y hay **tres commits locales**
+  por delante: `0f351c8` la activación, `100de58` la 7.0 y `865a062` la 7.1.
+  **Producción no corre este código**, así que mientras siga así el rollback es
+  **puramente local**. Es la misma situación en que quedaron `notas`, `ventas` y
+  `asistencia` al cerrarse, y en los tres casos duró poco: si se publica,
+  **conviene volver aquí y registrar el cambio**, porque las tres veces
+  anteriores la documentación quedó desfasada.
+- Capa activa: **ninguna**. Siguiente paso: **otro dominio de la capa 7**, sin
+  elegir y en espera. Quedan **siete**: `observaciones`, `planilla`,
   `planeador_anual`, `plan_de_clases`, `branding`, `profesores` y `super_admin`.
-  `planilla` sigue sin ser frontera limpia por la misma razón que `boletin`.
+  `planilla` sigue **sin ser frontera limpia** por la misma razón que `boletin`:
+  `notas` posee `/planilla/{asignacion_id}`.
 - **Punto de decisión abierto al terminar 7.1**, con **tres** salidas y no dos:
   dónde vive el `UPDATE pagos`, `response_model` para las cuatro lecturas, y los
   errores de dominio. La tercera es **más fácil aquí que en `notas`**: este
@@ -1644,18 +1677,35 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
 
 ## Archivos de continuidad
 
-- [07_BOLETIN.md](./07_BOLETIN.md): **bitácora ACTIVA** de la capa 7 para el
-  dominio `boletin`. **Es el documento que un chat nuevo debe leer después de
-  este índice.** Registra el commit base
+- [07_BOLETIN.md](./07_BOLETIN.md): **bitácora cerrada** de la capa 7 para el
+  dominio `boletin`, y **fuente de continuidad**. **Es el documento que un chat
+  nuevo debe leer después de este índice.** Registra el commit base
   `8e61170f32a6d6a23ca23f9ead89d17bc209e7b6` —publicado y desplegado, comprobado
   contra el remoto real—, la autorización explícita del usuario nombrando el
-  dominio, el alcance limitado a un solo dominio, y las verificaciones heredadas
-  aceptadas como pendientes. Su **7.0 está pendiente y no iniciada**. Registra
-  los supuestos heredados con **el origen documental de cada uno** y la
-  advertencia que manda en esta capa: **la frontera del dominio está partida**
-  entre `boletines.py` y las rutas de boletín que `notas` ya posee y cerró.
+  dominio y la advertencia de frontera partida entregada **antes** de la
+  elección, el alcance limitado a un solo dominio, y las verificaciones
+  heredadas aceptadas como pendientes. Conserva los **trece supuestos
+  heredados** con **el origen documental de cada uno**, y el resultado que da
+  sentido a toda la capa: **doce confirmados y uno incompleto, pero cinco de los
+  trece describían código de `notas`**, no de este dominio. Conserva el
+  inventario de **7.0**: **3 archivos**, **4 entradas HTTP** con **tres modelos
+  de permiso**, **12 sentencias inline**, **dos tablas escritas** —la primera
+  vez en la capa 7— y **ningún N+1**, ni de consultas ni de conexiones. Registra
+  el cierre de **7.1**, con **la primera limpieza de texto SQL autorizada del
+  programa** —14 líneas con espacios finales, limpiadas antes de mover nada y
+  demostradas inocuas— y la extracción a `boletin_repository`, **el décimo**,
+  con **11 de 12 sentencias** y la **equivalencia en ejecución de los cinco
+  caminos**; las **cinco guardias** que fallaron como señal esperada y el patrón
+  de que cada migración añade una enumeración de repositorios; y la **decisión
+  de dejar una sentencia inline a propósito**, la del código muerto de
+  `planilla`. Deja resuelto el **punto de decisión** que cerró la capa sin abrir
+  una 7.2, el cierre con su rollback —**local, porque la capa sigue sin
+  publicar**—, su staging, su **verificación manual con la cobertura real que el
+  usuario reportó** —**ningún paso consta**, la más débil de la capa 7— y los
+  **diez hallazgos** que deja abiertos, encabezados por el emparejamiento por
+  posición.
 - [07_ASISTENCIA.md](./07_ASISTENCIA.md): **bitácora cerrada** de la capa 7 para
-  el dominio `asistencia`. Fue la fuente de continuidad **hasta que se activó
+  el dominio `asistencia`. Fue la fuente de continuidad **hasta que se cerró
   `boletin`**; sus ocho hallazgos siguen vivos, encabezados por el **N+1 en
   conexiones**, y **no se corrigen desde la capa activa**. **Advertencia sobre
   este archivo**: su estado de publicación quedó desfasado, igual que le pasó a

@@ -3,6 +3,7 @@ from app.core.permissions import require_asignacion_access, require_estudiante_i
 from app.database import get_cursor
 from app.dependencies import get_current_user
 from app.controllers.observacion_controller import guardar_observacion_controller
+from app.repositories import observaciones_repository
 from app.schemas.observacion import ObservacionCreate
 from app.services.asignacion_academica import resolver_asignacion_academica_id_cursor
 
@@ -27,13 +28,9 @@ def obtener_observacion(
     with get_cursor() as cursor:
         asignacion_id = resolver_asignacion_academica_id_cursor(cursor, asignacion_id)
 
-        cursor.execute("""
-            SELECT conductual, cognitivo, lenguaje
-            FROM observaciones
-            WHERE estudiante_id = %s AND asignacion_id = %s AND periodo = %s
-        """, (estudiante_id, asignacion_id, periodo))
-
-        row = cursor.fetchone()
+        row = observaciones_repository.leer_observacion(
+            cursor, estudiante_id, asignacion_id, periodo
+        )
 
     if row:
         return {"conductual": row[0], "cognitivo": row[1], "lenguaje": row[2]}

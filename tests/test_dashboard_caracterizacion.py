@@ -242,6 +242,7 @@ def test_el_dominio_tiene_su_repositorio():
         "dashboard_repository",
         "estudiantes_repository",
         "notas_repository",
+        "observaciones_repository",
         "pagos_repository",
         "plan_de_clases_repository",
         "reportes_repository",

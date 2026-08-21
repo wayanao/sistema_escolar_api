@@ -102,6 +102,28 @@ def _sql_del_modulo(ruta_relativa):
     return literales
 
 
+def _codigo_sin_docstrings(ruta_relativa):
+    """Fuente de un modulo con sus docstrings retirados.
+
+    Leccion 13 de la capa 6: sin excluirlos, la prosa que describe algo se
+    cuenta como si fuera ese algo. Aqui el docstring del repositorio nombra
+    `get_connection` y `get_cursor` justo para explicar que NO los usa.
+    """
+    fuente = (RAIZ / ruta_relativa).read_text(encoding="utf-8")
+    arbol = ast.parse(fuente)
+
+    docstrings = []
+    for nodo in ast.walk(arbol):
+        if isinstance(nodo, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            texto = ast.get_docstring(nodo, clean=False)
+            if texto:
+                docstrings.append(texto)
+
+    for texto in docstrings:
+        fuente = fuente.replace(texto, "")
+    return fuente
+
+
 def _paths_declarados(router):
     return {
         (ruta.path, tuple(sorted(ruta.methods)))
@@ -127,20 +149,22 @@ def _payload(**cambios):
 # Frontera del dominio
 # --------------------------------------------------------------------------
 
-def test_el_dominio_son_tres_archivos_y_no_tiene_repositorio_ni_servicio():
-    """Guardia de frontera. `observaciones` llega sin repositorio propio; que
-    aparezca uno es trabajo de 7.1 y debe ser una decision, no un efecto
-    colateral.
+def test_el_dominio_son_cuatro_archivos_y_sigue_sin_servicio():
+    """Guardia de frontera, actualizada por 7.1.
+
+    7.0 la dejo en tres archivos y sin repositorio. 7.1 anadio el undecimo
+    repositorio del proyecto; el servicio sigue sin existir y crearlo seria otra
+    decision, no un efecto colateral.
 
     El nombre del router va en plural y los de controlador y esquema en
-    singular; queda fijado para que nadie lo "corrija" al pasar.
+    singular; el repositorio sigue al router, como la tabla. Queda fijado para
+    que nadie lo "corrija" al pasar.
     """
     assert (RAIZ / "app/routes/observaciones.py").is_file()
     assert (RAIZ / "app/controllers/observacion_controller.py").is_file()
     assert (RAIZ / "app/schemas/observacion.py").is_file()
+    assert (RAIZ / "app/repositories/observaciones_repository.py").is_file()
 
-    assert not (RAIZ / "app/repositories/observaciones_repository.py").exists()
-    assert not (RAIZ / "app/repositories/observacion_repository.py").exists()
     assert not (RAIZ / "app/services/observacion_service.py").exists()
 
 
@@ -173,21 +197,51 @@ def test_las_observaciones_de_plan_de_clases_son_otro_dominio_y_no_colisionan():
     assert all(path.startswith("/observaciones") for path in paths_propios)
 
 
-def test_las_dos_sentencias_del_dominio_y_una_vive_en_la_capa_http():
-    """Linea base de SQL inline, y **el rasgo que distingue a este dominio**.
+def test_las_dos_sentencias_viven_ahora_en_el_repositorio():
+    """Linea base de SQL inline, actualizada por 7.1.
 
-    Es el primero de la capa 7 con persistencia en la ruta. Contar el SQL solo
-    en el controlador daria un inventario falso: daria 1 de 2.
+    7.0 conto **2 sentencias repartidas entre la ruta y el controlador**, y ese
+    reparto era el rasgo que distinguia a este dominio. 7.1 movio **las dos** al
+    repositorio: la capa HTTP se queda **sin SQL**, que es lo que resuelve el
+    hallazgo 3.
     """
-    en_ruta = _sql_del_modulo("app/routes/observaciones.py")
-    en_controlador = _sql_del_modulo("app/controllers/observacion_controller.py")
+    en_repositorio = _sql_del_modulo("app/repositories/observaciones_repository.py")
 
-    assert len(en_ruta) == 1
-    assert len(en_controlador) == 1
+    assert len(en_repositorio) == 2
+    assert _sql_del_modulo("app/routes/observaciones.py") == []
+    assert _sql_del_modulo("app/controllers/observacion_controller.py") == []
     assert _sql_del_modulo("app/schemas/observacion.py") == []
 
-    assert "SELECT conductual, cognitivo, lenguaje" in en_ruta[0]
-    assert "INSERT INTO observaciones" in en_controlador[0]
+    assert any("SELECT conductual, cognitivo, lenguaje" in s for s in en_repositorio)
+    assert any("INSERT INTO observaciones" in s for s in en_repositorio)
+
+
+def test_el_repositorio_no_es_dueno_de_ningun_recurso():
+    """Ninguna funcion del repositorio abre, cierra, confirma ni revierte.
+
+    La propiedad de la conexion sigue **repartida entre dos capas**: la ruta en
+    la lectura y el controlador en la escritura. Es lo que conserva los conteos
+    que 7.0 fijo.
+    """
+    codigo = _codigo_sin_docstrings("app/repositories/observaciones_repository.py")
+    for prohibido in ("get_connection", "get_cursor", "commit()", "rollback()", "close()"):
+        assert prohibido not in codigo
+
+
+def test_cada_llamador_del_repositorio_conserva_su_propia_capa():
+    """La lectura lo llama desde la RUTA y la escritura desde el CONTROLADOR.
+
+    Es deliberado: 7.1 saco el SQL de las dos capas sin mover la propiedad del
+    cursor ni unificar los idiomas de conexion.
+    """
+    fuente_ruta = (RAIZ / "app/routes/observaciones.py").read_text(encoding="utf-8")
+    fuente_ctrl = (RAIZ / "app/controllers/observacion_controller.py").read_text(encoding="utf-8")
+
+    assert "observaciones_repository.leer_observacion(" in fuente_ruta
+    assert "observaciones_repository.guardar_observacion(" not in fuente_ruta
+
+    assert "observaciones_repository.guardar_observacion(" in fuente_ctrl
+    assert "observaciones_repository.leer_observacion(" not in fuente_ctrl
 
 
 def test_los_dos_caminos_conviven_con_dos_idiomas_de_conexion():
@@ -328,9 +382,14 @@ def test_guardar_observacion_revierte_y_propaga_el_error(monkeypatch):
 
 def test_el_upsert_no_comprueba_que_la_asignacion_siga_activa():
     """Hallazgo registrado y NO corregido, heredado de `dashboard`, `notas` y
-    `boletin`: la asignacion resuelta se escribe sin mirar `activo`."""
-    sql = _sql_del_modulo("app/controllers/observacion_controller.py")[0]
-    assert "activo" not in sql
+    `boletin`: la asignacion resuelta se escribe sin mirar `activo`.
+
+    Tras 7.1 el `UPSERT` vive en el repositorio; el hallazgo no cambia.
+    """
+    sql = _sql_del_modulo("app/repositories/observaciones_repository.py")
+    upsert = [s for s in sql if "INSERT INTO observaciones" in s]
+    assert len(upsert) == 1
+    assert "activo" not in upsert[0]
 
 
 # --------------------------------------------------------------------------

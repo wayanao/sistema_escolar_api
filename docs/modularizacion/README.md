@@ -46,7 +46,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 7 | Resto de dominios — **`ventas` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `ventas` el 2026-08-20; verificada a mano. **Publicada el 2026-08-20**, después de escribirse su bitácora | [07_VENTAS.md](./07_VENTAS.md) |
 | 7 | Resto de dominios — **`asistencia` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `asistencia` el 2026-08-21; verificada a mano. **Publicada el 2026-08-21**, después de escribirse su bitácora | [07_ASISTENCIA.md](./07_ASISTENCIA.md) |
 | 7 | Resto de dominios — **`boletin` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `boletin` el 2026-08-21; verificada a mano y **sin publicar**. Ver la advertencia de desfase más abajo | [07_BOLETIN.md](./07_BOLETIN.md) |
-| 7 | Resto de dominios — **`observaciones` en migración** | Migración individual con contratos y pruebas | **Activa** desde el 2026-08-21; **7.0 cerrada** el mismo día, **7.1 sin definir**. Los demás dominios, **en espera** | [07_OBSERVACIONES.md](./07_OBSERVACIONES.md) |
+| 7 | Resto de dominios — **`observaciones` en migración** | Migración individual con contratos y pruebas | **Activa** desde el 2026-08-21; **7.0 y 7.1 cerradas** el mismo día. Punto de decisión abierto y **verificación manual pendiente**. Los demás dominios, **en espera** | [07_OBSERVACIONES.md](./07_OBSERVACIONES.md) |
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
 cierre y el usuario ordene continuar, se crea su sucesora desde
@@ -1615,6 +1615,47 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   normalización **convierte cualquier valor falsy en cadena vacía**, así que un
   `0` numérico llega como `""`; y que **ninguna de las dos entradas registra
   nada** ante un fallo.
+- Resultado de 7.1 de `observaciones`, **cerrada el 2026-08-21**: las **2
+  sentencias** salieron a `app/repositories/observaciones_repository.py`, **2
+  funciones** que reciben el cursor. Es **el undécimo repositorio** del
+  proyecto. La ruta pasó de **41 a 38 líneas** y el controlador de **43 a 30**,
+  los dos de **1 sentencia inline a 0**: **la capa HTTP se queda sin SQL**, que
+  era el hallazgo 3. Compuerta: **925 pruebas, exit 0**; la suite pasó de **898
+  al activar la capa a 925**.
+- **El alcance de esa 7.1 lo decidió el usuario, no el asistente.** Se le
+  ofrecieron **tres** salidas para la sentencia que vivía en la ruta —bajarla
+  antes a un controlador nuevo, llevar las dos directas al repositorio, o
+  extraer solo el `UPSERT`— y eligió la segunda. Una instrucción genérica de
+  continuar no habría bastado para fijarlo.
+- **La comparación byte a byte volvió al criterio estricto.** Se comprobó antes
+  de mover nada que ni la ruta ni el controlador tenían **una sola línea con
+  espacios finales**, así que no hizo falta la limpieza autorizada que necesitó
+  `boletin`: **2 de 2 literales idénticos byte a byte**. La equivalencia se
+  comprobó además **en ejecución** en los dos caminos y tres escenarios
+  —lectura con fila, lectura sin fila y `UPSERT`—, con los guards instrumentados
+  dentro de la secuencia para fijar también **su orden**.
+- **Rasgo propio de esta 7.1, y no lo tuvo ninguna anterior**: sus dos llamadores
+  son de **capas distintas**. La lectura llama al repositorio desde la **ruta**,
+  con `get_cursor()`; la escritura, desde el **controlador**, con
+  `get_connection()`. **No se unificaron los idiomas ni se movió la propiedad
+  del cursor**, porque eso habría cambiado los conteos de conexiones que 7.0
+  fijó por aserción.
+- **Siete guardias fallaron en esa 7.1, que era la señal esperada.** Cuatro son
+  ajenas —`asistencia`, `dashboard`, `notas` y `ventas`— y confirman de nuevo
+  que cada migración añade una enumeración de repositorios: el conteo pasó de
+  **10 a 11**. Las otras tres eran las de línea base que su propia 7.0 dejó
+  puestas. Una guardia nueva falló además por un defecto propio y **volvió a
+  morder la lección 13 de la capa 6**: buscaba `get_connection` en el texto del
+  módulo y el docstring del repositorio lo nombra justo para explicar que no lo
+  usa. Se corrigió excluyendo docstrings.
+- **Punto de decisión abierto al terminar 7.1 de `observaciones`**, con **tres**
+  salidas: cerrar la capa como refactorización pura, una 7.2 con
+  `response_model` —**la más barata de todo el programa**, porque las dos
+  respuestas son planas y sin anidamiento; el único matiz es el `None` de la
+  observación ausente— o una 7.2 con errores de dominio, que aquí es **la más
+  cara**, porque el dominio **no usa `HTTPException` en ninguna parte** e
+  introducirla cambiaría cómo salen los fallos. Ninguna entra por inferencia.
+  Queda pendiente también la **verificación manual**.
 - Siguen en espera **seis** dominios: `planilla`, `planeador_anual`,
   `plan_de_clases`, `branding`, `profesores` y `super_admin`. `planilla` sigue
   **sin ser frontera limpia** por la misma razón que `boletin`: `notas` posee

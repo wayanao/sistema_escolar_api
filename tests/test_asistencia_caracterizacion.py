@@ -213,12 +213,13 @@ def test_el_repositorio_de_asistencia_es_el_noveno():
         "dashboard_repository",
         "estudiantes_repository",
         "notas_repository",
+        "observaciones_repository",
         "pagos_repository",
         "plan_de_clases_repository",
         "reportes_repository",
         "ventas_repository",
     ]
-    assert len(repositorios) == 10
+    assert len(repositorios) == 11
 
 
 def test_las_tres_sentencias_viven_ahora_en_el_repositorio():

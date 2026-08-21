@@ -4,15 +4,17 @@
 
 ## Control
 
-- Estado: **Activa** desde el 2026-08-21, con su subcapa **7.0 cerrada** el
-  mismo día.
+- Estado: **Activa** desde el 2026-08-21, con sus subcapas **7.0 y 7.1
+  cerradas**, ambas el mismo día.
 - Commit base: `fd3f93a2ad97daa0a34081eb2f95504dd1a9e4df`.
 - Rama acordada: `main`.
-- Primera subcapa pendiente: **7.1**, **sin definir todavía**. La define la
-  evidencia de 7.0, que está abajo. No se inicia sin orden.
+- Primera subcapa pendiente: **ninguna definida**. Con 7.1 la **frontera de
+  persistencia del dominio quedó cerrada**. Queda un **punto de decisión**
+  abierto y la **verificación manual pendiente**; ver al final.
 - Código de producto modificado al activar: **Ninguno**. Tampoco en 7.0: su diff
   es **un solo archivo de prueba nuevo** y ningún archivo rastreado modificado,
-  igual que los de 5.0, 6.0 y las cinco 7.0 anteriores.
+  igual que los de 5.0, 6.0 y las cinco 7.0 anteriores. **7.1 sí modifica
+  producto**: la ruta, el controlador y un repositorio nuevo.
 - Dominio de esta capa: **observaciones, y solo ese**. La capa 7 del índice es
   «resto de dominios» y ordena expresamente **priorizar uno a la vez**, así que
   esta bitácora cubre un único dominio. Los demás quedan fuera y necesitarán su
@@ -318,8 +320,8 @@ estudiante también en la lectura, que `boletin` no hace.
 | Subcapa | Resultado | Estado |
 |---:|---|---|
 | 7.0 | Frontera con `plan_de_clases`, inventario en ruta y controlador, contratos, caracterización y línea base de consultas y conexiones | **Cerrada** el 2026-08-21 |
-| 7.1 | Primera extracción protegida | **Sin definir**: la evidencia de 7.0 la perfila, pero no está decidida |
-| 7.2 | Segunda extracción o punto de decisión | Sin definir |
+| 7.1 | Extraer las 2 sentencias a `observaciones_repository` sin cambiar SQL, conteos ni ciclo de vida | **Cerrada** el 2026-08-21 |
+| 7.2 | Punto de decisión: `response_model`, errores de dominio y los nueve hallazgos | **Sin decidir**: es un punto de decisión, no una subcapa pendiente |
 
 El desglose se deja deliberadamente **sin decidir** hasta tener la evidencia del
 inventario, igual que hicieron la capa 6 y las cinco capas 7 anteriores. Las
@@ -612,23 +614,161 @@ orden explícita. Van ordenados por gravedad.
   7.1**. Si la extracción tocara la validación, el status cambiaría en silencio.
   Ahora hay una prueba que lo fija, y es la que debe protegerlo.
 - Siguiente acción exacta: **esperar la definición y la orden de 7.1.** No se
-  inició ni se decidió su alcance.
+  inició ni se decidió su alcance. *(Decidida y ejecutada en el turno siguiente;
+  ver el cierre de 7.1 más abajo.)*
+
+### 2026-08-21 — cierre de 7.1
+
+- **La decisión de alcance la tomó el usuario, no el asistente.** Se le
+  ofrecieron **tres** salidas para la sentencia que vivía en la ruta —bajarla
+  antes a un controlador nuevo, llevar las dos directas al repositorio, o
+  extraer solo el `UPSERT` dejando la de la ruta donde estaba— y eligió
+  **llevar las dos al repositorio conservando cada llamador su propia capa**.
+  Una instrucción genérica de continuar **no** habría bastado para fijarlo, y
+  por eso se preguntó antes de tocar nada.
+- Commit observado: `eaa8115`, el de 7.0, que el usuario creó entre los turnos.
+  Árbol limpio, verificado con `git status --porcelain=v1` con salida vacía.
+- Estado remoto: `origin/main` sigue en `fd3f93a`. **La activación, 7.0 y 7.1
+  están sin publicar.**
+- **La comparación byte a byte SÍ se pudo sostener aquí.** Se comprobó **antes**
+  de mover nada que ni la ruta ni el controlador tenían **una sola línea con
+  espacios finales**, así que no hizo falta la limpieza autorizada que necesitó
+  `boletin` ni su cadena de dos pasos. Vuelve el criterio estricto de las cuatro
+  7.1 anteriores a `boletin`.
+- Resultado: nace `app/repositories/observaciones_repository.py`, **el undécimo
+  repositorio del proyecto**, con **2 funciones** que reciben el cursor. La ruta
+  pasó de **41 a 38 líneas** y de 1 sentencia inline a **0**; el controlador, de
+  **43 a 30** y de 1 a **0**. **La capa HTTP se queda sin SQL**, que es lo que
+  resuelve el hallazgo 3.
+- **Los dos llamadores son de capas distintas, y se conservó así.**
+  `leer_observacion` la llama la **ruta** desde su `with get_cursor()`;
+  `guardar_observacion`, el **controlador** desde su `get_connection()`. **No se
+  unificaron los idiomas ni se movió la propiedad del cursor**: hacerlo habría
+  cambiado los conteos de conexiones que 7.0 fijó por aserción.
+- **Comparador AST contra el commit base**: **2 literales antes y 2 después**,
+  **2 de 2 idénticos byte a byte**, sin una sola autorización de cambio de
+  texto. Reparto nuevo: ruta **0**, controlador **0**, repositorio **2**.
+- **Equivalencia en tiempo de ejecución, los dos caminos.** Se ejecutó la ruta y
+  el controlador del commit base y los de hoy contra dobles idénticos,
+  comparando la secuencia de **`(SQL normalizado, parámetros)`** —con los guards
+  instrumentados dentro de la secuencia, para fijar también su **orden**—, el
+  **valor devuelto**, las **conexiones** y los **cierres**:
+
+  | Camino | Pasos | Conexiones | `commit` | Resultado |
+  |---|---:|---:|---:|---|
+  | `GET` con observación guardada | 4 | 1 | 0 | **idéntico** |
+  | `GET` sin observación —devuelve `None`— | 4 | 1 | 0 | **idéntico** |
+  | `POST` `UPSERT` | 2 | 1 | 1 | **idéntico** |
+
+- **Las siete guardias que fallaron, que era la señal esperada.** Cuatro son
+  ajenas y confirman el patrón que `asistencia` dejó anotado —**cada migración
+  añade una enumeración de repositorios**—: las de `asistencia`, `dashboard`,
+  `notas` y `ventas`. Se les añadió `observaciones_repository` y, en la de
+  `asistencia`, el conteo pasó de **10 a 11**. Las otras tres son **propias de
+  7.0**: la ausencia de repositorio, el reparto 1+1 del SQL y la ubicación del
+  `UPSERT`. Las tres se sustituyeron por sus versiones positivas.
+- **Una guardia nueva falló por un defecto propio, y la lección ya estaba
+  escrita.** `test_el_repositorio_no_es_dueno_de_ningun_recurso` buscaba
+  `get_connection` y `get_cursor` en el texto del módulo, y **el docstring del
+  repositorio los nombra justamente para explicar que no los usa**. Es la
+  **lección 13 de la capa 6** —excluir docstrings antes de comparar— y se aplicó
+  añadiendo `_codigo_sin_docstrings`. **La regla que fija no cambió.**
+- Archivos modificados: `app/routes/observaciones.py`,
+  `app/controllers/observacion_controller.py`,
+  `app/repositories/observaciones_repository.py` (nuevo),
+  `tests/test_observaciones_caracterizacion.py` y **una línea** en cada uno de
+  `tests/test_asistencia_caracterizacion.py`,
+  `tests/test_dashboard_caracterizacion.py`,
+  `tests/test_notas_caracterizacion.py` y
+  `tests/test_ventas_caracterizacion.py`.
+- **Lo que 7.1 no tocó, y estaba prohibido tocar**: `app/schemas/observacion.py`
+  —y con él la normalización y el **`422`**—, `app/core/permissions.py`, el
+  resolver de asignación académica, `estudiantes_repository`, `plan_de_clases` y
+  **los nueve hallazgos de 7.0**, empezando por la ausencia de claves foráneas.
+  Las **8 pruebas heredadas no se tocaron** y siguen pasando.
+- Comandos y resultados:
+  - Comparador AST base vs. hoy: **2 de 2 idénticos byte a byte**.
+  - Equivalencia en ejecución de los dos caminos, tres escenarios:
+    **idéntica** en SQL, parámetros, orden de guards, retorno, conexiones y
+    cierres.
+  - `.\venv\Scripts\python.exe -m pytest -q -p no:cacheprovider tests\test_observaciones_caracterizacion.py tests\test_observaciones_ruta.py tests\test_observaciones_validaciones.py`:
+    **35 pasaron**.
+  - `.\venv\Scripts\python.exe -m ruff check` sobre los cuatro archivos:
+    **correcto**.
+  - `.\venv\Scripts\python.exe scripts\verify.py`: **925 pruebas, exit 0**,
+    Ruff correcto, `pip check` íntegro.
+  - `git diff --check`: **sin problemas**.
+- Decisiones:
+  1. **El repositorio se llama `observaciones_repository`**, en plural, como el
+     router y como la tabla, aunque el controlador y el esquema vayan en
+     singular. Motivo: coincide con la tabla que gobierna y con
+     `asignaciones_repository` y `estudiantes_repository`.
+  2. **No se unifican los dos idiomas de conexión.** Motivo: cambiaría los
+     conteos que 7.0 fijó y no está autorizado. Alternativa descartada: bajar la
+     lectura a un controlador nuevo, que el usuario descartó expresamente al
+     elegir entre las tres salidas.
+  3. **La normalización y el `422` se quedan en el esquema.** Traerlos al
+     repositorio convertiría el 422 en un 500. Es el hallazgo 4 y hay una prueba
+     que lo protege.
+- Riesgos: ninguno nuevo. Los **nueve hallazgos** siguen vivos y sin corregir.
+- Siguiente acción exacta: **esperar la decisión del usuario** sobre el punto de
+  decisión y la verificación manual. Una instrucción genérica de continuar no la
+  sustituye.
+
+## Punto de decisión, abierto al terminar 7.1
+
+La frontera de persistencia del dominio **está cerrada** y, a diferencia de los
+cinco dominios anteriores, **la capa HTTP se quedó sin SQL**. Lo que queda del
+objetivo de la capa es la parte condicional del índice, que **no entra por
+inferencia**. Hay **tres** salidas y ninguna está tomada:
+
+1. **Cerrar la capa aquí**, como refactorización pura, igual que hicieron las
+   capas 5 y 6 y los cinco dominios anteriores.
+2. **Abrir una 7.2 con `response_model`.** Aquí es **la más barata de todo el
+   programa**: las dos respuestas son planas —un diccionario de tres cadenas y
+   un `{"mensaje": …}`— y no hay anidamiento. El único matiz es el `None` de la
+   observación ausente, que obliga a un `Optional`.
+3. **Abrir una 7.2 con los errores de dominio.** Es **la más cara aquí**, y por
+   una razón concreta: el dominio **no usa `HTTPException` en ninguna parte**.
+   Introducirla cambiaría cómo salen los fallos, que hoy suben desnudos hasta el
+   500 genérico de FastAPI. No sería una refactorización pura.
+
+Queda pendiente también la **verificación manual**, que no se ha hecho.
+
+**No se propone corregir ninguno de los nueve hallazgos desde esta capa**, ni
+siquiera la ausencia de claves foráneas, que es el más grave: exigiría una
+migración real sobre la base y una decisión sobre las filas huérfanas
+existentes.
 
 ## Entrega al próximo chat
 
 - Capa activa: **7, para el dominio `observaciones` y solo ese.** Los otros seis
   dominios siguen en espera.
-- Última subcapa terminada: **7.0**, cerrada el 2026-08-21, el mismo día en que
-  se activó la capa.
-- Primera subcapa pendiente: **7.1**, **sin definir y no iniciada**. La
-  evidencia de 7.0 la perfila —2 sentencias, una en la ruta y una en el
-  controlador, sin repositorio— pero **su alcance no está decidido**. No se
-  inicia sin orden.
+- Última subcapa terminada: **7.1**, cerrada el 2026-08-21. Con ella la frontera
+  de persistencia del dominio quedó cerrada **y la capa HTTP se quedó sin SQL**.
+- Primera subcapa pendiente: **ninguna definida.** Queda un **punto de decisión
+  con tres salidas** y la **verificación manual pendiente**. Ninguna entra por
+  inferencia.
 - Commit base: `fd3f93a2ad97daa0a34081eb2f95504dd1a9e4df`, rama `main`,
   **publicado y desplegado**, comprobado contra el remoto real. La activación
-  quedó en `dac6425` y **7.0 está sin commitear** al cerrar este turno.
-- Compuerta al cerrar 7.0: **923 pruebas, exit 0**, Ruff correcto y `pip check`
-  íntegro. La suite pasó de **898 al activar la capa a 923**.
+  quedó en `dac6425` y 7.0 en `eaa8115`; **7.1 está sin commitear** al cerrar
+  este turno.
+- Compuerta al cerrar 7.1: **925 pruebas, exit 0**, Ruff correcto y `pip check`
+  íntegro. La suite pasó de **898 al activar la capa a 925**.
+- Lo que consiguió 7.1: la ruta pasó de **41 a 38 líneas** y el controlador de
+  **43 a 30**, los dos de **1 sentencia SQL inline a 0**; la persistencia vive
+  en `app/repositories/observaciones_repository.py`, **2 funciones** que reciben
+  el cursor y **el undécimo repositorio** del proyecto. Comparador AST contra el
+  commit base: **2 de 2 literales idénticos byte a byte**, sin ninguna
+  autorización de cambio de texto —**la comparación estricta sí se sostuvo
+  aquí**, al contrario que en `boletin`—. **Los dos caminos emiten la misma
+  secuencia de `(SQL, parámetros)`, en el mismo orden respecto a los guards,
+  devuelven lo mismo y abren las mismas conexiones** que el commit base.
+  **Ninguna prueba cambió de expectativa** salvo las siete que debían fallar, y
+  **las ocho heredadas no se tocaron**.
+- **El alcance de 7.1 lo decidió el usuario entre tres salidas**, no el
+  asistente: se preguntó antes de tocar nada qué hacer con la sentencia que
+  vivía en la ruta.
 - Lo que 7.0 dejó medido: el dominio son **tres archivos y 104 líneas**; **2
   entradas HTTP** con **un único modelo de permiso**; **una sola tabla
   escrita**; **una transacción propia**; **2 sentencias SQL**, **una en la ruta
@@ -652,9 +792,10 @@ orden explícita. Van ordenados por gravedad.
   1. **Un solo dominio.** `dashboard`, `notas`, `ventas`, `asistencia` y
      `boletin` están cerrados en sus propias bitácoras y los otros seis siguen
      en espera.
-  2. **La ruta CONTIENE SQL**, confirmado. Es lo que distingue a este dominio de
-     los cinco anteriores, y 7.1 tendrá que decidir si esa sentencia se mueve y
-     adónde. Contar el SQL solo en el controlador da **1 de 2**.
+  2. **La ruta YA NO contiene SQL.** Lo contenía —era lo que distinguía a este
+     dominio— y 7.1 lo movió al repositorio por decisión explícita del usuario.
+     **Pero la ruta sigue siendo dueña de su cursor** y llama al repositorio
+     directamente, sin pasar por un controlador. Eso es deliberado.
   3. **La frontera con `plan_de_clases` quedó decidida y es limpia**: paths
      disjuntos y **tablas distintas**, `observaciones` frente a
      `plan_de_clases_observaciones`. No se toca.
@@ -674,9 +815,13 @@ orden explícita. Van ordenados por gravedad.
      esta tabla y no fallaría con las pruebas de este dominio.
   10. **Los dos idiomas de conexión se conservan.** Unificarlos cambiaría los
       conteos que 7.0 fijó por aserción.
-  11. **Al aparecer un repositorio nuevo, cuatro guardias ajenas fallarán.** Es
-      el patrón registrado desde `asistencia`: cada migración añade una
-      enumeración de repositorios y el número crece en uno. Hoy son **diez**.
-- Siguiente acción exacta: **esperar la definición y la orden de 7.1.** 7.0 está
-  cerrada; su alcance no está decidido. Lo que 7.1 tendrá que resolver antes que
-  nada es **qué se hace con la sentencia que vive en la ruta**.
+  11. **Los repositorios son ya once.** Cada migración añade una enumeración y
+      el número crece en uno: es el patrón registrado desde `asistencia`, y en
+      7.1 volvieron a fallar **cuatro** guardias ajenas por ese motivo.
+  12. **Al comparar texto de un módulo, excluir los docstrings.** Es la lección
+      13 de la capa 6 y en 7.1 volvió a morder: el docstring del repositorio
+      nombra `get_connection` justo para explicar que no lo usa.
+- Siguiente acción exacta: **esperar la decisión del usuario** sobre el punto de
+  decisión —cerrar la capa, `response_model` o errores de dominio— y sobre la
+  **verificación manual**, que no se ha hecho. Una instrucción genérica de
+  continuar **no** la sustituye.

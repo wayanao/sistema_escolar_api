@@ -1,4 +1,5 @@
 from app.database import get_connection
+from app.repositories import boletin_repository
 from app.services.asignacion_academica import resolver_asignacion_academica_id_cursor
 from psycopg2.extras import RealDictCursor
 
@@ -8,36 +9,22 @@ def guardar_boletin_controller(data):
     try:
         asignacion_id = resolver_asignacion_academica_id_cursor(cursor, data.asignacion_id)
         tipo_evaluacion = getattr(data, "tipo_evaluacion", "numerica") or "numerica"
-        cursor.execute("""
-            INSERT INTO boletin_cabecera (estudiante_id, asignacion_id, periodo, definitiva)
-            VALUES (%s, %s, %s, %s)
-            ON CONFLICT (estudiante_id, asignacion_id, periodo) 
-            DO UPDATE SET definitiva = EXCLUDED.definitiva
-            RETURNING id
-        """, (data.estudiante_id, asignacion_id, data.periodo, data.definitiva))
-        
-        boletin_id = cursor.fetchone()[0]
-        
-        cursor.execute("DELETE FROM boletin_detalles WHERE boletin_id = %s", (boletin_id,))
-        
+        boletin_id = boletin_repository.guardar_cabecera(
+            cursor, data.estudiante_id, asignacion_id, data.periodo, data.definitiva
+        )
+
+        boletin_repository.borrar_detalles_de_boletin(cursor, boletin_id)
+
         for det in data.detalles:
-            cursor.execute("""
-                INSERT INTO boletin_detalles (
-                    boletin_id,
-                    nota,
-                    observacion,
-                    tipo_evaluacion,
-                    valoracion
-                )
-                VALUES (%s, %s, %s, %s, %s)
-            """, (
+            boletin_repository.insertar_detalle(
+                cursor,
                 boletin_id,
                 det.nota,
                 det.observacion,
                 getattr(det, "tipo_evaluacion", tipo_evaluacion) or tipo_evaluacion,
                 getattr(det, "valoracion", None),
-            ))
-            
+            )
+
         conn.commit()
         return {"mensaje": "Boletín guardado exitosamente"}
     except Exception as e:
@@ -61,9 +48,9 @@ def obtener_notas_planilla_controller(asignacion_id: int, periodo: int):
               AND COALESCE(LOWER(e.estado), 'activo') = 'activo'
             ORDER BY e.apellido, e.nombre, nd.id
         """, (periodo, asignacion_id))
-        
+
         resultado = cursor.fetchall()
-        
+
         estudiantes_dict = {}
         for row in resultado:
             est_id = row[0]
@@ -78,7 +65,7 @@ def obtener_notas_planilla_controller(asignacion_id: int, periodo: int):
                     "tipo_nota": row[3],
                     "valor": float(row[4])
                 })
-                
+
         return list(estudiantes_dict.values())
     finally:
         cursor.close()
@@ -88,23 +75,10 @@ def obtener_boletin_para_profesor_controller(asignacion_id: int, periodo: int):
     cursor = conn.cursor(cursor_factory=RealDictCursor)
     try:
         asignacion_id = resolver_asignacion_academica_id_cursor(cursor, asignacion_id)
-        cursor.execute("""
-            SELECT e.id as estudiante_id, e.nombre, e.apellido,
-                   nd.descripcion as tipo_nota,
-                   nd.nota,
-                   COALESCE(nd.tipo_evaluacion, 'numerica') AS tipo_evaluacion,
-                   nd.valoracion
-            FROM estudiantes e
-            JOIN asignaciones a ON e.curso_id = a.curso_id
-            LEFT JOIN notas_detalle nd ON e.id = nd.estudiante_id
-                AND nd.asignacion_id = a.id AND nd.periodo = %s
-            WHERE a.id = %s
-              AND COALESCE(LOWER(e.estado), 'activo') = 'activo'
-            ORDER BY e.apellido, e.nombre, nd.id
-        """, (periodo, asignacion_id))
+        filas = boletin_repository.leer_notas_de_planilla(cursor, asignacion_id, periodo)
 
         estudiantes_dict = {}
-        for row in cursor.fetchall():
+        for row in filas:
             est_id = row['estudiante_id']
             if est_id not in estudiantes_dict:
                 estudiantes_dict[est_id] = {
@@ -131,23 +105,12 @@ def obtener_boletin_para_profesor_controller(asignacion_id: int, periodo: int):
 
         est_ids = list(estudiantes_dict.keys())
         if est_ids:
-            cursor.execute("""
-                SELECT
-                    bc.estudiante_id,
-                    bc.definitiva,
-                    bd.nota,
-                    bd.observacion,
-                    COALESCE(bd.tipo_evaluacion, 'numerica') AS tipo_evaluacion,
-                    bd.valoracion
-                FROM boletin_cabecera bc
-                JOIN boletin_detalles bd ON bd.boletin_id = bc.id
-                WHERE bc.asignacion_id = %s AND bc.periodo = %s
-                    AND bc.estudiante_id = ANY(%s)
-                ORDER BY bc.estudiante_id, bd.id
-            """, (asignacion_id, periodo, est_ids))
+            guardados = boletin_repository.leer_boletines_guardados_de_estudiantes(
+                cursor, asignacion_id, periodo, est_ids
+            )
 
             saved_by_student = {}
-            for row in cursor.fetchall():
+            for row in guardados:
                 est_id = row['estudiante_id']
                 if est_id not in saved_by_student:
                     saved_by_student[est_id] = {
@@ -174,73 +137,19 @@ def obtener_boletin_admin_controller(estudiante_id: int, periodo: int):
     conn = get_connection()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        
-        cur.execute('''
-            WITH asignaciones_academicas AS (
-                SELECT DISTINCT ON (COALESCE(a.asignacion_academica_id, a.id))
-                    COALESCE(a.asignacion_academica_id, a.id) AS id,
-                    a.curso_id,
-                    a.materia_id,
-                    a.profesor_id,
-                    COALESCE(a.orden_boletin, 100) AS orden_boletin
-                FROM asignaciones a
-                WHERE a.activo = TRUE
-                ORDER BY COALESCE(a.asignacion_academica_id, a.id), COALESCE(a.orden_boletin, 100), a.id
-            )
-            SELECT 
-                asig.id as asignacion_id,
-                m.id as materia_id,
-                m.nombre AS materia,
-                p.nombre AS profesor_nombre,
-                p.apellido AS profesor_apellido,
-                COALESCE(NULLIF(bc.definitiva, 0), nd_prom.promedio_numerico) AS definitiva,
-                bc.id as boletin_id,
-                asig.orden_boletin
-            FROM estudiantes e
-            JOIN asignaciones_academicas asig ON e.curso_id = asig.curso_id
-            JOIN materias m ON asig.materia_id = m.id
-            JOIN profesor p ON asig.profesor_id = p.id
-            LEFT JOIN boletin_cabecera bc ON bc.asignacion_id = asig.id
-                AND bc.estudiante_id = e.id
-                AND bc.periodo = %s
-            LEFT JOIN LATERAL (
-                SELECT AVG(nd.nota) AS promedio_numerico
-                FROM notas_detalle nd
-                WHERE nd.estudiante_id = e.id
-                  AND nd.asignacion_id = asig.id
-                  AND nd.periodo = %s
-                  AND COALESCE(nd.tipo_evaluacion, 'numerica') <> 'desarrollo'
-                  AND nd.nota > 0
-            ) nd_prom ON TRUE
-            WHERE e.id = %s
-            ORDER BY asig.orden_boletin, m.nombre
-        ''', (periodo, periodo, estudiante_id))
-        materias_res = cur.fetchall()
-        
+
+        materias_res = boletin_repository.leer_materias_del_estudiante(
+            cur, estudiante_id, periodo
+        )
+
         asignacion_ids = [row['asignacion_id'] for row in materias_res]
         detalles_por_asignacion = {}
         if asignacion_ids:
-            cur.execute('''
-                SELECT
-                    bc.asignacion_id,
-                    bc.periodo,
-                    bd.nota,
-                    COALESCE(bd.tipo_evaluacion, 'numerica') AS tipo_evaluacion,
-                    bd.valoracion,
-                    CASE WHEN bc.periodo = %s THEN bd.observacion ELSE NULL END AS observacion,
-                    ROW_NUMBER() OVER (
-                        PARTITION BY bc.asignacion_id, bc.periodo
-                        ORDER BY bd.id
-                    ) AS detalle_idx
-                FROM boletin_cabecera bc
-                JOIN boletin_detalles bd ON bd.boletin_id = bc.id
-                WHERE bc.estudiante_id = %s
-                    AND bc.asignacion_id = ANY(%s)
-                    AND bc.periodo BETWEEN 1 AND 4
-                ORDER BY bc.asignacion_id, detalle_idx, bc.periodo
-            ''', (periodo, estudiante_id, asignacion_ids))
+            detalles = boletin_repository.leer_detalles_por_asignaciones(
+                cur, periodo, estudiante_id, asignacion_ids
+            )
 
-            for det in cur.fetchall():
+            for det in detalles:
                 asignacion_id = det['asignacion_id']
                 detalle_idx = det['detalle_idx']
                 if asignacion_id not in detalles_por_asignacion:
@@ -262,44 +171,17 @@ def obtener_boletin_admin_controller(estudiante_id: int, periodo: int):
                     detalle['notas_por_periodo'][str(det['periodo'])] = float(det['nota'])
                 if det['valoracion']:
                     detalle['valoraciones_por_periodo'][str(det['periodo'])] = det['valoracion']
-                
-        cur.execute('''
-            SELECT e.nombre as estudiante_nombre, e.apellido as estudiante_apellido, c.nombre as curso_nombre
-            FROM estudiantes e
-            LEFT JOIN cursos c ON e.curso_id = c.id
-            WHERE e.id = %s
-        ''', (estudiante_id,))
-        est_info = cur.fetchone()
+
+        est_info = boletin_repository.leer_datos_del_estudiante(cur, estudiante_id)
 
         if not est_info:
             return None
 
         # Puesto del estudiante en el curso para el periodo (solo numericas).
         # Promedia las definitivas no nulas por estudiante y rankea descendente.
-        cur.execute('''
-            WITH promedios AS (
-                SELECT
-                    bc.estudiante_id,
-                    AVG(bc.definitiva) AS promedio
-                FROM boletin_cabecera bc
-                JOIN estudiantes e ON e.id = bc.estudiante_id
-                WHERE e.curso_id = (SELECT curso_id FROM estudiantes WHERE id = %s)
-                  AND bc.periodo = %s
-                  AND bc.definitiva IS NOT NULL
-                GROUP BY bc.estudiante_id
-            ),
-            ranked AS (
-                SELECT
-                    estudiante_id,
-                    promedio,
-                    RANK() OVER (ORDER BY promedio DESC) AS puesto
-                FROM promedios
-            )
-            SELECT
-                (SELECT puesto FROM ranked WHERE estudiante_id = %s) AS puesto,
-                (SELECT COUNT(*) FROM promedios) AS total
-        ''', (estudiante_id, periodo, estudiante_id))
-        ranking_row = cur.fetchone() or {}
+        ranking_row = boletin_repository.leer_puesto_en_el_curso(
+            cur, estudiante_id, periodo
+        ) or {}
 
         resultado = {
             'estudiante_id': estudiante_id,
@@ -311,7 +193,7 @@ def obtener_boletin_admin_controller(estudiante_id: int, periodo: int):
             'total_estudiantes': ranking_row.get('total') or 0,
             'materias': []
         }
-        
+
         for row in materias_res:
             detalles_dict = detalles_por_asignacion.get(row['asignacion_id'], {})
             detalles = []
@@ -343,7 +225,7 @@ def obtener_boletin_admin_controller(estudiante_id: int, periodo: int):
                 'detalles': detalles
             }
             resultado['materias'].append(mat_info)
-            
+
         return resultado
     finally:
         conn.close()
@@ -354,61 +236,15 @@ def obtener_reporte_parcial_admin_controller(estudiante_id: int, periodo: int):
     conn = get_connection()
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
-        cur.execute('''
-            SELECT
-                e.nombre AS estudiante_nombre,
-                e.apellido AS estudiante_apellido,
-                c.nombre AS curso_nombre
-            FROM estudiantes e
-            LEFT JOIN cursos c ON c.id = e.curso_id
-            WHERE e.id = %s
-        ''', (estudiante_id,))
-        est_info = cur.fetchone()
+        est_info = boletin_repository.leer_datos_basicos_del_estudiante(cur, estudiante_id)
         if not est_info:
             return None
 
-        cur.execute('''
-            WITH asignaciones_academicas AS (
-                SELECT DISTINCT ON (COALESCE(a.asignacion_academica_id, a.id))
-                    COALESCE(a.asignacion_academica_id, a.id) AS id,
-                    a.curso_id,
-                    a.materia_id,
-                    a.profesor_id,
-                    COALESCE(a.orden_boletin, 100) AS orden_boletin
-                FROM asignaciones a
-                WHERE a.activo = TRUE
-                ORDER BY
-                    COALESCE(a.asignacion_academica_id, a.id),
-                    COALESCE(a.orden_boletin, 100),
-                    a.id
-            )
-            SELECT
-                asig.id AS asignacion_id,
-                m.id AS materia_id,
-                m.nombre AS materia,
-                p.nombre AS profesor_nombre,
-                p.apellido AS profesor_apellido,
-                asig.orden_boletin,
-                nd.id AS nota_detalle_id,
-                nd.descripcion,
-                nd.nota,
-                COALESCE(nd.tipo_evaluacion, 'numerica') AS tipo_evaluacion,
-                nd.valoracion
-            FROM estudiantes e
-            JOIN asignaciones_academicas asig ON asig.curso_id = e.curso_id
-            JOIN materias m ON m.id = asig.materia_id
-            JOIN profesor p ON p.id = asig.profesor_id
-            LEFT JOIN notas_detalle nd
-                ON nd.estudiante_id = e.id
-                AND nd.asignacion_id = asig.id
-                AND nd.periodo = %s
-            WHERE e.id = %s
-            ORDER BY asig.orden_boletin, m.nombre, nd.id
-        ''', (periodo, estudiante_id))
+        filas = boletin_repository.leer_planilla_vigente(cur, estudiante_id, periodo)
 
         materias = {}
         notas_numericas = {}
-        for row in cur.fetchall():
+        for row in filas:
             asignacion_id = row['asignacion_id']
             if asignacion_id not in materias:
                 materias[asignacion_id] = {

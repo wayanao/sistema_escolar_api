@@ -4,15 +4,17 @@
 
 ## Control
 
-- Estado: **Activa** desde el 2026-08-21, con su subcapa **7.0 cerrada** el
-  mismo día.
+- Estado: **Activa** desde el 2026-08-21, con sus subcapas **7.0 y 7.1
+  cerradas**, ambas el mismo día.
 - Commit base: `8e61170f32a6d6a23ca23f9ead89d17bc209e7b6`.
 - Rama acordada: `main`.
-- Primera subcapa pendiente: **7.1**, **sin definir todavía**. La define la
-  evidencia de 7.0, que está abajo. No se inicia sin orden.
+- Primera subcapa pendiente: **ninguna definida**. Con 7.1 la **frontera de
+  persistencia del dominio quedó cerrada**. Queda un **punto de decisión**
+  abierto y la **verificación manual pendiente**; ver al final.
 - Código de producto modificado al activar: **Ninguno**. Tampoco en 7.0: su diff
   es **un solo archivo de prueba nuevo** y ningún archivo rastreado modificado,
-  igual que los de 5.0, 6.0 y las cuatro 7.0 anteriores.
+  igual que los de 5.0, 6.0 y las cuatro 7.0 anteriores. **7.1 sí modifica
+  producto**: el controlador y un repositorio nuevo.
 - Dominio de esta capa: **boletin, y solo ese**. La capa 7 del índice es «resto
   de dominios» y ordena expresamente **priorizar uno a la vez**, así que esta
   bitácora cubre un único dominio. Los demás quedan fuera y necesitarán su
@@ -341,8 +343,8 @@ de 30 costaba **31 conexiones siendo admin y 61 siendo profesor**. Aquí el cost
 | Subcapa | Resultado | Estado |
 |---:|---|---|
 | 7.0 | Frontera, inventario, contratos, caracterización y línea base de consultas y conexiones | **Cerrada** el 2026-08-21 |
-| 7.1 | Primera extracción protegida | **Sin definir**: la evidencia de 7.0 la perfila, pero no está decidida |
-| 7.2 | Segunda extracción o punto de decisión | Sin definir |
+| 7.1 | Limpieza autorizada de espacios finales y extracción de 11 de las 12 sentencias a `boletin_repository` | **Cerrada** el 2026-08-21 |
+| 7.2 | Punto de decisión: `response_model`, errores de dominio y los diez hallazgos | **Sin decidir**: es un punto de decisión, no una subcapa pendiente |
 
 El desglose se deja deliberadamente **sin decidir** hasta tener la evidencia del
 inventario, igual que hicieron la capa 6 y las cuatro capas 7 anteriores. Las
@@ -662,23 +664,160 @@ orden explícita. Van ordenados por gravedad.
   comparación byte a byte de las cuatro 7.1 anteriores se puede sostener aquí o
   si hay que autorizar explícitamente la limpieza.
 - Siguiente acción exacta: **esperar la definición y la orden de 7.1.** No se
-  inició ni se decidió su alcance.
+  inició ni se decidió su alcance. *(Autorizada y ejecutada en el turno
+  siguiente; ver el cierre de 7.1 más abajo.)*
+
+### 2026-08-21 — cierre de 7.1
+
+- Autorización: orden explícita del usuario, «limpia pero que no dañe el
+  funcionamiento actual, sigue la siguiente subcapa». Resuelve el **hallazgo 9**
+  a favor de limpiar y autoriza 7.1 en el mismo turno.
+- **Cambio de texto SQL autorizado de forma explícita.** Es la primera vez en el
+  programa: las cuatro 7.1 anteriores compararon los literales **byte a byte** y
+  ninguna tuvo permiso para tocar una sola letra. Aquí el usuario autorizó la
+  limpieza, así que la comparación byte a byte **no se podía sostener** y se
+  sustituyó por una cadena de dos pasos, cada uno con su propia evidencia.
+- **Paso A, limpieza, hecha ANTES de mover nada.** `sed -i 's/[ \t]*$//'` sobre
+  `app/controllers/boletin_controller.py`: **14 líneas** perdieron sus espacios
+  finales, una de ellas dentro de un literal SQL, la del
+  `ON CONFLICT (estudiante_id, asignacion_id, periodo)`. Diff del paso:
+  **14 inserciones y 14 borrados**, ni una línea de código movida.
+  - Evidencia de inocuidad: un comparador AST extrajo los **12 literales** del
+    commit base y del archivo limpio, normalizando cada línea con `rstrip()`.
+    **`diff` vacío**: los doce son idénticos. Ninguna sentencia cambió de
+    palabras, de orden, de parámetros ni de sangría interior.
+  - Las **27 pruebas** del dominio pasaron con la limpieza ya aplicada y **sin
+    tocar ninguna aserción**.
+- **Paso B, extracción.** Nace `app/repositories/boletin_repository.py`, **el
+  décimo repositorio del proyecto**, con **11 funciones** que reciben el cursor
+  y ejecutan una sola sentencia. El controlador pasó de **457 a 293 líneas** y
+  de **12 sentencias SQL inline a 1**.
+- **Decisión sobre la sentencia que NO se movió.** La de
+  `obtener_notas_planilla_controller` se queda inline. Motivo: es **código
+  muerto que pertenece a `planilla`**, un dominio en espera, y no tiene un solo
+  consumidor. Llevarla al repositorio habría creado una función que nadie llama
+  y una falsa declaración de propiedad sobre otro dominio. **Alternativa
+  descartada**: alojarla en un bloque rotulado, como hizo la capa 6 con las
+  lecturas ajenas de `estudiantes_repository`; allí los consumidores eran
+  **reales**, y aquí no hay ninguno. El dominio queda en **1 sentencia inline**,
+  el mismo destino que `asignaciones`, que bajó de 52 a 1.
+- **Decisión sobre las dos lecturas del estudiante.**
+  `leer_datos_del_estudiante` y `leer_datos_basicos_del_estudiante` devuelven lo
+  mismo con SQL distinto: cambia el orden del `LEFT JOIN` y el formato de las
+  columnas. **Se conservan las dos por separado.** Unificarlas habría cambiado
+  el SQL observable de uno de los dos caminos, que es justo lo que la capa
+  prohíbe sin autorización concreta.
+- **Equivalencia en tiempo de ejecución, los cinco caminos.** Se ejecutó el
+  controlador del commit base y el de hoy contra dobles idénticos, comparando
+  la secuencia de **`(SQL normalizado, parámetros)`**, el **valor devuelto**, el
+  número de **conexiones abiertas** y el de **cierres**:
+
+  | Camino | Sentencias | Conexiones | Resultado |
+  |---|---:|---:|---|
+  | `guardar_boletin_controller` | 4 | 1 | **idéntico** |
+  | `obtener_boletin_para_profesor_controller` | 2 | 1 | **idéntico** |
+  | `obtener_boletin_admin_controller` | 4 | 1 | **idéntico** |
+  | `obtener_reporte_parcial_admin_controller` | 2 | 1 | **idéntico** |
+  | `obtener_notas_planilla_controller` | 1 | 1 | **idéntico** |
+
+- **Comparador AST sobre el conjunto de SQL**: la unión de literales del
+  controlador y del repositorio son **12**, y el conjunto coincide con el del
+  commit base **sin ausentes ni nuevos**.
+- **Las cinco guardias que fallaron, que era la señal esperada.** Cuatro son
+  ajenas al dominio y confirman el patrón que `asistencia` dejó anotado —**cada
+  migración añade una enumeración de repositorios, así que el número crece en
+  uno cada vez**—: `test_el_repositorio_de_asistencia_es_el_noveno`,
+  `test_el_dominio_tiene_su_repositorio` de dashboard,
+  `test_el_repositorio_de_notas_es_el_septimo` y
+  `test_el_repositorio_de_ventas_es_el_octavo`. Se les añadió
+  `boletin_repository` y, en la de `asistencia`, el conteo pasó de **9 a 10**.
+  La quinta es propia: las guardias de 7.0 sobre número de archivos, SQL inline
+  y ubicación del `AVG`.
+- **Una guardia de 7.0 se corrigió por un defecto propio, no por el cambio.**
+  `test_obtener_notas_planilla_controller_es_codigo_muerto_de_otro_dominio`
+  buscaba **menciones** del nombre y no **llamadas**, así que el docstring del
+  repositorio nuevo la hacía fallar, y luego el propio archivo de prueba también.
+  Se pasó a buscar `obtener_notas_planilla_controller(` excluyendo los archivos
+  propios. **La regla que fija no cambió**: sigue siendo cero consumidores.
+- Archivos modificados: `app/controllers/boletin_controller.py`,
+  `app/repositories/boletin_repository.py` (nuevo),
+  `tests/test_boletin_caracterizacion.py` y **una línea** en cada uno de
+  `tests/test_asistencia_caracterizacion.py`,
+  `tests/test_dashboard_caracterizacion.py`,
+  `tests/test_notas_caracterizacion.py` y
+  `tests/test_ventas_caracterizacion.py`.
+- **Lo que 7.1 no tocó, y estaba prohibido tocar**: `app/routes/boletines.py`,
+  `app/schemas/boletin.py`, `app/core/permissions.py`, las rutas de boletín que
+  posee `notas`, `notas_repository`, el resolver de asignación académica y **los
+  diez hallazgos de 7.0**, empezando por el emparejamiento por posición. Las
+  **3 pruebas heredadas** de `test_boletines_reporte_parcial.py` **no se
+  tocaron** y siguen pasando.
+- Comandos y resultados:
+  - Comparador AST base vs. limpio: **12 literales idénticos**, `diff` vacío.
+  - Comparador AST base vs. controlador + repositorio: **12 y 12**, sin
+    ausentes ni nuevos.
+  - Equivalencia en ejecución de los cinco caminos: **idéntica** en SQL,
+    parámetros, retorno, conexiones y cierres.
+  - `.\venv\Scripts\python.exe -m pytest -q -p no:cacheprovider tests\test_boletin_caracterizacion.py tests\test_boletines_reporte_parcial.py`:
+    **29 pasaron**.
+  - `.\venv\Scripts\python.exe scripts\verify.py`: **898 pruebas, exit 0**,
+    Ruff correcto, `pip check` íntegro.
+  - `git diff --check`: **sin problemas**.
+- Riesgos: ninguno nuevo. El hallazgo 9 queda **resuelto**; los otros nueve
+  siguen vivos y sin corregir.
+- Siguiente acción exacta: **esperar la decisión del usuario** sobre el punto de
+  decisión y la verificación manual. Una instrucción genérica de continuar no la
+  sustituye.
+
+## Punto de decisión, abierto al terminar 7.1
+
+La frontera de persistencia del dominio **está cerrada**. Lo que queda del
+objetivo de la capa es la parte condicional del índice, que **no entra por
+inferencia**. Hay **tres** salidas y ninguna está tomada:
+
+1. **Cerrar la capa aquí**, como refactorización pura, igual que hicieron las
+   capas 5 y 6 y los cuatro dominios anteriores.
+2. **Abrir una 7.2 con `response_model`** para las tres lecturas, demostrando
+   payload por payload que la respuesta no cambia. Aquí es **más caro que en los
+   dominios anteriores**: las respuestas son diccionarios anidados y de forma
+   variable, y `obtener_boletin_admin_controller` construye materias con
+   detalles por periodo.
+3. **Abrir una 7.2 con los errores de dominio.** Es **la más barata de las tres
+   en este dominio**, porque las cuatro entradas ya mapean a `HTTPException` con
+   mensajes fijos: no habría ningún status code que cambiar.
+
+Queda pendiente también la **verificación manual**, que no se ha hecho.
+
+**No se propone corregir ninguno de los diez hallazgos desde esta capa**, ni
+siquiera el emparejamiento por posición, que es el más grave: es una corrección
+de comportamiento y exigiría su propia orden.
 
 ## Entrega al próximo chat
 
 - Capa activa: **7, para el dominio `boletin` y solo ese.** Los otros siete
   dominios siguen en espera.
-- Última subcapa terminada: **7.0**, cerrada el 2026-08-21, el mismo día en que
-  se activó la capa.
-- Primera subcapa pendiente: **7.1**, **sin definir y no iniciada**. La
-  evidencia de 7.0 la perfila —12 sentencias inline en un solo controlador, sin
-  repositorio— pero **su alcance no está decidido** y hay que resolver antes el
-  hallazgo 9. No se inicia sin orden.
+- Última subcapa terminada: **7.1**, cerrada el 2026-08-21. Con ella la frontera
+  de persistencia del dominio quedó cerrada.
+- Primera subcapa pendiente: **ninguna definida.** Queda un **punto de decisión
+  con tres salidas** y la **verificación manual pendiente**. Ninguna entra por
+  inferencia.
 - Commit base: `8e61170f32a6d6a23ca23f9ead89d17bc209e7b6`, rama `main`,
   **publicado y desplegado**, comprobado contra el remoto real. La activación
-  quedó en `0f351c8` y **7.0 está sin commitear** al cerrar este turno.
-- Compuerta al cerrar 7.0: **896 pruebas, exit 0**, Ruff correcto y `pip check`
-  íntegro. La suite pasó de **872 al activar la capa a 896**.
+  quedó en `0f351c8`; **7.0 y 7.1 están sin commitear** al cerrar este turno.
+- Compuerta al cerrar 7.1: **898 pruebas, exit 0**, Ruff correcto y `pip check`
+  íntegro. La suite pasó de **872 al activar la capa a 898**.
+- Lo que consiguió 7.1: `boletin_controller.py` pasó de **457 a 293 líneas** y
+  de **12 sentencias SQL inline a 1**; la persistencia vive en
+  `app/repositories/boletin_repository.py`, **11 funciones** que reciben el
+  cursor y **el décimo repositorio** del proyecto. **Los cinco caminos emiten la
+  misma secuencia de `(SQL, parámetros)`, devuelven lo mismo y abren las mismas
+  conexiones** que el commit base. **Ninguna prueba cambió de expectativa** salvo
+  las cinco que debían fallar, y **las tres heredadas no se tocaron**.
+- **7.1 fue la primera subcapa del programa con un cambio de texto SQL
+  autorizado**: la limpieza de 14 líneas con espacios finales. Se hizo **antes**
+  de mover nada y se demostró inocua comparando los doce literales
+  normalizados; la comparación byte a byte se sustituyó por esa cadena de dos
+  pasos.
 - Lo que 7.0 dejó medido: el dominio son **tres archivos**; **4 entradas HTTP**
   con **tres modelos de permiso**; **dos tablas escritas** —la primera vez en la
   capa 7 que un dominio escribe más de una—; **una transacción propia**; **12
@@ -711,11 +850,11 @@ orden explícita. Van ordenados por gravedad.
   4. **Las cifras de ESTE dominio son otras**: `AVG()` en SQL para el boletín de
      admin y `sum()/len()` en Python **sin redondear** para el reporte parcial.
      Ambas fijadas por prueba.
-  5. **Antes de mover una sola sentencia en 7.1, resolver el hallazgo 9**: hay
-     14 líneas con espacios finales, una dentro de un literal SQL.
-     `git diff --check` obliga a limpiarlos y eso **rompe la comparación byte a
-     byte** que las cuatro 7.1 anteriores exigieron. Es una decisión previa, no
-     un detalle de ejecución.
+  5. **El hallazgo 9 quedó resuelto en 7.1**, con autorización explícita: las 14
+     líneas con espacios finales se limpiaron **antes** de mover nada y se
+     demostró que los doce literales SQL no cambiaron. Es el precedente para
+     cualquier futura subcapa que herede un archivo sucio: **limpiar primero,
+     probar la inocuidad, mover después**.
   6. **`app/core/permissions.py` está fuera de alcance**, incluido el N+1 en
      conexiones que dejó `asistencia`. Aquí ese N+1 **no existe**.
   7. **El commit base ya está en producción.** El rollback de esta capa, si se
@@ -728,6 +867,10 @@ orden explícita. Van ordenados por gravedad.
   10. **Conservar el manejo de errores.** Las cuatro entradas devuelven un
       mensaje fijo y no filtran el texto de la excepción. Es un acierto del
       dominio y una extracción descuidada lo perdería.
-- Siguiente acción exacta: **esperar la definición y la orden de 7.1.** 7.0 está
-  cerrada; su alcance no está decidido y el hallazgo 9 hay que resolverlo antes.
-  Una instrucción genérica de continuar **no** basta para fijar ese alcance.
+  11. **La sentencia inline que queda es deliberada.** Es la del código muerto
+      de `planilla`. Que un futuro chat la «termine de mover» sería un error:
+      hay una prueba que fija que el controlador conserva exactamente 1.
+- Siguiente acción exacta: **esperar la decisión del usuario** sobre el punto de
+  decisión —cerrar la capa, `response_model` o errores de dominio— y sobre la
+  **verificación manual**, que no se ha hecho. Una instrucción genérica de
+  continuar **no** la sustituye.

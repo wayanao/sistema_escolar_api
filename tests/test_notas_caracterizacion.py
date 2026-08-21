@@ -173,6 +173,7 @@ def test_el_repositorio_de_notas_es_el_septimo():
     assert repositorios == {
         "asignaciones_repository",
         "asistencia_repository",
+        "boletin_repository",
         "dashboard_repository",
         "estudiantes_repository",
         "notas_repository",

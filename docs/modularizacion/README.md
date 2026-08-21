@@ -45,7 +45,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 7 | Resto de dominios — **`notas` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `notas` el 2026-08-19; verificada a mano. **Publicada el 2026-08-20**, después de escribirse su bitácora | [07_NOTAS.md](./07_NOTAS.md) |
 | 7 | Resto de dominios — **`ventas` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `ventas` el 2026-08-20; verificada a mano. **Publicada el 2026-08-20**, después de escribirse su bitácora | [07_VENTAS.md](./07_VENTAS.md) |
 | 7 | Resto de dominios — **`asistencia` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `asistencia` el 2026-08-21; verificada a mano. **Publicada el 2026-08-21**, después de escribirse su bitácora | [07_ASISTENCIA.md](./07_ASISTENCIA.md) |
-| 7 | Resto de dominios — **`boletin` en migración** | Migración individual con contratos y pruebas | **Activa** desde el 2026-08-21; **7.0 cerrada** el mismo día, **7.1 sin definir**. Los demás dominios, **en espera** | [07_BOLETIN.md](./07_BOLETIN.md) |
+| 7 | Resto de dominios — **`boletin` en migración** | Migración individual con contratos y pruebas | **Activa** desde el 2026-08-21; **7.0 y 7.1 cerradas** el mismo día. Punto de decisión abierto y **verificación manual pendiente**. Los demás dominios, **en espera** | [07_BOLETIN.md](./07_BOLETIN.md) |
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
 cierre y el usuario ordene continuar, se crea su sucesora desde
@@ -1460,6 +1460,44 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   el texto de la excepción al cliente**, al contrario que `dashboard` y
   `asistencia`; los guards corren **fuera del `try`**, así que un 403 nunca sale
   como 500; y no hay fugas de conexión ni f-strings en SQL.
+- Resultado de 7.1 de `boletin`, **cerrada el 2026-08-21**: **11 de las 12
+  sentencias** salieron del controlador a
+  `app/repositories/boletin_repository.py`, **11 funciones** que reciben el
+  cursor. Es **el décimo repositorio** del proyecto. `boletin_controller.py`
+  pasó de **457 a 293 líneas** y de **12 sentencias inline a 1**. Compuerta:
+  **898 pruebas, exit 0**; la suite pasó de **872 al activar la capa a 898**.
+- **7.1 de `boletin` es la primera subcapa del programa que cambió texto SQL con
+  autorización explícita.** El usuario ordenó «limpia pero que no dañe el
+  funcionamiento actual», así que las **14 líneas con espacios finales** se
+  limpiaron —una dentro de un literal SQL— y **la comparación byte a byte que
+  las cuatro 7.1 anteriores exigieron dejó de poder sostenerse**. Se sustituyó
+  por una cadena de dos pasos con evidencia propia: primero limpiar y demostrar
+  que **los doce literales normalizados son idénticos** al commit base, después
+  mover y demostrar que **el conjunto de SQL sigue siendo el mismo**. Es el
+  precedente para cualquier archivo sucio que herede una subcapa futura:
+  **limpiar primero, probar la inocuidad, mover después**.
+- **Equivalencia de 7.1 comprobada en ejecución, no solo por texto**: se corrió
+  el controlador del commit base y el de hoy contra dobles idénticos y **los
+  cinco caminos** emiten la misma secuencia de `(SQL, parámetros)`, devuelven lo
+  mismo y abren las mismas conexiones y cierres.
+- **Decisión de 7.1: una sentencia se queda inline a propósito.** La de
+  `obtener_notas_planilla_controller`, el código muerto de `planilla`. Llevarla
+  al repositorio habría creado una función sin consumidores y una falsa
+  propiedad sobre un dominio en espera. Se descartó el bloque rotulado que usó
+  la capa 6 en `estudiantes_repository`, porque allí los consumidores eran
+  reales. El dominio queda en **1 sentencia inline**, como `asignaciones`.
+- **Cinco guardias fallaron en 7.1, que era la señal esperada.** Cuatro son
+  ajenas y confirman el patrón que `asistencia` anotó —cada migración añade una
+  enumeración de repositorios, así que **el número crece en uno cada vez**—: las
+  de `asistencia`, `dashboard`, `notas` y `ventas`. En la de `asistencia` el
+  conteo pasó de **9 a 10**.
+- **Punto de decisión abierto al terminar 7.1 de `boletin`**, con **tres**
+  salidas: cerrar la capa como refactorización pura, una 7.2 con
+  `response_model` —**más cara aquí** por los payloads anidados de forma
+  variable— o una 7.2 con errores de dominio, que es **la más barata de las
+  tres**, porque las cuatro entradas ya mapean a `HTTPException` con mensajes
+  fijos y no habría status code que cambiar. Ninguna entra por inferencia.
+  Queda pendiente también la **verificación manual**.
 - Siguen en espera **siete** dominios: `observaciones`, `planilla`,
   `planeador_anual`, `plan_de_clases`, `branding`, `profesores` y `super_admin`.
   `planilla` sigue sin ser frontera limpia por la misma razón que `boletin`.

@@ -146,15 +146,18 @@ class _DetalleFalso:
 # Frontera del dominio
 # --------------------------------------------------------------------------
 
-def test_el_dominio_son_tres_archivos_y_no_tiene_repositorio_ni_servicio():
-    """Guardia de frontera. `boletin` es el segundo dominio de la capa 7 que
-    llega sin repositorio propio; que aparezca uno es trabajo de 7.1 y debe ser
-    una decision, no un efecto colateral."""
+def test_el_dominio_son_cuatro_archivos_y_sigue_sin_servicio():
+    """Guardia de frontera, actualizada por 7.1.
+
+    7.0 la dejo en tres archivos y sin repositorio. 7.1 anadio el decimo
+    repositorio del proyecto; el servicio sigue sin existir y crearlo seria otra
+    decision, no un efecto colateral.
+    """
     assert (RAIZ / "app/routes/boletines.py").is_file()
     assert (RAIZ / "app/controllers/boletin_controller.py").is_file()
     assert (RAIZ / "app/schemas/boletin.py").is_file()
+    assert (RAIZ / "app/repositories/boletin_repository.py").is_file()
 
-    assert not (RAIZ / "app/repositories/boletin_repository.py").exists()
     assert not (RAIZ / "app/services/boletin_service.py").exists()
 
 
@@ -183,11 +186,40 @@ def test_notas_conserva_las_dos_rutas_de_boletin_y_no_hay_colision_de_paths():
     assert all(path.startswith("/boletines/") for path in paths_boletines)
 
 
-def test_el_controlador_conserva_doce_sentencias_sql_inline():
-    """Linea base de SQL inline. Los ocho dominios migrados la bajaron a 0 o 1
-    moviendola a un repositorio; aqui sigue entera en el controlador."""
-    assert len(_sql_del_modulo("app/controllers/boletin_controller.py")) == 12
+def test_la_persistencia_vive_en_el_repositorio_y_solo_queda_una_inline():
+    """Linea base de SQL inline, actualizada por 7.1.
+
+    7.0 conto **12 sentencias** en el controlador. 7.1 movio **11** al
+    repositorio y dejo **1**: la del codigo muerto de `planilla`, que no
+    pertenece a este dominio.
+    """
+    assert len(_sql_del_modulo("app/controllers/boletin_controller.py")) == 1
+    assert len(_sql_del_modulo("app/repositories/boletin_repository.py")) == 11
     assert _sql_del_modulo("app/routes/boletines.py") == []
+
+
+def test_el_conjunto_de_sql_del_dominio_sigue_siendo_el_mismo():
+    """La extraccion movio texto, no lo cambio.
+
+    Union de literales del controlador y del repositorio: 12, los mismos que
+    7.0 inventario.
+    """
+    total = (
+        _sql_del_modulo("app/controllers/boletin_controller.py")
+        + _sql_del_modulo("app/repositories/boletin_repository.py")
+    )
+    assert len(total) == 12
+
+
+def test_el_repositorio_no_es_dueno_de_ningun_recurso():
+    """Ninguna funcion del repositorio abre, cierra, confirma ni revierte.
+
+    La propiedad de la conexion sigue en el controlador, igual que en los nueve
+    repositorios anteriores.
+    """
+    fuente = (RAIZ / "app/repositories/boletin_repository.py").read_text(encoding="utf-8")
+    for prohibido in ("get_connection", "get_cursor", "commit()", "rollback()", "close()"):
+        assert prohibido not in fuente
 
 
 def test_el_controlador_usa_el_idioma_antiguo_get_connection():
@@ -203,15 +235,18 @@ def test_obtener_notas_planilla_controller_es_codigo_muerto_de_otro_dominio():
     controlador de `boletin` y no la importa nadie."""
     assert hasattr(boletin_controller, "obtener_notas_planilla_controller")
 
+    # Se buscan puntos de llamada reales, no menciones: las bitacoras y este
+    # mismo archivo nombran la funcion sin invocarla.
     consumidores = []
+    propios = {"boletin_controller.py", Path(__file__).name}
     for carpeta in ("app", "tests"):
         for archivo in (RAIZ / carpeta).rglob("*.py"):
-            if archivo.name == "boletin_controller.py":
+            if archivo.name in propios:
                 continue
-            if "obtener_notas_planilla_controller" in archivo.read_text(encoding="utf-8"):
+            if "obtener_notas_planilla_controller(" in archivo.read_text(encoding="utf-8"):
                 consumidores.append(archivo.name)
 
-    assert consumidores == [Path(__file__).name]
+    assert consumidores == []
 
 
 # --------------------------------------------------------------------------
@@ -389,11 +424,11 @@ def test_reporte_parcial_excluye_desarrollo_y_notas_no_positivas(monkeypatch):
 def test_el_dominio_usa_dos_formas_de_promediar_una_en_sql_y_otra_en_python():
     """Hallazgo registrado y NO corregido.
 
-    El boletin de admin promedia con `AVG(...)` dentro de SQL; el reporte
-    parcial promedia en Python con `sum()/len()`. Conviven en el mismo archivo
-    y sobre los mismos filtros.
+    El boletin de admin promedia con `AVG(...)` dentro de SQL, que tras 7.1 vive
+    en el repositorio; el reporte parcial promedia en Python con `sum()/len()`,
+    que sigue en el controlador porque es calculo y no persistencia.
     """
-    sentencias = _sql_del_modulo("app/controllers/boletin_controller.py")
+    sentencias = _sql_del_modulo("app/repositories/boletin_repository.py")
     assert any("AVG(nd.nota)" in sql for sql in sentencias)
 
     fuente_parcial = inspect.getsource(

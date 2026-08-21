@@ -44,7 +44,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 7 | Resto de dominios — **`dashboard` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `dashboard` el 2026-08-19; publicada y verificada a mano | [07_DASHBOARD.md](./07_DASHBOARD.md) |
 | 7 | Resto de dominios — **`notas` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `notas` el 2026-08-19; verificada a mano. **Publicada el 2026-08-20**, después de escribirse su bitácora | [07_NOTAS.md](./07_NOTAS.md) |
 | 7 | Resto de dominios — **`ventas` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `ventas` el 2026-08-20; verificada a mano. **Publicada el 2026-08-20**, después de escribirse su bitácora | [07_VENTAS.md](./07_VENTAS.md) |
-| 7 | Resto de dominios — **`asistencia` en migración** | Migración individual con contratos y pruebas | **Activa** desde el 2026-08-20; **7.0 y 7.1 cerradas**, punto de decisión abierto y verificación manual pendiente. Los demás dominios, **en espera** | [07_ASISTENCIA.md](./07_ASISTENCIA.md) |
+| 7 | Resto de dominios — **`asistencia` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `asistencia` el 2026-08-21; verificada a mano y **sin publicar**. Los demás dominios, **en espera** | [07_ASISTENCIA.md](./07_ASISTENCIA.md) |
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
 cierre y el usuario ordene continuar, se crea su sucesora desde
@@ -61,8 +61,9 @@ subcapas 7.0 y 7.1 completas y la verificación manual hecha. **La capa 7 quedó
 activada para el dominio `asistencia`** el 2026-08-20, por orden explícita del
 usuario, con su **7.0 pendiente y no iniciada**.
 
-**La capa activa es la capa 7 para el dominio `asistencia`**, y es la única. Su
-bitácora es [07_ASISTENCIA.md](./07_ASISTENCIA.md).
+**La capa 7 quedó también cerrada para el dominio `asistencia`** el 2026-08-21,
+al día siguiente de activarse, con sus subcapas 7.0 y 7.1 completas y la
+verificación manual hecha. **No existe una capa activa.**
 
 La capa 7 se cierra **por dominio**, no de una vez: cada uno tiene su propia
 bitácora, su propio commit base y su propio cierre, y **las subcapas se numeran
@@ -157,8 +158,7 @@ dedujo por inferencia**. Una primera instrucción de «activar otro dominio de l
 capa» **no bastó**, porque no nombraba ninguno y habría dejado el alcance
 abierto; el trabajo se detuvo hasta que el usuario lo nombró. Su bitácora es
 [07_ASISTENCIA.md](./07_ASISTENCIA.md); sus subcapas **7.0 y 7.1 quedaron
-cerradas el mismo día**, y la capa sigue **abierta** a la espera de la
-verificación manual y de la decisión del usuario.
+cerradas el mismo día** y la capa quedó **cerrada al día siguiente**.
 
 Ningún otro se activa por inferencia: boletín, observaciones, planilla,
 planeador anual, plan de clases, branding, profesores y super admin siguen en
@@ -1274,12 +1274,46 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   migrado. Vive aquí igual, por el criterio que 6.2 fijó con el expediente: es
   **el historial de asistencia de una asignación**, no persistencia general de
   estudiantes. **Las dos lecturas ajenas no se movieron.**
-- Capa activa: **la capa 7 para el dominio `asistencia`**, con **7.0 y 7.1
-  cerradas**, un **punto de decisión abierto** con tres salidas —el N+1 en
-  conexiones, `response_model` y los errores de dominio— y la **verificación
-  manual pendiente**, con su guion de ocho pasos ya entregado. **La capa no está
-  cerrada** y **no está publicada**: mientras siga así, su rollback es
-  **puramente local**. Quedan **ocho** dominios en espera: `boletin`,
+- **Verificación manual de la capa 7 para `asistencia`: hecha por el usuario y
+  correcta**, el 2026-08-21, en local. El artefacto se confirmó **antes** de
+  registrarla y **sin ambigüedad**: árbol limpio, `HEAD` en `4a4d9e1` —el commit
+  de 7.1— y `origin/main` todavía en el commit base, comprobado contra el remoto
+  real. **Cobertura registrada sin inflarla**: el usuario la reportó **de forma
+  global** y, preguntado punto por punto por los cuatro pasos de más peso,
+  confirmó **uno**, el **paso 3, el reemplazo parcial**. **No constan** el lote
+  que no incluye a todo el curso, la prueba cruzada de ausencias contra el
+  expediente y el dashboard, ni el aislamiento entre los dos tenants. Es
+  evidencia **más fuerte que la de `ventas`** —donde ningún paso llegó a
+  constar— y **más débil que la de `notas`**, con el matiz favorable de que el
+  paso que sí consta es **el que más valor tenía**: el reemplazo parcial es la
+  única escritura y la única transacción del dominio, y es justo lo que una
+  extracción mal hecha habría roto.
+- **Decisión del usuario el 2026-08-21: cerrar la capa aquí**, sin abrir 7.2. Se
+  le ofrecieron **cuatro** salidas —cerrar, una 7.2 con el N+1 en conexiones,
+  una con `response_model`, o una con los errores de dominio— y eligió cerrar.
+  **El N+1 en conexiones se queda**, y era la salida con más valor operativo:
+  no se descarta para siempre, pasa a ser trabajo disponible que exigiría una
+  orden propia y probablemente la auditoría de capacidad de la capa 2.
+  `response_model` y los errores de dominio **no se añaden** y **no quedan como
+  deuda de esta capa**. Los **tres pasos del guion que no constan siguen sin
+  constar**.
+- Capa 7 **cerrada para `asistencia`** el 2026-08-21, al día siguiente de
+  activarse. Compuerta de cierre: **exit 0 con 872 pruebas**, Ruff correcto y
+  `pip check` íntegro. La suite pasó de 835 al activar la capa a 872. Cerrarla
+  **no cancela los ocho hallazgos de 7.0**, que siguen vivos, empezando por el
+  N+1 en conexiones.
+- **La capa 7 para `asistencia` no tocó la base de datos**, ni siquiera para
+  leer. Es la **sexta consecutiva** que no abre una conexión a PostgreSQL, y la
+  **tercera de esas seis cuyo dominio sí escribe**.
+- **Estado de publicación de la capa 7 para `asistencia`: NO publicada.**
+  `origin/main` sigue en el commit base `a894441` y hay **tres commits locales**
+  por delante, más el del cierre. **Producción no corre este código**, así que
+  mientras siga así el rollback es **puramente local**. Es la misma situación en
+  que quedaron `notas` y `ventas` al cerrarse, y en los dos casos duró poco: si
+  se publica, **conviene volver aquí y registrar el cambio**, porque las dos
+  veces anteriores la documentación quedó desfasada.
+- Capa activa: **ninguna**. Siguiente paso: **otro dominio de la capa 7**, sin
+  elegir y en espera. Quedan **ocho**: `boletin`,
   `observaciones`, `planilla`, `planeador_anual`, `plan_de_clases`, `branding`,
   `profesores` y `super_admin`. Dos de ellos, `boletin` y `planilla`, **no son
   fronteras limpias**: `notas` ya posee esas rutas, como registró su 7.0.
@@ -1426,9 +1460,9 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
 
 ## Archivos de continuidad
 
-- [07_ASISTENCIA.md](./07_ASISTENCIA.md): **bitácora ACTIVA** de la capa 7 para
-  el dominio `asistencia`. **Es el documento que un chat nuevo debe leer después
-  de este índice.** Registra el commit base
+- [07_ASISTENCIA.md](./07_ASISTENCIA.md): **bitácora cerrada** de la capa 7 para
+  el dominio `asistencia`, y **fuente de continuidad**. **Es el documento que un
+  chat nuevo debe leer después de este índice.** Registra el commit base
   `a894441f8676b0486e3395f88179cdf6cba61430` —publicado y desplegado,
   comprobado contra el remoto real—, la autorización del usuario y el rechazo
   previo de la orden que no nombraba dominio, el alcance limitado a un solo
@@ -1443,10 +1477,18 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   criterios de cierre de la capa y los riesgos, entre ellos que **dos
   consumidores ajenos ya migrados** —`estudiantes_repository` y
   `dashboard_repository`— leen esta tabla, de modo que romper su contrato **no
-  haría fallar las pruebas del dominio**, solo la compuerta global. **7.0 está
-  pendiente y no iniciada.**
+  haría fallar las pruebas del dominio**, solo la compuerta global. Registra el cierre de **7.1**, la extracción a
+  `asistencia_repository` —**el noveno**— con su comparador AST de **3 de 3**
+  literales y **la comprobación de equivalencia de `(SQL, parámetros)`, retorno y
+  conexiones en los dos caminos**; las **cinco** guardias que fallaron y el
+  patrón de que **cada migración añade una enumeración de repositorios**, así que
+  el número crece en uno cada vez; el **punto de decisión resuelto** que cerró la
+  capa sin abrir una 7.2 dejando **el N+1 en conexiones sin tocar**; y el cierre
+  con su rollback —**local, porque la capa sigue sin publicar**—, su staging, su
+  **verificación manual con la cobertura real que el usuario reportó** —solo el
+  paso 3 consta— y los **riesgos que deja abiertos**.
 - [07_VENTAS.md](./07_VENTAS.md): **bitácora cerrada** de la capa 7 para el
-  dominio `ventas`. Fue la fuente de continuidad **hasta que se activó
+  dominio `ventas`. Fue la fuente de continuidad **hasta que se cerró
   `asistencia`**; sus once hallazgos siguen vivos y **no se corrigen desde la
   capa activa**. **Advertencia sobre este archivo**: su estado de publicación
   quedó desfasado, igual que le pasó a `07_NOTAS.md`. Lo declara «no publicada»

@@ -4,14 +4,14 @@
 
 ## Control
 
-- Estado: **Activa**. **7.0 y 7.1 cerradas** el 2026-08-20.
+- Estado: **Cerrada** el 2026-08-21, con sus dos subcapas **7.0 y 7.1**
+  completas —ambas del 2026-08-20— y la **verificación manual ejecutada por el
+  usuario con resultado correcto**. Activada el 2026-08-20.
 - Commit base: `a894441f8676b0486e3395f88179cdf6cba61430`.
 - Rama acordada: `main`.
 - Primera subcapa pendiente: **ninguna definida**. Con 7.1 la **frontera de
-  persistencia del dominio quedó cerrada**. Queda un **punto de decisión** con
-  tres salidas, y **ninguna entra por inferencia**: ver «Punto de decisión,
-  abierto». **La capa no está cerrada**: falta la verificación manual y la
-  decisión del usuario.
+  persistencia del dominio quedó cerrada**. **El usuario decidió cerrar la capa
+  aquí**, sin abrir 7.2. Ver «Punto de decisión, resuelto el 2026-08-21».
 - Código de producto modificado al activar: **ninguno**. Tampoco en 7.0: su diff
   es **un solo archivo de prueba nuevo** y ningún archivo rastreado modificado,
   igual que los de 5.0, 6.0 y las tres 7.0 anteriores. **7.1 sí modifica
@@ -972,9 +972,145 @@ dashboard fijó y que las de notas y ventas repitieron.
   manual pendiente**.
 - Siguiente acción exacta: **esperar la decisión del usuario**. Ninguna de las
   tres salidas se inicia por inferencia, y la verificación manual no la puede
-  hacer un asistente.
+  hacer un asistente. *(Ambas llegaron el 2026-08-21; ver el cierre más abajo.)*
 
-## Punto de decisión, abierto
+### 2026-08-21 — verificación manual y cierre de la capa
+
+- Modo de acceso: mismo checkout local; Git validado directamente.
+- **Artefacto confirmado antes de registrar la verificación**, conforme a la
+  lección 10 de la capa 5 y **sin ambigüedad**: rama `main`, árbol **limpio**,
+  `HEAD` `4a4d9e1edcee96f04674026df1bc13161279aefb`. Los **tres** commits
+  posteriores al base están explicados en esta bitácora: la activación
+  `4e38e6c`, el cierre de 7.0 `68ff9a4` y la extracción de 7.1 `4a4d9e1`.
+  `origin/main` seguía en el base `a894441`, comprobado con `git rev-parse` y
+  contra el remoto real con `git ls-remote`.
+- **Verificación manual**: el usuario informó haberla ejecutado en local con
+  resultado correcto. **Lo reportó de forma global**, y al preguntársele **punto
+  por punto** por los cuatro pasos de más peso confirmó **uno**: el **paso 3**,
+  el reemplazo parcial. Los pasos **4, 7 y 8 no constan** y **no se marcan como
+  cumplidos**. Se registra así, sin inflarlo. Es evidencia **más fuerte que la
+  de `ventas`** —donde ningún paso llegó a constar— y **más débil que la de
+  `notas`**, y consta precisamente el paso que más valor tenía aquí.
+- **Decisión del usuario, explícita**: cerrar la capa aquí, sin abrir 7.2. Se le
+  ofrecieron **cuatro** salidas —cerrar, una 7.2 con el N+1 en conexiones, una
+  con `response_model` o una con los errores de dominio— y eligió cerrar. La
+  capa queda siendo una refactorización pura, como la 5, la 6 y las tres capas 7
+  anteriores.
+- **Compuerta global de cierre**: `.\venv\Scripts\python.exe scripts\verify.py`;
+  **872 pruebas pasaron**, 5 warnings heredadas, Ruff correcto, `pip check`
+  íntegro y exit 0. La suite pasó de 835 al activar la capa a 872.
+- `git diff --check`: **limpio**.
+- **Lo que el cierre NO marca como cumplido**: los tres pasos del guion que no
+  constan, el N+1 en conexiones, los ocho hallazgos de 7.0 y las verificaciones
+  heredadas de las capas 0 y 1. Ninguno cambia de estado por cerrar la capa.
+- Archivos modificados en este turno: esta bitácora y
+  `docs/modularizacion/README.md`. **Código de producto y pruebas: ninguno.**
+- PostgreSQL, migraciones, producción, commit, push y deploy: **ninguno por
+  parte del asistente**, ni en este turno ni en toda la capa.
+- Estado: **capa 7 cerrada para el dominio `asistencia`**. Los **ocho** dominios
+  restantes de la capa 7 quedan **en espera** y **ninguno fue activado**.
+- Siguiente acción exacta: esperar una orden explícita del usuario. Una
+  instrucción genérica de continuar no autoriza activar otro dominio. Queda
+  además **pendiente la publicación**, que decide y ejecuta el usuario.
+
+## Staging, rollback y verificación manual
+
+### Lo que esta capa hizo y no hizo
+
+La capa 7 para `asistencia` es **exclusivamente una refactorización**, igual que
+la 5, la 6 y las tres capas 7 anteriores. No añadió funciones, no cambió reglas,
+no tocó rutas, payloads, status codes, permisos, tenant, ownership,
+transacciones, timeouts, dependencias ni configuración. Y **no abrió una sola
+conexión a PostgreSQL**: ni migraciones, ni DDL, ni DML, ni lecturas de
+medición. Toda la caracterización se hizo con dobles.
+
+Es la **sexta capa consecutiva** que no abre una conexión a PostgreSQL, y la
+**tercera de esas seis cuyo dominio escribe**.
+
+### Rollback
+
+**Es puramente de código.** No hay nada que deshacer en datos ni en esquema.
+Revertir los commits de la capa hasta
+`a894441f8676b0486e3395f88179cdf6cba61430` devuelve el controlador a su versión
+anterior y elimina el repositorio nuevo.
+
+**Mientras la capa siga sin publicar, el rollback es una operación puramente
+local.** Esa ventaja desaparece en cuanto se publique, porque un push a `main`
+dispara el despliegue. Es la misma advertencia que registraron `notas` y
+`ventas`, y en los dos casos dejó de aplicar al poco tiempo.
+
+No cambiar los timeouts durante el rollback.
+
+### Staging
+
+No se usó un entorno de staging y **no se considera necesario** para esta capa,
+por la misma razón que hace trivial el rollback: no hay cambio de esquema, de
+datos ni de SQL. Un despliegue prudente solo necesita comprobar que la
+aplicación arranca y lo que cubre el guion.
+
+### Verificación manual: **hecha, con la cobertura que el usuario reportó**
+
+**Ejecutada por el usuario el 2026-08-21, en local, con resultado correcto.**
+
+**Artefacto confirmado antes de registrarla**, conforme a la lección 10 de la
+capa 5, y **sin ambigüedad**: rama `main`, árbol **limpio**, `HEAD`
+`4a4d9e1edcee96f04674026df1bc13161279aefb`, el commit de 7.1. `origin/main`
+seguía en el commit base `a894441`, comprobado contra el remoto real, así que
+**lo ejercitado en local y lo commiteado son el mismo contenido**.
+
+**Alcance real de la evidencia, registrado sin inflarlo.** El usuario informó el
+resultado **de forma global** —«ya verifiqué manualmente en local»— y después,
+preguntado **punto por punto** sobre los cuatro pasos de más peso, confirmó
+**uno**:
+
+| Paso | ¿Consta? |
+|---|---|
+| **3. Reemplazo parcial**: repasar lista el mismo día y periodo cambiando solo a algunos estudiantes, comprobando que los demás conservan su valor y no se duplican filas | **SÍ** |
+| 4. Lote que no incluye a todo el curso: la asistencia de los compañeros no se borra | **No consta** |
+| 7. Prueba cruzada: que las ausencias cuadren en el expediente del estudiante y en el panel de inasistencias del dashboard | **No consta** |
+| 8. Aislamiento entre los dos tenants | **No consta** |
+
+Los pasos 1, 2, 5 y 6 —arranque, ida y vuelta, las tres validaciones y
+permisos— quedan cubiertos **solo por el reporte global**, no por confirmación
+explícita.
+
+**Esta evidencia es más fuerte que la de `ventas` y más débil que la de
+`notas`.** `ventas` se reportó de forma enteramente global y ningún paso llegó a
+constar; `notas` se respondió sobre un guion explícito y por eso su bitácora
+pudo afirmar que no se infirió nada. Aquí consta **el paso que más valor tenía
+en este dominio**: el reemplazo parcial es exactamente lo que una extracción mal
+hecha habría roto, porque es la única escritura y la única transacción, y su
+fallo no daría una cifra rara sino **asistencia perdida o duplicada**.
+
+**Qué respalda entonces la capa**, y es bastante:
+
+- la evidencia automática: **3 de 3 literales SQL byte a byte** y **los dos
+  caminos emitiendo la misma secuencia de `(SQL, parámetros)`, devolviendo lo
+  mismo y abriendo las mismas conexiones** que el commit base;
+- **872 pruebas en verde**, con los seis conteos de consultas y conexiones y los
+  cinco contratos HTTP reales fijados por aserción, y ninguna que cambiara de
+  expectativa;
+- **las doce pruebas heredadas de la capa 1, que no se tocaron y siguen
+  pasando**. Se escribieron antes de que esta capa existiera, así que son
+  evidencia independiente de ella;
+- el paso 3 del guion, confirmado por el usuario;
+- el uso real que el usuario le dio a la aplicación, sin encontrar nada raro.
+
+**Qué no respalda.** Que la aplicación «se vea bien» **no equivale** a haber
+comprobado que un lote parcial no borra a los compañeros, que las ausencias
+cuadran con los dos consumidores ajenos, ni que los dos colegios siguen
+aislados. **El paso 7 es el que más pesa de los tres que faltan**, porque los dos
+consumidores ajenos son precisamente los contratos que **las pruebas de
+`asistencia` no harían fallar** si se rompieran. Lo mitiga que la compuerta
+global sí los cubre y pasó en verde, pero **no consta la comprobación contra
+datos reales**.
+
+Es aceptable por lo que la capa es —una refactorización con SQL y parámetros
+demostrados equivalentes y sin ningún acceso a la base de datos—; no lo sería en
+una capa que cambiara comportamiento o tocara datos. **El guion completo se
+conserva arriba** por si se quieren cerrar esos tres huecos.
+
+## Punto de decisión, resuelto el 2026-08-21
 
 **La frontera de persistencia de `asistencia` ya está cerrada**: ni el
 controlador, ni la ruta, ni el esquema tienen SQL, y el repositorio existe. Lo
@@ -1001,8 +1137,107 @@ Son tres cosas, y **ninguna entra por inferencia**:
    cambiaría el comportamiento de quien llame al controlador directamente, así
    que no es una refactorización pura.
 
-Queda pendiente también la **verificación manual**, que es la única evidencia
-que no puede delegarse en un asistente.
+**El usuario eligió cerrar la capa aquí**, el 2026-08-21 y de forma explícita,
+entre cuatro salidas planteadas —cerrar, una 7.2 con el N+1 en conexiones, una
+7.2 con `response_model`, o una 7.2 con los errores de dominio—. Consecuencias
+registradas, ninguna de ellas una deuda oculta:
+
+- La capa 7 para `asistencia` es, como la 5, la 6 y las tres capas 7 anteriores,
+  **exclusivamente una refactorización**. Ningún contrato observable cambió.
+- **El N+1 en conexiones se queda.** Es la salida con más valor operativo y
+  **no se descarta para siempre**: pasa a ser trabajo disponible que exigiría una
+  orden propia, y probablemente la auditoría de capacidad que la capa 2 dejó
+  pendiente. Sigue activo: pasar lista a un curso de 30 abre **31 conexiones**
+  siendo admin y **61** siendo profesor, contra un pool de 10.
+- **`response_model` y los errores de dominio no se añaden.** No quedan como
+  trabajo pendiente de esta capa: quedan registrados como trabajo disponible.
+- Los **ocho hallazgos de 7.0 siguen vivos y sin corregir**. Cerrar la capa **no
+  los resuelve ni los cancela**, y **tampoco los introdujo**: los ocho son
+  anteriores a este trabajo.
+- **Los tres pasos del guion que no constan siguen sin constar.** No se marcan
+  como cumplidos.
+
+## Cierre de la capa 7 para `asistencia`
+
+### Resultado frente a su objetivo
+
+| Objetivo | Resultado |
+|---|---|
+| Migrar el dominio con contratos y pruebas | `asistencia_controller.py` pasó de **84 a 69 líneas** y de **3 sentencias SQL inline a 0**; la persistencia vive en `asistencia_repository`, **3 funciones** que reciben el cursor. **37 pruebas de caracterización** nuevas fijan payloads, permisos, conteos de consultas **y de conexiones**, ciclo de vida en los dos idiomas y **status codes HTTP reales**, sobre las **12 heredadas** que no se tocaron |
+| Un dominio a la vez | **Cumplido**: no se tocó código de producto de ningún otro dominio. Los ocho restantes siguen en espera |
+| `response_model` solo tras caracterizar | **No se añadió**, por decisión explícita del usuario. No queda como deuda |
+| Sin abstracciones sin dos consumidores | **Cumplido**: el repositorio por módulo es la convención documentada, con ocho precedentes |
+
+La suite pasó de **835 a 872** pruebas. Compuerta de cierre: **exit 0 con 872
+pruebas**, Ruff correcto y `pip check` íntegro.
+
+### Lo que esta capa NO hizo
+
+- **No tocó la base de datos**, ni siquiera para leer. Es la **sexta capa
+  consecutiva** que no abre una sola conexión a PostgreSQL.
+- **No tocó archivos.** 7.0 lo comprobó: ninguno de los tres archivos del
+  dominio menciona `storage`.
+- No cambió rutas, payloads, status codes, permisos, tenant, ownership,
+  transacciones, timeouts, dependencias ni configuración.
+- **No corrigió ninguno de los ocho hallazgos.** Siguen vivos, empezando por el
+  N+1 en conexiones.
+- **No unificó los dos idiomas de conexión** ni retiró ninguna prueba heredada.
+- **No necesitó autorizar ni un solo cambio de texto SQL**, como la capa 6 y las
+  tres capas 7 anteriores.
+
+### Lo que esta capa aporta al programa, más allá de su dominio
+
+- **La evidencia que le faltaba a la constante de capacidad de la capa 2.**
+  `asistencia` es el tercer caso de camino con varias conexiones en serie, y
+  **el primero cuyo número crece con el tamaño de la entrada**. Se registra sin
+  actuar.
+- **Un patrón de mantenimiento que ya es regla**: cada dominio migrado añade una
+  guardia que enumera el conjunto exacto de repositorios, así que el número de
+  guardias ajenas que fallan en cada 7.1 **crece en uno con cada migración**.
+  Una en notas, dos en ventas, tres en esta, cuatro en la próxima.
+- **La confirmación de que revisar antes las pruebas de hallazgo funciona.** La
+  lección que 7.1 de `ventas` aprendió a posteriori se aplicó aquí por
+  adelantado, y la previsión dentro del dominio acertó exactamente.
+- **El primer caso en que un dominio llega con pruebas de otra capa**, y el
+  método para no confiarse: medir el hueco punto por punto antes de escribir
+  nada, sin retirar ni reescribir lo heredado.
+
+### Estado de publicación
+
+**No publicada.** `origin/main` sigue en `a894441`, el commit base de la capa, y
+hay **tres commits locales por delante** —`4e38e6c`, `68ff9a4` y `4a4d9e1`—, más
+el del cierre. **Producción no corre este código**: sigue con el anterior a la
+capa.
+
+Mientras siga así, **el rollback es una operación puramente local**. En cuanto se
+publique, y como un push a `main` dispara el despliegue, esa ventaja desaparece
+y revertir exigirá otro push. La publicación la decide y la ejecuta el usuario.
+
+**No se atribuye ningún run de GitHub Actions**: esa evidencia sigue sin
+obtenerse desde la capa 0.
+
+### Riesgos que la capa deja abiertos
+
+- **El N+1 en conexiones.** Pasar lista a un curso de 30 abre 31 conexiones
+  siendo admin y 61 siendo profesor, contra un pool de 10 y 5 workers. Es el
+  riesgo más directo que deja esta capa, está **activo en producción** y es
+  **anterior a este trabajo**.
+- **Las reglas del lote viven en la capa de rutas**, así que llamar al
+  controlador fuera de la ruta admite un lote heterogéneo y borra por un
+  contexto e inserta por otro.
+- **El controlador no valida `estado`.**
+- **Un fallo de infraestructura en la lectura sale como 500**, no como 4xx.
+- **El `ILIKE 'ausente'` vive fuera del dominio**, en los dos consumidores ya
+  migrados, y no se apoya en la restricción que el dominio sí impone.
+- **Tres pasos del guion de verificación manual no constan**: lote parcial,
+  prueba cruzada contra el expediente y el dashboard, y aislamiento entre
+  tenants.
+- El resto de los ocho hallazgos de 7.0, más `response_model` sin añadir.
+- Heredados: calibración de `DB_STATEMENT_TIMEOUT_MS` de la capa 1, ausencia de
+  evidencia de GitHub Actions desde la capa 0, la credencial privilegiada de la
+  capa 4 sin rotar, y los hallazgos abiertos de las capas 5, 6 y 7 —incluidas la
+  clave de idempotencia, la ausencia de lock frente a horarios solapados, los
+  diez de dashboard, los doce de notas y los once de ventas—.
 
 ## Guion de verificación manual propuesto
 
@@ -1060,15 +1295,22 @@ abiertos y **anteriores** a esta capa; están en la lista de los ocho:
 
 ## Entrega al próximo chat
 
-- Capa activa: **la capa 7 para el dominio `asistencia`**, activada el
-  2026-08-20. **Es el único dominio activo**; los otros ocho siguen en espera.
+- Capa activa: **ninguna.** La capa 7 quedó **cerrada para `asistencia`** el
+  2026-08-21, al día siguiente de activarse. Los otros ocho dominios siguen en
+  espera.
 - Última subcapa terminada: **7.1**, cerrada el 2026-08-20. Con ella la frontera
   de persistencia del dominio quedó cerrada.
-- Primera subcapa pendiente: **ninguna definida.** Queda un **punto de decisión**
-  con tres salidas —el N+1 en conexiones, `response_model` y los errores de
-  dominio— y la **verificación manual**, cuyo guion de ocho pasos está arriba.
-  **La capa no está cerrada.** Ninguna de las tres salidas se inicia por
-  inferencia.
+- **Capa cerrada** el 2026-08-21. No quedan bloqueos.
+- Primera subcapa pendiente: **ninguna.** El usuario decidió **cerrar la capa
+  aquí**, sin abrir 7.2: el **N+1 en conexiones**, `response_model` y los errores
+  de dominio **no se abordan** y pasan a ser trabajo disponible que exigiría una
+  orden explícita.
+- **Verificación manual: hecha** el 2026-08-21, en local y con resultado
+  correcto, **reportada de forma global y confirmada punto por punto solo en el
+  paso 3**, el reemplazo parcial —el que más valor tenía en este dominio—. **No
+  constan** el lote parcial, la prueba cruzada contra el expediente y el
+  dashboard, ni el aislamiento entre tenants. El guion íntegro se conserva por si
+  se quiere cerrar ese hueco.
 - Compuerta al cerrar 7.1: **872 pruebas, exit 0**, Ruff correcto y `pip check`
   íntegro. La suite pasó de **835 al activar la capa a 872**.
 - Lo que consiguió 7.1: `asistencia_controller.py` pasó de **84 a 69 líneas** y

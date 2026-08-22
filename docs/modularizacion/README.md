@@ -48,6 +48,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 7 | Resto de dominios — **`boletin` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `boletin` el 2026-08-21; verificada a mano y **sin publicar**. Ver la advertencia de desfase más abajo | [07_BOLETIN.md](./07_BOLETIN.md) |
 | 7 | Resto de dominios — **`observaciones` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `observaciones` el 2026-08-21; verificada a mano. **Publicada el 2026-08-21**, después de escribirse su bitácora | [07_OBSERVACIONES.md](./07_OBSERVACIONES.md) |
 | 7 | Resto de dominios — **`planilla` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `planilla` el 2026-08-21; verificación manual correcta y sin publicación comprobada | [07_PLANILLA.md](./07_PLANILLA.md) |
+| 7 | Resto de dominios — **`planeador_anual`** | Migración individual con contratos y pruebas | **Activa** desde el 2026-08-21; 7.0 pendiente y no iniciada | [07_PLANEADOR_ANUAL.md](./07_PLANEADOR_ANUAL.md) |
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
 cierre y el usuario ordene continuar, se crea su sucesora desde
@@ -208,9 +209,15 @@ aplica y la capa quedó cerrada por orden explícita. Su verificación manual qu
 **completada y correcta**, con 8 de 8 puntos reportados por el usuario y entorno
 no especificado.
 
-Ningún otro se activa por inferencia: planeador anual, plan de clases, branding,
-profesores y super admin siguen en espera —son **cinco**—, y cada uno
-exigirá su propia bitácora y una orden explícita.
+**Dominio activo: `planeador_anual`.** El usuario lo eligió y nombró
+explícitamente el 2026-08-21, aceptando continuar localmente con las
+verificaciones heredadas pendientes. Su bitácora es
+[07_PLANEADOR_ANUAL.md](./07_PLANEADOR_ANUAL.md); su **7.0 está pendiente y no
+iniciada**. La activación fue exclusivamente documental.
+
+Ningún otro se activa por inferencia: plan de clases, branding, profesores y
+super admin siguen en espera —son **cuatro**—, y cada uno exigirá su propia
+bitácora y una orden explícita.
 
 La advertencia de perfil que se registró al activar `notas` **quedó confirmada**:
 a diferencia de `dashboard`, que resultó de solo lectura, **`notas` escribe**, y
@@ -1714,7 +1721,7 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   operación puramente local: conforme al flujo documentado del repositorio,
   exige otro push y otro despliegue. En este turno no se consultó el remoto real
   ni se atribuye ningún run de GitHub Actions.
-- Capa activa: **ninguna**. La capa 7 para `planilla` quedó cerrada el
+- Última capa cerrada: **7 para `planilla`**. Quedó cerrada el
   2026-08-21 por orden explícita del usuario, sin abrir 7.2. Sus cinco
   sentencias propias viven en el duodécimo repositorio y los tres llamadores
   conservan sus recursos y comportamiento; las piezas nominales de `notas` y
@@ -1724,9 +1731,18 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   reportó correctos los ocho puntos: escritura, reemplazo, desarrollo, lectura,
   borrado, permisos, validaciones y comprobación cruzada de notas/tenant. No
   especificó el entorno, así que no se atribuye a local, staging ni despliegue.
-- Quedan **cinco** dominios en espera: `planeador_anual`, `plan_de_clases`,
-  `branding`, `profesores` y `super_admin`. Ninguno se activa por la orden de
-  cierre ni por una instrucción genérica de continuar.
+- Capa activa: **7 para `planeador_anual`**, activada el 2026-08-21 por orden
+  explícita del usuario. Commit base limpio:
+  `235672ea609444a46003175940376c37bfe191c4`. Su **7.0 está pendiente y no
+  iniciada**; la activación no inspeccionó ni modificó código, pruebas,
+  consultas, migraciones, esquemas ni configuración.
+- Decisión al activar: continuar localmente aceptando que sigan pendientes la
+  calibración final de `DB_STATEMENT_TIMEOUT_MS`, la evidencia de GitHub
+  Actions posterior a la capa 0, los pasos manuales no confirmados heredados y
+  la rotación de la credencial privilegiada de la capa 4. Ninguna se marca como
+  cumplida.
+- Quedan **cuatro** dominios en espera: `plan_de_clases`, `branding`,
+  `profesores` y `super_admin`. Ninguno se activa por esta orden.
 - **Punto de decisión abierto al terminar 7.1**, con **tres** salidas y no dos:
   dónde vive el `UPDATE pagos`, `response_model` para las cuatro lecturas, y los
   errores de dominio. La tercera es **más fácil aquí que en `notas`**: este
@@ -1870,9 +1886,17 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
 
 ## Archivos de continuidad
 
+- [07_PLANEADOR_ANUAL.md](./07_PLANEADOR_ANUAL.md): **bitácora activa** de la
+  capa 7 para el dominio `planeador_anual` y **fuente de continuidad más
+  reciente**. **Es el documento que un chat nuevo debe leer después de este
+  índice.** Registra el commit base limpio
+  `235672ea609444a46003175940376c37bfe191c4`, la autorización explícita del
+  usuario nombrando el dominio y la decisión de continuar localmente aceptando
+  las verificaciones heredadas pendientes. Su **7.0 está pendiente y no
+  iniciada**; la activación fue exclusivamente documental y no inspeccionó ni
+  modificó código o pruebas. Los otros cuatro dominios permanecen en espera.
 - [07_PLANILLA.md](./07_PLANILLA.md): **bitácora cerrada** de la capa 7 para el
-  dominio `planilla`, y **fuente de continuidad más reciente**. **Es el documento que un
-  chat nuevo debe leer después de este índice.** Registra el commit base limpio
+  dominio `planilla`, y fuente de continuidad anterior. Registra el commit base limpio
   `580c0ad6f0d14d16af5cbd8b2a4a9e4532485b89`, la orden explícita del usuario
   nombrando el dominio, la decisión de continuar localmente aceptando todas las
   verificaciones pendientes y la activación exclusivamente documental. Su

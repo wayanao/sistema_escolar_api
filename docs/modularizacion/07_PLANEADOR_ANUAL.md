@@ -4,11 +4,11 @@
 
 ## Control
 
-- Estado: **Activa** desde el 2026-08-21.
+- Estado: **Cerrada** el 2026-08-22 por orden explícita del usuario.
 - Commit base: `235672ea609444a46003175940376c37bfe191c4`.
 - Rama acordada: `main`.
-- Primera subcapa pendiente: **ninguna definida**. 7.1 está cerrada y queda el
-  punto de decisión explícito entre cerrar la capa o autorizar una 7.2.
+- Primera subcapa pendiente: **ninguna**. 7.2 es **No aplica** y la capa está
+  cerrada.
 - Código de producto modificado al activar: **Ninguno**.
 - Código de producto modificado en 7.0: **Ninguno**. El diff funcional de la
   subcapa es un solo archivo nuevo de caracterización; los demás cambios son
@@ -18,12 +18,15 @@
   esquema no cambiaron.
 - Dominio de esta capa: **`planeador_anual`, y solo ese**. Los otros cuatro
   dominios en espera necesitan su propia bitácora y su propia orden.
-- Autorización: el usuario eligió la opción 2 —continuar localmente aceptando
+- Autorización de activación: el usuario eligió la opción 2 —continuar localmente aceptando
   las verificaciones heredadas pendientes— y ordenó expresamente activar el
   dominio «planeador anual».
-- La autorización cubre **solo esta activación documental**. No autoriza
-  inspeccionar código del dominio, ejecutar 7.0, modificar producto, hacer
-  commit, push, deploy, migraciones reales ni acceso a producción.
+- Autorización de cierre: después de cerrar 7.1 y recibir las dos salidas
+  posibles, el usuario ordenó expresamente «cierra». La orden cierra la capa
+  como refactorización pura, sin abrir 7.2 y sin dar por cumplida la
+  verificación manual.
+- Ninguna autorización incluye commit, push, deploy, migraciones reales ni
+  acceso a producción.
 
 ## Objetivo
 
@@ -254,7 +257,7 @@ la entrada** en el `PUT`: una operación DML por fila, con conexiones constantes
 |---:|---|---|
 | 7.0 | Delimitar la frontera, inventariar contratos y caracterizar el comportamiento y la línea base | **Cerrada** el 2026-08-22 |
 | 7.1 | Extraer los cinco SQL a un único repositorio conservando recursos, funciones muertas y contratos | **Cerrada** el 2026-08-22 |
-| 7.2 | Cambio adicional posterior, solo si resulta necesario y autorizado | En espera; alcance por definir |
+| 7.2 | Cambio adicional posterior | **No aplica** por decisión explícita del usuario el 2026-08-22 |
 
 Las subcapas se adaptan al trabajo real. Las innecesarias se marcan `No
 aplica` con una explicación. Nunca se ejecutan dos en el mismo turno.
@@ -307,18 +310,19 @@ y `ventas` fallaron en el conjunto dirigido; la compuerta global encontró la
 quinta enumeración, añadida después por `planilla`. Son **siete guardias**, no
 regresiones. Se actualizaron conservando la enumeración exacta y su severidad.
 
-## Punto de decisión después de 7.1
+## Punto de decisión después de 7.1 — resuelto
 
-La persistencia ya está extraída y 7.1 no deja una segunda extracción
-necesaria. Las salidas legítimas son:
+La persistencia quedó extraída y 7.1 no dejó una segunda extracción necesaria.
+Se presentaron dos salidas legítimas:
 
 1. cerrar la capa como refactorización pura, conservando los once hallazgos;
 2. autorizar una 7.2 concreta. `response_model` no es mecánico porque el
    esquema omite `periodo` y `slot`; corregir funciones muertas, límites,
    reemplazo de lotes o el `1+N` cambiaría comportamiento.
 
-Ninguna salida se ejecuta por inferencia. La capa permanece activa hasta una
-decisión explícita del usuario.
+El usuario eligió explícitamente la primera el 2026-08-22. La capa se cierra
+como refactorización pura; 7.2 queda **No aplica**. Los once hallazgos se
+conservan registrados y no se transforman en deuda de esta capa.
 
 ## Criterios de cierre de la subcapa 7.0
 
@@ -364,8 +368,51 @@ decisión explícita del usuario.
   retirar código muerto ni cambiar recursos.
 - **Mantener las cinco enumeraciones históricas estrictas.** Se añadió el
   repositorio anual a cada conjunto exacto; no se relajó ninguna guardia.
-- **No abrir 7.2 ni cerrar la capa por inferencia.** La persistencia está
-  extraída, pero el siguiente paso requiere elegir explícitamente.
+- **No abrir 7.2 ni cerrar la capa por inferencia.** La persistencia quedó
+  extraída y el trabajo se detuvo hasta recibir una elección explícita.
+- **Cerrar la capa sin abrir 7.2.** El usuario ordenó «cierra» después de recibir
+  las dos salidas. Se conserva el comportamiento caracterizado, los once
+  hallazgos y la verificación manual pendiente.
+
+## Staging y verificación manual
+
+No se desplegó ni se ejecutó una verificación manual durante el cierre. La
+verificación manual propia queda **pendiente y no cumplida**. Antes de publicar
+en producción se recomienda desplegar en staging el artefacto que incluya
+`51203dac3c35962cedbd7220cc990a7da931bf3a` y ejecutar, con datos no
+productivos, este guion:
+
+1. Como admin, consultar un planeador existente y comprobar orden por `slot`,
+   campos `periodo` y `slot`, nulos y fecha serializada.
+2. Guardar un lote con filas llenas y vacías; comprobar que las llenas se crean
+   o actualizan y las vacías eliminan únicamente su slot.
+3. Enviar un lote vacío y otro más corto; confirmar el comportamiento heredado:
+   ambos responden 200 y no eliminan slots posteriores no incluidos.
+4. Como profesor propietario, repetir lectura y escritura; como profesor no
+   propietario y con otro rol, confirmar 403 sin cambios de datos.
+5. Enviar contenido sin fecha y confirmar 422 antes de entrar al controlador.
+6. Forzar en staging el fallo transaccional con una novena fila con contenido;
+   confirmar el 500 heredado y que el rollback no deja cambios parciales.
+7. Repetir lectura y escritura en dos tenants no productivos y confirmar que
+   cada uno observa solo sus propios datos.
+
+La evidencia automática fija estos contratos, pero no sustituye este guion en
+un entorno desplegado. Si se activa otro dominio antes de completarlo, el
+usuario deberá aceptar explícitamente que esta verificación siga pendiente.
+
+## Rollback
+
+- Punto de rollback de la capa: commit base
+  `235672ea609444a46003175940376c37bfe191c4`.
+- Mientras la capa no se publique, el rollback sigue siendo local. Debe hacerse
+  mediante commits de reversión revisables de los commits de activación, 7.0,
+  7.1 y cierre, no reescribiendo el historial compartido.
+- Si ya se publicó, revertir exige autorización para crear y publicar esos
+  commits y desplegar el resultado. No se ejecuta desde esta bitácora.
+- No existe rollback de base de datos: la capa no ejecutó DDL, DML real ni
+  migraciones y no abrió una conexión a PostgreSQL.
+- Tras revertir, ejecutar `scripts\verify.py`; en el punto base la compuerta
+  registrada era de 957 pruebas, Ruff correcto y dependencias íntegras.
 
 ## Riesgos
 
@@ -528,13 +575,47 @@ decisión explícita del usuario.
   cerrar `planeador_anual` aquí como refactorización pura o definir una única
   7.2; no iniciar ninguna opción por inferencia.
 
+### 2026-08-22 — cierre de la capa para `planeador_anual`
+
+- Modo de acceso: mismo checkout local; rama `main` y árbol limpio antes de
+  modificar, comprobado con `git status --short --branch`.
+- `HEAD` limpio observado:
+  `51203dac3c35962cedbd7220cc990a7da931bf3a`, tres commits por delante de la
+  referencia local `origin/main`.
+- El commit base `235672ea609444a46003175940376c37bfe191c4` es ancestro.
+  Sus tres descendientes están explicados: `6358c5a` activa el dominio,
+  `2a8d3c3` contiene 7.0 y `51203da` contiene exactamente los diez archivos
+  documentados de 7.1, incluido el repositorio nuevo.
+- Autorización: después de presentar las dos salidas posibles, el usuario
+  ordenó «cierra». 7.2 queda **No aplica** y los once hallazgos permanecen sin
+  corregir.
+- Compuerta sobre el commit limpio: `scripts\verify.py` terminó en exit 0 con
+  **987 pruebas**, 5 warnings heredadas, Ruff correcto y `pip check` íntegro.
+- Staging y rollback quedaron documentados. No se ejecutó staging, publicación
+  ni rollback.
+- Verificación manual propia: **pendiente y no cumplida**. El guion de siete
+  puntos queda documentado y deberá completarse antes de producción o aceptarse
+  explícitamente como pendiente antes de activar otro dominio.
+- Archivos modificados por el cierre: esta bitácora y el índice maestro.
+  Código, pruebas, configuración, dependencias, migraciones y base de datos:
+  **sin cambios**.
+- Commit, push, deploy, conexión a PostgreSQL, acceso a producción y
+  migraciones reales: **ninguno**.
+- `git diff --check`: exit 0; los avisos fueron únicamente de normalización
+  futura LF/CRLF.
+- Revisión final de alcance: exactamente esta bitácora y el índice maestro;
+  ningún archivo de producto, prueba, configuración o migración cambió durante
+  el cierre.
+- Siguiente acción exacta: completar la verificación manual de esta capa o
+  aceptar expresamente que siga pendiente y nombrar uno de los cuatro dominios
+  en espera. No activar ninguno por inferencia.
+
 ## Entrega al próximo chat
 
-- Capa activa: **7 para `planeador_anual`**.
-- Última capa cerrada: **7 para `planilla`**.
-- Última subcapa terminada: **7.1**, cerrada el 2026-08-22.
-- Primera subcapa pendiente: ninguna definida; queda el punto de decisión entre
-  cerrar la capa o autorizar una 7.2 concreta.
+- Capa activa: **ninguna**.
+- Última capa cerrada: **7 para `planeador_anual`**, el 2026-08-22.
+- Última subcapa terminada: **7.1**; 7.2 es **No aplica**.
+- Primera subcapa pendiente: ninguna.
 - Código de producto modificado en 7.1: repositorio nuevo y controlador
   delegado; rutas y esquemas intactos.
 - Frontera actual: cuatro archivos propios, dos entradas HTTP, un modelo de
@@ -543,6 +624,9 @@ decisión explícita del usuario.
 - Pruebas: 30 de caracterización propia, 38 específicas y compuerta final con
   **987 pruebas**, Ruff y dependencias correctos.
 - Verificaciones heredadas: pendientes y aceptadas por decisión explícita.
-- Bloqueos: ninguno.
-- Siguiente acción exacta: decidir explícitamente entre cerrar la capa aquí o
-  definir una única 7.2. No iniciar ninguna opción por inferencia.
+- Verificación manual propia: **pendiente y no cumplida**.
+- Bloqueos técnicos: ninguno.
+- Siguiente acción exacta: completar el guion manual de siete puntos o aceptar
+  explícitamente que quede pendiente y nombrar el siguiente dominio. Permanecen
+  en espera `plan_de_clases`, `branding`, `profesores` y `super_admin`; ninguno
+  se activa por inferencia.

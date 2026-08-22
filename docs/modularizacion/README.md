@@ -48,7 +48,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 7 | Resto de dominios — **`boletin` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `boletin` el 2026-08-21; verificada a mano y **sin publicar**. Ver la advertencia de desfase más abajo | [07_BOLETIN.md](./07_BOLETIN.md) |
 | 7 | Resto de dominios — **`observaciones` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `observaciones` el 2026-08-21; verificada a mano. **Publicada el 2026-08-21**, después de escribirse su bitácora | [07_OBSERVACIONES.md](./07_OBSERVACIONES.md) |
 | 7 | Resto de dominios — **`planilla` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `planilla` el 2026-08-21; verificación manual correcta y sin publicación comprobada | [07_PLANILLA.md](./07_PLANILLA.md) |
-| 7 | Resto de dominios — **`planeador_anual`** | Migración individual con contratos y pruebas | **Activa**; 7.0 y 7.1 cerradas, decisión de cierre/7.2 pendiente | [07_PLANEADOR_ANUAL.md](./07_PLANEADOR_ANUAL.md) |
+| 7 | Resto de dominios — **`planeador_anual` migrado** | Migración individual con contratos y pruebas | **Cerrada** el 2026-08-22; 7.2 No aplica, verificación manual pendiente y sin publicación comprobada | [07_PLANEADOR_ANUAL.md](./07_PLANEADOR_ANUAL.md) |
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
 cierre y el usuario ordene continuar, se crea su sucesora desde
@@ -209,7 +209,7 @@ aplica y la capa quedó cerrada por orden explícita. Su verificación manual qu
 **completada y correcta**, con 8 de 8 puntos reportados por el usuario y entorno
 no especificado.
 
-**Dominio activo: `planeador_anual`.** El usuario lo eligió y nombró
+**Dominio migrado y cerrado: `planeador_anual`.** El usuario lo eligió y nombró
 explícitamente el 2026-08-21, aceptando continuar localmente con las
 verificaciones heredadas pendientes. Su bitácora es
 [07_PLANEADOR_ANUAL.md](./07_PLANEADOR_ANUAL.md); su **7.0 está cerrada**: tres
@@ -220,8 +220,12 @@ de 7.0 terminó con **986 pruebas**. Su **7.1 quedó cerrada** el 2026-08-22: la
 decimotercer repositorio, con 5 de 5 literales SQL idénticos byte a byte y sin
 mover conexiones, cursores ni transacciones. Las siete guardias que fallaron
 eran la señal esperada —dos propias y cinco enumeraciones históricas—. La
-compuerta terminó con **987 pruebas**. Queda pendiente decidir explícitamente
-entre cerrar la capa como refactorización pura o autorizar una 7.2 concreta.
+compuerta terminó con **987 pruebas**. Al terminar 7.1 quedó pendiente decidir
+explícitamente entre cerrar la capa como refactorización pura o autorizar una
+7.2 concreta.
+El usuario ordenó cerrarla el 2026-08-22: 7.2 quedó **No aplica**, la compuerta
+sobre el commit limpio volvió a pasar con **987 pruebas** y la verificación
+manual propia quedó **pendiente y no cumplida**.
 
 Ningún otro se activa por inferencia: plan de clases, branding, profesores y
 super admin siguen en espera —son **cuatro**—, y cada uno exigirá su propia
@@ -1739,15 +1743,19 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   reportó correctos los ocho puntos: escritura, reemplazo, desarrollo, lectura,
   borrado, permisos, validaciones y comprobación cruzada de notas/tenant. No
   especificó el entorno, así que no se atribuye a local, staging ni despliegue.
-- Capa activa: **7 para `planeador_anual`**, activada el 2026-08-21 por orden
-  explícita del usuario. Commit base limpio:
+- Última capa cerrada: **7 para `planeador_anual`**, activada el 2026-08-21 y
+  cerrada el 2026-08-22 por órdenes explícitas del usuario. Commit base limpio:
   `235672ea609444a46003175940376c37bfe191c4`. Su **7.0 quedó cerrada el
   2026-08-22** con 29 pruebas nuevas y **ningún cambio de producto**; delimitó
   tres archivos, dos rutas, cinco SQL y una tabla escrita. La compuerta terminó
   con **986 pruebas**, Ruff correcto y dependencias íntegras. Su **7.1 está
   cerrada**: extrajo los cinco SQL al decimotercer repositorio, conservó 5 de 5
   textos byte a byte, recursos y contratos, y terminó con **987 pruebas**. La
-  capa sigue activa en el punto de decisión entre cierre y 7.2.
+  compuerta de cierre sobre `51203da` volvió a pasar con 987 pruebas; 7.2 es
+  **No aplica** y la verificación manual propia permanece pendiente.
+- Capa activa: **ninguna**. No se activa otro dominio sin una orden explícita
+  que lo nombre y, mientras siga pendiente la verificación manual de
+  `planeador_anual`, acepte expresamente continuar sin completarla.
 - Decisión al activar: continuar localmente aceptando que sigan pendientes la
   calibración final de `DB_STATEMENT_TIMEOUT_MS`, la evidencia de GitHub
   Actions posterior a la capa 0, los pasos manuales no confirmados heredados y
@@ -1898,7 +1906,7 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
 
 ## Archivos de continuidad
 
-- [07_PLANEADOR_ANUAL.md](./07_PLANEADOR_ANUAL.md): **bitácora activa** de la
+- [07_PLANEADOR_ANUAL.md](./07_PLANEADOR_ANUAL.md): **bitácora cerrada** de la
   capa 7 para el dominio `planeador_anual` y **fuente de continuidad más
   reciente**. **Es el documento que un chat nuevo debe leer después de este
   índice.** Registra el commit base limpio
@@ -1911,9 +1919,9 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   encabezados por dos funciones muertas incompatibles con sus esquemas y el
   falso reemplazo de lotes vacíos o cortos. Su **7.1 está cerrada**: extrajo
   los cinco SQL al decimotercer repositorio con 5 de 5 literales byte a byte y
-  la compuerta final pasó con **987 pruebas**. La capa sigue activa: falta elegir
-  entre cerrarla como refactorización pura o autorizar una 7.2 concreta. Los
-  otros cuatro dominios permanecen en espera.
+  la compuerta final pasó con **987 pruebas**. El usuario eligió cerrar sin 7.2;
+  staging y rollback están documentados, y la verificación manual propia queda
+  **pendiente y no cumplida**. Los otros cuatro dominios permanecen en espera.
 - [07_PLANILLA.md](./07_PLANILLA.md): **bitácora cerrada** de la capa 7 para el
   dominio `planilla`, y fuente de continuidad anterior. Registra el commit base limpio
   `580c0ad6f0d14d16af5cbd8b2a4a9e4532485b89`, la orden explícita del usuario

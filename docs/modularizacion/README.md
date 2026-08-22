@@ -49,7 +49,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 7 | Resto de dominios — **`observaciones` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `observaciones` el 2026-08-21; verificada a mano. **Publicada el 2026-08-21**, después de escribirse su bitácora | [07_OBSERVACIONES.md](./07_OBSERVACIONES.md) |
 | 7 | Resto de dominios — **`planilla` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `planilla` el 2026-08-21; verificación manual correcta y sin publicación comprobada | [07_PLANILLA.md](./07_PLANILLA.md) |
 | 7 | Resto de dominios — **`planeador_anual` migrado** | Migración individual con contratos y pruebas | **Cerrada** el 2026-08-22; 7.2 No aplica, verificación manual global reportada y sin entorno especificado | [07_PLANEADOR_ANUAL.md](./07_PLANEADOR_ANUAL.md) |
-| 7 | Resto de dominios — **`plan_de_clases` migrado** | Migración individual con contratos y pruebas | **Cerrada** el 2026-08-22; 7.2/7.3 No aplica, verificación manual pendiente y sin publicación comprobada | [07_PLAN_DE_CLASES.md](./07_PLAN_DE_CLASES.md) |
+| 7 | Resto de dominios — **`plan_de_clases` migrado** | Migración individual con contratos y pruebas | **Cerrada** el 2026-08-22; 7.2/7.3 No aplica, verificación manual global con reserva y sin publicación comprobada | [07_PLAN_DE_CLASES.md](./07_PLAN_DE_CLASES.md) |
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
 cierre y el usuario ordene continuar, se crea su sucesora desde
@@ -251,8 +251,10 @@ decidir entre cerrar la capa como refactorización pura o autorizar una 7.2
 concreta. El usuario ordenó cerrarla y reanudó el cierre después de consolidar
 7.1: 7.2 y 7.3
 quedaron **No aplica**. La compuerta sobre el commit limpio volvió a pasar con
-**1011 pruebas**, Ruff correcto y dependencias íntegras. La verificación manual
-propia sigue pendiente y no se comprobó publicación.
+**1011 pruebas**, Ruff correcto y dependencias íntegras. El usuario informó
+después que ya verificó y que está «aparentemente bien»; la verificación manual
+propia queda completada de forma global con esa reserva, sin entorno, artefacto
+ni desglose punto por punto. No se comprobó publicación.
 
 Ningún otro se activa por inferencia: `branding`, `profesores` y `super_admin`
 siguen en espera —son **tres**—, y cada uno exigirá su propia bitácora y una
@@ -1799,7 +1801,9 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   siguen vivos. El usuario eligió cerrar como refactorización pura: 7.2 y 7.3
   son **No aplica**. La compuerta de cierre sobre el commit limpio pasó con
   **1011 pruebas**, Ruff correcto y dependencias íntegras. La verificación
-  manual propia sigue pendiente y no se comprobó publicación.
+  manual propia quedó completada de forma global con la reserva
+  «aparentemente bien», sin entorno, artefacto ni desglose punto por punto. No
+  se comprobó publicación.
 - Capa activa: **ninguna**.
 - Decisión vigente al activar: siguen pendientes la
   calibración final de `DB_STATEMENT_TIMEOUT_MS`, la evidencia de GitHub
@@ -1969,10 +1973,11 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   once hallazgos vivos. El usuario cerró la capa como refactorización pura;
   7.2/7.3 son **No aplica** y la compuerta de cierre volvió a pasar con **1011
   pruebas**. Staging y rollback están documentados; la verificación manual
-  propia sigue pendiente. No hay capa activa. Antes de activar otra, el usuario
-  debe decidir explícitamente entre completar esa verificación o continuar
-  aceptando su riesgo, además de nombrar el dominio. `branding`, `profesores` y
-  `super_admin` permanecen en espera.
+  propia quedó completada globalmente con la reserva «aparentemente bien», sin
+  entorno, artefacto ni desglose individual. No hay capa activa. Antes de
+  activar otra, el usuario debe nombrar el dominio y decidir si continúa
+  aceptando las verificaciones heredadas pendientes o atiende alguna primero.
+  `branding`, `profesores` y `super_admin` permanecen en espera.
 - [07_PLANEADOR_ANUAL.md](./07_PLANEADOR_ANUAL.md): **bitácora cerrada** de la
   capa 7 para el dominio `planeador_anual` y fuente de continuidad anterior.
   Registra el commit base limpio

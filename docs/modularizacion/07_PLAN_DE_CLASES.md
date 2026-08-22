@@ -31,6 +31,10 @@
   en un commit local limpio, autoriza únicamente cerrar esta capa. No activa
   otro dominio ni autoriza commit, push, deploy, migraciones reales o acceso a
   producción.
+- Tras el cierre, el usuario informó que ya verificó el dominio y que está
+  «aparentemente bien». La verificación manual se registra como completada de
+  forma global con esa reserva, sin atribuir entorno, artefacto ni resultados
+  individuales de los ocho puntos.
 
 ## Objetivo
 
@@ -444,9 +448,10 @@ Todos quedaron cumplidos:
   cierre con «sigue» después de consolidar 7.1. 7.2 y 7.3 son **No aplica**;
   no se añaden `response_model`, errores de dominio, validaciones, filtros ni
   correcciones de los once hallazgos vivos.
-- **Mantener la verificación manual propia como pendiente.** No se recibió
-  evidencia de ejecución del guion de `plan_de_clases`; el cierre documental
-  no la convierte en cumplida.
+- **Registrar la verificación manual propia como completada globalmente con
+  reserva.** El usuario informó después del cierre que ya verificó y que está
+  «aparentemente bien». No se infieren entorno, artefacto ni resultados punto
+  por punto.
 - **No activar el dominio siguiente.** `branding`, `profesores` y
   `super_admin` continúan en espera y necesitarán una orden explícita que
   nombre uno de ellos.
@@ -477,20 +482,21 @@ Todos quedaron cumplidos:
 - **Cobertura manual de `planeador_anual` sin desglose.** La revisión reportada
   permite continuar, pero no demuestra individualmente los siete escenarios ni
   un entorno desplegado.
-- **Verificación manual de `plan_de_clases` pendiente.** Las pruebas automáticas
-  protegen contratos y equivalencia, pero no sustituyen un recorrido con la
-  aplicación y un almacenamiento configurado.
+- **Cobertura manual de `plan_de_clases` sin desglose.** El reporte global con
+  reserva permite cerrar la verificación propia, pero no demuestra
+  individualmente los ocho escenarios, el entorno ni el artefacto ejercitado.
 - **Publicación no comprobada.** La referencia local `origin/main` permanece
-  tres commits detrás de `HEAD`; no se consultó el remoto real y no se atribuye
+  cuatro commits detrás de `HEAD`; no se consultó el remoto real y no se atribuye
   despliegue ni GitHub Actions.
 
 ## Staging
 
 No se hizo staging ni deploy en este cierre. Cuando el usuario autorice la
 publicación, el artefacto revisado debe incluir el commit local de 7.1
-`98c438fb6621bcc337c928f2f60238ca2c05d949` y el futuro commit documental de
-cierre. En un entorno no productivo con tenant y almacenamiento representativos
-se deben recorrer las once entradas y `/uploads`, observando respuestas,
+`98c438fb6621bcc337c928f2f60238ca2c05d949` y el commit documental de cierre
+`d6eeecf2492d62f5953f32721a48eb82ecd7c878`. En un entorno no productivo con
+tenant y almacenamiento representativos se deben recorrer las once entradas y
+`/uploads`, observando respuestas,
 permisos, conteos de consultas y ciclo de vida de las imágenes. La compuerta
 automática debe ejecutarse sobre exactamente el artefacto que vaya a desplegarse.
 
@@ -509,8 +515,10 @@ automática debe ejecutarse sobre exactamente el artefacto que vaya a desplegars
 
 ## Verificación manual
 
-Estado: **Pendiente**. El usuario no reportó todavía la ejecución del guion.
-Debe realizarse contra un artefacto identificado y registrar el entorno:
+Estado: **Completada de forma global con reserva**. El usuario informó que ya
+verificó el dominio y que está «aparentemente bien». No indicó entorno ni
+artefacto y no confirmó los ocho puntos por separado; por tanto, ninguno se
+presenta como evidencia individual. El guion que define esa cobertura es:
 
 1. Como profesor, crear, actualizar y consultar un plan con cero, una y dos
    imágenes, confirmando payload, fechas y campos `created_at`/`updated_at`.
@@ -740,6 +748,41 @@ Debe realizarse contra un artefacto identificado y registrar el entorno:
   quede pendiente; para activar otra capa, la misma orden debe nombrar además
   uno de `branding`, `profesores` o `super_admin`.
 
+### 2026-08-22 — registro de la verificación manual posterior al cierre
+
+- Modo de acceso: mismo checkout local en
+  `C:\Users\David\Documents\sistema_escolar_api`; Git y commits locales
+  validados directamente.
+- Estado del programa según el índice: ninguna capa activa; esta bitácora
+  cerrada es la fuente de continuidad más reciente porque conservaba la
+  verificación manual propia pendiente.
+- Reporte del usuario: ya verificó el dominio y está «aparentemente bien». Se
+  registra como verificación global completada con esa reserva. No se inventa
+  entorno, artefacto ni confirmación individual de los ocho puntos del guion.
+- Precondiciones antes de modificar documentación: rama `main`; árbol limpio
+  según `git status --porcelain=v1 --branch`, que mostró solo
+  `## main...origin/main [ahead 4]`; `HEAD`
+  `d6eeecf2492d62f5953f32721a48eb82ecd7c878`; el commit base
+  `bfe80d4152b802aeb22f4c5a2c5aab9265ba7630` es ancestro.
+- Continuidad desde el base: cuatro commits locales, todos explicados.
+  `31b3f6b` activa la capa, `80f7f21` contiene 7.0, `98c438f` contiene 7.1 y
+  `d6eeecf` contiene el cierre documental. `git show --name-status` confirmó
+  que el último modifica únicamente esta bitácora y el índice maestro.
+- Estado de publicación observado: la referencia local `origin/main` está
+  cuatro commits detrás. No se consultó el remoto real, no hubo push ni deploy
+  y no se atribuye una ejecución de GitHub Actions.
+- Archivos modificados para registrar el reporte: esta bitácora y
+  `docs/modularizacion/README.md`. Código, pruebas, configuración, migraciones,
+  dependencias, base y almacenamiento modificados: **ninguno**.
+- No se repitieron pruebas porque el reporte no cambia producto y la compuerta
+  de cierre ya terminó con 1011 pruebas, Ruff correcto y dependencias íntegras.
+- Revisión documental: `git diff --check` correcto y diff limitado a los dos
+  documentos de continuidad.
+- Siguiente acción exacta: no activar nada por una instrucción genérica. El
+  usuario debe nombrar explícitamente uno de `branding`, `profesores` o
+  `super_admin`; al hacerlo deberá decidir también si continúa aceptando las
+  verificaciones heredadas que siguen pendientes o si atiende alguna primero.
+
 ## Entrega al próximo chat
 
 - Capa activa: **ninguna**.
@@ -757,15 +800,16 @@ Debe realizarse contra un artefacto identificado y registrar el entorno:
   vivos**.
 - Verificación manual de `planeador_anual`: completada de forma global, sin
   entorno ni desglose punto por punto reportados.
-- Verificación manual propia de `plan_de_clases`: **pendiente**; no marcarla
-  como cumplida sin un reporte del usuario.
+- Verificación manual propia de `plan_de_clases`: **completada de forma global
+  con reserva**; el usuario informó que está «aparentemente bien», sin entorno,
+  artefacto ni desglose punto por punto.
 - Verificaciones heredadas: pendientes; ninguna se marca como cumplida.
 - Dominios en espera: `branding`, `profesores` y `super_admin`; ninguno está
   activado.
-- Publicación: no comprobada; la referencia local `origin/main` está tres
-  commits detrás del `HEAD` de 7.1 y no se consultó el remoto real.
+- Publicación: no comprobada; la referencia local `origin/main` está cuatro
+  commits detrás de `HEAD` y no se consultó el remoto real.
 - Bloqueos técnicos: ninguno.
-- Siguiente acción exacta: pedir al usuario una decisión explícita entre
-  completar la verificación manual propia o continuar aceptando que permanezca
-  pendiente. Solo después, y si además nombra el dominio, se puede activar uno
-  de los tres dominios en espera.
+- Siguiente acción exacta: no activar nada por «continúa» o equivalente. Para
+  abrir otra capa, el usuario debe nombrar explícitamente uno de los tres
+  dominios en espera y decidir si continúa aceptando las verificaciones
+  heredadas pendientes o atiende alguna primero.

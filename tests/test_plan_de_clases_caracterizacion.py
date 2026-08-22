@@ -43,6 +43,23 @@ EXPECTED_ROUTES = {
     ),
     ("DELETE", "/admin/plan-de-clases/{plan_id}/imagen"),
 }
+PLAN_ACCESS_SQL = (
+    "\n"
+    "            SELECT 1\n"
+    "            FROM plan_de_clases pdc\n"
+    "            JOIN asignaciones a ON pdc.asignacion_id = a.id\n"
+    "            WHERE pdc.id = %s AND a.profesor_id = %s\n"
+    "            "
+)
+PLAN_IMAGE_ACCESS_SQL = (
+    "\n"
+    "                SELECT 1\n"
+    "                FROM plan_de_clases pdc\n"
+    "                JOIN asignaciones a ON a.id = pdc.asignacion_id\n"
+    "                WHERE (pdc.imagen1 = %s OR pdc.imagen2 = %s)\n"
+    "                  AND a.profesor_id = %s\n"
+    "                "
+)
 
 
 def _source(relative_path):
@@ -159,6 +176,20 @@ class PermissionConnection:
         self.events.append(("permission_connection_close",))
 
 
+class AccessCursor:
+    def __init__(self, result):
+        self.result = result
+        self.query = None
+        self.params = None
+
+    def execute(self, query, params=None):
+        self.query = query
+        self.params = params
+
+    def fetchone(self):
+        return self.result
+
+
 class RepositoryCursor:
     def __init__(self, events):
         self.events = events
@@ -251,7 +282,7 @@ def test_domain_boundary_is_five_own_product_files():
     }
 
     assert discovered == DOMAIN_FILES
-    assert sum(len(_source(path).splitlines()) for path in DOMAIN_FILES) == 1334
+    assert sum(len(_source(path).splitlines()) for path in DOMAIN_FILES) == 1365
     own_source = "\n".join(_source(path) for path in DOMAIN_FILES)
     assert "planeador_anual" not in own_source
     assert "app.routes.observaciones" not in own_source
@@ -295,9 +326,9 @@ def test_create_schema_keeps_optional_concurrency_and_unbounded_period_and_text(
     assert len(model.unidad) == 4000
 
 
-def test_sql_boundary_has_twenty_five_repository_executions_and_two_shared_ones():
+def test_sql_boundary_has_twenty_seven_repository_executions_and_no_shared_ones():
     repository_tree = _tree("app/repositories/plan_de_clases_repository.py")
-    assert len(_execute_calls(repository_tree)) == 25
+    assert len(_execute_calls(repository_tree)) == 27
     for path in (
         "app/routes/plan_de_clases.py",
         "app/controllers/plan_de_clases_controller.py",
@@ -313,20 +344,60 @@ def test_sql_boundary_has_twenty_five_repository_executions_and_two_shared_ones(
         "app/main.py",
         "_validar_acceso_archivo_upload",
     )
-    assert permission_source.count("cursor.execute") == 1
-    assert upload_source.count("cursor.execute") == 1
-    assert "FROM plan_de_clases" in permission_source
-    assert "FROM plan_de_clases" in upload_source
+    assert "cursor.execute" not in permission_source
+    assert "cursor.execute" not in upload_source
+    assert "FROM plan_de_clases" not in permission_source
+    assert "FROM plan_de_clases" not in upload_source
+    assert "profesor_tiene_acceso_plan_de_clases_cursor" in permission_source
+    assert "profesor_tiene_acceso_imagen_plan_de_clases_cursor" in upload_source
+
+
+@pytest.mark.parametrize(
+    ("function_name", "expected_sql", "arguments", "expected_params"),
+    [
+        (
+            "profesor_tiene_acceso_plan_de_clases_cursor",
+            PLAN_ACCESS_SQL,
+            (15, 7),
+            (15, 7),
+        ),
+        (
+            "profesor_tiene_acceso_imagen_plan_de_clases_cursor",
+            PLAN_IMAGE_ACCESS_SQL,
+            ("uploads/tenant_demo/plan_de_clases/plan.png", 7),
+            (
+                "uploads/tenant_demo/plan_de_clases/plan.png",
+                "uploads/tenant_demo/plan_de_clases/plan.png",
+                7,
+            ),
+        ),
+    ],
+)
+def test_access_repository_helpers_preserve_exact_sql_and_parameters(
+    function_name,
+    expected_sql,
+    arguments,
+    expected_params,
+):
+    function = getattr(plan_de_clases_repository, function_name)
+    cursor = AccessCursor((1,))
+
+    assert function(cursor, *arguments) is True
+    assert cursor.query == expected_sql
+    assert cursor.params == expected_params
+
+    cursor.result = None
+    assert function(cursor, *arguments) is False
 
 
 def test_ownership_queries_do_not_filter_inactive_assignments():
     permission_source = _function_source(
-        "app/core/permissions.py",
-        "require_plan_de_clases_access",
+        "app/repositories/plan_de_clases_repository.py",
+        "profesor_tiene_acceso_plan_de_clases_cursor",
     )
     upload_source = _function_source(
-        "app/main.py",
-        "_validar_acceso_archivo_upload",
+        "app/repositories/plan_de_clases_repository.py",
+        "profesor_tiene_acceso_imagen_plan_de_clases_cursor",
     )
 
     assert "profesor_id" in permission_source

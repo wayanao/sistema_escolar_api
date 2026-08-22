@@ -7,12 +7,15 @@
 - Estado: **Activa** desde el 2026-08-22 por orden explícita del usuario.
 - Commit base: `bfe80d4152b802aeb22f4c5a2c5aab9265ba7630`.
 - Rama acordada: `main`.
-- Primera subcapa pendiente: **7.1**, cuyo alcance debe presentarse y
-  autorizarse antes de modificar producto.
+- Primera subcapa pendiente: **7.2**, solo si el usuario autoriza un cambio
+  concreto; también puede ordenar cerrar la capa y marcar 7.2/7.3 **No aplica**.
 - Código de producto modificado al activar: **Ninguno**.
 - Código de producto modificado en 7.0: **Ninguno**. El diff funcional de la
   subcapa es un solo archivo nuevo de caracterización; los demás cambios son
   documentación.
+- Código de producto modificado en 7.1: **tres archivos**. Las dos consultas
+  externas pasaron al repositorio existente; `permissions.py` y `main.py`
+  conservan conexión, cursor, cierre y decisiones de acceso.
 - Dominio de esta capa: **`plan_de_clases`, y solo ese**. `branding`,
   `profesores` y `super_admin` siguen en espera.
 - Autorización: el usuario informó «planeador revisado» y ordenó «sigue con
@@ -22,6 +25,8 @@
 - La orden posterior «continua» autorizó ejecutar **únicamente 7.0**. No
   autoriza 7.1, commit, push, deploy, migraciones reales ni acceso a
   producción.
+- Tras presentarse el alcance exacto de 7.1, la nueva orden «continua» autorizó
+  **únicamente esa extracción**. No autoriza 7.2 ni corregir otros hallazgos.
 
 ## Objetivo
 
@@ -77,6 +82,9 @@ confirmado con matiz y uno refutado**.
 | 7 | Contratos, SQL, recursos y efectos no determinados | **CONFIRMADO COMO TRABAJO Y RESUELTO.** El inventario y la línea base quedan fijados más abajo |
 | 8 | Las pruebas existentes bastan | **REFUTADO.** Había 105 casos útiles, pero no una guardia de frontera completa, HTTP real por ASGI, localización total del SQL, desajuste del esquema de respuesta ni conteos de conexiones; 7.0 añadió 22 casos |
 
+El matiz del supuesto 3 era el estado exacto al cerrar 7.0. **7.1 lo resolvió**
+extrayendo esas dos consultas sin cambiar sus contratos.
+
 ## Inventario y contratos fijados en 7.0
 
 La frontera propia tiene **cinco archivos y 1334 líneas**. La persistencia del
@@ -96,6 +104,12 @@ propia: el montaje y el acceso a `/uploads` en `app/main.py`, los dos guards de
 Las dos consultas específicas fuera del repositorio viven en `main.py` y
 `permissions.py`; el resolutor añade una consulta compartida dentro de varias
 operaciones del repositorio.
+
+Tras 7.1, la frontera propia conserva los mismos cinco archivos y pasa a
+**1365 líneas**: el repositorio tiene **784 líneas y 27 sitios
+`cursor.execute`**. Las dos consultas específicas viven ahora en dos funciones
+que reciben el cursor existente; `main.py` y `permissions.py` ya no contienen
+SQL de `plan_de_clases`.
 
 ### Entradas HTTP, permisos y respuestas
 
@@ -169,11 +183,11 @@ registra sin corregir.
 | Eliminar imagen profesor | **3 o 4** | **2** | 1 borrado posterior a DB |
 | Servir imagen compartida | **0 / 1** | **0 / 1** | 1 lectura local o remota |
 
-## Hallazgos de 7.0, registrados y sin corregir
+## Hallazgos registrados en 7.0; uno resuelto en 7.1
 
-1. **La frontera de persistencia no está totalmente cerrada.** Quedan dos SQL
-   específicos del dominio fuera del repositorio: ownership en
-   `permissions.py` y autorización de archivos en `main.py`.
+1. **RESUELTO EN 7.1 — la frontera de persistencia no estaba totalmente
+   cerrada.** Los dos SQL específicos del dominio salieron de `permissions.py`
+   y `main.py` al repositorio existente, conservando recursos y contratos.
 2. **Ninguna de las once rutas declara `response_model`.** El esquema existente
    no puede añadirse mecánicamente: omite `created_at` y `updated_at` que hoy se
    devuelven y no representa notificaciones ni mutaciones.
@@ -207,6 +221,9 @@ registra sin corregir.
     dominio sin vivir en su router.** Una caracterización limitada a los cinco
     archivos propios habría omitido tanto esa entrada como uno de los dos SQL
     externos.
+
+Quedan **once hallazgos sin corregir**. El primero es el único resuelto por la
+extracción autorizada de 7.1.
 
 ## Alcance autorizado
 
@@ -259,13 +276,18 @@ registra sin corregir.
 | Específicas finales | El comando específico anterior más `tests\test_plan_de_clases_caracterizacion.py` | **127 passed**, 5 warnings heredados |
 | Ruff de la caracterización | `.\venv\Scripts\python.exe -m ruff check tests\test_plan_de_clases_caracterizacion.py` | **All checks passed** |
 | Compuerta final | `.\venv\Scripts\python.exe scripts\verify.py` | **1009 passed**, Ruff correcto, dependencias íntegras |
+| Línea base específica de 7.1 | Caracterización, permisos y uploads | **42 passed**, 5 warnings heredados |
+| Caracterización final de 7.1 | `tests\test_plan_de_clases_caracterizacion.py` | **24 passed** |
+| Específicas finales de 7.1 | Las siete suites relacionadas de `plan_de_clases`, permisos y uploads | **129 passed**, 5 warnings heredados |
+| Ruff de 7.1 | Los tres archivos de producto y la caracterización modificados | **All checks passed** |
+| Compuerta global de 7.1 | `.\venv\Scripts\python.exe scripts\verify.py` | **1011 passed**, Ruff correcto, dependencias íntegras |
 
 ## Subcapas
 
 | Subcapa | Resultado | Estado |
 |---:|---|---|
 | 7.0 | Delimitar la frontera, inventariar contratos y caracterizar el comportamiento y la línea base | **Cerrada el 2026-08-22** |
-| 7.1 | Primera extracción protegida que la evidencia de 7.0 justifique | Pendiente |
+| 7.1 | Extraer las dos consultas específicas externas al repositorio existente, conservando los recursos de sus llamadores | **Cerrada el 2026-08-22** |
 | 7.2 | Segunda extracción, integración o cambio adicional, solo si la evidencia y el usuario lo autorizan | Pendiente |
 | 7.3 | Retiro heredado y cierre, solo si resulta necesario | Pendiente |
 
@@ -303,7 +325,7 @@ la primera subcapa pendiente y para ninguna otra. Se ejecutaron estos pasos:
     riesgos y la siguiente acción exacta.
 12. **Detenerse al cerrar 7.0. No iniciar 7.1 en el mismo turno.**
 
-## Criterios de cierre de la subcapa
+## Criterios de cierre de 7.0
 
 Todos quedaron cumplidos en 7.0:
 
@@ -314,6 +336,45 @@ Todos quedaron cumplidos en 7.0:
 - Pruebas específicas, Ruff, compuerta y dependencias correctas.
 - `git diff --check` correcto y diff exclusivo de 7.0.
 - Bitácora actualizada con resultados, decisiones, riesgos y siguiente acción.
+
+## Subcapa cerrada: trabajo ejecutado en 7.1
+
+1. Interpretar la nueva orden «continua» como respuesta al alcance presentado:
+   extraer únicamente las dos consultas externas.
+2. Ejecutar la línea base específica antes de editar producto.
+3. Agregar primero dos casos parametrizados que fijan el texto SQL y los
+   parámetros exactos, y convertir las guardias de ubicación para exigir la
+   frontera final.
+4. Confirmar que esas guardias fallen contra el producto anterior como señal
+   esperada.
+5. Crear dos operaciones específicas en
+   `plan_de_clases_repository.py`. Ambas reciben el cursor de su llamador; no
+   abren conexiones ni crean una abstracción genérica compartida.
+6. Sustituir únicamente los bloques `execute`/`fetchone` de
+   `require_plan_de_clases_access` y `_validar_acceso_archivo_upload` por esas
+   llamadas.
+7. Conservar byte a byte los dos SQL, sus parámetros, orden, valor booleano,
+   permisos y ausencia del filtro `activo`.
+8. Conservar en `permissions.py` y `main.py` la apertura y cierre manuales de
+   conexión/cursor, además del retorno permitido y el 403 denegado.
+9. No corregir almacenamiento, concurrencia, paginación, validaciones,
+   `response_model`, errores ni los otros once hallazgos.
+10. Ejecutar caracterización, pruebas específicas, Ruff, compuerta global,
+    `git diff --check` y revisión de alcance.
+11. Actualizar esta bitácora y el índice, y detenerse antes de 7.2.
+
+## Criterios de cierre de 7.1
+
+Todos quedaron cumplidos:
+
+- `permissions.py` y `main.py` no contienen SQL de `plan_de_clases`.
+- El repositorio contiene los 27 sitios `cursor.execute`, incluidos los dos
+  nuevos helpers que reciben cursor.
+- Los dos textos SQL y sus parámetros están fijados y conservados exactamente.
+- Conexiones, cursores, cierres, retornos, permisos y conteos permanecen en sus
+  llamadores y sin cambios observables.
+- Pruebas específicas, Ruff, compuerta y dependencias son correctas.
+- El diff pertenece únicamente a 7.1 y la documentación de continuidad.
 
 ## Criterios de cierre de la capa
 
@@ -357,12 +418,29 @@ Todos quedaron cumplidos en 7.0:
 - **Dejar 7.1 sujeta a decisión expresa.** La evidencia permite presentar una
   extracción limitada de las dos consultas externas, pero no autoriza a
   ejecutarla ni a cambiar sus propietarios de conexión o sus contratos.
+- **Interpretar la segunda orden «continua» como autorización exacta de 7.1.**
+  Respondió inmediatamente a la propuesta de extraer las dos consultas y no
+  amplía el alcance a 7.2.
+- **Usar dos operaciones específicas que reciben cursor.** No se creó un helper
+  genérico: cada consulta conserva un contrato y un único llamador distintos.
+- **Mantener los recursos en infraestructura compartida.** `permissions.py` y
+  `main.py` siguen abriendo y cerrando sus conexiones/cursor; moverlos habría
+  alterado los conteos fijados en 7.0.
+- **Conservar los dos literales SQL byte a byte.** La sangría heredada dentro de
+  los strings se mantuvo deliberadamente y dos pruebas parametrizadas fijan
+  además los parámetros exactos.
+- **Resolver solo el primer hallazgo.** Los otros once siguen vivos y 7.1 no
+  añade filtros, modelos, validaciones, paginación ni cambios de errores.
+- **Dejar el cierre de capa como decisión.** 7.2 y 7.3 no se ejecutan por
+  inferencia; el usuario puede cerrar como refactorización pura o autorizar una
+  7.2 concreta después de revisar alternativas y riesgo.
 
 ## Riesgos
 
-- **Persistencia parcialmente migrada.** Dos consultas de acceso específicas
-  viven fuera del repositorio. Cualquier 7.1 deberá conservar texto SQL,
-  parámetros, conteos y propiedad manual de conexión/cursor/cierre.
+- **Dependencia explícita desde infraestructura compartida.** `permissions.py`
+  y `main.py` importan ahora dos operaciones específicas del repositorio de
+  planes. Es el coste de cerrar la frontera SQL sin mover recursos ni crear una
+  abstracción genérica; la compuerta global protege ambos llamadores.
 - **Almacenamiento no transaccional.** La base y los archivos pueden divergir;
   además, los reemplazos no retiran la imagen anterior y los fallos de borrado
   se absorben. No se corrigió.
@@ -486,21 +564,90 @@ Todos quedaron cumplidos en 7.0:
   partir de las dos consultas específicas externas y detenerse. No iniciar la
   extracción por inferencia.
 
+### 2026-08-22 — cierre de la subcapa 7.1
+
+- Modo de acceso: mismo checkout local en
+  `C:\Users\David\Documents\sistema_escolar_api`; Git y commits locales
+  validados directamente.
+- Autorización: la respuesta «continua» llegó inmediatamente después de
+  presentar la extracción exacta de las dos consultas externas y autorizó solo
+  7.1.
+- Precondiciones antes de modificar: rama `main`; árbol limpio según
+  `git status --porcelain=v1 --branch`, que mostró
+  `## main...origin/main [ahead 2]`; `HEAD`
+  `80f7f21de0f2a77d40fb710cc1cc9fd4dc911fde`; el commit base
+  `bfe80d4152b802aeb22f4c5a2c5aab9265ba7630` es ancestro.
+- Continuidad desde el base: exactamente dos commits posteriores. `31b3f6b`
+  contiene la activación documental; `80f7f21` contiene los tres archivos
+  registrados de 7.0 —bitácora, índice y caracterización—. Ambos están
+  explicados y no había divergencia ni cambios previos.
+- Estado de publicación observado: la referencia local `origin/main` estaba
+  dos commits detrás. No se consultó el remoto real, no hubo push y no se
+  atribuye GitHub Actions.
+- Archivos inspeccionados para 7.1: las dos funciones llamadoras, el repositorio
+  existente, la caracterización y las pruebas específicas de permisos y
+  uploads; además se comprobó que el resolutor importado por el repositorio no
+  crea un ciclo. No se abrió código de los dominios siguientes.
+- Línea base específica: el sandbox produjo **36 passed y 6 errores de setup**
+  por el mismo `PermissionError` del directorio temporal de pytest. La
+  repetición fuera de esa restricción terminó con **42 passed** y 5 warnings
+  heredados.
+- Caracterización previa al producto: se agregaron dos casos parametrizados
+  para SQL/parámetros y se cambiaron las guardias de ubicación. Contra el
+  producto anterior hubo **4 fallos y 20 casos correctos**: 25 en vez de 27
+  ejecuciones, dos funciones ausentes y ownership aún externo. Fue la señal
+  esperada.
+- Producto modificado: `app/repositories/plan_de_clases_repository.py` añadió
+  dos funciones que reciben cursor; `app/core/permissions.py` y `app/main.py`
+  delegan solo su consulta/fetch. El repositorio pasó de 753 a **784 líneas** y
+  de 25 a **27 sitios `cursor.execute`**; los cinco archivos propios suman
+  **1365 líneas**.
+- Equivalencia: los dos literales SQL se conservaron byte a byte, incluidos sus
+  espacios heredados; también sus tuplas de parámetros. Los llamadores
+  conservan conexión, cursor, `finally`, cierres, orden, retornos y 403. No se
+  añadió `activo` ni se cambió otro hallazgo.
+- La primera ejecución posterior dejó **23 passed y un fallo esperado** por el
+  recuento estructural anterior de 1334 líneas. Tras actualizarlo a 1365, la
+  caracterización terminó con **24 passed**.
+- Suite específica final: **129 passed** y 5 warnings heredados. Ruff sobre los
+  cuatro archivos funcionales modificados: **All checks passed**. Compuerta
+  global: **1011 passed**, Ruff correcto y dependencias íntegras.
+- Archivos de 7.1: tres archivos de producto, la caracterización, esta bitácora
+  y el índice maestro. No hubo DB, migraciones, producción, commit, push ni
+  deploy.
+- Revisión final: `git diff --check` terminó en exit 0; los avisos fueron solo
+  de normalización futura LF/CRLF. `git status --short --branch` mostró
+  exactamente los seis archivos de 7.1 sobre `main...origin/main [ahead 2]`:
+  los tres de producto, la caracterización, esta bitácora y el índice. La
+  revisión completa del diff no encontró migraciones, configuración, otros
+  dominios ni cambios ajenos. El índice y las bitácoras conservan exactamente
+  una capa **Activa**, `plan_de_clases`.
+- Siguiente acción exacta: presentar la decisión entre cerrar la capa como
+  refactorización pura —7.2/7.3 No aplica— o autorizar una única 7.2 concreta.
+  No iniciar ninguna alternativa por inferencia.
+
 ## Entrega al próximo chat
 
 - Capa activa: **7 para `plan_de_clases`**.
 - Última capa cerrada: **7 para `planeador_anual`**.
-- Última subcapa terminada de esta bitácora: **7.0**, cerrada el 2026-08-22.
-- Primera subcapa pendiente: **7.1**, no iniciada y todavía no autorizada.
-- Código de producto modificado al activar o en 7.0: ninguno.
-- Caracterización agregada: **22 pruebas**; específicas finales **127 passed**;
-  compuerta final **1009 passed**, Ruff correcto y dependencias íntegras.
-- Resultado estructural: cinco archivos propios, once entradas, tres tablas,
-  25 sitios `cursor.execute` en el repositorio y dos consultas específicas
-  externas. Doce hallazgos quedan registrados y sin corregir.
+- Última subcapa terminada: **7.1**, cerrada el 2026-08-22.
+- Primera subcapa pendiente: **7.2**, no iniciada ni autorizada; puede quedar
+  **No aplica** si el usuario ordena cerrar la capa.
+- Código de producto modificado en 7.1: repositorio, guard de plan y guard del
+  endpoint compartido de uploads; ninguna otra pieza.
+- Caracterización: **24 pruebas**; específicas finales **129 passed**;
+  compuerta global **1011 passed**, Ruff correcto y dependencias íntegras.
+- Resultado estructural: cinco archivos propios y 1365 líneas, once entradas,
+  tres tablas y los **27 sitios `cursor.execute`** dentro del repositorio. Los
+  dos llamadores compartidos ya no tienen SQL de este dominio y conservan sus
+  recursos. De los doce hallazgos, el primero está resuelto y **once siguen
+  vivos**.
 - Verificación manual de `planeador_anual`: completada de forma global, sin
   entorno ni desglose punto por punto reportados.
 - Verificaciones heredadas: pendientes; ninguna se marca como cumplida.
+- Verificación manual propia de `plan_de_clases`: pendiente; debe definirse al
+  decidir el cierre.
 - Bloqueos técnicos: ninguno.
-- Siguiente acción exacta: presentar el alcance concreto de 7.1 y pedir
-  autorización expresa; no extraer ni modificar producto todavía.
+- Siguiente acción exacta: decidir explícitamente entre cerrar como
+  refactorización pura o autorizar una sola 7.2 concreta; no iniciar 7.2 por una
+  instrucción ambigua.

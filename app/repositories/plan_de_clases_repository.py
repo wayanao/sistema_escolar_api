@@ -57,6 +57,37 @@ REVISION_FINALIZADA_SQL = """
 """
 
 
+def profesor_tiene_acceso_plan_de_clases_cursor(cursor, plan_id, profesor_id):
+    cursor.execute(
+        """
+            SELECT 1
+            FROM plan_de_clases pdc
+            JOIN asignaciones a ON pdc.asignacion_id = a.id
+            WHERE pdc.id = %s AND a.profesor_id = %s
+            """,
+        (plan_id, profesor_id),
+    )
+    return bool(cursor.fetchone())
+
+
+def profesor_tiene_acceso_imagen_plan_de_clases_cursor(
+    cursor,
+    stored_path,
+    profesor_id,
+):
+    cursor.execute(
+        """
+                SELECT 1
+                FROM plan_de_clases pdc
+                JOIN asignaciones a ON a.id = pdc.asignacion_id
+                WHERE (pdc.imagen1 = %s OR pdc.imagen2 = %s)
+                  AND a.profesor_id = %s
+                """,
+        (stored_path, stored_path, profesor_id),
+    )
+    return bool(cursor.fetchone())
+
+
 def _row_to_plan(row):
     return {
         "id": row[0],

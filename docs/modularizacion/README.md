@@ -49,7 +49,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 7 | Resto de dominios — **`observaciones` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `observaciones` el 2026-08-21; verificada a mano. **Publicada el 2026-08-21**, después de escribirse su bitácora | [07_OBSERVACIONES.md](./07_OBSERVACIONES.md) |
 | 7 | Resto de dominios — **`planilla` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `planilla` el 2026-08-21; verificación manual correcta y sin publicación comprobada | [07_PLANILLA.md](./07_PLANILLA.md) |
 | 7 | Resto de dominios — **`planeador_anual` migrado** | Migración individual con contratos y pruebas | **Cerrada** el 2026-08-22; 7.2 No aplica, verificación manual global reportada y sin entorno especificado | [07_PLANEADOR_ANUAL.md](./07_PLANEADOR_ANUAL.md) |
-| 7 | Resto de dominios — **`plan_de_clases`** | Migración individual con contratos y pruebas | **Activa** desde el 2026-08-22; 7.0 cerrada y 7.1 pendiente, no autorizada | [07_PLAN_DE_CLASES.md](./07_PLAN_DE_CLASES.md) |
+| 7 | Resto de dominios — **`plan_de_clases`** | Migración individual con contratos y pruebas | **Activa** desde el 2026-08-22; 7.0 y 7.1 cerradas, decisión de cierre o 7.2 pendiente | [07_PLAN_DE_CLASES.md](./07_PLAN_DE_CLASES.md) |
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
 cierre y el usuario ordene continuar, se crea su sucesora desde
@@ -239,8 +239,14 @@ delimitó cinco archivos propios, once entradas propias más el endpoint
 compartido `/uploads`, tres tablas, 25 sitios `cursor.execute` dentro del
 repositorio y dos consultas específicas externas. Agregó 22 pruebas; las
 específicas terminaron con **127 passed** y la compuerta con **1009 passed**,
-Ruff correcto y dependencias íntegras. Su **7.1 está pendiente, no iniciada y
-no autorizada**.
+Ruff correcto y dependencias íntegras. Su **7.1 quedó cerrada el mismo día**:
+las dos consultas externas pasaron al repositorio existente como operaciones
+que reciben cursor; `permissions.py` y `main.py` conservaron conexión, cursor,
+cierre, permisos y retornos. Los dos SQL y parámetros quedaron fijados
+exactamente. La caracterización subió a 24 casos, las específicas terminaron
+con **129 passed** y la compuerta con **1011 passed**. De los doce hallazgos, el
+primero está resuelto y once siguen vivos. Está pendiente decidir entre cerrar
+la capa como refactorización pura o autorizar una 7.2 concreta.
 
 Ningún otro se activa por inferencia: `branding`, `profesores` y `super_admin`
 siguen en espera —son **tres**—, y cada uno exigirá su propia bitácora y una
@@ -1778,9 +1784,14 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   específicas externas. Agregó 22 pruebas sin modificar producto; las
   específicas finalizaron con **127 passed** y la compuerta con **1009
   passed**, Ruff correcto y dependencias íntegras. Registró doce hallazgos sin
-  corregir. Su **7.1 está pendiente, no iniciada y no autorizada**; el paso
-  exacto es presentar para decisión una extracción limitada de las dos
-  consultas externas, sin ejecutarla por inferencia.
+  corregir. Su **7.1 está cerrada**: extrajo las dos consultas externas al
+  repositorio existente, que ahora suma **27 sitios `cursor.execute`**, sin
+  mover conexión, cursor ni cierre de sus llamadores. Conservó ambos SQL byte a
+  byte y sus parámetros; la frontera propia suma ahora 1365 líneas. La
+  caracterización terminó con **24 passed**, las específicas con **129 passed**
+  y la compuerta con **1011 passed**. El primer hallazgo está resuelto y once
+  siguen vivos. Está pendiente la decisión explícita entre cerrar la capa —7.2
+  y 7.3 No aplica— o autorizar una única 7.2 concreta.
 - Decisión vigente al activar: siguen pendientes la
   calibración final de `DB_STATEMENT_TIMEOUT_MS`, la evidencia de GitHub
   Actions posterior a la capa 0, los pasos manuales no confirmados heredados y
@@ -1942,9 +1953,13 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   el repositorio y dos consultas específicas externas; resolvió los ocho
   supuestos, agregó 22 pruebas y registró doce hallazgos sin modificar
   producto. Las específicas terminaron con **127 passed** y la compuerta con
-  **1009 passed**. **7.1 está pendiente y no autorizada**; debe presentarse su
-  alcance antes de modificar producto. `branding`, `profesores` y
-  `super_admin` permanecen en espera.
+  **1009 passed**. **7.1 está cerrada**: las dos consultas externas pasaron al
+  repositorio existente con SQL y parámetros exactos y sin mover los recursos
+  de `permissions.py` ni `main.py`; la caracterización terminó con 24 casos,
+  las específicas con **129 passed** y la compuerta con **1011 passed**. Quedan
+  once hallazgos vivos. La siguiente acción es decidir entre cerrar la capa o
+  autorizar una 7.2 concreta; ninguna entra por inferencia. `branding`,
+  `profesores` y `super_admin` permanecen en espera.
 - [07_PLANEADOR_ANUAL.md](./07_PLANEADOR_ANUAL.md): **bitácora cerrada** de la
   capa 7 para el dominio `planeador_anual` y fuente de continuidad anterior.
   Registra el commit base limpio

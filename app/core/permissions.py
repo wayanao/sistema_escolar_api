@@ -1,6 +1,9 @@
 from fastapi import HTTPException, status
 
 from app.database import get_connection
+from app.repositories.plan_de_clases_repository import (
+    profesor_tiene_acceso_plan_de_clases_cursor,
+)
 
 
 def require_estudiante_access(estudiante_id: int, current_user: dict) -> None:
@@ -99,16 +102,11 @@ def require_plan_de_clases_access(plan_id: int, current_user: dict, detail: str 
     conn = get_connection()
     cursor = conn.cursor()
     try:
-        cursor.execute(
-            """
-            SELECT 1
-            FROM plan_de_clases pdc
-            JOIN asignaciones a ON pdc.asignacion_id = a.id
-            WHERE pdc.id = %s AND a.profesor_id = %s
-            """,
-            (plan_id, current_user.get("id")),
-        )
-        if cursor.fetchone():
+        if profesor_tiene_acceso_plan_de_clases_cursor(
+            cursor,
+            plan_id,
+            current_user.get("id"),
+        ):
             return
     finally:
         cursor.close()

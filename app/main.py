@@ -17,6 +17,9 @@ from app.database import close_pool
 from app.db.tenant import TENANT_SCHEMA_PATTERN
 from app.dependencies import get_current_user
 from app.globals import tenant_schema_var
+from app.repositories.plan_de_clases_repository import (
+    profesor_tiene_acceso_imagen_plan_de_clases_cursor,
+)
 from app.services.storage import (
     normalize_storage_key,
     read_file_bytes,
@@ -129,17 +132,11 @@ def _validar_acceso_archivo_upload(file_path: str, current_user: dict):
         conn = get_connection()
         cursor = conn.cursor()
         try:
-            cursor.execute(
-                """
-                SELECT 1
-                FROM plan_de_clases pdc
-                JOIN asignaciones a ON a.id = pdc.asignacion_id
-                WHERE (pdc.imagen1 = %s OR pdc.imagen2 = %s)
-                  AND a.profesor_id = %s
-                """,
-                (stored_path, stored_path, current_user.get("id")),
-            )
-            if cursor.fetchone():
+            if profesor_tiene_acceso_imagen_plan_de_clases_cursor(
+                cursor,
+                stored_path,
+                current_user.get("id"),
+            ):
                 return allowed_file
         finally:
             cursor.close()

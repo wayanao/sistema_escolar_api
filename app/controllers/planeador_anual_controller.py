@@ -1,4 +1,5 @@
 from app.database import get_connection, get_cursor
+from app.repositories import planeador_anual_repository
 from app.schemas.planeador_anual import PlaneadorAnualCreate, PlaneadorAnualUpdate
 from app.services.asignacion_academica import resolver_asignacion_academica_id_cursor
 from typing import List
@@ -6,11 +7,8 @@ from typing import List
 def crear_planeador_anual_controller(planeador: PlaneadorAnualCreate):
     with get_cursor(commit=True) as cursor:
         asignacion_id = resolver_asignacion_academica_id_cursor(cursor, planeador.asignacion_id)
-        cursor.execute("""
-            INSERT INTO planeador_anual (asignacion_id, periodo, slot, unidad_tematica, estandar_competencia, contenido, actividades_recursos, fecha)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            RETURNING id
-        """, (
+        planeador_anual_repository.insertar_planeador_anual(
+            cursor,
             asignacion_id,
             planeador.periodo,
             planeador.slot,
@@ -18,8 +16,8 @@ def crear_planeador_anual_controller(planeador: PlaneadorAnualCreate):
             planeador.estandar_competencia,
             planeador.contenido,
             planeador.actividades_recursos,
-            planeador.fecha
-        ))
+            planeador.fecha,
+        )
         planeador_id = cursor.fetchone()[0]
 
     return planeador_id
@@ -27,12 +25,11 @@ def crear_planeador_anual_controller(planeador: PlaneadorAnualCreate):
 def obtener_planeadores_anual_controller(asignacion_id: int, periodo: int) -> List[dict]:
     with get_cursor() as cursor:
         asignacion_id = resolver_asignacion_academica_id_cursor(cursor, asignacion_id)
-        cursor.execute("""
-            SELECT id, asignacion_id, periodo, slot, unidad_tematica, estandar_competencia, contenido, actividades_recursos, fecha
-            FROM planeador_anual
-            WHERE asignacion_id = %s AND periodo = %s
-            ORDER BY slot
-        """, (asignacion_id, periodo))
+        planeador_anual_repository.seleccionar_planeadores_anuales(
+            cursor,
+            asignacion_id,
+            periodo,
+        )
         rows = cursor.fetchall()
 
     return [
@@ -52,18 +49,15 @@ def obtener_planeadores_anual_controller(asignacion_id: int, periodo: int) -> Li
 
 def actualizar_planeador_anual_controller(planeador_id: int, planeador: PlaneadorAnualUpdate):
     with get_cursor(commit=True) as cursor:
-        cursor.execute("""
-            UPDATE planeador_anual
-            SET unidad_tematica = %s, estandar_competencia = %s, contenido = %s, actividades_recursos = %s, fecha = %s
-            WHERE id = %s
-        """, (
+        planeador_anual_repository.actualizar_planeador_anual(
+            cursor,
+            planeador_id,
             planeador.unidad_tematica,
             planeador.estandar_competencia,
             planeador.contenido,
             planeador.actividades_recursos,
             planeador.fecha,
-            planeador_id
-        ))
+        )
 
 def bulk_actualizar_planeadores_controller(asignacion_id: int, periodo: int, planeadores: List[PlaneadorAnualUpdate]):
     conn = get_connection()
@@ -80,22 +74,16 @@ def bulk_actualizar_planeadores_controller(asignacion_id: int, periodo: int, pla
             ))
 
             if not tiene_contenido:
-                cursor.execute("""
-                    DELETE FROM planeador_anual
-                    WHERE asignacion_id = %s AND periodo = %s AND slot = %s
-                """, (asignacion_id, periodo, slot))
+                planeador_anual_repository.eliminar_slot_planeador(
+                    cursor,
+                    asignacion_id,
+                    periodo,
+                    slot,
+                )
                 continue
 
-            cursor.execute("""
-                INSERT INTO planeador_anual (asignacion_id, periodo, slot, unidad_tematica, estandar_competencia, contenido, actividades_recursos, fecha)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (asignacion_id, periodo, slot) DO UPDATE SET
-                    unidad_tematica = EXCLUDED.unidad_tematica,
-                    estandar_competencia = EXCLUDED.estandar_competencia,
-                    contenido = EXCLUDED.contenido,
-                    actividades_recursos = EXCLUDED.actividades_recursos,
-                    fecha = EXCLUDED.fecha
-            """, (
+            planeador_anual_repository.guardar_slot_planeador(
+                cursor,
                 asignacion_id,
                 periodo,
                 slot,
@@ -104,7 +92,7 @@ def bulk_actualizar_planeadores_controller(asignacion_id: int, periodo: int, pla
                 planeador.contenido,
                 planeador.actividades_recursos,
                 planeador.fecha,
-            ))
+            )
         conn.commit()
     except Exception:
         conn.rollback()

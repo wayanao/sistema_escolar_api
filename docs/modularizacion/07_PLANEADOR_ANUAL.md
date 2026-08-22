@@ -1,17 +1,21 @@
 # Capa 7: planeador anual
 
-Última revisión: 2026-08-21.
+Última revisión: 2026-08-22.
 
 ## Control
 
 - Estado: **Activa** desde el 2026-08-21.
 - Commit base: `235672ea609444a46003175940376c37bfe191c4`.
 - Rama acordada: `main`.
-- Primera subcapa pendiente: **7.1**, no iniciada.
+- Primera subcapa pendiente: **ninguna definida**. 7.1 está cerrada y queda el
+  punto de decisión explícito entre cerrar la capa o autorizar una 7.2.
 - Código de producto modificado al activar: **Ninguno**.
 - Código de producto modificado en 7.0: **Ninguno**. El diff funcional de la
   subcapa es un solo archivo nuevo de caracterización; los demás cambios son
   documentación.
+- Código de producto modificado en 7.1: el controlador delega sus cinco
+  sentencias al nuevo `app/repositories/planeador_anual_repository.py`; ruta y
+  esquema no cambiaron.
 - Dominio de esta capa: **`planeador_anual`, y solo ese**. Los otros cuatro
   dominios en espera necesitan su propia bitácora y su propia orden.
 - Autorización: el usuario eligió la opción 2 —continuar localmente aceptando
@@ -133,16 +137,24 @@ toca esta frontera. No se modificó ese dominio.
 | Suite global final | `.\venv\Scripts\python.exe scripts\verify.py` | **986 pruebas**, 5 warnings heredadas, exit 0 |
 | Ruff | `.\venv\Scripts\python.exe -m ruff check tests\test_planeador_anual_caracterizacion.py` | **Correcto** |
 | Dependencias | Incluido en `scripts\verify.py` | **Íntegras antes y después** |
+| Señal de guardias al extraer 7.1 | Caracterización propia y enumeraciones históricas | **7 fallos esperados**: dos guardias propias y cinco enumeraciones; ninguna regresión funcional |
+| Pruebas específicas finales de 7.1 | Caracterización propia más pruebas heredadas | **38 pasaron**, 1 warning heredada |
+| Pruebas relacionadas de 7.1 | Específicas más las cinco enumeraciones históricas | **228 pasaron**, 5 warnings heredadas |
+| Equivalencia SQL de 7.1 | Comparador AST contra el `HEAD` limpio previo | **5 de 5 literales idénticos byte a byte** |
+| Compuerta final de 7.1 | `.\venv\Scripts\python.exe scripts\verify.py` | **987 pruebas**, 5 warnings heredadas, exit 0; Ruff correcto y dependencias íntegras |
 
 ## Inventario y contratos fijados en 7.0
 
-La frontera propia son **tres archivos y 206 líneas**, sin servicio ni
-repositorio y con **cinco sentencias SQL inline**:
+La frontera propia era en 7.0 de **tres archivos y 206 líneas**, sin servicio ni
+repositorio y con cinco sentencias SQL inline. Después de 7.1 son **cuatro
+archivos y 293 líneas**, sin servicio y con las **cinco sentencias en un único
+repositorio**:
 
 | Archivo | Líneas | SQL inline | Responsabilidad |
 |---|---:|---:|---|
 | `app/routes/planeador_anual.py` | 38 | 0 | Dos entradas HTTP, autenticación y permiso de asignación |
-| `app/controllers/planeador_anual_controller.py` | 114 | 5 | Lectura, reemplazo por slots y dos escrituras sin consumidor HTTP |
+| `app/controllers/planeador_anual_controller.py` | 102 | 0 | Orquestación, recursos, lectura, reemplazo por slots y dos funciones sin consumidor HTTP |
+| `app/repositories/planeador_anual_repository.py` | 99 | 5 | Cinco operaciones cursor-first, sin administrar recursos |
 | `app/schemas/planeador_anual.py` | 54 | 0 | Normalización y validación de contenido/fecha |
 
 `app/main.py` monta el router, el DDL base define la tabla y las funciones
@@ -241,7 +253,7 @@ la entrada** en el `PUT`: una operación DML por fila, con conexiones constantes
 | Subcapa | Resultado | Estado |
 |---:|---|---|
 | 7.0 | Delimitar la frontera, inventariar contratos y caracterizar el comportamiento y la línea base | **Cerrada** el 2026-08-22 |
-| 7.1 | Extraer los cinco SQL a un único repositorio conservando recursos, funciones muertas y contratos | **Pendiente y no iniciada** |
+| 7.1 | Extraer los cinco SQL a un único repositorio conservando recursos, funciones muertas y contratos | **Cerrada** el 2026-08-22 |
 | 7.2 | Cambio adicional posterior, solo si resulta necesario y autorizado | En espera; alcance por definir |
 
 Las subcapas se adaptan al trabajo real. Las innecesarias se marcan `No
@@ -274,19 +286,39 @@ aplica` con una explicación. Nunca se ejecutan dos en el mismo turno.
     riesgos y la siguiente acción exacta.
 12. **Detenerse al cerrar 7.0. No iniciar 7.1 en el mismo turno.**
 
-## Alcance propuesto de 7.1, no iniciado
+## Subcapa 7.1: trabajo exacto ejecutado y cerrado
 
-La extracción protegida que la evidencia permite es un único
-`planeador_anual_repository.py` con las cinco sentencias. Sus funciones
-recibirían el cursor existente; los tres llamadores con `get_cursor` y el
-`PUT` con conexión manual conservarían íntegramente la propiedad de recursos,
-transacciones, resolutor, bucle, cálculos, retornos y errores.
+La extracción protegida creó un único `planeador_anual_repository.py` con las
+cinco sentencias. Sus cinco funciones reciben el cursor existente y no importan
+ni llaman `get_connection`, `get_cursor`, `commit`, `rollback` o `close`.
+Los tres llamadores con `get_cursor` y el `PUT` con conexión manual conservan
+íntegramente la propiedad de recursos, transacciones, resolutor, bucle,
+cálculos, `fetch`, retornos y errores.
 
-Las dos funciones muertas **se conservarían sin reanimarlas ni corregir sus
-esquemas**. Mover también sus SQL mantiene el conjunto byte a byte y evita
-cerrar solo tres quintos de la persistencia; retirarlas sería otra decisión y
-no forma parte de una extracción pura. Este alcance debe presentarse y
-autorizarse antes de modificar producto.
+Las dos funciones muertas **se conservaron sin reanimarlas ni corregir sus
+esquemas**. Sus dos SQL también pasaron al repositorio para no cerrar solo tres
+quintos de la persistencia. El comparador contra el `HEAD` limpio confirmó
+**5 de 5 literales idénticos byte a byte**; las pruebas de 7.0 y las heredadas
+conservaron parámetros, retornos, conteos, commits, rollback y cierres.
+
+La señal de extracción fue exactamente la esperada y apareció en dos rondas:
+dos guardias propias y las enumeraciones de `asistencia`, `dashboard`, `notas`
+y `ventas` fallaron en el conjunto dirigido; la compuerta global encontró la
+quinta enumeración, añadida después por `planilla`. Son **siete guardias**, no
+regresiones. Se actualizaron conservando la enumeración exacta y su severidad.
+
+## Punto de decisión después de 7.1
+
+La persistencia ya está extraída y 7.1 no deja una segunda extracción
+necesaria. Las salidas legítimas son:
+
+1. cerrar la capa como refactorización pura, conservando los once hallazgos;
+2. autorizar una 7.2 concreta. `response_model` no es mecánico porque el
+   esquema omite `periodo` y `slot`; corregir funciones muertas, límites,
+   reemplazo de lotes o el `1+N` cambiaría comportamiento.
+
+Ninguna salida se ejecuta por inferencia. La capa permanece activa hasta una
+decisión explícita del usuario.
 
 ## Criterios de cierre de la subcapa 7.0
 
@@ -327,6 +359,13 @@ autorizarse antes de modificar producto.
 - **Proponer un único repositorio para los cinco SQL en 7.1.** La extracción
   preservaría las funciones muertas y los dos idiomas de recursos. No se inicia
   sin una nueva orden.
+- **Ejecutar 7.1 con el alcance presentado.** El usuario respondió «continúa»
+  después de recibir la propuesta exacta. Se extrajeron los cinco SQL sin
+  retirar código muerto ni cambiar recursos.
+- **Mantener las cinco enumeraciones históricas estrictas.** Se añadió el
+  repositorio anual a cada conjunto exacto; no se relajó ninguna guardia.
+- **No abrir 7.2 ni cerrar la capa por inferencia.** La persistencia está
+  extraída, pero el siguiente paso requiere elegir explícitamente.
 
 ## Riesgos
 
@@ -348,6 +387,8 @@ autorizarse antes de modificar producto.
   funcional. Mitigación: mantenerlas intactas en 7.1 y decidir su retiro aparte.
 - **N+1 de entrada.** El `PUT` hace una operación por fila y la capa HTTP no
   limita el lote. Se conserva en 7.1; optimizarlo cambiaría los conteos fijados.
+- **`response_model` sigue siendo riesgoso.** El esquema de respuesta omite dos
+  campos observables; declararlo sin corregirlo recortaría el payload.
 
 ## Registro de ejecución
 
@@ -436,18 +477,72 @@ autorizarse antes de modificar producto.
 - Siguiente acción exacta: presentar y autorizar el alcance propuesto de 7.1;
   no iniciar la extracción en este turno.
 
+### 2026-08-22 — cierre de 7.1
+
+- Modo de acceso: mismo checkout local; rama `main` y árbol limpio antes de
+  modificar, comprobado con `git status --porcelain=v1` sin salida.
+- `HEAD` previo: `2a8d3c3f9199e5b4fd9519ba81329a354a57dcc6`.
+  El commit base `235672e` es ancestro; sus dos descendientes están explicados:
+  `6358c5a` activa el dominio y `2a8d3c3` contiene exactamente 7.0.
+- Autorización: el usuario ordenó «continúa» después de que se presentó el
+  alcance exacto de un repositorio para cinco SQL, preservando funciones
+  muertas y propiedad de recursos.
+- Cambio de producto: se creó
+  `app/repositories/planeador_anual_repository.py`, con cinco funciones
+  cursor-first; el controlador delega en ellas. Ruta, esquema, permisos,
+  resolutor, cálculos, payloads y transacciones no cambiaron.
+- Alcance excluido: no se modificó `plan_de_clases`, la base, migraciones,
+  configuración ni dependencias; ninguno de los once hallazgos se corrigió.
+- Señal de guardias: **siete fallos esperados** —dos propios y cinco
+  enumeraciones históricas—. El conjunto dirigido mostró seis; la compuerta
+  global encontró la de `planilla`. Al actualizar `asistencia` quedó
+  temporalmente su conteo en 12; se corrigió a **13**, sin cambio de severidad.
+- Equivalencia SQL: el primer comparador exigía el mismo orden de recorrido AST
+  y falló porque el `DELETE` estaba anidado en el controlador. El comparador
+  correcto usó el multiconjunto de textos y confirmó **5 de 5 literales SQL
+  idénticos byte a byte**.
+- Equivalencia observable: las pruebas previas y posteriores conservan las
+  secuencias y parámetros de las cinco ejecuciones, los retornos, el `fetch`,
+  los conteos de consultas y conexiones, los tres `get_cursor`, el commit y
+  rollback manuales, los cierres y los dos contratos HTTP.
+- Pruebas específicas propias: **38 pasaron**, 1 warning heredada.
+- Pruebas relacionadas, incluidas las cinco enumeraciones: **228 pasaron**, 5
+  warnings heredadas.
+- Ruff sobre los ocho archivos de producto y pruebas tocados: **correcto**.
+- Compuerta global: primer intento después de la extracción, **986 pasaron y
+  una guardia falló**, la enumeración de `planilla`; después de actualizarla,
+  **987 pruebas, 5 warnings heredadas, exit 0**, Ruff correcto y `pip check`
+  íntegro.
+- `git diff --check`: exit 0 para los archivos rastreados; la comprobación
+  `--no-index --check` del repositorio nuevo no reportó errores de whitespace
+  —su exit 1 indica que difiere de `NUL`—. Los avisos fueron únicamente de
+  normalización futura LF/CRLF.
+- Revisión final de alcance: exactamente el controlador y el repositorio de
+  `planeador_anual`, su caracterización, las cinco guardias históricas de
+  inventario (`asistencia`, `dashboard`, `notas`, `planilla` y `ventas`) y los
+  dos documentos de modularización. Rutas, esquemas y otros archivos de
+  producto permanecen sin cambios.
+- Commit, push, deploy, conexión a PostgreSQL, acceso a producción y
+  migraciones reales: **ninguno**.
+- La capa sigue **activa**. Siguiente acción exacta: elegir explícitamente entre
+  cerrar `planeador_anual` aquí como refactorización pura o definir una única
+  7.2; no iniciar ninguna opción por inferencia.
+
 ## Entrega al próximo chat
 
 - Capa activa: **7 para `planeador_anual`**.
 - Última capa cerrada: **7 para `planilla`**.
-- Última subcapa terminada: **7.0**, cerrada el 2026-08-22.
-- Primera subcapa pendiente: **7.1**, no iniciada.
-- Código de producto modificado en 7.0: ninguno; se añadió solo
-  caracterización.
-- Frontera actual: tres archivos propios, dos entradas HTTP, un modelo de
-  permiso, cinco SQL inline, una tabla escrita y un `1+N` respecto del lote.
-- Pruebas: 29 nuevas, 37 específicas y compuerta final con **986 pruebas**.
+- Última subcapa terminada: **7.1**, cerrada el 2026-08-22.
+- Primera subcapa pendiente: ninguna definida; queda el punto de decisión entre
+  cerrar la capa o autorizar una 7.2 concreta.
+- Código de producto modificado en 7.1: repositorio nuevo y controlador
+  delegado; rutas y esquemas intactos.
+- Frontera actual: cuatro archivos propios, dos entradas HTTP, un modelo de
+  permiso, cinco SQL en un único repositorio, una tabla escrita y un `1+N`
+  respecto del lote.
+- Pruebas: 30 de caracterización propia, 38 específicas y compuerta final con
+  **987 pruebas**, Ruff y dependencias correctos.
 - Verificaciones heredadas: pendientes y aceptadas por decisión explícita.
 - Bloqueos: ninguno.
-- Siguiente acción exacta: autorizar o ajustar 7.1 para extraer los cinco SQL a
-  un único repositorio conservando recursos, funciones muertas y contratos.
+- Siguiente acción exacta: decidir explícitamente entre cerrar la capa aquí o
+  definir una única 7.2. No iniciar ninguna opción por inferencia.

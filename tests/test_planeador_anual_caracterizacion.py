@@ -22,6 +22,7 @@ from app.schemas.planeador_anual import (
 ROOT = Path(__file__).resolve().parents[1]
 ROUTE_PATH = ROOT / "app" / "routes" / "planeador_anual.py"
 CONTROLLER_PATH = ROOT / "app" / "controllers" / "planeador_anual_controller.py"
+REPOSITORY_PATH = ROOT / "app" / "repositories" / "planeador_anual_repository.py"
 SCHEMA_PATH = ROOT / "app" / "schemas" / "planeador_anual.py"
 BASE_DDL_PATH = ROOT / "migrations" / "base" / "20260813_esquema_base_tenant.sql"
 
@@ -41,11 +42,11 @@ def _sql_literals(path):
     ]
 
 
-def test_frontera_propia_son_ruta_controlador_y_esquema_sin_repositorio_ni_servicio():
+def test_frontera_propia_incluye_un_repositorio_y_no_un_servicio():
     assert ROUTE_PATH.is_file()
     assert CONTROLLER_PATH.is_file()
+    assert REPOSITORY_PATH.is_file()
     assert SCHEMA_PATH.is_file()
-    assert not (ROOT / "app" / "repositories" / "planeador_anual_repository.py").exists()
     assert not (ROOT / "app" / "services" / "planeador_anual_service.py").exists()
     assert "app.include_router(planeador_anual.router)" in _source(ROOT / "app" / "main.py")
 
@@ -82,17 +83,38 @@ def test_ruta_solo_importa_los_dos_controladores_con_consumidor_http():
     assert "actualizar_planeador_anual_controller" not in _source(ROUTE_PATH)
 
 
-def test_cinco_sql_inline_viven_unicamente_en_el_controlador():
-    sql_controlador = _sql_literals(CONTROLLER_PATH)
+def test_cinco_sql_viven_unicamente_en_el_repositorio():
+    sql_repositorio = _sql_literals(REPOSITORY_PATH)
 
-    assert len(sql_controlador) == 5
+    assert len(sql_repositorio) == 5
+    assert _sql_literals(CONTROLLER_PATH) == []
     assert _sql_literals(ROUTE_PATH) == []
     assert _sql_literals(SCHEMA_PATH) == []
-    operaciones = [sql.lstrip().split(None, 1)[0].upper() for sql in sql_controlador]
+    operaciones = [sql.lstrip().split(None, 1)[0].upper() for sql in sql_repositorio]
     assert operaciones.count("INSERT") == 2
     assert operaciones.count("SELECT") == 1
     assert operaciones.count("UPDATE") == 1
     assert operaciones.count("DELETE") == 1
+
+
+def test_repositorio_tiene_cinco_funciones_cursor_first_sin_administrar_recursos():
+    tree = ast.parse(_source(REPOSITORY_PATH))
+    funciones = [node for node in tree.body if isinstance(node, ast.FunctionDef)]
+
+    assert [funcion.name for funcion in funciones] == [
+        "insertar_planeador_anual",
+        "seleccionar_planeadores_anuales",
+        "actualizar_planeador_anual",
+        "eliminar_slot_planeador",
+        "guardar_slot_planeador",
+    ]
+    assert all(funcion.args.args[0].arg == "cursor" for funcion in funciones)
+    source = _source(REPOSITORY_PATH)
+    assert "get_connection" not in source
+    assert "get_cursor" not in source
+    assert ".commit(" not in source
+    assert ".rollback(" not in source
+    assert ".close(" not in source
 
 
 def test_ddl_fija_periodos_slots_unicidad_y_fk_con_cascade():

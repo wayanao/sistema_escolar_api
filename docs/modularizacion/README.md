@@ -1,6 +1,6 @@
 # Guía maestra de evolución segura del backend
 
-Última revisión: 2026-08-21.
+Última revisión: 2026-08-22.
 
 ## Propósito
 
@@ -48,7 +48,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 7 | Resto de dominios — **`boletin` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `boletin` el 2026-08-21; verificada a mano y **sin publicar**. Ver la advertencia de desfase más abajo | [07_BOLETIN.md](./07_BOLETIN.md) |
 | 7 | Resto de dominios — **`observaciones` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `observaciones` el 2026-08-21; verificada a mano. **Publicada el 2026-08-21**, después de escribirse su bitácora | [07_OBSERVACIONES.md](./07_OBSERVACIONES.md) |
 | 7 | Resto de dominios — **`planilla` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `planilla` el 2026-08-21; verificación manual correcta y sin publicación comprobada | [07_PLANILLA.md](./07_PLANILLA.md) |
-| 7 | Resto de dominios — **`planeador_anual`** | Migración individual con contratos y pruebas | **Activa**; 7.0 cerrada el 2026-08-22 y 7.1 pendiente | [07_PLANEADOR_ANUAL.md](./07_PLANEADOR_ANUAL.md) |
+| 7 | Resto de dominios — **`planeador_anual`** | Migración individual con contratos y pruebas | **Activa**; 7.0 y 7.1 cerradas, decisión de cierre/7.2 pendiente | [07_PLANEADOR_ANUAL.md](./07_PLANEADOR_ANUAL.md) |
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
 cierre y el usuario ordene continuar, se crea su sucesora desde
@@ -216,7 +216,12 @@ verificaciones heredadas pendientes. Su bitácora es
 archivos propios, dos entradas HTTP, cinco SQL inline, una tabla escrita y 29
 pruebas nuevas. El `GET` es constante y el `PUT` ejecuta `1+N` operaciones
 como admin y `2+N` como profesor, con conexiones constantes. La compuerta
-terminó con **986 pruebas**. Su **7.1 está pendiente y no iniciada**.
+de 7.0 terminó con **986 pruebas**. Su **7.1 quedó cerrada** el 2026-08-22: las cinco sentencias pasaron al
+decimotercer repositorio, con 5 de 5 literales SQL idénticos byte a byte y sin
+mover conexiones, cursores ni transacciones. Las siete guardias que fallaron
+eran la señal esperada —dos propias y cinco enumeraciones históricas—. La
+compuerta terminó con **987 pruebas**. Queda pendiente decidir explícitamente
+entre cerrar la capa como refactorización pura o autorizar una 7.2 concreta.
 
 Ningún otro se activa por inferencia: plan de clases, branding, profesores y
 super admin siguen en espera —son **cuatro**—, y cada uno exigirá su propia
@@ -1740,7 +1745,9 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   2026-08-22** con 29 pruebas nuevas y **ningún cambio de producto**; delimitó
   tres archivos, dos rutas, cinco SQL y una tabla escrita. La compuerta terminó
   con **986 pruebas**, Ruff correcto y dependencias íntegras. Su **7.1 está
-  pendiente y no iniciada**.
+  cerrada**: extrajo los cinco SQL al decimotercer repositorio, conservó 5 de 5
+  textos byte a byte, recursos y contratos, y terminó con **987 pruebas**. La
+  capa sigue activa en el punto de decisión entre cierre y 7.2.
 - Decisión al activar: continuar localmente aceptando que sigan pendientes la
   calibración final de `DB_STATEMENT_TIMEOUT_MS`, la evidencia de GitHub
   Actions posterior a la capa 0, los pasos manuales no confirmados heredados y
@@ -1900,11 +1907,13 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   las verificaciones heredadas pendientes. Su **7.0 está cerrada**: delimitó
   tres archivos propios y dos rutas, contó cinco SQL inline, una tabla escrita
   y un `1+N` respecto del lote, y añadió 29 pruebas sin modificar producto. La
-  compuerta terminó con **986 pruebas**. Deja once hallazgos sin corregir,
+  compuerta de 7.0 terminó con **986 pruebas**. Deja once hallazgos sin corregir,
   encabezados por dos funciones muertas incompatibles con sus esquemas y el
-  falso reemplazo de lotes vacíos o cortos. Su **7.1 está pendiente y no
-  iniciada**; propone extraer los cinco SQL a un único repositorio conservando
-  recursos y contratos. Los otros cuatro dominios permanecen en espera.
+  falso reemplazo de lotes vacíos o cortos. Su **7.1 está cerrada**: extrajo
+  los cinco SQL al decimotercer repositorio con 5 de 5 literales byte a byte y
+  la compuerta final pasó con **987 pruebas**. La capa sigue activa: falta elegir
+  entre cerrarla como refactorización pura o autorizar una 7.2 concreta. Los
+  otros cuatro dominios permanecen en espera.
 - [07_PLANILLA.md](./07_PLANILLA.md): **bitácora cerrada** de la capa 7 para el
   dominio `planilla`, y fuente de continuidad anterior. Registra el commit base limpio
   `580c0ad6f0d14d16af5cbd8b2a4a9e4532485b89`, la orden explícita del usuario

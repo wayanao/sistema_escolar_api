@@ -7,16 +7,21 @@
 - Estado: **Activa** desde el 2026-08-22 por orden explícita del usuario.
 - Commit base: `bfe80d4152b802aeb22f4c5a2c5aab9265ba7630`.
 - Rama acordada: `main`.
-- Primera subcapa pendiente: **7.0, no iniciada**.
+- Primera subcapa pendiente: **7.1**, cuyo alcance debe presentarse y
+  autorizarse antes de modificar producto.
 - Código de producto modificado al activar: **Ninguno**.
+- Código de producto modificado en 7.0: **Ninguno**. El diff funcional de la
+  subcapa es un solo archivo nuevo de caracterización; los demás cambios son
+  documentación.
 - Dominio de esta capa: **`plan_de_clases`, y solo ese**. `branding`,
   `profesores` y `super_admin` siguen en espera.
 - Autorización: el usuario informó «planeador revisado» y ordenó «sigue con
   plan de clases». La verificación manual de `planeador_anual` se registra como
   completada de forma global, sin atribuir entorno ni confirmación individual
   de los siete puntos que no fueron reportados.
-- Ninguna autorización incluye implementar 7.0 en este turno, commit, push,
-  deploy, migraciones reales ni acceso a producción.
+- La orden posterior «continua» autorizó ejecutar **únicamente 7.0**. No
+  autoriza 7.1, commit, push, deploy, migraciones reales ni acceso a
+  producción.
 
 ## Objetivo
 
@@ -30,9 +35,9 @@ El índice maestro fija tres condiciones para esta capa:
    solo después de caracterizar y conservar la respuesta existente;
 3. no crear abstracciones compartidas sin dos consumidores reales.
 
-La activación no inspeccionó código. Por eso no afirma qué archivos, rutas,
-consultas, escrituras, permisos, archivos almacenados o pruebas forman la
-frontera. Determinarlo es el primer trabajo de 7.0.
+La activación no inspeccionó código ni infirió esa frontera. La caracterización
+7.0 posterior la delimitó con la evidencia inventariada en esta bitácora y sin
+modificar producto.
 
 ## Dependencias de capas anteriores
 
@@ -56,30 +61,152 @@ frontera. Determinarlo es el primer trabajo de 7.0.
   `boletin` y `observaciones`; y la rotación de la credencial privilegiada
   registrada en la capa 4.
 
-## Supuestos documentales que 7.0 debe comprobar
+## Supuestos documentales resueltos en 7.0
 
-La activación conserva como **no verificados** los siguientes datos del índice
-y de la bitácora cerrada de `planeador_anual`:
+Los ocho supuestos de la activación quedaron resueltos: **seis confirmados, uno
+confirmado con matiz y uno refutado**.
 
-1. `plan_de_clases` tiene una frontera propia separada de `planeador_anual`.
-2. `GET /notificaciones/planeadores` pertenece a este dominio y llama a su
-   propio controlador y servicio.
-3. Existe ya un repositorio propio, pero no se sabe si cubre toda la
-   persistencia del dominio.
-4. Tres handlers con «observacion» en el nombre pertenecen a este dominio y no
-   al dominio cerrado `observaciones`.
-5. Esos handlers escriben una tabla documentada como
-   `plan_de_clases_observaciones`.
-6. El dominio usa `app/services/storage.py`, lo que podría convertir archivos y
-   efectos externos en parte del contrato y del rollback.
-7. No están determinados sus métodos, paths, payloads, status codes, permisos,
-   ownership, tenant, SQL, transacciones, conexiones, cálculos ni efectos
-   laterales completos.
-8. No está determinado si las pruebas existentes bastan para proteger una
-   extracción.
+| # | Supuesto documental | Resultado de 7.0 |
+|---:|---|---|
+| 1 | Frontera propia separada de `planeador_anual` | **CONFIRMADO.** Son cinco archivos propios y 1334 líneas; no importan ni llaman el dominio anual |
+| 2 | `/notificaciones/planeadores` pertenece aquí y usa controlador/servicio propios | **CONFIRMADO.** Es una de las once entradas y termina en las consultas de notificación del repositorio propio |
+| 3 | Existe repositorio propio, con cobertura por determinar | **CONFIRMADO CON MATIZ.** Contiene los 25 sitios `cursor.execute` del API, pero dos consultas específicas del dominio siguen fuera: el guard en `permissions.py` y el acceso a imágenes en `main.py` |
+| 4 | Los tres handlers con «observacion» son de este dominio | **CONFIRMADO.** Son crear, listar y marcar vista; no importan ni tocan el dominio cerrado `observaciones` |
+| 5 | Escriben `plan_de_clases_observaciones` | **CONFIRMADO.** El dominio posee además `plan_de_clases` y `plan_de_clases_notificaciones_admin` |
+| 6 | Usa `storage.py` | **CONFIRMADO.** Guarda y elimina hasta dos imágenes en almacenamiento local o R2/S3; el endpoint compartido `/uploads` también forma parte del comportamiento observable |
+| 7 | Contratos, SQL, recursos y efectos no determinados | **CONFIRMADO COMO TRABAJO Y RESUELTO.** El inventario y la línea base quedan fijados más abajo |
+| 8 | Las pruebas existentes bastan | **REFUTADO.** Había 105 casos útiles, pero no una guardia de frontera completa, HTTP real por ASGI, localización total del SQL, desajuste del esquema de respuesta ni conteos de conexiones; 7.0 añadió 22 casos |
 
-7.0 debe confirmar, matizar, refutar o separar uno por uno estos supuestos. No
-se actúa sobre ninguno durante la activación.
+## Inventario y contratos fijados en 7.0
+
+La frontera propia tiene **cinco archivos y 1334 líneas**. La persistencia del
+API ya estaba separada antes de esta capa; no se modificó ninguno:
+
+| Archivo | Líneas | SQL ejecutado | Responsabilidad |
+|---|---:|---:|---|
+| `app/routes/plan_de_clases.py` | 213 | 0 | Once entradas HTTP, autenticación, guards, parsing multipart y traducción de algunos errores |
+| `app/controllers/plan_de_clases_controller.py` | 200 | 0 | Orquestación, validación y ciclo de vida de imágenes, conflictos y errores de revisión |
+| `app/services/plan_de_clases_service.py` | 88 | 0 | Mensajes, selección por rol y delegación entre controlador y repositorio |
+| `app/repositories/plan_de_clases_repository.py` | 753 | 25 sitios `cursor.execute` | Doce operaciones con cursor propio: siete lecturas y cinco transacciones de escritura |
+| `app/schemas/plan_de_clases.py` | 80 | 0 | Entrada de plan, revisión, observación y un esquema de respuesta no usado |
+
+Participan además cuatro piezas compartidas, sin pertenecer a la frontera
+propia: el montaje y el acceso a `/uploads` en `app/main.py`, los dos guards de
+`app/core/permissions.py`, el resolutor académico y `app/services/storage.py`.
+Las dos consultas específicas fuera del repositorio viven en `main.py` y
+`permissions.py`; el resolutor añade una consulta compartida dentro de varias
+operaciones del repositorio.
+
+### Entradas HTTP, permisos y respuestas
+
+Son **once entradas síncronas**, ninguna con `response_model`:
+
+| Método | Path | Permiso observable | Respuesta o efecto principal |
+|---|---|---|---|
+| GET | `/notificaciones/planeadores` | Usuario; solo rol admin o profesor | Conteo e items no leídos según rol |
+| POST | `/plan-de-clases` | Usuario más acceso a asignación | Upsert, cero a dos imágenes y mensaje; conflicto opcional 409 |
+| GET | `/plan-de-clases/{asignacion_id}` | Usuario más acceso a asignación | Un plan por fecha o historial, sin límite por defecto |
+| DELETE | `/plan-de-clases/{plan_id}/imagen` | Usuario más ownership del plan | Limpia un slot, reinicia revisión cuando aplica y elimina archivo |
+| GET | `/admin/plan-de-clases` | Admin activo | `{"total": ..., "items": [...]}` con filtros y paginación |
+| GET | `/admin/plan-de-clases/{plan_id}` | Admin activo | Plan o 404 |
+| PATCH | `/admin/plan-de-clases/{plan_id}/revision` | Admin activo | Estado de revisión o conflicto 409 |
+| POST | `/admin/plan-de-clases/{plan_id}/observaciones` | Admin activo | Observación versionada o conflicto 409 |
+| GET | `/plan-de-clases/{plan_id}/observaciones` | Usuario más ownership del plan | Lista completa, sin paginación |
+| PATCH | `/plan-de-clases/{plan_id}/observaciones/{observacion_id}/vista` | Profesor estricto más ownership | Marca vista o 404 |
+| DELETE | `/admin/plan-de-clases/{plan_id}/imagen` | Admin activo | Limpia un slot sin reiniciar revisión y elimina archivo |
+
+La interfaz ASGI real fijó 403 para el rol no autorizado en notificaciones,
+422 para parámetros Query y esquemas JSON inválidos, 400 para la fecha
+multipart inválida y serialización ISO de `date`/`datetime`. El esquema
+`PlanDeClasesResponse` **no se usa** y omite `created_at` y `updated_at`, dos
+campos que `_row_to_plan` sí devuelve; añadirlo hoy recortaría el payload.
+
+### Persistencia, transacciones y archivos
+
+- Las tres tablas propias son `plan_de_clases`,
+  `plan_de_clases_observaciones` y
+  `plan_de_clases_notificaciones_admin`.
+- El DDL conserva unicidad sobre `(asignacion_id, fecha)`, FK a
+  `asignaciones`, FK en cascada desde observaciones y notificaciones, estados
+  de revisión limitados y observaciones de 1 a 3000 caracteres.
+- El repositorio tiene **doce operaciones dueñas de cursor**: siete abren
+  `get_cursor()` de lectura y cinco `get_cursor(commit=True)`. Los helpers de
+  lock y notificación reciben el cursor de su llamador.
+- El guard de plan y el acceso compartido a imágenes abren cada uno una
+  conexión manual adicional y poseen cursor y cierre. Ninguno filtra
+  `asignaciones.activo`.
+- El guardado usa un upsert atómico. `version_esperada` es opcional: cuando se
+  omite, no hay control de versión previo; cuando llega, el repositorio bloquea
+  y compara dentro de la transacción.
+- Se admiten hasta dos imágenes PNG/JPEG/WebP de 5 MiB por el MIME y la
+  extensión declarados. Se guardan **antes** de la transacción DB y se intentan
+  borrar si la segunda imagen o la base fallan.
+- La eliminación confirma primero el cambio DB y después llama `delete_file`.
+  Ese adaptador absorbe errores de borrado locales o remotos, por lo que el
+  endpoint puede responder éxito con un archivo huérfano.
+
+### Línea base de consultas, conexiones y almacenamiento
+
+Los conteos no incluyen autenticación ni los dos round-trips de configuración
+de cada conexión. No existe un `cursor.execute` dentro de un bucle Python, así
+que **no hay N+1 emitido por la aplicación**. `PLAN_SELECT` sí contiene tres
+subconsultas correlacionadas por cada fila devuelta, riesgo SQL distinto que se
+registra sin corregir.
+
+| Camino | Consultas admin/profesor | Conexiones admin/profesor | Archivos |
+|---|---:|---:|---:|
+| Notificaciones | **2 / 2** | **1 / 1** | 0 |
+| Plan por día o historial | **2 / 3** | **1 / 2** | 0 |
+| Crear/actualizar sin versión, resultado pendiente | **3 / 4** | **1 / 2** | 0 a 2 escrituras antes de DB |
+| Crear/actualizar con versión vigente | **4 / 5** | **1 / 2** | 0 a 2 escrituras antes de DB |
+| Listado admin | **2** | **1** | 0 |
+| Detalle admin | **1** | **1** | 0 |
+| Listar observaciones | **2 / 3** | **2 / 3** | 0 |
+| Marcar visto | No aplica / **2** | No aplica / **2** | 0 |
+| Revisar sin/con comentario | **3 / 4** | **1** | 0 |
+| Crear observación | **4** | **1** | 0 |
+| Eliminar imagen admin | **2** | **1** | 1 borrado posterior a DB |
+| Eliminar imagen profesor | **3 o 4** | **2** | 1 borrado posterior a DB |
+| Servir imagen compartida | **0 / 1** | **0 / 1** | 1 lectura local o remota |
+
+## Hallazgos de 7.0, registrados y sin corregir
+
+1. **La frontera de persistencia no está totalmente cerrada.** Quedan dos SQL
+   específicos del dominio fuera del repositorio: ownership en
+   `permissions.py` y autorización de archivos en `main.py`.
+2. **Ninguna de las once rutas declara `response_model`.** El esquema existente
+   no puede añadirse mecánicamente: omite `created_at` y `updated_at` que hoy se
+   devuelven y no representa notificaciones ni mutaciones.
+3. **El control de concurrencia es optativo.** `version_esperada=None` permite
+   que clientes antiguos hagan upsert sin detectar una actualización perdida.
+4. **`periodo` no tiene límites en Pydantic ni en el DDL**, y los textos del plan
+   no tienen longitud máxima. Se caracterizó que incluso un periodo negativo y
+   4000 caracteres son aceptados por el esquema.
+5. **Dos listas pueden ser ilimitadas:** el historial usa `limit=None` por
+   defecto y las observaciones no admiten paginación.
+6. **Las lecturas agregadas esconden trabajo por fila en PostgreSQL.**
+   `PLAN_SELECT` ejecuta conceptualmente tres subconsultas correlacionadas para
+   conteo, no vistas y última observación; no es N+1 de red, pero puede escalar
+   con el resultado ilimitado.
+7. **Los dos guards específicos ignoran `asignaciones.activo`.** Un profesor
+   que conserve ownership puede acceder al plan y a su archivo aunque la
+   asignación esté desactivada, patrón ya visto en otros dominios.
+8. **Base y almacenamiento no comparten transacción.** Una imagen nueva se
+   guarda antes del upsert; reemplazarla no elimina el archivo anterior, y el
+   borrado explícito confirma DB antes de un `delete_file` que absorbe fallos.
+9. **La validación de imágenes confía en MIME y extensión declarados.** No
+   inspecciona la firma real del contenido.
+10. **Los errores HTTP no siguen un solo modelo.** La creación y el historial
+    exponen `str(e)` como 400; los listados admin y borrados ocultan el detalle
+    como 500; revisión, observaciones y notificaciones dejan propagar sus
+    excepciones.
+11. **Listar observaciones abre dos conexiones de repositorio en serie**, una
+    para comprobar que el plan existe y otra para leer la lista; como profesor
+    el guard añade una tercera. Es constante, no N+1.
+12. **El endpoint compartido `/uploads/{file_path}` forma parte del contrato del
+    dominio sin vivir en su router.** Una caracterización limitada a los cinco
+    archivos propios habría omitido tanto esa entrada como uno de los dos SQL
+    externos.
 
 ## Alcance autorizado
 
@@ -126,16 +253,18 @@ se actúa sobre ninguno durante la activación.
 
 | Comprobación | Comando | Resultado |
 |---|---|---|
-| Pruebas específicas | Se determinará en 7.0 tras delimitar las pruebas realmente relacionadas | Pendiente |
-| Suite global | `.\venv\Scripts\python.exe scripts\verify.py` | Pendiente |
-| Ruff | Sobre la caracterización y cualquier archivo permitido por 7.0 | Pendiente |
-| Dependencias | Incluido en `scripts\verify.py` | Pendiente |
+| Específicas heredadas antes de agregar caracterización | `.\venv\Scripts\python.exe -m pytest -q -p no:cacheprovider tests\test_plan_de_clases_routes.py tests\test_plan_de_clases_effect_routes.py tests\test_plan_de_clases_revision.py tests\test_plan_de_clases_integridad.py tests\test_permissions.py tests\test_uploads_permissions.py` | **105 passed**, 5 warnings heredados |
+| Compuerta heredada | `.\venv\Scripts\python.exe scripts\verify.py` | **987 passed**, Ruff correcto, dependencias íntegras |
+| Caracterización nueva | `.\venv\Scripts\python.exe -m pytest -q -p no:cacheprovider tests\test_plan_de_clases_caracterizacion.py` | **22 passed** |
+| Específicas finales | El comando específico anterior más `tests\test_plan_de_clases_caracterizacion.py` | **127 passed**, 5 warnings heredados |
+| Ruff de la caracterización | `.\venv\Scripts\python.exe -m ruff check tests\test_plan_de_clases_caracterizacion.py` | **All checks passed** |
+| Compuerta final | `.\venv\Scripts\python.exe scripts\verify.py` | **1009 passed**, Ruff correcto, dependencias íntegras |
 
 ## Subcapas
 
 | Subcapa | Resultado | Estado |
 |---:|---|---|
-| 7.0 | Delimitar la frontera, inventariar contratos y caracterizar el comportamiento y la línea base | **Pendiente, no iniciada** |
+| 7.0 | Delimitar la frontera, inventariar contratos y caracterizar el comportamiento y la línea base | **Cerrada el 2026-08-22** |
 | 7.1 | Primera extracción protegida que la evidencia de 7.0 justifique | Pendiente |
 | 7.2 | Segunda extracción, integración o cambio adicional, solo si la evidencia y el usuario lo autorizan | Pendiente |
 | 7.3 | Retiro heredado y cierre, solo si resulta necesario | Pendiente |
@@ -143,7 +272,10 @@ se actúa sobre ninguno durante la activación.
 Las subcapas se adaptan al trabajo real. Las innecesarias se marcan `No
 aplica` con una explicación; nunca se ejecutan dos en el mismo turno.
 
-## Subcapa activa: trabajo exacto de 7.0
+## Subcapa cerrada: trabajo ejecutado en 7.0
+
+La orden «continua» se interpretó conforme al protocolo como autorización para
+la primera subcapa pendiente y para ninguna otra. Se ejecutaron estos pasos:
 
 1. Delimitar la frontera real de `plan_de_clases` por entradas, llamadores,
    tablas, consumidores y efectos de almacenamiento antes de contar o modificar
@@ -172,6 +304,8 @@ aplica` con una explicación; nunca se ejecutan dos en el mismo turno.
 12. **Detenerse al cerrar 7.0. No iniciar 7.1 en el mismo turno.**
 
 ## Criterios de cierre de la subcapa
+
+Todos quedaron cumplidos en 7.0:
 
 - La frontera queda delimitada con evidencia y sin reabrir otros dominios.
 - Los ocho supuestos quedan resueltos uno por uno.
@@ -205,19 +339,45 @@ aplica` con una explicación; nunca se ejecutan dos en el mismo turno.
   7.0 en este turno.
 - **No inferir la frontera por nombres o referencias heredadas.** Los datos
   previos se registran como supuestos que 7.0 debe contrastar.
+- **Ejecutar solo 7.0 por la orden «continua».** La subcapa agrega
+  caracterización y documentación, sin cambios de producto ni inicio de 7.1.
+- **Considerar propia una frontera de cinco archivos y compartidas cuatro
+  piezas relacionadas.** El endpoint `/uploads`, su guard SQL, el guard de
+  ownership, el resolutor académico y el almacenamiento son parte del contrato
+  observable aunque no todos pertenezcan al módulo.
+- **No declarar completa la frontera de persistencia.** Los 25
+  `cursor.execute` del API viven en el repositorio, pero las dos consultas
+  específicas de acceso siguen en `permissions.py` y `main.py`.
+- **No corregir los doce hallazgos de caracterización.** Cambiar concurrencia,
+  filtros, paginación, almacenamiento, validaciones, errores o modelos de
+  respuesta alteraría contratos o ampliaría 7.0.
+- **Distinguir N+1 de red de trabajo SQL por fila.** No hay consultas emitidas
+  desde bucles Python; las tres subconsultas correlacionadas de `PLAN_SELECT`
+  quedan registradas como un riesgo separado.
+- **Dejar 7.1 sujeta a decisión expresa.** La evidencia permite presentar una
+  extracción limitada de las dos consultas externas, pero no autoriza a
+  ejecutarla ni a cambiar sus propietarios de conexión o sus contratos.
 
 ## Riesgos
 
-- **Frontera desconocida.** El vocabulario se cruza con `planeador_anual` y
-  `observaciones`. Mitigación: delimitar por rutas, llamadas, tablas y efectos.
-- **Persistencia parcialmente migrada.** La documentación dice que existe un
-  repositorio, pero no demuestra cobertura completa. Mitigación: contar SQL en
-  todas las capas de la frontera antes de proponer una extracción.
-- **Almacenamiento externo.** Si el uso documentado de `storage.py` se confirma,
-  el rollback puede incluir archivos y no ser solo de código. Mitigación:
-  caracterizar creación, lectura, reemplazo y eliminación antes de mover nada.
-- **Permisos y tenant todavía desconocidos.** Mitigación: fijarlos por entrada y
-  probar denegaciones y aislamiento antes de una extracción.
+- **Persistencia parcialmente migrada.** Dos consultas de acceso específicas
+  viven fuera del repositorio. Cualquier 7.1 deberá conservar texto SQL,
+  parámetros, conteos y propiedad manual de conexión/cursor/cierre.
+- **Almacenamiento no transaccional.** La base y los archivos pueden divergir;
+  además, los reemplazos no retiran la imagen anterior y los fallos de borrado
+  se absorben. No se corrigió.
+- **Contratos permisivos o incompletos.** La versión es opcional, `periodo` y
+  textos carecen de algunos límites, dos listas son ilimitadas y el esquema de
+  respuesta existente recortaría campos. No se corrigió.
+- **Carga SQL no visible como N+1 de aplicación.** Las tres subconsultas
+  correlacionadas por fila pueden combinarse con el historial ilimitado. No se
+  optimizó ni se modificó SQL.
+- **Acceso heredado a asignaciones inactivas.** Los guards específicos fijados
+  por las pruebas no filtran `asignaciones.activo`. No se cambió ownership ni
+  permisos.
+- **Validación y errores heterogéneos.** La imagen se valida por declaraciones
+  del cliente y las rutas no comparten un único modelo de error. Quedan fuera
+  de 7.0.
 - **Verificaciones heredadas pendientes.** Conservan sus riesgos y esta
   activación no las considera cumplidas.
 - **Cobertura manual de `planeador_anual` sin desglose.** La revisión reportada
@@ -267,16 +427,80 @@ aplica` con una explicación; nunca se ejecutan dos en el mismo turno.
 - Siguiente acción exacta: ejecutar únicamente 7.0 conforme al trabajo exacto
   de esta bitácora y detenerse antes de 7.1.
 
+### 2026-08-22 — cierre de la subcapa 7.0
+
+- Modo de acceso: mismo checkout local en
+  `C:\Users\David\Documents\sistema_escolar_api`; Git y commits locales
+  validados directamente.
+- Autorización: la orden posterior «continua» habilitó únicamente la primera
+  subcapa pendiente, 7.0.
+- Precondiciones antes de modificar: rama `main`; árbol limpio según
+  `git status --porcelain=v1 --branch`, que mostró
+  `## main...origin/main [ahead 1]`; `HEAD`
+  `31b3f6b4924dbec475a229d6f9d4a67bcbbd2336`; el commit base
+  `bfe80d4152b802aeb22f4c5a2c5aab9265ba7630` es ancestro.
+- Continuidad desde el base: existe un solo commit posterior, `31b3f6b`
+  (`feat(plan_de_clases): add initial documentation for plan_de_clases domain
+  and update README`). Su diff modifica `07_PLANEADOR_ANUAL.md`, crea esta
+  bitácora y actualiza el índice, exactamente como registra la activación. No
+  hay commits locales sin explicar.
+- Estado de publicación: la referencia local `origin/main` está un commit por
+  detrás. No se consultó el remoto real, no hubo push y no se atribuye una
+  ejecución de GitHub Actions.
+- Fuentes inspeccionadas: los cinco archivos propios inventariados; el montaje
+  y acceso compartido a `/uploads`; guards de permisos; resolutor académico;
+  almacenamiento; DDL base y seis migraciones específicas; y las seis suites
+  heredadas relacionadas. No se inspeccionaron dominios siguientes.
+- Archivo funcional agregado:
+  `tests/test_plan_de_clases_caracterizacion.py`, con **22 pruebas** para
+  frontera, once rutas, esquemas, localización del SQL, recursos, DDL, ASGI,
+  conteos y consultas ilimitadas. Código de producto modificado: **ninguno**.
+- Línea base heredada específica: los dos primeros intentos dentro del sandbox
+  terminaron con **99 passed y 6 errores de setup** por `PermissionError` al
+  directorio temporal global de pytest, no por fallos del producto. La misma
+  ejecución fuera de esa restricción terminó con **105 passed** y 5 warnings
+  heredados.
+- Línea base global heredada: `scripts\verify.py` terminó con **987 passed**,
+  Ruff correcto y dependencias íntegras.
+- Durante el desarrollo fallaron tres expectativas de la prueba nueva —formato
+  UTC y clasificación de dos dobles SQL—; se corrigió solo la caracterización,
+  sin cambiar producto.
+- Verificación nueva: **22 passed**. Suite específica final: **127 passed** y 5
+  warnings heredados. Ruff de la prueba nueva: **All checks passed**.
+  Compuerta global final: **1009 passed**, Ruff correcto y dependencias
+  íntegras.
+- Los ocho supuestos quedaron resueltos —seis confirmados, uno con matiz y uno
+  refutado— y los doce hallazgos se registraron sin corregirlos.
+- Archivos de la subcapa: la caracterización nueva, esta bitácora y
+  `docs/modularizacion/README.md`. No hubo DB, migraciones, producción, commit,
+  push ni deploy.
+- Revisión final de alcance: `git diff --check` terminó en exit 0 para los dos
+  documentos rastreados; `git diff --no-index --check -- NUL
+  tests/test_plan_de_clases_caracterizacion.py` no reportó errores de
+  whitespace —exit 1 porque el archivo nuevo difiere de `NUL`—. Los avisos son
+  únicamente de normalización futura LF/CRLF. `git status --short --branch`
+  mostró exactamente ambos documentos modificados y la prueba nueva, sobre
+  `main...origin/main [ahead 1]`; no hay archivos de producto. El índice y las
+  bitácoras conservan exactamente una capa **Activa**, `plan_de_clases`.
+- Siguiente acción exacta: presentar para autorización el alcance de 7.1 a
+  partir de las dos consultas específicas externas y detenerse. No iniciar la
+  extracción por inferencia.
+
 ## Entrega al próximo chat
 
 - Capa activa: **7 para `plan_de_clases`**.
 - Última capa cerrada: **7 para `planeador_anual`**.
-- Última subcapa terminada de esta bitácora: ninguna.
-- Primera subcapa pendiente: **7.0, no iniciada**.
-- Código de producto modificado al activar: ninguno.
+- Última subcapa terminada de esta bitácora: **7.0**, cerrada el 2026-08-22.
+- Primera subcapa pendiente: **7.1**, no iniciada y todavía no autorizada.
+- Código de producto modificado al activar o en 7.0: ninguno.
+- Caracterización agregada: **22 pruebas**; específicas finales **127 passed**;
+  compuerta final **1009 passed**, Ruff correcto y dependencias íntegras.
+- Resultado estructural: cinco archivos propios, once entradas, tres tablas,
+  25 sitios `cursor.execute` en el repositorio y dos consultas específicas
+  externas. Doce hallazgos quedan registrados y sin corregir.
 - Verificación manual de `planeador_anual`: completada de forma global, sin
   entorno ni desglose punto por punto reportados.
 - Verificaciones heredadas: pendientes; ninguna se marca como cumplida.
 - Bloqueos técnicos: ninguno.
-- Siguiente acción exacta: ejecutar solo la caracterización 7.0 de
-  `plan_de_clases` y detenerse antes de cualquier extracción.
+- Siguiente acción exacta: presentar el alcance concreto de 7.1 y pedir
+  autorización expresa; no extraer ni modificar producto todavía.

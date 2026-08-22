@@ -49,7 +49,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 7 | Resto de dominios — **`observaciones` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `observaciones` el 2026-08-21; verificada a mano. **Publicada el 2026-08-21**, después de escribirse su bitácora | [07_OBSERVACIONES.md](./07_OBSERVACIONES.md) |
 | 7 | Resto de dominios — **`planilla` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `planilla` el 2026-08-21; verificación manual correcta y sin publicación comprobada | [07_PLANILLA.md](./07_PLANILLA.md) |
 | 7 | Resto de dominios — **`planeador_anual` migrado** | Migración individual con contratos y pruebas | **Cerrada** el 2026-08-22; 7.2 No aplica, verificación manual global reportada y sin entorno especificado | [07_PLANEADOR_ANUAL.md](./07_PLANEADOR_ANUAL.md) |
-| 7 | Resto de dominios — **`plan_de_clases`** | Migración individual con contratos y pruebas | **Activa** desde el 2026-08-22; 7.0 pendiente y no iniciada | [07_PLAN_DE_CLASES.md](./07_PLAN_DE_CLASES.md) |
+| 7 | Resto de dominios — **`plan_de_clases`** | Migración individual con contratos y pruebas | **Activa** desde el 2026-08-22; 7.0 cerrada y 7.1 pendiente, no autorizada | [07_PLAN_DE_CLASES.md](./07_PLAN_DE_CLASES.md) |
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
 cierre y el usuario ordene continuar, se crea su sucesora desde
@@ -234,7 +234,13 @@ los siete puntos reportados.
 **Dominio activo: `plan_de_clases`.** El usuario lo nombró explícitamente el
 2026-08-22 después de reportar revisado `planeador_anual`. Su bitácora es
 [07_PLAN_DE_CLASES.md](./07_PLAN_DE_CLASES.md); la activación fue únicamente
-documental y su **7.0 está pendiente y no iniciada**.
+documental y su **7.0 quedó cerrada el mismo día** sin modificar producto:
+delimitó cinco archivos propios, once entradas propias más el endpoint
+compartido `/uploads`, tres tablas, 25 sitios `cursor.execute` dentro del
+repositorio y dos consultas específicas externas. Agregó 22 pruebas; las
+específicas terminaron con **127 passed** y la compuerta con **1009 passed**,
+Ruff correcto y dependencias íntegras. Su **7.1 está pendiente, no iniciada y
+no autorizada**.
 
 Ningún otro se activa por inferencia: `branding`, `profesores` y `super_admin`
 siguen en espera —son **tres**—, y cada uno exigirá su propia bitácora y una
@@ -1766,9 +1772,15 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   desglose punto por punto.
 - Capa activa: **7 para `plan_de_clases`**, por orden explícita del usuario el
   2026-08-22. Commit base limpio:
-  `bfe80d4152b802aeb22f4c5a2c5aab9265ba7630`. Su **7.0 está pendiente y no
-  iniciada**; la activación no inspeccionó ni modificó código, pruebas,
-  consultas, migraciones, configuración ni base de datos.
+  `bfe80d4152b802aeb22f4c5a2c5aab9265ba7630`. Su **7.0 está cerrada**: cinco
+  archivos propios y 1334 líneas, once entradas propias más `/uploads`, tres
+  tablas, 25 sitios `cursor.execute` en el repositorio y dos consultas
+  específicas externas. Agregó 22 pruebas sin modificar producto; las
+  específicas finalizaron con **127 passed** y la compuerta con **1009
+  passed**, Ruff correcto y dependencias íntegras. Registró doce hallazgos sin
+  corregir. Su **7.1 está pendiente, no iniciada y no autorizada**; el paso
+  exacto es presentar para decisión una extracción limitada de las dos
+  consultas externas, sin ejecutarla por inferencia.
 - Decisión vigente al activar: siguen pendientes la
   calibración final de `DB_STATEMENT_TIMEOUT_MS`, la evidencia de GitHub
   Actions posterior a la capa 0, los pasos manuales no confirmados heredados y
@@ -1924,12 +1936,15 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   reciente**. **Es el documento que un chat nuevo debe leer después de este
   índice.** Registra el commit base limpio
   `bfe80d4152b802aeb22f4c5a2c5aab9265ba7630`, la orden explícita del usuario
-  «sigue con plan de clases» y la activación exclusivamente documental. Su
-  **7.0 está pendiente y no iniciada**; debe delimitar la frontera real,
-  resolver ocho supuestos documentales y caracterizar contratos, SQL,
-  transacciones, consultas, conexiones y efectos de almacenamiento sin
-  modificar producto. `branding`, `profesores` y `super_admin` permanecen en
-  espera.
+  «sigue con plan de clases», la activación exclusivamente documental y el
+  cierre posterior de **7.0** por la orden «continua». Delimitó cinco archivos
+  propios, once entradas propias más `/uploads`, tres tablas, 25 sitios SQL en
+  el repositorio y dos consultas específicas externas; resolvió los ocho
+  supuestos, agregó 22 pruebas y registró doce hallazgos sin modificar
+  producto. Las específicas terminaron con **127 passed** y la compuerta con
+  **1009 passed**. **7.1 está pendiente y no autorizada**; debe presentarse su
+  alcance antes de modificar producto. `branding`, `profesores` y
+  `super_admin` permanecen en espera.
 - [07_PLANEADOR_ANUAL.md](./07_PLANEADOR_ANUAL.md): **bitácora cerrada** de la
   capa 7 para el dominio `planeador_anual` y fuente de continuidad anterior.
   Registra el commit base limpio

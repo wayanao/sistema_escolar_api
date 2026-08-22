@@ -4,11 +4,11 @@
 
 ## Control
 
-- Estado: **Activa** desde el 2026-08-22 por orden explícita del usuario.
+- Estado: **Cerrada** el 2026-08-22 por orden explícita del usuario.
 - Commit base: `bfe80d4152b802aeb22f4c5a2c5aab9265ba7630`.
 - Rama acordada: `main`.
-- Primera subcapa pendiente: **7.2**, solo si el usuario autoriza un cambio
-  concreto; también puede ordenar cerrar la capa y marcar 7.2/7.3 **No aplica**.
+- Primera subcapa pendiente: **Ninguna**. 7.2 y 7.3 quedaron **No aplica** al
+  cerrarse la capa como refactorización pura.
 - Código de producto modificado al activar: **Ninguno**.
 - Código de producto modificado en 7.0: **Ninguno**. El diff funcional de la
   subcapa es un solo archivo nuevo de caracterización; los demás cambios son
@@ -27,6 +27,10 @@
   producción.
 - Tras presentarse el alcance exacto de 7.1, la nueva orden «continua» autorizó
   **únicamente esa extracción**. No autoriza 7.2 ni corregir otros hallazgos.
+- La orden posterior «cierra», reanudada con «sigue» después de consolidar 7.1
+  en un commit local limpio, autoriza únicamente cerrar esta capa. No activa
+  otro dominio ni autoriza commit, push, deploy, migraciones reales o acceso a
+  producción.
 
 ## Objetivo
 
@@ -281,6 +285,8 @@ extracción autorizada de 7.1.
 | Específicas finales de 7.1 | Las siete suites relacionadas de `plan_de_clases`, permisos y uploads | **129 passed**, 5 warnings heredados |
 | Ruff de 7.1 | Los tres archivos de producto y la caracterización modificados | **All checks passed** |
 | Compuerta global de 7.1 | `.\venv\Scripts\python.exe scripts\verify.py` | **1011 passed**, Ruff correcto, dependencias íntegras |
+| Específicas de cierre | Las siete suites relacionadas de `plan_de_clases`, permisos y uploads | **129 passed**, 5 warnings heredados |
+| Compuerta global de cierre | `.\venv\Scripts\python.exe scripts\verify.py` | **1011 passed**, Ruff correcto, dependencias íntegras |
 
 ## Subcapas
 
@@ -288,8 +294,8 @@ extracción autorizada de 7.1.
 |---:|---|---|
 | 7.0 | Delimitar la frontera, inventariar contratos y caracterizar el comportamiento y la línea base | **Cerrada el 2026-08-22** |
 | 7.1 | Extraer las dos consultas específicas externas al repositorio existente, conservando los recursos de sus llamadores | **Cerrada el 2026-08-22** |
-| 7.2 | Segunda extracción, integración o cambio adicional, solo si la evidencia y el usuario lo autorizan | Pendiente |
-| 7.3 | Retiro heredado y cierre, solo si resulta necesario | Pendiente |
+| 7.2 | No se autorizó otro cambio de comportamiento ni otra extracción; `response_model` y errores de dominio quedan fuera de esta refactorización | **No aplica** |
+| 7.3 | No apareció código heredado que retirar para cerrar la capa | **No aplica** |
 
 Las subcapas se adaptan al trabajo real. Las innecesarias se marcan `No
 aplica` con una explicación; nunca se ejecutan dos en el mismo turno.
@@ -434,6 +440,16 @@ Todos quedaron cumplidos:
 - **Dejar el cierre de capa como decisión.** 7.2 y 7.3 no se ejecutan por
   inferencia; el usuario puede cerrar como refactorización pura o autorizar una
   7.2 concreta después de revisar alternativas y riesgo.
+- **Cerrar como refactorización pura.** El usuario eligió «cierra» y reanudó el
+  cierre con «sigue» después de consolidar 7.1. 7.2 y 7.3 son **No aplica**;
+  no se añaden `response_model`, errores de dominio, validaciones, filtros ni
+  correcciones de los once hallazgos vivos.
+- **Mantener la verificación manual propia como pendiente.** No se recibió
+  evidencia de ejecución del guion de `plan_de_clases`; el cierre documental
+  no la convierte en cumplida.
+- **No activar el dominio siguiente.** `branding`, `profesores` y
+  `super_admin` continúan en espera y necesitarán una orden explícita que
+  nombre uno de ellos.
 
 ## Riesgos
 
@@ -461,6 +477,57 @@ Todos quedaron cumplidos:
 - **Cobertura manual de `planeador_anual` sin desglose.** La revisión reportada
   permite continuar, pero no demuestra individualmente los siete escenarios ni
   un entorno desplegado.
+- **Verificación manual de `plan_de_clases` pendiente.** Las pruebas automáticas
+  protegen contratos y equivalencia, pero no sustituyen un recorrido con la
+  aplicación y un almacenamiento configurado.
+- **Publicación no comprobada.** La referencia local `origin/main` permanece
+  tres commits detrás de `HEAD`; no se consultó el remoto real y no se atribuye
+  despliegue ni GitHub Actions.
+
+## Staging
+
+No se hizo staging ni deploy en este cierre. Cuando el usuario autorice la
+publicación, el artefacto revisado debe incluir el commit local de 7.1
+`98c438fb6621bcc337c928f2f60238ca2c05d949` y el futuro commit documental de
+cierre. En un entorno no productivo con tenant y almacenamiento representativos
+se deben recorrer las once entradas y `/uploads`, observando respuestas,
+permisos, conteos de consultas y ciclo de vida de las imágenes. La compuerta
+automática debe ejecutarse sobre exactamente el artefacto que vaya a desplegarse.
+
+## Rollback
+
+- Punto anterior a toda la capa:
+  `bfe80d4152b802aeb22f4c5a2c5aab9265ba7630`.
+- Antes de cualquier publicación, el usuario puede revertir los commits locales
+  de esta capa mediante su flujo normal de Git. Este cierre no ejecuta esa
+  operación.
+- Si la capa se publica, el rollback exige un commit de reversión, push y nuevo
+  despliegue autorizados; ya no sería una operación solo local.
+- La capa no ejecutó migraciones, DDL, DML, conexiones a PostgreSQL ni cambios
+  reales de almacenamiento. No existe rollback de datos; las pruebas de archivos
+  usaron dobles y no crearon objetos reales.
+
+## Verificación manual
+
+Estado: **Pendiente**. El usuario no reportó todavía la ejecución del guion.
+Debe realizarse contra un artefacto identificado y registrar el entorno:
+
+1. Como profesor, crear, actualizar y consultar un plan con cero, una y dos
+   imágenes, confirmando payload, fechas y campos `created_at`/`updated_at`.
+2. Repetir una actualización con `version_esperada` vigente y otra obsoleta,
+   confirmando el conflicto 409 sin pérdida de datos.
+3. Como admin, listar y abrir el detalle con filtros y paginación; revisar el
+   plan y crear una observación.
+4. Como profesor dueño, listar observaciones y marcar una como vista; comprobar
+   el conteo y los items de `/notificaciones/planeadores` para ambos roles.
+5. Servir y borrar cada slot de imagen como profesor y como admin, verificando
+   el proveedor de almacenamiento configurado y que el otro slot no cambie.
+6. Confirmar 403 para rol u ownership no autorizado y aislamiento entre dos
+   tenants, incluida la lectura de `/uploads`.
+7. Confirmar los 400, 404, 409 y 422 caracterizados para entradas inválidas,
+   ausentes o en conflicto, sin cambios en los mensajes observables.
+8. Revisar logs y métricas del entorno sin atribuir a esta capa correcciones de
+   concurrencia, paginación, validación de contenido o almacenamiento.
 
 ## Registro de ejecución
 
@@ -626,17 +693,63 @@ Todos quedaron cumplidos:
   refactorización pura —7.2/7.3 No aplica— o autorizar una única 7.2 concreta.
   No iniciar ninguna alternativa por inferencia.
 
+### 2026-08-22 — cierre de la capa para `plan_de_clases`
+
+- Modo de acceso: mismo checkout local en
+  `C:\Users\David\Documents\sistema_escolar_api`; Git y commits locales
+  validados directamente.
+- Documentos leídos completamente y en orden: índice maestro, esta bitácora e
+  instrucciones locales —no se encontraron—. No se inspeccionó código de los
+  dominios siguientes.
+- Autorización: el usuario ordenó «cierra». El primer intento se detuvo porque
+  los seis cambios de 7.1 seguían preparados en el índice de Git. Tras
+  consolidarlos, «sigue» reanudó únicamente el cierre ya autorizado.
+- Precondiciones antes de modificar documentación: rama `main`; árbol limpio
+  según `git status --porcelain=v1 --branch`, que mostró solo
+  `## main...origin/main [ahead 3]`; `HEAD`
+  `98c438fb6621bcc337c928f2f60238ca2c05d949`; el commit base
+  `bfe80d4152b802aeb22f4c5a2c5aab9265ba7630` es ancestro.
+- Continuidad desde el base: exactamente tres commits posteriores, todos
+  explicados. `31b3f6b` activa documentalmente la capa; `80f7f21` contiene 7.0;
+  `98c438f` contiene 7.1. `git show --name-status` confirmó que el último toca
+  exactamente los seis archivos registrados: tres de producto, la
+  caracterización, esta bitácora y el índice maestro.
+- Estado de publicación observado: la referencia local `origin/main` está tres
+  commits detrás. No se consultó el remoto real, no hubo push ni deploy y no se
+  atribuye una ejecución de GitHub Actions.
+- Suite específica de cierre: **129 passed** y 5 warnings heredados.
+- Compuerta global de cierre: **1011 passed** y 5 warnings heredados; Ruff
+  terminó con **All checks passed** y `pip check` con **No broken requirements
+  found**.
+- Decisión: cerrar como refactorización pura. 7.2 y 7.3 son **No aplica**; los
+  once hallazgos abiertos permanecen registrados y no se añadió
+  `response_model`, error de dominio, filtro, validación ni otra corrección.
+- Archivos del cierre: esta bitácora y
+  `docs/modularizacion/README.md`. Código de producto, pruebas, configuración,
+  migraciones y dependencias modificados durante el cierre: **ninguno**.
+- Staging y rollback: documentados en sus secciones. No se ejecutaron acciones
+  externas ni cambios reales de base o almacenamiento.
+- Verificación manual propia: **pendiente**; el guion quedó documentado sin
+  atribuir ningún resultado no reportado.
+- Revisión de alcance: `git diff --check` terminó en exit 0; los avisos fueron
+  solo de normalización futura LF/CRLF. `git status --short --branch` mostró
+  únicamente los dos documentos del cierre sobre `main...origin/main [ahead
+  3]`. El índice y las bitácoras dejan **cero capas activas**.
+- Siguiente acción exacta: elegir entre completar la verificación manual de
+  `plan_de_clases` o autorizar explícitamente continuar localmente aceptando que
+  quede pendiente; para activar otra capa, la misma orden debe nombrar además
+  uno de `branding`, `profesores` o `super_admin`.
+
 ## Entrega al próximo chat
 
-- Capa activa: **7 para `plan_de_clases`**.
-- Última capa cerrada: **7 para `planeador_anual`**.
-- Última subcapa terminada: **7.1**, cerrada el 2026-08-22.
-- Primera subcapa pendiente: **7.2**, no iniciada ni autorizada; puede quedar
-  **No aplica** si el usuario ordena cerrar la capa.
+- Capa activa: **ninguna**.
+- Última capa cerrada: **7 para `plan_de_clases`**, el 2026-08-22.
+- Subcapas: **7.0 y 7.1 cerradas**; **7.2 y 7.3 No aplica**.
 - Código de producto modificado en 7.1: repositorio, guard de plan y guard del
-  endpoint compartido de uploads; ninguna otra pieza.
-- Caracterización: **24 pruebas**; específicas finales **129 passed**;
-  compuerta global **1011 passed**, Ruff correcto y dependencias íntegras.
+  endpoint compartido de uploads; el cierre posterior es solo documental.
+- Caracterización: **24 pruebas**; específicas de cierre **129 passed**;
+  compuerta global de cierre **1011 passed**, Ruff correcto y dependencias
+  íntegras.
 - Resultado estructural: cinco archivos propios y 1365 líneas, once entradas,
   tres tablas y los **27 sitios `cursor.execute`** dentro del repositorio. Los
   dos llamadores compartidos ya no tienen SQL de este dominio y conservan sus
@@ -644,10 +757,15 @@ Todos quedaron cumplidos:
   vivos**.
 - Verificación manual de `planeador_anual`: completada de forma global, sin
   entorno ni desglose punto por punto reportados.
+- Verificación manual propia de `plan_de_clases`: **pendiente**; no marcarla
+  como cumplida sin un reporte del usuario.
 - Verificaciones heredadas: pendientes; ninguna se marca como cumplida.
-- Verificación manual propia de `plan_de_clases`: pendiente; debe definirse al
-  decidir el cierre.
+- Dominios en espera: `branding`, `profesores` y `super_admin`; ninguno está
+  activado.
+- Publicación: no comprobada; la referencia local `origin/main` está tres
+  commits detrás del `HEAD` de 7.1 y no se consultó el remoto real.
 - Bloqueos técnicos: ninguno.
-- Siguiente acción exacta: decidir explícitamente entre cerrar como
-  refactorización pura o autorizar una sola 7.2 concreta; no iniciar 7.2 por una
-  instrucción ambigua.
+- Siguiente acción exacta: pedir al usuario una decisión explícita entre
+  completar la verificación manual propia o continuar aceptando que permanezca
+  pendiente. Solo después, y si además nombra el dominio, se puede activar uno
+  de los tres dominios en espera.

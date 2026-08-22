@@ -7,8 +7,11 @@
 - Estado: **Activa** desde el 2026-08-21.
 - Commit base: `235672ea609444a46003175940376c37bfe191c4`.
 - Rama acordada: `main`.
-- Primera subcapa pendiente: **7.0**, no iniciada.
+- Primera subcapa pendiente: **7.1**, no iniciada.
 - Código de producto modificado al activar: **Ninguno**.
+- Código de producto modificado en 7.0: **Ninguno**. El diff funcional de la
+  subcapa es un solo archivo nuevo de caracterización; los demás cambios son
+  documentación.
 - Dominio de esta capa: **`planeador_anual`, y solo ese**. Los otros cuatro
   dominios en espera necesitan su propia bitácora y su propia orden.
 - Autorización: el usuario eligió la opción 2 —continuar localmente aceptando
@@ -54,28 +57,28 @@ Determinarlo es el primer trabajo de 7.0.
   `asistencia`, `boletin` y `observaciones`; y la rotación de la credencial
   privilegiada registrada en la capa 4.
 
-## Lo que el programa cree saber y 7.0 debe comprobar
+## Lo que el programa creía saber y 7.0 comprobó
 
-La documentación de continuidad solo confirma que `planeador_anual` era uno de
-los cinco dominios en espera. Todo supuesto sobre su implementación permanece
-**no verificado** hasta contrastarlo en 7.0.
+La documentación de continuidad solo confirmaba que `planeador_anual` era uno
+de los cinco dominios en espera. **Los diez supuestos quedaron resueltos en
+7.0: seis confirmados, uno confirmado con matiz, dos refutados y uno mixto.**
 
-| # | Supuesto documental | Estado al activar |
+| # | Supuesto documental | Resultado de 7.0 |
 |---:|---|---|
-| 1 | `planeador_anual` era un dominio pendiente de la capa 7 | **Confirmado documentalmente** por el índice y por la orden del usuario |
-| 2 | Su frontera coincide con archivos que llevan ese nombre | **No verificado** |
-| 3 | Tiene entradas HTTP propias | **No verificado** |
-| 4 | Lee o escribe datos | **No verificado** |
-| 5 | Abre transacciones o produce efectos laterales | **No verificado** |
-| 6 | Sus permisos y reglas de ownership son uniformes | **No verificado** |
-| 7 | Tiene servicio o repositorio propio | **No verificado** |
-| 8 | Contiene cálculos o fórmulas observables | **No verificado** |
-| 9 | Presenta N+1 de consultas o conexiones | **No verificado** |
-| 10 | Sus pruebas actuales bastan para proteger una extracción | **No verificado** |
+| 1 | `planeador_anual` era un dominio pendiente de la capa 7 | **CONFIRMADO.** El usuario lo activó y su frontera propia son tres archivos y 206 líneas |
+| 2 | Su frontera coincide con archivos que llevan ese nombre | **CONFIRMADO CON MATIZ.** Ruta, controlador y esquema son propios; `/notificaciones/planeadores` pertenece por completo a `plan_de_clases` |
+| 3 | Tiene entradas HTTP propias | **CONFIRMADO.** Son dos: un `GET` y un `PUT` sobre el mismo path |
+| 4 | Lee o escribe datos | **CONFIRMADO: escribe.** El `GET` lee y el `PUT` borra o hace upsert sobre `planeador_anual` |
+| 5 | Abre transacciones o produce efectos laterales | **CONFIRMADO.** El `PUT` posee una transacción manual con `commit`/`rollback`; dos funciones sin consumidor también escriben con `get_cursor(commit=True)` |
+| 6 | Sus permisos y reglas de ownership son uniformes | **CONFIRMADO.** Ambas rutas usan `get_current_user` y `require_asignacion_access` |
+| 7 | Tiene servicio o repositorio propio | **REFUTADO.** No existe ninguno; los cinco SQL están inline en el controlador |
+| 8 | Contiene cálculos o fórmulas observables | **CONFIRMADO.** La posición del lote fija `slot = i + 1`; cuatro campos deciden borrar o hacer upsert |
+| 9 | Presenta N+1 de consultas o conexiones | **REFUTADO COMO LECTURA, CONFIRMADO EN LA ENTRADA.** El `GET` es constante; el `PUT` emite una operación por fila, `1+N` como admin y `2+N` como profesor, con conexiones constantes |
+| 10 | Sus pruebas actuales bastan para proteger una extracción | **REFUTADO.** Había ocho casos útiles, pero no fijaban frontera, HTTP real, DDL, conteos, ownership denegado ni varias rarezas; 7.0 añadió 29 |
 
-El nombre parecido a `plan_de_clases` no demuestra que compartan frontera,
-datos ni comportamiento. Esa relación solo puede confirmarse o refutarse con
-la inspección acotada de 7.0 y no autoriza tocar el dominio vecino.
+La semejanza con `plan_de_clases` quedó resuelta: la ruta vecina llama a su
+propio controlador y servicio, no importa `planeador_anual_controller` y no
+toca esta frontera. No se modificó ese dominio.
 
 ## Alcance autorizado
 
@@ -123,23 +126,128 @@ la inspección acotada de 7.0 y no autoriza tocar el dominio vecino.
 
 | Comprobación | Comando | Resultado |
 |---|---|---|
-| Pruebas específicas | Por determinar en 7.0 después de delimitar la frontera | Pendiente |
-| Suite global | `.\venv\Scripts\python.exe scripts\verify.py` | Pendiente para 7.0; última compuerta heredada documentada: 957 pruebas |
-| Ruff | Por determinar según el alcance de 7.0 | Pendiente |
-| Dependencias | Incluido en `scripts\verify.py` | Pendiente para 7.0; íntegras en el cierre heredado |
+| Pruebas heredadas antes de modificar | `.\venv\Scripts\python.exe -m pytest -q -p no:cacheprovider tests\test_planeador_anual_validaciones.py` | **8 pasaron**, 1 warning heredada |
+| Compuerta heredada antes de modificar | `.\venv\Scripts\python.exe scripts\verify.py` | Primer intento dentro del sandbox: 928 pasaron y 29 errores de setup por permisos del temporal; repetida fuera: **957 pruebas**, 5 warnings heredadas, exit 0 |
+| Caracterización nueva | `.\venv\Scripts\python.exe -m pytest -q -p no:cacheprovider tests\test_planeador_anual_caracterizacion.py` | **29 pasaron**, 1 warning heredada |
+| Pruebas específicas completas | Caracterización nueva más `test_planeador_anual_validaciones.py` | **37 pasaron**, 1 warning heredada |
+| Suite global final | `.\venv\Scripts\python.exe scripts\verify.py` | **986 pruebas**, 5 warnings heredadas, exit 0 |
+| Ruff | `.\venv\Scripts\python.exe -m ruff check tests\test_planeador_anual_caracterizacion.py` | **Correcto** |
+| Dependencias | Incluido en `scripts\verify.py` | **Íntegras antes y después** |
+
+## Inventario y contratos fijados en 7.0
+
+La frontera propia son **tres archivos y 206 líneas**, sin servicio ni
+repositorio y con **cinco sentencias SQL inline**:
+
+| Archivo | Líneas | SQL inline | Responsabilidad |
+|---|---:|---:|---|
+| `app/routes/planeador_anual.py` | 38 | 0 | Dos entradas HTTP, autenticación y permiso de asignación |
+| `app/controllers/planeador_anual_controller.py` | 114 | 5 | Lectura, reemplazo por slots y dos escrituras sin consumidor HTTP |
+| `app/schemas/planeador_anual.py` | 54 | 0 | Normalización y validación de contenido/fecha |
+
+`app/main.py` monta el router, el DDL base define la tabla y las funciones
+compartidas de permiso y resolución académica participan en los caminos, pero
+ninguno de esos archivos pertenece a la frontera propia. La ruta
+`GET /notificaciones/planeadores` pertenece a `plan_de_clases`: el nombre es la
+única coincidencia.
+
+### Entradas HTTP, permisos y respuestas
+
+Las dos entradas tienen **el mismo modelo de permiso**: la dependencia
+`get_current_user` y `require_asignacion_access`. FastAPI evalúa una sola vez la
+dependencia repetida en el router y el parámetro. Admin retorna sin consultar;
+profesor abre una conexión y valida `asignaciones.id/profesor_id`; otro rol o un
+profesor sin ownership recibe 403 antes del controlador.
+
+| Método | Path | Entrada | Respuesta exitosa actual |
+|---|---|---|---|
+| GET | `/planeador-anual/{asignacion_id}/{periodo}` | Dos enteros de path | `200`, `{"planeadores": [...]}`; `fecha` se serializa como ISO |
+| PUT | `/planeador-anual/{asignacion_id}/{periodo}` | Lista de `PlaneadorAnualUpdate` | `200`, `{"message": "Planeador actualizado correctamente"}` |
+
+Ninguna declara `response_model`. Un path no entero y una fila con contenido
+sin fecha producen 422. El guard produce 403 con `{"detail": "No autorizado"}`.
+Una excepción del controlador produce 500 y expone `str(e)` en `detail`.
+
+### Persistencia, transacciones y cálculos
+
+- La única tabla propia leída y escrita es **`planeador_anual`**.
+- El DDL exige `periodo` 1..4 y `slot` 1..8, conserva unicidad sobre
+  `(asignacion_id, periodo, slot)` y una FK a `asignaciones` con
+  `ON DELETE CASCADE`.
+- El `GET` usa `get_cursor()` sin commit, resuelve la asignación académica,
+  selecciona nueve columnas y ordena por `slot`.
+- El `PUT` conserva una conexión manual y una sola transacción. Resuelve la
+  asignación una vez; para cada posición calcula `slot = i + 1`, hace `DELETE`
+  si los cuatro campos de contenido están vacíos y hace `INSERT ... ON
+  CONFLICT ... DO UPDATE` en caso contrario. Confirma una vez; ante cualquier
+  error revierte y siempre cierra cursor y conexión.
+- Un lote vacío resuelve la asignación y confirma, pero no ejecuta ningún
+  `DELETE`; un lote más corto tampoco toca los slots posteriores.
+- `crear_planeador_anual_controller` y
+  `actualizar_planeador_anual_controller` no tienen consumidores en `app/`.
+  Contienen las otras dos sentencias y usan `get_cursor(commit=True)`.
+
+### Línea base de consultas y conexiones
+
+Los conteos incluyen permiso y resolutor, pero no autenticación ni los
+round-trips de configuración al abrir una conexión:
+
+| Camino | Consultas admin/profesor | Conexiones admin/profesor | Transacción |
+|---|---:|---:|---|
+| GET, con una o tres filas | **2 / 3** | **1 / 2** | No |
+| PUT con N filas | **1+N / 2+N** | **1 / 2** | Sí, una |
+| PUT vacío | **1 / 2** | **1 / 2** | Sí, confirma sin DML |
+| Profesor sin ownership | **1** | **1** | No; termina en 403 |
+| Otro rol | **0** | **0** | No; termina en 403 |
+
+No hay N+1 de lectura ni de conexiones. Sí hay un **N+1 respecto del tamaño de
+la entrada** en el `PUT`: una operación DML por fila, con conexiones constantes.
+
+## Hallazgos de 7.0, registrados y sin corregir
+
+1. **Dos de las cuatro funciones del controlador están muertas.** Crear y
+   actualizar individualmente no tienen consumidor en `app/`; concentran dos
+   de los cinco SQL inline.
+2. **La función muerta de crear no encaja con su tipo anotado.** Accede a
+   `planeador.periodo` y `planeador.slot`, pero `PlaneadorAnualCreate` no
+   declara esos campos y Pydantic los descarta como extras.
+3. **El esquema de respuesta también omite `periodo` y `slot`.** Hoy no se usa
+   como `response_model`; añadirlo por inferencia recortaría dos campos del
+   payload actual.
+4. **`PUT []` responde éxito y no limpia nada.** Resuelve la asignación y hace
+   commit sin ejecutar un solo `DELETE`.
+5. **Un lote más corto deja slots posteriores intactos.** La operación solo
+   visita las posiciones presentes; no implementa un reemplazo total.
+6. **La capa HTTP no limita el lote a ocho filas.** Nueve filas válidas llegan
+   al controlador, mientras el DDL rechaza `slot > 8`; una novena fila con
+   contenido termina en rollback y 500, no en 422.
+7. **`periodo` no tiene límites HTTP.** El `GET` acepta, por ejemplo, periodo 5
+   y consulta normalmente; las restricciones 1..4 solo actúan al escribir en
+   PostgreSQL.
+8. **El `PUT` es `1+N` en consultas.** El número de conexiones es constante,
+   pero una lista arbitrariamente larga —especialmente de filas vacías que no
+   chocan con el `CHECK`— produce DML secuencial innecesario.
+9. **Las dos rutas exponen el texto interno de cualquier excepción como 500 y
+   no registran el fallo.** Conservado como contrato actual.
+10. **Permiso y resolutor no filtran `asignaciones.activo`.** Un profesor puede
+    conservar acceso si ownership e id coinciden con una asignación
+    desactivada, patrón ya registrado en otros dominios.
+11. **Conviven dos idiomas de recursos DB.** Tres funciones usan `get_cursor`,
+    mientras el `PUT` administra conexión, cursor, commit y rollback a mano.
+    Unificarlos cambiaría ownership y queda fuera de 7.0.
 
 ## Subcapas
 
 | Subcapa | Resultado | Estado |
 |---:|---|---|
-| 7.0 | Delimitar la frontera, inventariar contratos y caracterizar el comportamiento y la línea base | **Pendiente y no iniciada** |
-| 7.1 | Primera extracción protegida, solo si la evidencia de 7.0 la justifica | En espera; alcance por definir |
+| 7.0 | Delimitar la frontera, inventariar contratos y caracterizar el comportamiento y la línea base | **Cerrada** el 2026-08-22 |
+| 7.1 | Extraer los cinco SQL a un único repositorio conservando recursos, funciones muertas y contratos | **Pendiente y no iniciada** |
 | 7.2 | Cambio adicional posterior, solo si resulta necesario y autorizado | En espera; alcance por definir |
 
 Las subcapas se adaptan al trabajo real. Las innecesarias se marcan `No
 aplica` con una explicación. Nunca se ejecutan dos en el mismo turno.
 
-## Subcapa 7.0: trabajo exacto pendiente
+## Subcapa 7.0: trabajo exacto ejecutado y cerrado
 
 1. Delimitar la frontera real de `planeador_anual` por entradas, llamadores,
    tablas y consumidores antes de contar o modificar nada.
@@ -165,6 +273,20 @@ aplica` con una explicación. Nunca se ejecutan dos en el mismo turno.
 11. Actualizar la bitácora con archivos, comandos, resultados, decisiones,
     riesgos y la siguiente acción exacta.
 12. **Detenerse al cerrar 7.0. No iniciar 7.1 en el mismo turno.**
+
+## Alcance propuesto de 7.1, no iniciado
+
+La extracción protegida que la evidencia permite es un único
+`planeador_anual_repository.py` con las cinco sentencias. Sus funciones
+recibirían el cursor existente; los tres llamadores con `get_cursor` y el
+`PUT` con conexión manual conservarían íntegramente la propiedad de recursos,
+transacciones, resolutor, bucle, cálculos, retornos y errores.
+
+Las dos funciones muertas **se conservarían sin reanimarlas ni corregir sus
+esquemas**. Mover también sus SQL mantiene el conjunto byte a byte y evita
+cerrar solo tres quintos de la persistencia; retirarlas sería otra decisión y
+no forma parte de una extracción pura. Este alcance debe presentarse y
+autorizarse antes de modificar producto.
 
 ## Criterios de cierre de la subcapa 7.0
 
@@ -198,6 +320,13 @@ aplica` con una explicación. Nunca se ejecutan dos en el mismo turno.
   7.0 en este turno.
 - **No inferir la frontera por el nombre.** La semejanza con
   `plan_de_clases` se registra como riesgo, no como autorización para incluirlo.
+- **Frontera resuelta en 7.0.** Los tres archivos con nombre anual forman el
+  dominio propio; la notificación vecina se queda en `plan_de_clases`.
+- **No corregir los once hallazgos.** 7.0 solo los caracteriza; no cambia
+  esquemas, status codes, límites, transacciones ni funciones muertas.
+- **Proponer un único repositorio para los cinco SQL en 7.1.** La extracción
+  preservaría las funciones muertas y los dos idiomas de recursos. No se inicia
+  sin una nueva orden.
 
 ## Riesgos
 
@@ -212,8 +341,13 @@ aplica` con una explicación. Nunca se ejecutan dos en el mismo turno.
 - **Verificaciones heredadas pendientes y aceptadas.** Conservan sus riesgos y
   no se consideran cumplidas por activar este dominio.
 - **Posible vecindad con `plan_de_clases`.** Compartir vocabulario no demuestra
-  dos usos reales ni una frontera común; incluirlo ampliaría el alcance sin
-  autorización.
+  dos usos reales ni una frontera común. 7.0 confirmó que es otro dominio y no
+  lo incluyó.
+- **Código muerto y esquema incompatible.** Mover o retirar las dos funciones
+  sin conservar evidencia podría convertir una extracción en una corrección
+  funcional. Mitigación: mantenerlas intactas en 7.1 y decidir su retiro aparte.
+- **N+1 de entrada.** El `PUT` hace una operación por fila y la capa HTTP no
+  limita el lote. Se conserva en 7.1; optimizarlo cambiaría los conteos fijados.
 
 ## Registro de ejecución
 
@@ -257,14 +391,63 @@ aplica` con una explicación. Nunca se ejecutan dos en el mismo turno.
 - Siguiente acción exacta: ejecutar únicamente 7.0 conforme al trabajo exacto
   de esta bitácora y detenerse antes de 7.1.
 
+### 2026-08-22 — cierre de 7.0
+
+- Modo de acceso: mismo checkout local; rama `main` y árbol limpio antes de
+  modificar, comprobado con `git status --porcelain=v1` sin salida.
+- `HEAD` observado: `6358c5a39c051b6c4e75f09beda531ac550b815f`.
+  El commit base `235672e` es ancestro y el único descendiente contiene
+  exactamente la bitácora de activación y el índice, tal como está explicado.
+- Archivos inspeccionados sin modificar: los tres archivos propios; las pruebas
+  heredadas; el montaje del router; únicamente las funciones compartidas de
+  permiso y resolución, el DDL de la tabla y los fragmentos con nombre
+  `planeadores` necesarios para separar `plan_de_clases`. No se leyó el resto
+  del repositorio.
+- Archivos modificados: `tests/test_planeador_anual_caracterizacion.py` —nuevo—,
+  esta bitácora y el estado de 7.0 en el índice maestro. **Ningún archivo de
+  producto fue modificado.**
+- Pruebas antes: ocho casos heredados. Cubrían normalización, validación,
+  transacciones básicas y las tres funciones migradas a `get_cursor`, pero no
+  frontera, HTTP real, DDL, conteos, ownership denegado, lote vacío o esquemas
+  incompletos.
+- Cambio realizado: **solo caracterización**. Veintinueve casos nuevos fijan
+  frontera, dos contratos HTTP por ASGI, permisos, status codes, payloads,
+  cinco SQL, DDL, transacciones, rollback, recursos y conteos.
+- Compuerta heredada: el intento dentro del sandbox terminó con 928 pruebas
+  pasadas y 29 errores de setup por `PermissionError` sobre el temporal de
+  pytest. Repetida fuera del sandbox, sin cambiar archivos: **957 pruebas,
+  exit 0**, Ruff correcto y `pip check` íntegro.
+- Comandos y resultados:
+  - caracterización nueva: **29 pasaron**;
+  - caracterización más las ocho heredadas: **37 pasaron**;
+  - Ruff sobre el archivo nuevo: **correcto**;
+  - compuerta final: **986 pruebas, 5 warnings heredadas, exit 0**, Ruff
+    correcto y `pip check` íntegro;
+  - `git diff --check`: exit 0; la comprobación `--no-index --check` del archivo
+    de prueba nuevo no reportó errores de whitespace —su exit 1 indica que
+    difiere de `NUL`—; los avisos son solo de normalización futura LF/CRLF;
+  - revisión de alcance: exactamente la caracterización nueva, esta bitácora y
+    el índice maestro; ningún archivo de producto.
+- Los diez supuestos quedaron resueltos: seis confirmados, uno confirmado con
+  matiz, dos refutados y uno mixto.
+- Riesgos: permanecen los once hallazgos, encabezados por las funciones muertas
+  incompatibles con sus esquemas, el falso reemplazo de lotes vacíos o cortos y
+  el `1+N` de escrituras.
+- Siguiente acción exacta: presentar y autorizar el alcance propuesto de 7.1;
+  no iniciar la extracción en este turno.
+
 ## Entrega al próximo chat
 
 - Capa activa: **7 para `planeador_anual`**.
 - Última capa cerrada: **7 para `planilla`**.
-- Última subcapa terminada: ninguna en este dominio.
-- Primera subcapa pendiente: **7.0**, no iniciada.
-- Código de producto modificado al activar: ninguno.
+- Última subcapa terminada: **7.0**, cerrada el 2026-08-22.
+- Primera subcapa pendiente: **7.1**, no iniciada.
+- Código de producto modificado en 7.0: ninguno; se añadió solo
+  caracterización.
+- Frontera actual: tres archivos propios, dos entradas HTTP, un modelo de
+  permiso, cinco SQL inline, una tabla escrita y un `1+N` respecto del lote.
+- Pruebas: 29 nuevas, 37 específicas y compuerta final con **986 pruebas**.
 - Verificaciones heredadas: pendientes y aceptadas por decisión explícita.
 - Bloqueos: ninguno.
-- Siguiente acción exacta: ejecutar únicamente 7.0, actualizar esta bitácora y
-  detenerse antes de 7.1.
+- Siguiente acción exacta: autorizar o ajustar 7.1 para extraer los cinco SQL a
+  un único repositorio conservando recursos, funciones muertas y contratos.

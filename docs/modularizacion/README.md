@@ -48,7 +48,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 7 | Resto de dominios — **`boletin` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `boletin` el 2026-08-21; verificada a mano y **sin publicar**. Ver la advertencia de desfase más abajo | [07_BOLETIN.md](./07_BOLETIN.md) |
 | 7 | Resto de dominios — **`observaciones` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `observaciones` el 2026-08-21; verificada a mano. **Publicada el 2026-08-21**, después de escribirse su bitácora | [07_OBSERVACIONES.md](./07_OBSERVACIONES.md) |
 | 7 | Resto de dominios — **`planilla` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `planilla` el 2026-08-21; verificación manual correcta y sin publicación comprobada | [07_PLANILLA.md](./07_PLANILLA.md) |
-| 7 | Resto de dominios — **`planeador_anual`** | Migración individual con contratos y pruebas | **Activa** desde el 2026-08-21; 7.0 pendiente y no iniciada | [07_PLANEADOR_ANUAL.md](./07_PLANEADOR_ANUAL.md) |
+| 7 | Resto de dominios — **`planeador_anual`** | Migración individual con contratos y pruebas | **Activa**; 7.0 cerrada el 2026-08-22 y 7.1 pendiente | [07_PLANEADOR_ANUAL.md](./07_PLANEADOR_ANUAL.md) |
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
 cierre y el usuario ordene continuar, se crea su sucesora desde
@@ -212,8 +212,11 @@ no especificado.
 **Dominio activo: `planeador_anual`.** El usuario lo eligió y nombró
 explícitamente el 2026-08-21, aceptando continuar localmente con las
 verificaciones heredadas pendientes. Su bitácora es
-[07_PLANEADOR_ANUAL.md](./07_PLANEADOR_ANUAL.md); su **7.0 está pendiente y no
-iniciada**. La activación fue exclusivamente documental.
+[07_PLANEADOR_ANUAL.md](./07_PLANEADOR_ANUAL.md); su **7.0 está cerrada**: tres
+archivos propios, dos entradas HTTP, cinco SQL inline, una tabla escrita y 29
+pruebas nuevas. El `GET` es constante y el `PUT` ejecuta `1+N` operaciones
+como admin y `2+N` como profesor, con conexiones constantes. La compuerta
+terminó con **986 pruebas**. Su **7.1 está pendiente y no iniciada**.
 
 Ningún otro se activa por inferencia: plan de clases, branding, profesores y
 super admin siguen en espera —son **cuatro**—, y cada uno exigirá su propia
@@ -1733,9 +1736,11 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   especificó el entorno, así que no se atribuye a local, staging ni despliegue.
 - Capa activa: **7 para `planeador_anual`**, activada el 2026-08-21 por orden
   explícita del usuario. Commit base limpio:
-  `235672ea609444a46003175940376c37bfe191c4`. Su **7.0 está pendiente y no
-  iniciada**; la activación no inspeccionó ni modificó código, pruebas,
-  consultas, migraciones, esquemas ni configuración.
+  `235672ea609444a46003175940376c37bfe191c4`. Su **7.0 quedó cerrada el
+  2026-08-22** con 29 pruebas nuevas y **ningún cambio de producto**; delimitó
+  tres archivos, dos rutas, cinco SQL y una tabla escrita. La compuerta terminó
+  con **986 pruebas**, Ruff correcto y dependencias íntegras. Su **7.1 está
+  pendiente y no iniciada**.
 - Decisión al activar: continuar localmente aceptando que sigan pendientes la
   calibración final de `DB_STATEMENT_TIMEOUT_MS`, la evidencia de GitHub
   Actions posterior a la capa 0, los pasos manuales no confirmados heredados y
@@ -1892,9 +1897,14 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   índice.** Registra el commit base limpio
   `235672ea609444a46003175940376c37bfe191c4`, la autorización explícita del
   usuario nombrando el dominio y la decisión de continuar localmente aceptando
-  las verificaciones heredadas pendientes. Su **7.0 está pendiente y no
-  iniciada**; la activación fue exclusivamente documental y no inspeccionó ni
-  modificó código o pruebas. Los otros cuatro dominios permanecen en espera.
+  las verificaciones heredadas pendientes. Su **7.0 está cerrada**: delimitó
+  tres archivos propios y dos rutas, contó cinco SQL inline, una tabla escrita
+  y un `1+N` respecto del lote, y añadió 29 pruebas sin modificar producto. La
+  compuerta terminó con **986 pruebas**. Deja once hallazgos sin corregir,
+  encabezados por dos funciones muertas incompatibles con sus esquemas y el
+  falso reemplazo de lotes vacíos o cortos. Su **7.1 está pendiente y no
+  iniciada**; propone extraer los cinco SQL a un único repositorio conservando
+  recursos y contratos. Los otros cuatro dominios permanecen en espera.
 - [07_PLANILLA.md](./07_PLANILLA.md): **bitácora cerrada** de la capa 7 para el
   dominio `planilla`, y fuente de continuidad anterior. Registra el commit base limpio
   `580c0ad6f0d14d16af5cbd8b2a4a9e4532485b89`, la orden explícita del usuario

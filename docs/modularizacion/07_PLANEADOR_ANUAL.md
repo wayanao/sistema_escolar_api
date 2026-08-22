@@ -16,8 +16,9 @@
 - Código de producto modificado en 7.1: el controlador delega sus cinco
   sentencias al nuevo `app/repositories/planeador_anual_repository.py`; ruta y
   esquema no cambiaron.
-- Dominio de esta capa: **`planeador_anual`, y solo ese**. Los otros cuatro
-  dominios en espera necesitan su propia bitácora y su propia orden.
+- Dominio de esta capa: **`planeador_anual`, y solo ese**. Su sucesor,
+  `plan_de_clases`, quedó activado después en una bitácora propia; `branding`,
+  `profesores` y `super_admin` siguen en espera.
 - Autorización de activación: el usuario eligió la opción 2 —continuar localmente aceptando
   las verificaciones heredadas pendientes— y ordenó expresamente activar el
   dominio «planeador anual».
@@ -373,14 +374,22 @@ conservan registrados y no se transforman en deuda de esta capa.
 - **Cerrar la capa sin abrir 7.2.** El usuario ordenó «cierra» después de recibir
   las dos salidas. Se conserva el comportamiento caracterizado, los once
   hallazgos y la verificación manual pendiente.
+- **Registrar después la verificación manual como completada de forma global.**
+  El usuario informó «planeador revisado» y ordenó seguir con
+  `plan_de_clases`; no se inventan entorno ni resultados punto por punto.
 
 ## Staging y verificación manual
 
-No se desplegó ni se ejecutó una verificación manual durante el cierre. La
-verificación manual propia queda **pendiente y no cumplida**. Antes de publicar
-en producción se recomienda desplegar en staging el artefacto que incluya
-`51203dac3c35962cedbd7220cc990a7da931bf3a` y ejecutar, con datos no
-productivos, este guion:
+No se desplegó ni se ejecutó una verificación manual durante el cierre. En ese
+momento la verificación manual propia quedó **pendiente y no cumplida**.
+Después, el 2026-08-22, el usuario informó «planeador revisado» y ordenó seguir
+con `plan_de_clases`. Se registra como **verificación manual completada de forma
+global**; no se informó el entorno ni el resultado separado de los siete
+puntos, por lo que no se atribuye a local, staging o despliegue ni se afirma
+una cobertura punto por punto.
+
+El guion recomendado fue ejecutar sobre el artefacto que incluya
+`51203dac3c35962cedbd7220cc990a7da931bf3a`, con datos no productivos:
 
 1. Como admin, consultar un planeador existente y comprobar orden por `slot`,
    campos `periodo` y `slot`, nulos y fecha serializada.
@@ -396,9 +405,9 @@ productivos, este guion:
 7. Repetir lectura y escritura en dos tenants no productivos y confirmar que
    cada uno observa solo sus propios datos.
 
-La evidencia automática fija estos contratos, pero no sustituye este guion en
-un entorno desplegado. Si se activa otro dominio antes de completarlo, el
-usuario deberá aceptar explícitamente que esta verificación siga pendiente.
+La evidencia automática fija estos contratos. El reporte global posterior
+cierra el pendiente manual para la continuidad, con la limitación de evidencia
+registrada; no demuestra por sí solo un entorno desplegado.
 
 ## Rollback
 
@@ -610,9 +619,24 @@ usuario deberá aceptar explícitamente que esta verificación siga pendiente.
   aceptar expresamente que siga pendiente y nombrar uno de los cuatro dominios
   en espera. No activar ninguno por inferencia.
 
+### 2026-08-22 — verificación manual posterior y continuidad
+
+- El usuario informó «planeador revisado» y ordenó «sigue con plan de clases».
+- La verificación manual propia se registra como **completada de forma global**.
+  No se informó el entorno ni el resultado separado de los siete puntos, así
+  que no se atribuye a local, staging o despliegue y no se infla su cobertura.
+- La orden nombra explícitamente `plan_de_clases` y autoriza crear su bitácora
+  y activarlo; no autoriza implementar 7.0 en el mismo turno.
+- Las demás verificaciones heredadas permanecen pendientes y no se marcan como
+  cumplidas.
+- Código, pruebas, configuración, dependencias, migraciones y base de datos:
+  **sin inspección ni cambios** desde esta actualización documental.
+- Siguiente acción exacta de la continuidad: ejecutar únicamente 7.0 de
+  `plan_de_clases` conforme a su bitácora activa.
+
 ## Entrega al próximo chat
 
-- Capa activa: **ninguna**.
+- Capa activa: **7 para `plan_de_clases`**, en su propia bitácora.
 - Última capa cerrada: **7 para `planeador_anual`**, el 2026-08-22.
 - Última subcapa terminada: **7.1**; 7.2 es **No aplica**.
 - Primera subcapa pendiente: ninguna.
@@ -624,9 +648,9 @@ usuario deberá aceptar explícitamente que esta verificación siga pendiente.
 - Pruebas: 30 de caracterización propia, 38 específicas y compuerta final con
   **987 pruebas**, Ruff y dependencias correctos.
 - Verificaciones heredadas: pendientes y aceptadas por decisión explícita.
-- Verificación manual propia: **pendiente y no cumplida**.
+- Verificación manual propia: **completada de forma global**; entorno y desglose
+  punto por punto no informados.
 - Bloqueos técnicos: ninguno.
-- Siguiente acción exacta: completar el guion manual de siete puntos o aceptar
-  explícitamente que quede pendiente y nombrar el siguiente dominio. Permanecen
-  en espera `plan_de_clases`, `branding`, `profesores` y `super_admin`; ninguno
-  se activa por inferencia.
+- Siguiente acción exacta: consultar `07_PLAN_DE_CLASES.md` y ejecutar solo su
+  7.0. Permanecen en espera `branding`, `profesores` y `super_admin`; ninguno se
+  activa por inferencia.

@@ -7,11 +7,14 @@
 - Estado: **Activa** desde el 2026-08-23 por orden explícita del usuario.
 - Commit base: `2ec924a3308581b746a61fa24a44f71433034dbc`.
 - Rama acordada: `main`.
-- Primera subcapa pendiente: **7.1**, primera extracción protegida del bloque
-  de consulta y cambio de estado de tenants.
+- Primera subcapa pendiente: **7.2**, extracción protegida de las dos consultas
+  de autenticación y revalidación privilegiada.
 - Subcapa 7.0: **Cerrada** el 2026-08-23 con producto intacto, 27 pruebas de
   caracterización nuevas, 88 pruebas específicas y compuerta global de 1088
   pruebas.
+- Subcapa 7.1: **Cerrada** el 2026-08-23; cinco SQL idénticos byte a byte
+  viven ahora en `super_admin_repository`, con 89 pruebas específicas y
+  compuerta global de 1089 pruebas.
 - Código de producto modificado al activar: **Ninguno**.
 - Dominio de esta capa: **`super_admin`, y solo ese**.
 - Autorización: el usuario escribió «sigue super admin» después de que se le
@@ -102,7 +105,10 @@ no inspecciona código ni infiere la frontera; 7.0 debe delimitarla con evidenci
 | Línea base heredada | `.\venv\Scripts\python.exe -m pytest tests\test_super_admin.py tests\test_tenant_provisioning.py tests\test_esquema_base.py tests\test_auth_threadpool.py tests\test_auth_tenant.py -q` | **61 passed**, 6 warnings |
 | Caracterización 7.0 | `.\venv\Scripts\python.exe -m pytest tests\test_super_admin_caracterizacion.py -q` | **27 passed**, 6 warnings |
 | Pruebas específicas integradas | Línea base heredada más `tests\test_super_admin_caracterizacion.py` | **88 passed**, 6 warnings |
-| Suite global | `.\venv\Scripts\python.exe scripts\verify.py` | **1088 passed**, 5 warnings; Ruff correcto; dependencias íntegras |
+| Pruebas específicas después de 7.1 | Línea base heredada más `tests\test_super_admin_caracterizacion.py` | **89 passed**, 6 warnings |
+| Guardias históricas de repositorios | Las cinco pruebas exactas de dashboard, notas, ventas, asistencia y planilla | **5 passed**, 1 warning |
+| Suite global de 7.0 | `.\venv\Scripts\python.exe scripts\verify.py` | **1088 passed**, 5 warnings; Ruff correcto; dependencias íntegras |
+| Suite global de 7.1 | `.\venv\Scripts\python.exe scripts\verify.py` | **1089 passed**, 5 warnings; Ruff correcto; dependencias íntegras |
 | Ruff específico | `.\venv\Scripts\python.exe -m ruff check tests\test_super_admin_caracterizacion.py` | Correcto |
 | Dependencias | Incluidas en `scripts\verify.py` | Íntegras |
 
@@ -111,9 +117,9 @@ no inspecciona código ni infiere la frontera; 7.0 debe delimitarla con evidenci
 | Subcapa | Resultado | Estado |
 |---:|---|---|
 | 7.0 | Inventario, contratos y caracterización | **Cerrada** el 2026-08-23 |
-| 7.1 | Extraer las cinco operaciones SQL de consulta y estado de tenants | **Pendiente; siguiente acción exacta** |
-| 7.2 | Provisionamiento privilegiado y autenticación, por decidir con evidencia de 7.1 | Pendiente |
-| 7.3 | Retiro heredado y cierre | Pendiente |
+| 7.1 | Extraer las cinco operaciones SQL de consulta y estado de tenants | **Cerrada** el 2026-08-23 |
+| 7.2 | Extraer las dos consultas de autenticación y revalidación | **Pendiente; siguiente acción exacta** |
+| 7.3 | Extraer el provisionamiento de 13 operaciones y cerrar la capa | Pendiente |
 
 Las subcapas se adaptan al trabajo real. Las innecesarias se marcan `No aplica`
 con una explicación; nunca se ejecutan dos sin orden explícita.
@@ -214,7 +220,7 @@ con una explicación; nunca se ejecutan dos sin orden explícita.
   controlador y 2 en el núcleo, y que no hay ejecuciones dentro de bucles.
 - No se cambió ninguna expectativa heredada ni archivo de producto.
 
-## Primera subcapa pendiente: trabajo exacto para 7.1
+## Subcapa 7.1 cerrada: trabajo ejecutado
 
 1. Extraer únicamente los cinco sitios SQL del bloque de listado, auditoría y
    cambio de estado desde `super_admin_controller.py` a un repositorio propio
@@ -233,6 +239,46 @@ con una explicación; nunca se ejecutan dos sin orden explícita.
    revisión exclusiva de alcance; actualizar esta bitácora y detenerse antes
    de 7.2.
 
+Resultado:
+
+- `app/repositories/super_admin_repository.py` contiene cinco funciones y 97
+  líneas. Todas reciben el cursor existente y ninguna importa ni administra
+  conexión, cursor, contexto, transacción o cierre.
+- `super_admin_controller.py` pasó de 393 a 339 líneas y de 18 a 13 sitios
+  `cursor.execute`. Los cinco sitios movidos son exactamente los de listar
+  tenants, listar auditoría, obtener el estado actual, actualizarlo y registrar
+  su auditoría.
+- La frontera propia conserva 20 sitios SQL: 13 de provisionamiento todavía en
+  el controlador, 5 en el repositorio y 2 en `core/super_admin.py`.
+- Los hashes SHA-256 de los cinco literales SQL del `HEAD` de entrada y del
+  repositorio nuevo coincidieron uno a uno: **5 de 5 textos idénticos byte a
+  byte**. Las pruebas conservaron parámetros, orden, resultados, conteos y
+  eventos de `commit`/`rollback`/cierre.
+- La caracterización suma un caso positivo para la superficie del repositorio
+  y sus límites de recursos. Cinco guardias históricas incorporan deliberadamente
+  `super_admin_repository`; no se debilitó ninguna enumeración exacta.
+- No se tocaron provisionamiento, autenticación, rutas, schemas, dispatcher,
+  `tenant_status.py`, migraciones ni dominios cerrados.
+
+## Primera subcapa pendiente: trabajo exacto para 7.2
+
+1. Extraer únicamente los dos sitios SQL de `app/core/super_admin.py` —login y
+   revalidación— al repositorio propio ya existente.
+2. Hacer que ambas operaciones reciban el cursor. `core/super_admin.py` debe
+   conservar contexto `public`, conexión, cursor, cierre, normalización de
+   email, comprobación de estado, contraseña, errores y offload del guard.
+3. Conservar literalmente SQL, parámetros, número y orden de consultas,
+   resultados `None`, 401, rol `super_admin`, tenant `public` y restauración del
+   `ContextVar`.
+4. No tocar los 13 sitios del provisionamiento, controlador de gestión, rutas,
+   schemas inline, dispatcher compartido, `tenant_status.py`, migraciones ni
+   dominios cerrados.
+5. Actualizar la caracterización y las guardias estructurales sin cambiar
+   expectativas de contrato.
+6. Ejecutar pruebas específicas, Ruff, compuerta global, `git diff --check` y
+   revisión exclusiva de alcance; actualizar esta bitácora y detenerse antes
+   de 7.3.
+
 ## Criterios de cierre de la subcapa 7.0
 
 - Frontera delimitada con evidencia y sin reabrir dominios cerrados.
@@ -246,6 +292,19 @@ Todos se cumplieron el 2026-08-23. La primera ejecución de la compuerta bajo
 sandbox no fue evidencia válida porque 30 casos no pudieron crear su fixture
 temporal; la repetición autorizada con acceso al directorio temporal terminó
 completa y verde.
+
+## Criterios de cierre de la subcapa 7.1
+
+- Cinco sitios SQL y solo esos extraídos al repositorio propio.
+- SQL y parámetros idénticos; conteos, resultados y orden conservados.
+- Controlador todavía dueño de contexto, conexión, cursor, transacción y cierre.
+- Provisionamiento y autenticación intactos.
+- Pruebas específicas, guardias históricas, Ruff, compuerta y dependencias
+  correctas.
+- `git diff --check` correcto y diff exclusivo de 7.1.
+- Bitácora e índice actualizados con siguiente acción exacta.
+
+Todos se cumplieron el 2026-08-23.
 
 ## Criterios de cierre de la capa
 
@@ -280,6 +339,19 @@ completa y verde.
   versionada para `public.colegios`, los schemas inline y la ausencia de
   `response_model` se registran como comportamiento o riesgo actual, no como
   autorización de rediseño.
+- **Crear un repositorio propio singular.** El nombre
+  `super_admin_repository.py` coincide con el dominio y evita la variante plural
+  que la caracterización rechaza expresamente.
+- **Mantener los recursos en el controlador.** Las cinco funciones nuevas solo
+  reciben cursor y devuelven filas; no conocen contexto, conexiones,
+  transacciones, cierres ni FastAPI.
+- **Reconocer el repositorio en cinco guardias históricas.** Las enumeraciones
+  exactas de dashboard, notas, ventas, asistencia y planilla se ampliaron sin
+  cambiar su severidad, tal como exige el precedente del programa.
+- **Separar autenticación y provisionamiento.** La evidencia de 7.1 permite que
+  7.2 sea una extracción de solo dos consultas de seguridad. Las 13 operaciones
+  transaccionales y DDL del alta quedan aisladas para 7.3 y la compuerta de
+  cierre.
 
 ## Riesgos
 
@@ -314,6 +386,12 @@ completa y verde.
 - **Integridad de auditoría.** Las claves foráneas de auditoría no usan `ON
   DELETE`; una eliminación futura de tenants o super admins tendría efectos no
   caracterizados y queda fuera de alcance.
+- **Persistencia deliberadamente parcial.** Tras 7.1 el controlador conserva 13
+  sitios SQL y el núcleo 2. El repositorio no representa aún toda la frontera y
+  no debe presentarse como migración completa.
+- **Autenticación es una frontera de seguridad.** Mover sus dos consultas en
+  7.2 sin conservar contexto, normalización, contraseña, 401 y offload podría
+  bloquear o ampliar el acceso privilegiado; por eso no se mezcla con el alta.
 
 ## Registro de ejecución
 
@@ -414,17 +492,71 @@ completa y verde.
 - Siguiente acción exacta: esperar una orden nueva para iniciar únicamente 7.1
   y detenerse antes de 7.2.
 
+### 2026-08-23 — cierre de la subcapa 7.1
+
+- Modo de acceso: mismo checkout local en
+  `C:\Users\David\Documents\sistema_escolar_api`; Git y commits locales se
+  validaron directamente.
+- Documentos leídos en el orden exigido: índice maestro completo, esta bitácora
+  activa completa e instrucciones locales —no se encontraron—.
+- Autorización: el usuario escribió «sigue». Conforme al índice y a esta
+  bitácora, la orden autorizó solamente 7.1.
+- Precondiciones antes de modificar: rama `main`; árbol limpio confirmado con
+  `git status --porcelain=v1 --branch`, que mostró
+  `## main...origin/main [ahead 2]`; `HEAD`
+  `f3d1711e065c9840f53674e67d9169b49ff1d3c9`; y base
+  `2ec924a3308581b746a61fa24a44f71433034dbc` ancestro del `HEAD`.
+- Continuidad posterior al base: `a3212ec` contiene únicamente la activación
+  documental y `f3d1711` contiene únicamente los dos documentos y la prueba de
+  caracterización de 7.0. Ambos alcances coinciden con esta bitácora; no había
+  commits ni cambios sin explicar.
+- Línea base específica sobre el `HEAD` limpio: **88 passed**, 6 warnings.
+- Producto modificado: `app/controllers/super_admin_controller.py` y el nuevo
+  `app/repositories/super_admin_repository.py`. El controlador pasó de 393 a
+  339 líneas y de 18 a 13 `execute`; el repositorio tiene 97 líneas, cinco
+  funciones y cinco `execute`.
+- Pruebas modificadas: la caracterización propia y las cinco guardias exactas
+  de repositorios en dashboard, notas, ventas, asistencia y planilla. La
+  caracterización agregó un caso y llegó a 28 casos.
+- Equivalencia estática contra el `HEAD` de entrada: **5 de 5 hashes SHA-256 de
+  literales SQL idénticos**. La batería de caracterización conserva además los
+  parámetros y el orden observable en ejecución.
+- Batería específica integrada: **89 passed**, 6 warnings. Guardias históricas:
+  **5 passed**, 1 warning. Ruff sobre los ocho archivos de producto/prueba:
+  correcto.
+- Compuerta global con acceso válido al directorio temporal: **1089 passed**, 5
+  warnings; Ruff correcto; `pip check` sin dependencias rotas.
+- No se ejecutó PostgreSQL real, migración, producción, deploy, commit ni push;
+  tampoco se atribuye evidencia de GitHub Actions.
+- Whitespace previo a la documentación: `git diff --check` terminó en exit 0;
+  la comprobación `--no-index --check` del repositorio nuevo no reportó errores
+  —su exit 1 indica que difiere de `NUL`—. Los avisos fueron solo de
+  normalización futura LF/CRLF.
+- Revisión previa de alcance: exactamente el controlador, el repositorio nuevo,
+  la caracterización propia y las cinco guardias históricas; ningún otro archivo
+  de producto.
+- Decisión de siguiente frontera: 7.2 extraerá únicamente las dos consultas de
+  autenticación/revalidación. El provisionamiento de 13 operaciones queda para
+  7.3.
+- Revisión final: `git diff --check` volvió a terminar en exit 0 después de la
+  documentación. `git status --short --branch` mostró exactamente dos archivos
+  de producto —controlador y repositorio—, seis pruebas —la propia y cinco
+  guardias históricas— y dos documentos; todo pertenece a 7.1. El índice
+  conserva una sola fila **Activa**, `super_admin`.
+- Siguiente acción exacta: esperar una orden nueva para iniciar únicamente 7.2
+  y detenerse antes de 7.3.
+
 ## Entrega al próximo chat
 
 - Capa activa: **7 para `super_admin`**.
 - Última capa cerrada: **7 para `profesores`**.
-- Última subcapa cerrada: **7.0**, inventario, contratos y caracterización; 27
-  casos nuevos, 88 pruebas específicas y compuerta global con 1088 pruebas.
-- Primera subcapa pendiente: **7.1**, extracción de los cinco sitios SQL de
-  listar, auditar y cambiar estado; no incluye provisionamiento ni
-  autenticación.
+- Última subcapa cerrada: **7.1**, extracción de los cinco sitios SQL de listar,
+  auditar y cambiar estado; 5 de 5 literales idénticos, 89 pruebas específicas
+  y compuerta global con 1089 pruebas.
+- Primera subcapa pendiente: **7.2**, extracción de las dos consultas de
+  autenticación y revalidación; no incluye provisionamiento.
 - Verificaciones pendientes aceptadas: manuales de `profesores` y `branding`,
   además de las heredadas del índice.
 - Bloqueos: ninguno.
 - Siguiente acción exacta: esperar una orden nueva para ejecutar únicamente
-  7.1 y detenerse antes de 7.2.
+  7.2 y detenerse antes de 7.3.

@@ -14,6 +14,7 @@ from app.core.tenant_status import (
 )
 from app.database import get_connection
 from app.globals import tenant_schema_var
+from app.repositories import super_admin_repository
 from app.security import get_password_hash, password_policy_errors
 
 
@@ -41,22 +42,6 @@ def listar_tenants_controller() -> list[dict]:
     token, conn = _public_connection()
     cursor = conn.cursor()
     try:
-        cursor.execute(
-            """
-            SELECT
-                c.id,
-                c.nombre,
-                c.subdominio,
-                c.esquema_db,
-                c.estado,
-                s.fecha_inicio,
-                s.fecha_proximo_pago,
-                s.dias_gracia
-            FROM public.colegios c
-            LEFT JOIN public.tenant_suscripciones s ON s.tenant_id = c.id
-            ORDER BY c.id
-            """
-        )
         return [
             {
                 "id": row[0],
@@ -69,7 +54,7 @@ def listar_tenants_controller() -> list[dict]:
                 "fecha_proximo_pago": row[6].isoformat() if hasattr(row[6], "isoformat") else row[6],
                 "dias_gracia": row[7],
             }
-            for row in cursor.fetchall()
+            for row in super_admin_repository.listar_tenants(cursor)
         ]
     finally:
         cursor.close()
@@ -81,24 +66,6 @@ def listar_auditoria_tenant_controller(tenant_id: int) -> list[dict]:
     token, conn = _public_connection()
     cursor = conn.cursor()
     try:
-        cursor.execute(
-            """
-            SELECT
-                a.id,
-                a.estado_anterior,
-                a.estado_nuevo,
-                a.motivo,
-                a.creado_en,
-                s.nombre,
-                s.email
-            FROM public.tenant_estado_auditoria a
-            JOIN public.super_admins s ON s.id = a.super_admin_id
-            WHERE a.tenant_id = %s
-            ORDER BY a.creado_en DESC
-            LIMIT 50
-            """,
-            (tenant_id,),
-        )
         return [
             {
                 "id": row[0],
@@ -109,7 +76,10 @@ def listar_auditoria_tenant_controller(tenant_id: int) -> list[dict]:
                 "super_admin_nombre": row[5],
                 "super_admin_email": row[6],
             }
-            for row in cursor.fetchall()
+            for row in super_admin_repository.listar_auditoria_tenant(
+                cursor,
+                tenant_id,
+            )
         ]
     finally:
         cursor.close()
@@ -132,24 +102,10 @@ def actualizar_estado_tenant_controller(
     token, conn = _public_connection()
     cursor = conn.cursor()
     try:
-        cursor.execute(
-            """
-            SELECT
-                c.id,
-                c.nombre,
-                c.subdominio,
-                c.esquema_db,
-                c.estado,
-                s.fecha_inicio,
-                s.fecha_proximo_pago,
-                s.dias_gracia
-            FROM public.colegios c
-            LEFT JOIN public.tenant_suscripciones s ON s.tenant_id = c.id
-            WHERE c.id = %s
-            """,
-            (tenant_id,),
+        current = super_admin_repository.obtener_tenant_para_estado(
+            cursor,
+            tenant_id,
         )
-        current = cursor.fetchone()
         if not current:
             conn.rollback()
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant no encontrado")
@@ -169,28 +125,18 @@ def actualizar_estado_tenant_controller(
                 "dias_gracia": current[7],
             }
 
-        cursor.execute(
-            """
-            UPDATE public.colegios
-            SET estado = %s
-            WHERE id = %s
-            RETURNING id, nombre, subdominio, esquema_db, estado
-            """,
-            (estado_normalizado, tenant_id),
+        row = super_admin_repository.actualizar_estado_tenant(
+            cursor,
+            estado_normalizado,
+            tenant_id,
         )
-        row = cursor.fetchone()
-        cursor.execute(
-            """
-            INSERT INTO public.tenant_estado_auditoria (
-                tenant_id,
-                estado_anterior,
-                estado_nuevo,
-                motivo,
-                super_admin_id
-            )
-            VALUES (%s, %s, %s, %s, %s)
-            """,
-            (tenant_id, estado_anterior, estado_normalizado, motivo_limpio, super_admin_id),
+        super_admin_repository.registrar_auditoria_estado(
+            cursor,
+            tenant_id,
+            estado_anterior,
+            estado_normalizado,
+            motivo_limpio,
+            super_admin_id,
         )
 
         conn.commit()

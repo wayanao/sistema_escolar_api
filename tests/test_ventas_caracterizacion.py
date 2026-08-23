@@ -205,6 +205,7 @@ def test_el_repositorio_de_ventas_es_el_octavo():
         "planilla_repository",
         "profesores_repository",
         "reportes_repository",
+        "super_admin_repository",
         "ventas_repository",
     }
 

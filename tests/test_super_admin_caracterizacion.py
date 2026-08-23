@@ -1,7 +1,7 @@
 """Caracterización de la frontera privilegiada de ``super_admin``.
 
 Fija rutas, permisos, autenticación pública, SQL, recursos, provisión de tenant,
-DDL y consumidores antes de cualquier extracción del dominio.
+DDL y consumidores antes y después de las extracciones del dominio.
 """
 
 import ast
@@ -27,8 +27,9 @@ from app.routes import super_admin as super_admin_routes
 ROOT = Path(__file__).resolve().parents[1]
 OWN_PRODUCT_FILES = {
     "app/routes/super_admin.py": 64,
-    "app/controllers/super_admin_controller.py": 393,
+    "app/controllers/super_admin_controller.py": 339,
     "app/core/super_admin.py": 112,
+    "app/repositories/super_admin_repository.py": 97,
 }
 PUBLIC_TABLE_PATTERN = re.compile(
     r"\b(?:FROM|JOIN|INTO|UPDATE)\s+(?:public\.)?"
@@ -243,15 +244,48 @@ async def _asgi_request(app, method, target, *, json_body=None):
     return start["status"], json.loads(response_body) if response_body else None
 
 
-def test_frontera_archivos_sql_y_repositorio_ausente_queda_fijada():
+def test_frontera_archivos_y_sql_extraido_queda_fijada():
     assert {
         path: len(_source(path).splitlines()) for path in OWN_PRODUCT_FILES
     } == OWN_PRODUCT_FILES
     assert _execute_count("app/routes/super_admin.py") == 0
-    assert _execute_count("app/controllers/super_admin_controller.py") == 18
+    assert _execute_count("app/controllers/super_admin_controller.py") == 13
     assert _execute_count("app/core/super_admin.py") == 2
-    assert not (ROOT / "app/repositories/super_admin_repository.py").exists()
+    assert _execute_count("app/repositories/super_admin_repository.py") == 5
+    assert (ROOT / "app/repositories/super_admin_repository.py").exists()
     assert not (ROOT / "app/repositories/super_admins_repository.py").exists()
+
+
+def test_repositorio_fija_superficie_y_no_administra_recursos():
+    repository_path = "app/repositories/super_admin_repository.py"
+    tree = ast.parse(_source(repository_path))
+    functions = {
+        node.name: node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef)
+    }
+
+    assert set(functions) == {
+        "listar_tenants",
+        "listar_auditoria_tenant",
+        "obtener_tenant_para_estado",
+        "actualizar_estado_tenant",
+        "registrar_auditoria_estado",
+    }
+    assert all(node.args.args[0].arg == "cursor" for node in functions.values())
+    assert not any(
+        isinstance(node, (ast.Import, ast.ImportFrom)) for node in tree.body
+    )
+
+    source = _source(repository_path)
+    for forbidden in (
+        "get_connection",
+        "get_cursor",
+        "commit()",
+        "rollback()",
+        "close()",
+    ):
+        assert forbidden not in source
 
 
 def test_cuatro_rutas_privilegiadas_y_login_compartido_quedan_montados():
@@ -887,6 +921,7 @@ def test_consumidores_directos_de_tablas_publicas_quedan_enumerados():
         "app/controllers/super_admin_controller.py",
         "app/core/super_admin.py",
         "app/core/tenant_status.py",
+        "app/repositories/super_admin_repository.py",
     }
 
 

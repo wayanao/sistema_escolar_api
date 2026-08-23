@@ -255,6 +255,7 @@ def test_el_repositorio_de_planilla_es_el_duodecimo():
         "planilla_repository",
         "profesores_repository",
         "reportes_repository",
+        "super_admin_repository",
         "ventas_repository",
     }
 

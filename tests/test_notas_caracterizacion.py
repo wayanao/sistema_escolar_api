@@ -185,6 +185,7 @@ def test_el_repositorio_de_notas_es_el_septimo():
         "planilla_repository",
         "profesores_repository",
         "reportes_repository",
+        "super_admin_repository",
         "ventas_repository",
     }
 

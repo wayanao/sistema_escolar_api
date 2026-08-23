@@ -50,6 +50,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 7 | Resto de dominios — **`planilla` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `planilla` el 2026-08-21; verificación manual correcta y sin publicación comprobada | [07_PLANILLA.md](./07_PLANILLA.md) |
 | 7 | Resto de dominios — **`planeador_anual` migrado** | Migración individual con contratos y pruebas | **Cerrada** el 2026-08-22; 7.2 No aplica, verificación manual global reportada y sin entorno especificado | [07_PLANEADOR_ANUAL.md](./07_PLANEADOR_ANUAL.md) |
 | 7 | Resto de dominios — **`plan_de_clases` migrado** | Migración individual con contratos y pruebas | **Cerrada** el 2026-08-22; 7.2/7.3 No aplica, verificación manual global con reserva y sin publicación comprobada | [07_PLAN_DE_CLASES.md](./07_PLAN_DE_CLASES.md) |
+| 7 | Resto de dominios — **`branding`** | Migración individual con contratos y pruebas | **Activa** desde el 2026-08-22; 7.0 pendiente y no iniciada | [07_BRANDING.md](./07_BRANDING.md) |
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
 cierre y el usuario ordene continuar, se crea su sucesora desde
@@ -256,9 +257,15 @@ después que ya verificó y que está «aparentemente bien»; la verificación m
 propia queda completada de forma global con esa reserva, sin entorno, artefacto
 ni desglose punto por punto. No se comprobó publicación.
 
-Ningún otro se activa por inferencia: `branding`, `profesores` y `super_admin`
-siguen en espera —son **tres**—, y cada uno exigirá su propia bitácora y una
-orden explícita.
+**Dominio activo: `branding`.** El usuario lo nombró, ordenó activarlo y
+confirmó continuar localmente aceptando que las verificaciones heredadas
+permanezcan pendientes. Su bitácora es [07_BRANDING.md](./07_BRANDING.md); la
+activación es exclusivamente documental y su **7.0 está pendiente y no
+iniciada**.
+
+Ningún otro se activa por inferencia: `profesores` y `super_admin` siguen en
+espera —son **dos**— y cada uno exigirá su propia bitácora y una orden
+explícita.
 
 La advertencia de perfil que se registró al activar `notas` **quedó confirmada**:
 a diferencia de `dashboard`, que resultó de solo lectura, **`notas` escribe**, y
@@ -1804,14 +1811,15 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   manual propia quedó completada de forma global con la reserva
   «aparentemente bien», sin entorno, artefacto ni desglose punto por punto. No
   se comprobó publicación.
-- Capa activa: **ninguna**.
-- Decisión vigente al activar: siguen pendientes la
+- Capa activa: **7 para `branding`**, con 7.0 pendiente y no iniciada.
+- Decisión vigente al activar `branding`: continuar localmente aceptando que
+  sigan pendientes la
   calibración final de `DB_STATEMENT_TIMEOUT_MS`, la evidencia de GitHub
   Actions posterior a la capa 0, los pasos manuales no confirmados heredados y
   la rotación de la credencial privilegiada de la capa 4. Ninguna se marca como
   cumplida.
-- Quedan **tres** dominios en espera: `branding`, `profesores` y `super_admin`.
-  Ninguno se activa por esta orden.
+- Quedan **dos** dominios en espera: `profesores` y `super_admin`. Ninguno se
+  activa por esta orden.
 - **Punto de decisión abierto al terminar 7.1**, con **tres** salidas y no dos:
   dónde vive el `UPDATE pagos`, `response_model` para las cuatro lecturas, y los
   errores de dominio. La tercera es **más fácil aquí que en `notas`**: este
@@ -1955,10 +1963,20 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
 
 ## Archivos de continuidad
 
+- [07_BRANDING.md](./07_BRANDING.md): **bitácora activa** de la capa 7 para el
+  dominio `branding` y **fuente de continuidad más reciente**. **Es el
+  documento que un chat nuevo debe leer después de este índice.** Registra el
+  commit base limpio `bb34cf6f31413fdbbd2c1866b43f2da71f8ea03b`, la rama
+  acordada `main`, la orden explícita de activar el dominio y la decisión de
+  continuar localmente aceptando las verificaciones heredadas pendientes. La
+  activación fue exclusivamente documental: no inspeccionó código ni pruebas
+  del dominio. Su **7.0 está pendiente y no iniciada**; debe delimitar la
+  frontera, resolver los supuestos documentales, caracterizar contratos, SQL,
+  concurrencia y almacenamiento, y detenerse antes de 7.1. `profesores` y
+  `super_admin` permanecen en espera.
 - [07_PLAN_DE_CLASES.md](./07_PLAN_DE_CLASES.md): **bitácora cerrada** de la
-  capa 7 para el dominio `plan_de_clases` y **fuente de continuidad más
-  reciente**. **Es el documento que un chat nuevo debe leer después de este
-  índice.** Registra el commit base limpio
+  capa 7 para el dominio `plan_de_clases` y fuente de continuidad anterior.
+  Registra el commit base limpio
   `bfe80d4152b802aeb22f4c5a2c5aab9265ba7630`, la orden explícita del usuario
   «sigue con plan de clases», la activación exclusivamente documental y el
   cierre posterior de **7.0** por la orden «continua». Delimitó cinco archivos
@@ -1974,10 +1992,8 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   7.2/7.3 son **No aplica** y la compuerta de cierre volvió a pasar con **1011
   pruebas**. Staging y rollback están documentados; la verificación manual
   propia quedó completada globalmente con la reserva «aparentemente bien», sin
-  entorno, artefacto ni desglose individual. No hay capa activa. Antes de
-  activar otra, el usuario debe nombrar el dominio y decidir si continúa
-  aceptando las verificaciones heredadas pendientes o atiende alguna primero.
-  `branding`, `profesores` y `super_admin` permanecen en espera.
+  entorno, artefacto ni desglose individual. `branding` se activó después;
+  `profesores` y `super_admin` permanecen en espera.
 - [07_PLANEADOR_ANUAL.md](./07_PLANEADOR_ANUAL.md): **bitácora cerrada** de la
   capa 7 para el dominio `planeador_anual` y fuente de continuidad anterior.
   Registra el commit base limpio

@@ -52,6 +52,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 7 | Resto de dominios — **`plan_de_clases` migrado** | Migración individual con contratos y pruebas | **Cerrada** el 2026-08-22; 7.2/7.3 No aplica, verificación manual global con reserva y sin publicación comprobada | [07_PLAN_DE_CLASES.md](./07_PLAN_DE_CLASES.md) |
 | 7 | Resto de dominios — **`branding` migrado** | Migración individual con contratos y pruebas | **Cerrada** el 2026-08-22; 7.2/7.3 No aplica, verificación manual pendiente y sin publicación comprobada | [07_BRANDING.md](./07_BRANDING.md) |
 | 7 | Resto de dominios — **`profesores` migrado** | Migración individual con contratos y pruebas | **Cerrada** el 2026-08-23; 7.2/7.3 No aplica, verificación manual pendiente y sin publicación comprobada | [07_PROFESORES.md](./07_PROFESORES.md) |
+| 7 | Resto de dominios — **`super_admin`** | Migración individual con contratos y pruebas | **Activa** desde el 2026-08-23; 7.0 pendiente y no iniciada | [07_SUPER_ADMIN.md](./07_SUPER_ADMIN.md) |
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
 cierre y el usuario ordene continuar, se crea su sucesora desde
@@ -300,8 +301,17 @@ staging y rollback están documentados; la verificación manual propia permanece
 pendiente y no se comprobó publicación. La bitácora es
 [07_PROFESORES.md](./07_PROFESORES.md).
 
-Ningún otro se activa por inferencia: `super_admin` sigue en espera y exigirá
-su propia bitácora y una orden explícita.
+**Dominio activo: `super_admin`.** El usuario escribió «sigue super admin» el
+2026-08-23, después de recibir el cierre de `profesores`, el aviso de que su
+verificación manual permanece pendiente y la indicación de que `super_admin`
+seguía en espera. La orden nombra el dominio y autoriza continuar localmente
+aceptando ese pendiente. La activación es exclusivamente documental, usa como
+base el `HEAD` limpio `2ec924a` y no inspecciona ni modifica producto. Su 7.0
+está pendiente y no iniciada. La bitácora es
+[07_SUPER_ADMIN.md](./07_SUPER_ADMIN.md).
+
+No queda otro dominio enumerado en espera, y no se inicia trabajo adicional por
+inferencia.
 
 La advertencia de perfil que se registró al activar `notas` **quedó confirmada**:
 a diferencia de `dashboard`, que resultó de solo lectura, **`notas` escribe**, y
@@ -1863,12 +1873,10 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   7.2 y 7.3 son **No aplica**. La compuerta sobre el commit limpio volvió a
   pasar con **1032 pruebas**, Ruff correcto y dependencias íntegras. Staging y
   rollback están documentados; la verificación manual propia queda pendiente.
-- Capa activa: **ninguna**. La última cerrada es **7 para `profesores`**; 7.0 y
-  7.1 están cerradas y 7.2/7.3 son **No aplica**. La caracterización tiene 29
-  casos; los nueve SQL alcanzables viven en `profesores_repository` y el décimo
-  permanece inline en la función sin consumidores. Las específicas terminaron
-  con **47 passed** y la compuerta de cierre con **1061 passed**, Ruff correcto
-  y dependencias íntegras. Staging y rollback están documentados; la
+- Capa activa: **7 para `super_admin`**; activación exclusivamente documental,
+  commit base limpio `2ec924a` y 7.0 pendiente y no iniciada. La última cerrada
+  es **7 para `profesores`**; 7.0 y 7.1 están cerradas, 7.2/7.3 son **No
+  aplica**, la compuerta de cierre terminó con **1061 pruebas** y su
   verificación manual propia queda pendiente.
 - Decisión vigente al activar `profesores`: continuar localmente aceptando que
   sigan pendientes la verificación manual propia de `branding`, la
@@ -1876,7 +1884,8 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   Actions posterior a la capa 0, los pasos manuales no confirmados heredados y
   la rotación de la credencial privilegiada de la capa 4. Ninguna se marca como
   cumplida.
-- Queda **un** dominio en espera: `super_admin`. No se activa por esta orden.
+- No queda otro dominio enumerado en espera. `super_admin` está activo y no se
+  inspeccionó ni implementó por la orden de activación.
 - **Punto de decisión abierto al terminar 7.1**, con **tres** salidas y no dos:
   dónde vive el `UPDATE pagos`, `response_model` para las cuatro lecturas, y los
   errores de dominio. La tercera es **más fácil aquí que en `notas`**: este
@@ -2020,9 +2029,17 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
 
 ## Archivos de continuidad
 
+- [07_SUPER_ADMIN.md](./07_SUPER_ADMIN.md): **bitácora activa** de la capa 7
+  para el dominio `super_admin` y **fuente de continuidad más reciente**. **Es
+  el documento que un chat nuevo debe leer después de este índice.** Registra
+  el commit base limpio `2ec924a3308581b746a61fa24a44f71433034dbc`, la rama
+  acordada `main`, la orden explícita «sigue super admin» y la decisión de
+  continuar localmente aceptando las verificaciones manuales de `profesores` y
+  `branding` y las heredadas pendientes. La activación fue exclusivamente
+  documental: no inspeccionó ni modificó producto, pruebas, SQL, configuración
+  o base de datos. **7.0 está pendiente y no iniciada.**
 - [07_PROFESORES.md](./07_PROFESORES.md): **bitácora cerrada** de la capa 7 para
-  el dominio `profesores` y **fuente de continuidad más reciente**. **Es el
-  documento que un chat nuevo debe leer después de este índice.** Registra el
+  el dominio `profesores` y fuente de continuidad anterior. Registra el
   commit base limpio `58eb5c2eb43a9d20708b75ca8bd798e9f13b33e6`, la rama
   acordada `main`, la orden explícita del usuario —con la errata inequívoca
   `proefesores`— y la decisión de continuar localmente aceptando la
@@ -2041,7 +2058,7 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   usuario ordenó cerrar como refactorización pura: **7.2/7.3 son No aplica** y
   la compuerta de cierre volvió a pasar con 1061 pruebas. Staging y rollback
   están documentados; la verificación manual propia permanece pendiente.
-  `super_admin` permanece en espera y no hay una capa activa.
+  `super_admin` se activó después por orden explícita del usuario.
 - [07_BRANDING.md](./07_BRANDING.md): **bitácora cerrada** de la capa 7 para el
   dominio `branding` y fuente de continuidad anterior. Registra el
   commit base limpio `bb34cf6f31413fdbbd2c1866b43f2da71f8ea03b`, la rama
@@ -2058,8 +2075,8 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   passed** y la compuerta con **1032 passed**. El usuario ordenó cerrar como
   refactorización pura: 7.2 y 7.3 son **No aplica** y la compuerta de cierre
   volvió a pasar con **1032 pruebas**. Staging y rollback están documentados;
-  la verificación manual propia queda pendiente. `profesores` se activó
-  después; `super_admin` permanece en espera y no se activa por inferencia.
+  la verificación manual propia queda pendiente. `profesores` y `super_admin`
+  se activaron después, cada uno por orden explícita.
 - [07_PLAN_DE_CLASES.md](./07_PLAN_DE_CLASES.md): **bitácora cerrada** de la
   capa 7 para el dominio `plan_de_clases` y fuente de continuidad anterior.
   Registra el commit base limpio
@@ -2078,8 +2095,8 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   7.2/7.3 son **No aplica** y la compuerta de cierre volvió a pasar con **1011
   pruebas**. Staging y rollback están documentados; la verificación manual
   propia quedó completada globalmente con la reserva «aparentemente bien», sin
-  entorno, artefacto ni desglose individual. `branding` se activó después;
-  `profesores` y `super_admin` permanecen en espera.
+  entorno, artefacto ni desglose individual. `branding`, `profesores` y
+  `super_admin` se activaron después, cada uno por orden explícita.
 - [07_PLANEADOR_ANUAL.md](./07_PLANEADOR_ANUAL.md): **bitácora cerrada** de la
   capa 7 para el dominio `planeador_anual` y fuente de continuidad anterior.
   Registra el commit base limpio

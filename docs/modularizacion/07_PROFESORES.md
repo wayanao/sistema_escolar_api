@@ -4,12 +4,12 @@
 
 ## Control
 
-- Estado: **Activa** desde el 2026-08-23 por orden explícita del usuario.
+- Estado: **Cerrada** el 2026-08-23 por orden explícita del usuario.
 - Commit base: `58eb5c2eb43a9d20708b75ca8bd798e9f13b33e6`.
 - Rama acordada: `main`.
-- Primera subcapa pendiente: **7.2**, decisión explícita entre cerrar la capa
-  como refactorización pura o autorizar un cambio concreto de contrato ya
-  caracterizado.
+- Última subcapa ejecutada: **7.1**. Las subcapas 7.2 y 7.3 son **No aplica**
+  por decisión explícita de cerrar como refactorización pura.
+- Siguiente dominio: `super_admin`, **en espera** y sin bitácora activa.
 - Código de producto modificado al activar: **Ninguno**.
 - Código de producto modificado en 7.0: **Ninguno**. El diff funcional es un
   solo archivo nuevo de caracterización; los demás cambios son documentación.
@@ -241,8 +241,8 @@ base de datos.
 |---:|---|---|
 | 7.0 | Inventario, contratos y caracterización | **Cerrada el 2026-08-23** |
 | 7.1 | Extracción protegida del SQL alcanzable por las rutas propias | **Cerrada el 2026-08-23** |
-| 7.2 | Segunda extracción, integración o cierre como refactorización pura | **Pendiente de decisión explícita; no iniciada** |
-| 7.3 | Retiro heredado y cierre | Pendiente; no iniciada |
+| 7.2 | Segunda extracción o integración | **No aplica**: no existe otra extracción concreta justificada y el usuario ordenó cerrar |
+| 7.3 | Retiro heredado | **No aplica**: no se autorizó retirar la función sin consumidores ni corregir hallazgos |
 
 Las subcapas se adaptan al trabajo real. Las innecesarias se marcan `No aplica`
 con una explicación; nunca se ejecutan dos sin orden explícita.
@@ -309,22 +309,13 @@ ensamblado, cinco conexiones manuales, commits, rollbacks y cierres. Los diez
 argumentos SQL del estado anterior y posterior forman el mismo multiconjunto
 AST: nueve se movieron y la consulta de clases sin consumidores quedó inline.
 
-## Primera subcapa pendiente: decisión requerida para 7.2
+## Decisión explícita de cierre
 
-La frontera de persistencia autorizada ya está cerrada. No existe una segunda
-extracción concreta justificada por 7.1. Antes de iniciar otra subcapa, el
-usuario debe elegir explícitamente entre:
-
-1. cerrar `profesores` como refactorización pura, marcando 7.2 y 7.3 como
-   `No aplica` y ejecutando la compuerta de cierre, staging, rollback y guion
-   manual; o
-2. autorizar por separado una 7.2 concreta sobre contratos ya caracterizados,
-   por ejemplo `response_model` o errores de dominio, demostrando que payloads
-   y status codes no cambian.
-
-Una orden genérica de continuidad no resuelve cuál alternativa debe ejecutarse:
-se requiere elegir expresamente cierre puro o una 7.2 concreta. Tampoco permite
-combinar 7.2 con el cierre ni activar `super_admin`.
+El usuario ordenó «cierra» después de recibir las dos alternativas. Se elige el
+cierre como refactorización pura: 7.2 y 7.3 quedan **No aplica**. No se agregan
+`response_model`, errores de dominio ni cambios de contrato; tampoco se retira
+la función sin consumidores. La compuerta se ejecuta sobre el commit limpio de
+7.1 y `super_admin` permanece en espera.
 
 ## Criterios de cierre de la capa
 
@@ -333,6 +324,46 @@ combinar 7.2 con el cierre ni activar `super_admin`.
 - Contratos conservados o cambios explícitamente aprobados.
 - Staging, rollback y verificación manual documentados.
 - El siguiente dominio queda en espera hasta una orden explícita del usuario.
+
+Todos los criterios están cumplidos. La verificación manual está documentada y
+permanece pendiente; no se presenta como realizada.
+
+## Staging recomendado; no ejecutado
+
+1. Desplegar el commit de 7.1 en un entorno no productivo con al menos dos
+   tenants de prueba y conservar el commit anterior `3ae2884` disponible.
+2. Ejecutar primero `scripts\verify.py` en el mismo artefacto desplegado.
+3. Con un admin activo del tenant A, crear un profesor y comprobar los listados
+   legacy y paginado, incluidos búsqueda y filtros de estado.
+4. Editar el profesor con password vacío y no vacío; comprobar después el
+   acceso del profesor y que el hash no se expone en respuestas.
+5. Desactivar y reactivar al profesor; comprobar 409 para documento/email
+   duplicado, 404 para ids ausentes, 422 para datos o estado inválidos y 403
+   para un usuario sin permiso admin.
+6. Repetir las lecturas desde el tenant B y confirmar que ningún profesor del
+   tenant A resulta visible o modificable.
+
+## Rollback
+
+- Esta capa no contiene migraciones, DDL, DML operativo ni cambios de storage;
+  no existe rollback de datos.
+- Antes de publicar, el rollback de código consiste en conservar o volver al
+  commit `3ae2884652b96e4bb3a10648466820e87010994d`, anterior a la extracción
+  de 7.1. Los documentos de activación y caracterización pueden permanecer.
+- Si 7.1 se publica después, crear un revert normal del commit
+  `3eb6a44e6ba7e90a435d90792d76c71f95e1eed9`, ejecutar la compuerta y desplegar
+  ese revert por el mecanismo habitual. No reescribir historia compartida.
+
+## Verificación manual
+
+- Estado: **Pendiente**.
+- Guion: los pasos 3 a 6 de staging, sobre el mismo artefacto candidato a
+  publicación.
+- Riesgo aceptado al cerrar: la compuerta protege contratos y SQL, pero no
+  sustituye una comprobación real de permisos, tenant, login tras actualizar el
+  password y viaje completo de alta/listado/edición/estado.
+- Esta verificación no se marcará como cumplida sin un reporte posterior del
+  usuario que identifique el artefacto o entorno ejercitado.
 
 ## Decisiones
 
@@ -376,10 +407,18 @@ combinar 7.2 con el cierre ni activar `super_admin`.
 - **Dejar 7.2 como decisión, no como implementación inferida.** La extracción
   no demuestra por sí sola que deba añadirse `response_model` o una jerarquía
   nueva de errores.
+- **Cerrar como refactorización pura.** La orden «cierra» resuelve el punto de
+  decisión: 7.2 y 7.3 son `No aplica`; los doce hallazgos permanecen sin
+  corregir.
+- **Cerrar con verificación manual pendiente.** Staging y el guion manual están
+  documentados, pero no se ejecutaron ni se consideran cumplidos.
 - **No activar `super_admin`.** Permanece en espera y requiere una orden nueva.
 
 ## Riesgos
 
+- **Verificación manual de `profesores` pendiente.** El cierre automatizado no
+  demuestra todavía el flujo real en staging de admin, tenant, login ni ciclo
+  de alta/listado/edición/estado.
 - **Verificación manual de `branding` pendiente.** Se aceptó continuar sin
   cerrarla; fallos de GET/PUT, permisos, tenant o ciclo de logos podrían no
   estar cubiertos por la compuerta automática.
@@ -573,13 +612,52 @@ combinar 7.2 con el cierre ni activar `super_admin`.
   Detenerse sin iniciar ninguna de las dos alternativas y sin activar
   `super_admin`.
 
+### 2026-08-23 — cierre de la capa para `profesores`
+
+- Modo de acceso: mismo checkout local en
+  `C:\Users\David\Documents\sistema_escolar_api`; Git y commits locales
+  validados directamente.
+- Autorización: el usuario ordenó «cierra» después de recibir la decisión entre
+  cerrar como refactorización pura o autorizar una 7.2 concreta. Se eligió la
+  primera alternativa; 7.2 y 7.3 son `No aplica`.
+- Precondiciones antes de modificar: rama `main`; árbol limpio según
+  `git status --porcelain=v1 --branch`, que mostró
+  `## main...origin/main [ahead 3]`; `HEAD`
+  `3eb6a44e6ba7e90a435d90792d76c71f95e1eed9`; el commit base
+  `58eb5c2eb43a9d20708b75ca8bd798e9f13b33e6` es ancestro.
+- Continuidad desde el base: `4f459c1` es la activación, `3ae2884` contiene el
+  cierre de 7.0 y `3eb6a44` contiene 7.1. La inspección del último commit mostró
+  exactamente dos archivos de producto, seis pruebas y los dos documentos que
+  la bitácora registra; no existe commit local posterior sin explicar.
+- Compuerta de cierre sobre el `HEAD` limpio, ejecutada fuera del sandbox para
+  permitir el temporal de pytest: **1061 passed**, 5 warnings heredados, Ruff
+  correcto y dependencias íntegras.
+- Staging, rollback y guion manual quedaron documentados. No se ejecutó staging
+  y la verificación manual propia permanece **pendiente**.
+- Cambios de cierre: únicamente esta bitácora y
+  `docs/modularizacion/README.md`. No se modificaron producto, pruebas,
+  configuración, migraciones ni otros dominios.
+- Revisión final: `git diff --check` terminó en exit 0; los avisos fueron solo
+  de normalización futura LF/CRLF. `git status --short --branch` mostró
+  exactamente los dos documentos modificados sobre
+  `main...origin/main [ahead 3]`.
+- Coherencia documental: el índice no contiene filas `Activa`, esta bitácora
+  está `Cerrada`, no quedan referencias vigentes a 7.2 pendiente y
+  `super_admin` sigue en espera.
+- Estado de publicación observado: `main` está tres commits por delante de la
+  referencia local `origin/main`. No se consultó el remoto real, no hubo push,
+  deploy ni GitHub Actions y no se atribuye publicación.
+- Siguiente dominio: `super_admin`, en espera. No se crea su bitácora ni se
+  inspecciona o activa por esta orden.
+
 ## Entrega al próximo chat
 
-- Capa activa: **7 para `profesores`**.
+- Capa activa: **ninguna**.
+- Última capa cerrada: **7 para `profesores`**, el 2026-08-23.
 - Última subcapa terminada: **7.1**, extracción protegida de los nueve sitios
   SQL alcanzables por las rutas propias.
-- Primera subcapa pendiente: **7.2**, decisión explícita entre cierre como
-  refactorización pura o un cambio de contrato concreto; no iniciada.
+- Subcapas 7.2 y 7.3: **No aplica** por cierre explícito como refactorización
+  pura.
 - Resultado acumulado: 7.0 delimitó tres archivos propios, cuatro rutas admin,
   diez SQL —nueve alcanzables y uno en una función sin consumidores—, una tabla
   escrita, ninguna forma de N+1 y doce hallazgos. En 7.1 los nueve alcanzables
@@ -587,9 +665,11 @@ combinar 7.2 con el cierre ni activar `super_admin`.
   todo el ciclo de vida. La caracterización tiene 29 casos, las específicas
   terminaron con **47 passed** y la compuerta con **1061 passed**, Ruff correcto
   y dependencias íntegras.
-- Verificaciones pendientes: la manual de `branding` y las heredadas
-  registradas en el índice; ninguna se considera cumplida.
+- Verificaciones pendientes: la manual propia de `profesores`, la manual de
+  `branding` y las heredadas registradas en el índice; ninguna se considera
+  cumplida.
 - Dominio en espera: `super_admin`.
 - Bloqueos: ninguno.
-- Siguiente acción exacta: solicitar la decisión explícita sobre 7.2 y no
-  implementar, cerrar ni activar otro dominio por inferencia.
+- Siguiente acción exacta: esperar una orden explícita para completar la
+  verificación manual de `profesores` o activar `super_admin`; una instrucción
+  genérica de continuidad no activa el dominio en espera.

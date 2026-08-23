@@ -51,7 +51,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 7 | Resto de dominios — **`planeador_anual` migrado** | Migración individual con contratos y pruebas | **Cerrada** el 2026-08-22; 7.2 No aplica, verificación manual global reportada y sin entorno especificado | [07_PLANEADOR_ANUAL.md](./07_PLANEADOR_ANUAL.md) |
 | 7 | Resto de dominios — **`plan_de_clases` migrado** | Migración individual con contratos y pruebas | **Cerrada** el 2026-08-22; 7.2/7.3 No aplica, verificación manual global con reserva y sin publicación comprobada | [07_PLAN_DE_CLASES.md](./07_PLAN_DE_CLASES.md) |
 | 7 | Resto de dominios — **`branding` migrado** | Migración individual con contratos y pruebas | **Cerrada** el 2026-08-22; 7.2/7.3 No aplica, verificación manual pendiente y sin publicación comprobada | [07_BRANDING.md](./07_BRANDING.md) |
-| 7 | Resto de dominios — **`profesores`** | Migración individual con contratos y pruebas | **Activa** desde el 2026-08-23; 7.0 y 7.1 cerradas, 7.2 pendiente de decisión explícita | [07_PROFESORES.md](./07_PROFESORES.md) |
+| 7 | Resto de dominios — **`profesores` migrado** | Migración individual con contratos y pruebas | **Cerrada** el 2026-08-23; 7.2/7.3 No aplica, verificación manual pendiente y sin publicación comprobada | [07_PROFESORES.md](./07_PROFESORES.md) |
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
 cierre y el usuario ordene continuar, se crea su sucesora desde
@@ -277,7 +277,7 @@ de cierre sobre el commit limpio volvió a pasar con **1032 pruebas**, Ruff corr
 dependencias íntegras. Staging y rollback están documentados; la verificación
 manual propia permanece pendiente y no se comprobó publicación.
 
-**Dominio activo: `profesores`.** El usuario escribió «activa el dominio
+**Dominio migrado y cerrado: `profesores`.** El usuario escribió «activa el dominio
 proefesores» el 2026-08-23, después de recibir la decisión entre completar la
 verificación manual pendiente de `branding` o continuar localmente aceptándola.
 La errata inequívoca se registró como `profesores`; la activación es únicamente
@@ -293,9 +293,11 @@ Su **7.1 quedó cerrada el mismo día**: nueve sitios SQL alcanzables pasaron a
 administran recursos; la consulta de clases sin consumidores quedó inline. El
 comparador AST confirmó los diez argumentos SQL idénticos antes y después. La
 caracterización subió a 29 casos, las específicas terminaron con **47 passed**
-y la compuerta con **1061 passed**, Ruff correcto y dependencias íntegras. 7.2
-queda pendiente de una decisión explícita entre cierre como refactorización
-pura o un cambio concreto de contrato. La bitácora es
+y la compuerta con **1061 passed**, Ruff correcto y dependencias íntegras. El
+usuario ordenó cerrarlo como refactorización pura: 7.2 y 7.3 son **No aplica**
+y la compuerta sobre el commit limpio volvió a pasar con **1061 pruebas**. El
+staging y rollback están documentados; la verificación manual propia permanece
+pendiente y no se comprobó publicación. La bitácora es
 [07_PROFESORES.md](./07_PROFESORES.md).
 
 Ningún otro se activa por inferencia: `super_admin` sigue en espera y exigirá
@@ -1861,11 +1863,13 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   7.2 y 7.3 son **No aplica**. La compuerta sobre el commit limpio volvió a
   pasar con **1032 pruebas**, Ruff correcto y dependencias íntegras. Staging y
   rollback están documentados; la verificación manual propia queda pendiente.
-- Capa activa: **7 para `profesores`**; 7.0 y 7.1 cerradas y 7.2 pendiente de
-  decisión explícita. La caracterización tiene 29 casos; los nueve SQL
-  alcanzables viven en `profesores_repository` y el décimo permanece inline en
-  la función sin consumidores. Las específicas terminaron con **47 passed** y
-  la compuerta con **1061 passed**, Ruff correcto y dependencias íntegras.
+- Capa activa: **ninguna**. La última cerrada es **7 para `profesores`**; 7.0 y
+  7.1 están cerradas y 7.2/7.3 son **No aplica**. La caracterización tiene 29
+  casos; los nueve SQL alcanzables viven en `profesores_repository` y el décimo
+  permanece inline en la función sin consumidores. Las específicas terminaron
+  con **47 passed** y la compuerta de cierre con **1061 passed**, Ruff correcto
+  y dependencias íntegras. Staging y rollback están documentados; la
+  verificación manual propia queda pendiente.
 - Decisión vigente al activar `profesores`: continuar localmente aceptando que
   sigan pendientes la verificación manual propia de `branding`, la
   calibración final de `DB_STATEMENT_TIMEOUT_MS`, la evidencia de GitHub
@@ -2016,7 +2020,7 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
 
 ## Archivos de continuidad
 
-- [07_PROFESORES.md](./07_PROFESORES.md): **bitácora activa** de la capa 7 para
+- [07_PROFESORES.md](./07_PROFESORES.md): **bitácora cerrada** de la capa 7 para
   el dominio `profesores` y **fuente de continuidad más reciente**. **Es el
   documento que un chat nuevo debe leer después de este índice.** Registra el
   commit base limpio `58eb5c2eb43a9d20708b75ca8bd798e9f13b33e6`, la rama
@@ -2033,9 +2037,11 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   SQL alcanzables pasaron a nueve operaciones de `profesores_repository` sin
   mover recursos; el décimo sigue inline en la función sin consumidores. La
   caracterización tiene 29 casos, las específicas terminaron con **47 passed**
-  y la compuerta con **1061 passed**, Ruff correcto y dependencias íntegras.
-  **7.2 está pendiente de decisión explícita**; `super_admin` permanece en
-  espera.
+  y la compuerta con **1061 passed**, Ruff correcto y dependencias íntegras. El
+  usuario ordenó cerrar como refactorización pura: **7.2/7.3 son No aplica** y
+  la compuerta de cierre volvió a pasar con 1061 pruebas. Staging y rollback
+  están documentados; la verificación manual propia permanece pendiente.
+  `super_admin` permanece en espera y no hay una capa activa.
 - [07_BRANDING.md](./07_BRANDING.md): **bitácora cerrada** de la capa 7 para el
   dominio `branding` y fuente de continuidad anterior. Registra el
   commit base limpio `bb34cf6f31413fdbbd2c1866b43f2da71f8ea03b`, la rama

@@ -52,7 +52,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 7 | Resto de dominios — **`plan_de_clases` migrado** | Migración individual con contratos y pruebas | **Cerrada** el 2026-08-22; 7.2/7.3 No aplica, verificación manual global con reserva y sin publicación comprobada | [07_PLAN_DE_CLASES.md](./07_PLAN_DE_CLASES.md) |
 | 7 | Resto de dominios — **`branding` migrado** | Migración individual con contratos y pruebas | **Cerrada** el 2026-08-22; 7.2/7.3 No aplica, verificación manual pendiente y sin publicación comprobada | [07_BRANDING.md](./07_BRANDING.md) |
 | 7 | Resto de dominios — **`profesores` migrado** | Migración individual con contratos y pruebas | **Cerrada** el 2026-08-23; 7.2/7.3 No aplica, verificación manual pendiente y sin publicación comprobada | [07_PROFESORES.md](./07_PROFESORES.md) |
-| 7 | Resto de dominios — **`super_admin`** | Migración individual con contratos y pruebas | **Activa** desde el 2026-08-23; 7.0/7.1/7.2 cerradas, 7.3 pendiente | [07_SUPER_ADMIN.md](./07_SUPER_ADMIN.md) |
+| 7 | Resto de dominios — **`super_admin` migrado** | Migración individual con contratos y pruebas | **Cerrada** el 2026-08-23; 7.0–7.3 completas, verificación manual pendiente y sin publicación comprobada | [07_SUPER_ADMIN.md](./07_SUPER_ADMIN.md) |
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
 cierre y el usuario ordene continuar, se crea su sucesora desde
@@ -301,7 +301,7 @@ staging y rollback están documentados; la verificación manual propia permanece
 pendiente y no se comprobó publicación. La bitácora es
 [07_PROFESORES.md](./07_PROFESORES.md).
 
-**Dominio activo: `super_admin`.** El usuario escribió «sigue super admin» el
+**Dominio migrado y cerrado: `super_admin`.** El usuario escribió «sigue super admin» el
 2026-08-23, después de recibir el cierre de `profesores`, el aviso de que su
 verificación manual permanece pendiente y la indicación de que `super_admin`
 seguía en espera. La orden nombra el dominio y autoriza continuar localmente
@@ -314,12 +314,15 @@ estado a `super_admin_repository`, con 5 de 5 SQL idénticos byte a byte; cerró
 con 89 pruebas específicas y una compuerta global de 1089 pruebas. Su 7.2
 extrajo las dos consultas de autenticación y revalidación al mismo repositorio,
 con 2 de 2 SQL idénticos byte a byte, núcleo todavía dueño de seguridad y
-recursos, 89 pruebas específicas y 1089 globales. La primera pendiente es 7.3,
-limitada a las 13 operaciones del provisionamiento y el cierre. La bitácora es
+recursos, 89 pruebas específicas y 1089 globales. Su 7.3 extrajo las 13
+operaciones del provisionamiento, con 13 de 13 secuencias de SQL y parámetros
+exactas, y cerró con 89 pruebas específicas y una compuerta de 1089 pruebas.
+Staging y rollback están documentados; la verificación manual queda pendiente.
+La bitácora es
 [07_SUPER_ADMIN.md](./07_SUPER_ADMIN.md).
 
-No queda otro dominio enumerado en espera, y no se inicia trabajo adicional por
-inferencia.
+No hay una capa activa ni otro dominio enumerado en espera. Cualquier trabajo
+posterior exige una orden explícita y no se inicia por inferencia.
 
 La advertencia de perfil que se registró al activar `notas` **quedó confirmada**:
 a diferencia de `dashboard`, que resultó de solo lectura, **`notas` escribe**, y
@@ -1881,23 +1884,20 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   7.2 y 7.3 son **No aplica**. La compuerta sobre el commit limpio volvió a
   pasar con **1032 pruebas**, Ruff correcto y dependencias íntegras. Staging y
   rollback están documentados; la verificación manual propia queda pendiente.
-- Capa activa: **7 para `super_admin`**; commit base limpio `2ec924a`, 7.0
-  cerrada con producto intacto, 7.1 cerrada con cinco SQL extraídos y 7.2
-  cerrada con las dos consultas de autenticación/revalidación extraídas. Las
-  específicas y la compuerta terminaron con 89 y 1089 pruebas. 7.3 es la
-  primera pendiente y se limita a las 13 operaciones de provisionamiento y el
-  cierre. La última capa
-  cerrada es **7 para `profesores`**; 7.0 y 7.1 están cerradas, 7.2/7.3 son **No
-  aplica**, la compuerta de cierre terminó con **1061 pruebas** y su
-  verificación manual propia queda pendiente.
+- Capa activa: **ninguna**. La última capa cerrada es **7 para `super_admin`**;
+  commit base limpio `2ec924a`, subcapas 7.0 a 7.3 completas, 20 sitios SQL en
+  el repositorio y ninguno en controlador o núcleo. Las específicas y la
+  compuerta terminaron con 89 y 1089 pruebas. Staging y rollback están
+  documentados; su verificación manual queda pendiente.
 - Decisión vigente al activar `profesores`: continuar localmente aceptando que
   sigan pendientes la verificación manual propia de `branding`, la
   calibración final de `DB_STATEMENT_TIMEOUT_MS`, la evidencia de GitHub
   Actions posterior a la capa 0, los pasos manuales no confirmados heredados y
   la rotación de la credencial privilegiada de la capa 4. Ninguna se marca como
   cumplida.
-- No queda otro dominio enumerado en espera. `super_admin` está activo; 7.0,
-  7.1 y 7.2 están cerradas y 7.3 no se ha iniciado.
+- No queda otro dominio enumerado en espera y no hay capa activa. `super_admin`
+  está cerrado con 7.0–7.3 completas; cualquier trabajo posterior requiere una
+  orden explícita.
 - **Punto de decisión abierto al terminar 7.1**, con **tres** salidas y no dos:
   dónde vive el `UPDATE pagos`, `response_model` para las cuatro lecturas, y los
   errores de dominio. La tercera es **más fácil aquí que en `notas`**: este
@@ -2041,7 +2041,7 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
 
 ## Archivos de continuidad
 
-- [07_SUPER_ADMIN.md](./07_SUPER_ADMIN.md): **bitácora activa** de la capa 7
+- [07_SUPER_ADMIN.md](./07_SUPER_ADMIN.md): **bitácora cerrada** de la capa 7
   para el dominio `super_admin` y **fuente de continuidad más reciente**. **Es
   el documento que un chat nuevo debe leer después de este índice.** Registra
   el commit base limpio `2ec924a3308581b746a61fa24a44f71433034dbc`, la rama
@@ -2054,8 +2054,11 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   `super_admin_repository` y terminó con 89 pruebas específicas y 1089 globales.
   7.2 extrajo las dos consultas de autenticación y revalidación con 2 de 2 SQL
   idénticos, conservó seguridad y recursos en el núcleo y repitió los mismos
-  resultados. **7.0, 7.1 y 7.2 están cerradas; 7.3 es la primera pendiente** y
-  extraerá solo las 13 operaciones del provisionamiento antes de cerrar la capa.
+  resultados. 7.3 extrajo las 13 operaciones del provisionamiento con 13 de 13
+  SQL y parámetros exactos, dejó los 20 sitios SQL en el repositorio y cerró
+  con 89 pruebas específicas y 1089 globales. **7.0–7.3 están cerradas; no hay
+  capa activa ni sucesora enumerada.** Staging y rollback están documentados;
+  la verificación manual propia permanece pendiente.
 - [07_PROFESORES.md](./07_PROFESORES.md): **bitácora cerrada** de la capa 7 para
   el dominio `profesores` y fuente de continuidad anterior. Registra el
   commit base limpio `58eb5c2eb43a9d20708b75ca8bd798e9f13b33e6`, la rama

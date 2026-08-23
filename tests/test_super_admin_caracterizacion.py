@@ -27,9 +27,9 @@ from app.routes import super_admin as super_admin_routes
 ROOT = Path(__file__).resolve().parents[1]
 OWN_PRODUCT_FILES = {
     "app/routes/super_admin.py": 64,
-    "app/controllers/super_admin_controller.py": 339,
+    "app/controllers/super_admin_controller.py": 330,
     "app/core/super_admin.py": 100,
-    "app/repositories/super_admin_repository.py": 121,
+    "app/repositories/super_admin_repository.py": 232,
 }
 PUBLIC_TABLE_PATTERN = re.compile(
     r"\b(?:FROM|JOIN|INTO|UPDATE)\s+(?:public\.)?"
@@ -249,9 +249,9 @@ def test_frontera_archivos_y_sql_extraido_queda_fijada():
         path: len(_source(path).splitlines()) for path in OWN_PRODUCT_FILES
     } == OWN_PRODUCT_FILES
     assert _execute_count("app/routes/super_admin.py") == 0
-    assert _execute_count("app/controllers/super_admin_controller.py") == 13
+    assert _execute_count("app/controllers/super_admin_controller.py") == 0
     assert _execute_count("app/core/super_admin.py") == 0
-    assert _execute_count("app/repositories/super_admin_repository.py") == 7
+    assert _execute_count("app/repositories/super_admin_repository.py") == 20
     assert (ROOT / "app/repositories/super_admin_repository.py").exists()
     assert not (ROOT / "app/repositories/super_admins_repository.py").exists()
 
@@ -273,6 +273,19 @@ def test_repositorio_fija_superficie_y_no_administra_recursos():
         "obtener_tenant_para_estado",
         "actualizar_estado_tenant",
         "registrar_auditoria_estado",
+        "crear_colegio",
+        "crear_schema",
+        "fijar_search_path_base",
+        "aplicar_esquema_base",
+        "obtener_historial_migraciones",
+        "copiar_historial_migraciones",
+        "fijar_search_path_tenant",
+        "crear_branding_inicial",
+        "copiar_plantillas_predefinidas",
+        "crear_admin_inicial",
+        "restaurar_search_path_public",
+        "crear_suscripcion",
+        "registrar_evento_tenant_creado",
     }
     assert all(node.args.args[0].arg == "cursor" for node in functions.values())
     assert not any(
@@ -920,7 +933,6 @@ def test_consumidores_directos_de_tablas_publicas_quedan_enumerados():
     }
 
     assert consumers == {
-        "app/controllers/super_admin_controller.py",
         "app/core/tenant_status.py",
         "app/repositories/super_admin_repository.py",
     }

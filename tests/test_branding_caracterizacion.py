@@ -198,8 +198,8 @@ def test_frontera_archivos_sql_y_consumidores_queda_fijada():
         if "institucion_branding" in path.read_text(encoding="utf-8")
     }
     assert table_consumers == {
-        "app/controllers/super_admin_controller.py",
         "app/repositories/branding_repository.py",
+        "app/repositories/super_admin_repository.py",
     }
 
 

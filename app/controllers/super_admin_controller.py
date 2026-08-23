@@ -209,18 +209,18 @@ def crear_tenant_controller(data: dict, super_admin_id: int | None = None) -> di
     token, conn = _public_connection()
     cursor = conn.cursor()
     try:
-        cursor.execute(
-            """
-            INSERT INTO public.colegios (nombre, subdominio, esquema_db, estado)
-            VALUES (%s, %s, %s, 'activo')
-            RETURNING id, nombre, subdominio, esquema_db, estado
-            """,
-            (nombre, codigo, esquema_nuevo),
+        colegio = super_admin_repository.crear_colegio(
+            cursor,
+            nombre,
+            codigo,
+            esquema_nuevo,
         )
-        colegio = cursor.fetchone()
         tenant_id = colegio[0]
 
-        cursor.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(esquema_nuevo)))
+        super_admin_repository.crear_schema(
+            cursor,
+            sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(esquema_nuevo)),
+        )
 
         # El schema se construye desde una migracion base versionada, no copiando
         # la plantilla. La copia con LIKE INCLUDING ALL no reproducia las claves
@@ -231,10 +231,16 @@ def crear_tenant_controller(data: dict, super_admin_id: int | None = None) -> di
         # apuntar SOLO al schema nuevo mientras se aplica: si la plantilla
         # estuviera en el camino, sus tablas resolverian las referencias y las
         # claves foraneas naceran apuntando a otro schema.
-        cursor.execute(
-            sql.SQL("SET LOCAL search_path TO {}").format(sql.Identifier(esquema_nuevo))
+        super_admin_repository.fijar_search_path_base(
+            cursor,
+            sql.SQL("SET LOCAL search_path TO {}").format(
+                sql.Identifier(esquema_nuevo)
+            ),
         )
-        cursor.execute(ESQUEMA_BASE_TENANT.read_text(encoding="utf-8"))
+        super_admin_repository.aplicar_esquema_base(
+            cursor,
+            ESQUEMA_BASE_TENANT.read_text(encoding="utf-8"),
+        )
 
         # El schema nuevo es una copia estructural de la plantilla, asi que
         # hereda exactamente las migraciones que la plantilla tiene aplicadas.
@@ -242,22 +248,23 @@ def crear_tenant_controller(data: dict, super_admin_id: int | None = None) -> di
         # eso supondria que la plantilla esta al dia y nadie lo ha verificado.
         # Sin esto el tenant nace con historial vacio y el runner intentaria
         # aplicarle todas las migraciones sobre tablas que ya las tienen.
-        cursor.execute("SELECT to_regclass('public.schema_migrations')")
-        historial = cursor.fetchone()
+        historial = super_admin_repository.obtener_historial_migraciones(cursor)
         if historial and historial[0]:
-            cursor.execute(
-                """
-                INSERT INTO public.schema_migrations (migration_name, target_schema, checksum)
-                SELECT migration_name, %s, checksum
-                FROM public.schema_migrations
-                WHERE target_schema = %s
-                """,
-                (esquema_nuevo, template_schema),
+            super_admin_repository.copiar_historial_migraciones(
+                cursor,
+                esquema_nuevo,
+                template_schema,
             )
 
-        cursor.execute(sql.SQL("SET search_path TO {}, public").format(sql.Identifier(esquema_nuevo)))
-        cursor.execute("INSERT INTO institucion_branding (nombre_institucion) VALUES ('')")
-        cursor.execute(
+        super_admin_repository.fijar_search_path_tenant(
+            cursor,
+            sql.SQL("SET search_path TO {}, public").format(
+                sql.Identifier(esquema_nuevo)
+            ),
+        )
+        super_admin_repository.crear_branding_inicial(cursor)
+        super_admin_repository.copiar_plantillas_predefinidas(
+            cursor,
             sql.SQL(
                 """
                 INSERT INTO plantilla_impresion
@@ -268,45 +275,29 @@ def crear_tenant_controller(data: dict, super_admin_id: int | None = None) -> di
                 """
             ).format(sql.Identifier(template_schema))
         )
-        cursor.execute(
-            """
-            INSERT INTO usuarios (nombre, email, rol, password, debe_cambiar_password)
-            VALUES (%s, %s, 'admin', %s, TRUE)
-            """,
-            (admin_nombre, admin_email, get_password_hash(admin_password)),
+        super_admin_repository.crear_admin_inicial(
+            cursor,
+            admin_nombre,
+            admin_email,
+            get_password_hash(admin_password),
         )
 
-        cursor.execute("SET search_path TO public")
-        cursor.execute(
-            """
-            INSERT INTO public.tenant_suscripciones (
-                tenant_id,
-                fecha_inicio,
-                fecha_proximo_pago,
-                dias_gracia,
-                notas
-            )
-            VALUES (%s, %s, %s, %s, %s)
-            """,
-            (tenant_id, fecha_inicio_date, fecha_proximo_pago_date, dias_gracia, notas),
+        super_admin_repository.restaurar_search_path_public(cursor)
+        super_admin_repository.crear_suscripcion(
+            cursor,
+            tenant_id,
+            fecha_inicio_date,
+            fecha_proximo_pago_date,
+            dias_gracia,
+            notas,
         )
         if super_admin_id is not None:
-            cursor.execute(
-                """
-                INSERT INTO public.tenant_eventos_auditoria (
-                    tenant_id,
-                    evento,
-                    detalle,
-                    super_admin_id
-                )
-                VALUES (%s, %s, %s, %s)
-                """,
-                (
-                    tenant_id,
-                    "tenant_creado",
-                    f"Colegio creado con admin inicial {admin_email}",
-                    super_admin_id,
-                ),
+            super_admin_repository.registrar_evento_tenant_creado(
+                cursor,
+                tenant_id,
+                "tenant_creado",
+                f"Colegio creado con admin inicial {admin_email}",
+                super_admin_id,
             )
 
         conn.commit()

@@ -4,11 +4,10 @@
 
 ## Control
 
-- Estado: **Activa** desde el 2026-08-23 por orden explícita del usuario.
+- Estado: **Cerrada** el 2026-08-23, con las subcapas 7.0 a 7.3 completas.
 - Commit base: `2ec924a3308581b746a61fa24a44f71433034dbc`.
 - Rama acordada: `main`.
-- Primera subcapa pendiente: **7.3**, extracción protegida de las 13 operaciones
-  del provisionamiento y cierre de la capa.
+- Primera subcapa pendiente: **Ninguna**.
 - Subcapa 7.0: **Cerrada** el 2026-08-23 con producto intacto, 27 pruebas de
   caracterización nuevas, 88 pruebas específicas y compuerta global de 1088
   pruebas.
@@ -19,6 +18,11 @@
   revalidación viven ahora en `super_admin_repository`, con 2 de 2 SQL
   idénticos byte a byte, 89 pruebas específicas y compuerta global de 1089
   pruebas.
+- Subcapa 7.3: **Cerrada** el 2026-08-23; las 13 operaciones del
+  provisionamiento viven ahora en `super_admin_repository`, con secuencia de
+  SQL y parámetros exacta, 89 pruebas específicas y compuerta final de 1089
+  pruebas. Staging, rollback y verificación manual están documentados; la
+  verificación manual permanece pendiente.
 - Código de producto modificado al activar: **Ninguno**.
 - Dominio de esta capa: **`super_admin`, y solo ese**.
 - Autorización: el usuario escribió «sigue super admin» después de que se le
@@ -111,10 +115,12 @@ no inspecciona código ni infiere la frontera; 7.0 debe delimitarla con evidenci
 | Pruebas específicas integradas | Línea base heredada más `tests\test_super_admin_caracterizacion.py` | **88 passed**, 6 warnings |
 | Pruebas específicas después de 7.1 | Línea base heredada más `tests\test_super_admin_caracterizacion.py` | **89 passed**, 6 warnings |
 | Pruebas específicas después de 7.2 | Línea base heredada más `tests\test_super_admin_caracterizacion.py` | **89 passed**, 6 warnings |
+| Pruebas específicas después de 7.3 | Línea base heredada más `tests\test_super_admin_caracterizacion.py` | **89 passed**, 6 warnings |
 | Guardias históricas de repositorios | Las cinco pruebas exactas de dashboard, notas, ventas, asistencia y planilla | **5 passed**, 1 warning |
 | Suite global de 7.0 | `.\venv\Scripts\python.exe scripts\verify.py` | **1088 passed**, 5 warnings; Ruff correcto; dependencias íntegras |
 | Suite global de 7.1 | `.\venv\Scripts\python.exe scripts\verify.py` | **1089 passed**, 5 warnings; Ruff correcto; dependencias íntegras |
 | Suite global de 7.2 | `.\venv\Scripts\python.exe scripts\verify.py` | **1089 passed**, 5 warnings; Ruff correcto; dependencias íntegras |
+| Compuerta final de 7.3 | `.\venv\Scripts\python.exe scripts\verify.py` | **1089 passed**, 5 warnings; Ruff correcto; dependencias íntegras |
 | Ruff específico | `.\venv\Scripts\python.exe -m ruff check tests\test_super_admin_caracterizacion.py` | Correcto |
 | Dependencias | Incluidas en `scripts\verify.py` | Íntegras |
 
@@ -125,7 +131,7 @@ no inspecciona código ni infiere la frontera; 7.0 debe delimitarla con evidenci
 | 7.0 | Inventario, contratos y caracterización | **Cerrada** el 2026-08-23 |
 | 7.1 | Extraer las cinco operaciones SQL de consulta y estado de tenants | **Cerrada** el 2026-08-23 |
 | 7.2 | Extraer las dos consultas de autenticación y revalidación | **Cerrada** el 2026-08-23 |
-| 7.3 | Extraer el provisionamiento de 13 operaciones y cerrar la capa | **Pendiente; siguiente acción exacta** |
+| 7.3 | Extraer el provisionamiento de 13 operaciones y cerrar la capa | **Cerrada** el 2026-08-23 |
 
 Las subcapas se adaptan al trabajo real. Las innecesarias se marcan `No aplica`
 con una explicación; nunca se ejecutan dos sin orden explícita.
@@ -305,7 +311,7 @@ Resultado:
   dispatcher, `tenant_status.py`, migraciones, guardias históricas ni dominios
   cerrados.
 
-## Primera subcapa pendiente: trabajo exacto para 7.3
+## Subcapa 7.3 cerrada: trabajo ejecutado
 
 1. Extraer únicamente los 13 sitios `cursor.execute` del provisionamiento de
    tenants desde `app/controllers/super_admin_controller.py` al repositorio
@@ -327,6 +333,32 @@ Resultado:
    global; documentar staging, rollback y verificación manual; ejecutar
    `git diff --check`, revisar el alcance, cerrar la capa y actualizar el índice
    dejando cualquier trabajo posterior en espera.
+
+Resultado:
+
+- `super_admin_controller.py` pasó de 339 a 330 líneas y de 13 a 0 sitios
+  `cursor.execute`. Conserva validaciones, normalización, contexto `public`,
+  conexión, cursor, lectura del SQL base, construcción segura de identificadores,
+  orden de `search_path`, hash de contraseña, `commit`, `rollback`, cierres,
+  respuesta y traducción de errores.
+- `super_admin_repository.py` pasó de 121 a 232 líneas y de 7 a 20 funciones y
+  sitios `cursor.execute`. Las trece operaciones nuevas reciben el cursor
+  existente; ninguna administra conexión, contexto, transacción o cierre.
+- El controlador del `HEAD` de entrada y el actual se ejecutaron con el mismo
+  payload y dobles: emitieron **13 de 13 pares `(SQL, parámetros)` exactos**, los
+  hashes de los 13 textos SQL coincidieron, devolvieron el mismo resultado y
+  produjeron el mismo ciclo de vida.
+- Los identificadores dinámicos y la lectura de
+  `20260813_esquema_base_tenant.sql` permanecen en el controlador y se entregan
+  ya construidos al repositorio. No se introdujo una abstracción SQL genérica.
+- Las tres guardias propias que fallaron al extraer eran la señal esperada:
+  líneas/conteos, superficie exacta del repositorio y consumidores de tablas
+  públicas. La compuerta encontró además una guardia histórica de `branding`;
+  se actualizó únicamente para mover `institucion_branding` del controlador al
+  repositorio, sin debilitar su enumeración exacta.
+- No se tocaron rutas, schemas, núcleo de autenticación, dispatcher,
+  `tenant_status.py`, migraciones, SQL base ni dominios cerrados fuera de esa
+  guardia estructural.
 
 ## Criterios de cierre de la subcapa 7.0
 
@@ -369,6 +401,20 @@ Todos se cumplieron el 2026-08-23.
 
 Todos se cumplieron el 2026-08-23.
 
+## Criterios de cierre de la subcapa 7.3
+
+- Trece sitios `cursor.execute` y solo esos extraídos al repositorio propio.
+- Secuencia de SQL y parámetros, retornos, conteos y orden idénticos.
+- Controlador todavía dueño de validación, identificadores, SQL base, contexto,
+  conexión, cursor, transacción, cierre, respuesta y errores.
+- Pruebas específicas, Ruff, compuerta y dependencias correctas.
+- `git diff --check` correcto y diff exclusivo de 7.3.
+- Staging, rollback y verificación manual documentados.
+- Bitácora e índice actualizados, capa cerrada y ninguna sucesora activada.
+
+Todos se cumplieron el 2026-08-23, salvo la ejecución de la verificación manual,
+que queda documentada y pendiente sin impedir el cierre local autorizado.
+
 ## Criterios de cierre de la capa
 
 - Todas las subcapas necesarias están cerradas.
@@ -376,6 +422,56 @@ Todos se cumplieron el 2026-08-23.
 - Contratos conservados o cambios explícitamente aprobados.
 - Staging, rollback y verificación manual documentados.
 - No se activa otro trabajo sin una nueva orden explícita del usuario.
+
+La compuerta automática y la documentación de cierre se completaron el
+2026-08-23. La verificación manual de staging permanece pendiente y no se marca
+como cumplida.
+
+## Staging
+
+Ejecutar solo en una base no productiva con estructura canónica y una identidad
+`super_admin` de prueba:
+
+1. Confirmar que el schema plantilla está al día y que el archivo base incorpora
+   todas las migraciones mediante `tests/test_esquema_base.py`.
+2. Crear por `POST /super-admin/tenants` un colegio con código único, fechas,
+   notas y admin temporal; comprobar 200 y el payload exacto documentado.
+3. Verificar que existen el registro público, el schema derivado, sus claves
+   foráneas y secuencias propias, el historial copiado, branding, plantilla
+   predefinida, admin con cambio de contraseña, suscripción y evento de auditoría.
+4. Iniciar sesión con el admin nuevo y comprobar que el tenant creado no puede
+   leer ni escribir datos de otro tenant; confirmar también que un tenant
+   preexistente sigue funcionando.
+5. Probar código o correo duplicado y datos inválidos: deben conservar 409/422 y
+   no dejar un schema parcial. Registrar entorno, artefacto y resultados antes
+   de considerar cumplida la verificación manual.
+
+Este guion **no se ejecutó** durante la subcapa: no hubo base no productiva
+autorizada ni se creó ningún tenant real.
+
+## Rollback
+
+- Antes de commit o publicación, el punto exacto anterior a 7.3 es
+  `078cc5ff495f7a4120a866c01435993e03ba3a76`; retirar exclusivamente el diff de
+  7.3 restaura los 13 `execute` inline sin tocar 7.0–7.2.
+- Para revertir la capa completa, el commit base es
+  `2ec924a3308581b746a61fa24a44f71433034dbc`.
+- Si 7.3 o la capa completa se publican, el rollback deja de ser puramente
+  local: debe hacerse con un commit de reversión, push y despliegue controlados
+  por el usuario.
+- Es una refactorización sin migraciones ni acceso a DB; revertir código no
+  exige deshacer datos creados por esta ejecución porque no se creó ninguno. Un
+  tenant de staging creado después debe limpiarse mediante el procedimiento de
+  ese entorno, separado del rollback de código.
+
+## Verificación manual
+
+- Estado: **Pendiente**.
+- Cobertura requerida: los cinco pasos de staging anteriores, con énfasis en la
+  transacción completa, el aislamiento entre tenants y el login del admin
+  inicial.
+- No se atribuye verificación manual, publicación, despliegue ni GitHub Actions
+  sin evidencia posterior del usuario.
 
 ## Decisiones
 
@@ -422,6 +518,20 @@ Todos se cumplieron el 2026-08-23.
 - **No ampliar guardias históricas en 7.2.** El repositorio ya estaba enumerado
   desde 7.1; solo se actualizaron su superficie exacta, los conteos de frontera
   y el consumidor directo de SQL público.
+- **Una operación de repositorio por paso observable del alta.** Las trece
+  funciones mantienen nombres semánticos y una llamada `execute` cada una; no
+  se creó un helper genérico que ocultara orden o intención.
+- **Conservar composición dinámica y archivo base en el controlador.** Los
+  objetos `sql.Identifier`, los `search_path` parametrizados y la lectura del
+  SQL versionado permanecen donde estaban; el repositorio recibe las consultas
+  ya construidas y solo las ejecuta.
+- **Actualizar una guardia histórica de `branding`.** La sentencia que siembra
+  `institucion_branding` cambió de archivo dentro de la misma frontera; la
+  enumeración exacta ahora apunta a `super_admin_repository` y sigue rechazando
+  consumidores no declarados.
+- **Cerrar `super_admin` al completar 7.3.** La compuerta automática está verde,
+  staging y rollback están documentados y la verificación manual queda
+  explícitamente pendiente. No se activa otro dominio ni trabajo por inferencia.
 
 ## Riesgos
 
@@ -430,14 +540,17 @@ Todos se cumplieron el 2026-08-23.
   la compuerta automática.
 - **Verificación manual de `branding` y verificaciones heredadas pendientes.**
   Conservan sus riesgos y esta capa no puede presentarlas como cumplidas.
+- **Verificación manual de `super_admin` pendiente.** La compuerta usa dobles y
+  no sustituye crear un tenant en staging, comprobar su schema, login inicial y
+  aislamiento. El cierre no la presenta como cumplida.
 - **Dominio privilegiado.** Una frontera, guard o operación transversal mal
   caracterizada podría afectar varios tenants; 7.0 debe fijar el modelo real
   antes de cualquier extracción.
 - **Credencial privilegiada pendiente de rotación.** La capa 4 la registró y
   esta activación no autoriza rotarla ni asumir que el riesgo desapareció.
-- **Publicación no comprobada contra el remoto real.** `HEAD` coincide con la
-  referencia local `origin/main`, pero no se consultó el remoto ni se verificó
-  deploy o GitHub Actions.
+- **Publicación no comprobada contra el remoto real.** El estado local previo a
+  7.3 mostraba cuatro commits por delante de `origin/main`; no se consultó el
+  remoto ni se verificó deploy o GitHub Actions.
 - **Provisionamiento de alto impacto.** El alta combina DDL, ejecución del SQL
   base, semillas, credenciales, suscripción y auditoría en una sola transacción
   de 13 llamadas observables. Cambiar orden, `search_path` o ownership podría
@@ -456,9 +569,10 @@ Todos se cumplieron el 2026-08-23.
 - **Integridad de auditoría.** Las claves foráneas de auditoría no usan `ON
   DELETE`; una eliminación futura de tenants o super admins tendría efectos no
   caracterizados y queda fuera de alcance.
-- **Persistencia deliberadamente parcial.** Tras 7.2 el controlador conserva 13
-  sitios SQL de provisionamiento y el núcleo ninguno. El repositorio no
-  representa aún toda la frontera y no debe presentarse como migración completa.
+- **Persistencia completada con alto impacto residual.** Tras 7.3 los 20 sitios
+  SQL propios viven en el repositorio y controlador/núcleo quedan sin
+  `execute`; el riesgo funcional del provisionamiento no desaparece y exige la
+  verificación manual pendiente.
 - **Autenticación es una frontera de seguridad.** Mover sus dos consultas en
   7.2 exigía conservar contexto, normalización, contraseña, 401 y offload. La
   caracterización y la compuerta están verdes, pero cualquier cambio futuro a
@@ -673,17 +787,76 @@ Todos se cumplieron el 2026-08-23.
 - Siguiente acción exacta: esperar una orden nueva para iniciar únicamente 7.3,
   completar su compuerta de cierre y detenerse sin activar trabajo posterior.
 
+### 2026-08-23 — cierre de la subcapa 7.3 y de la capa
+
+- Modo de acceso: mismo checkout local en
+  `C:\Users\David\Documents\sistema_escolar_api`; Git y commits locales se
+  validaron directamente.
+- Documentos leídos en el orden exigido: índice maestro completo, esta bitácora
+  activa completa e instrucciones locales —no se encontraron—.
+- Autorización: el usuario escribió «sigue». Conforme al índice y a esta
+  bitácora, la orden autorizó únicamente 7.3, que era la última subcapa.
+- Precondiciones antes de modificar: rama `main`; árbol limpio confirmado con
+  `git status --porcelain=v1 --branch`, que mostró
+  `## main...origin/main [ahead 4]`; `HEAD`
+  `078cc5ff495f7a4120a866c01435993e03ba3a76`; y base
+  `2ec924a3308581b746a61fa24a44f71433034dbc` ancestro del `HEAD`.
+- Continuidad posterior al base: `a3212ec` contiene la activación, `f3d1711`
+  contiene 7.0, `83e418a` contiene 7.1 y `078cc5f` contiene 7.2. El último
+  modifica exactamente núcleo, repositorio, caracterización e índice/bitácora,
+  como estaba registrado; no había commits ni cambios sin explicar.
+- Alcance inspeccionado: únicamente el bloque de provisionamiento de
+  `super_admin_controller.py`, el repositorio propio y las pruebas de alta,
+  esquema base y caracterización relacionadas.
+- Línea base específica sobre el `HEAD` limpio: **89 passed**, 6 warnings.
+- Producto modificado: `app/controllers/super_admin_controller.py` y
+  `app/repositories/super_admin_repository.py`. El controlador pasó de 339 a
+  330 líneas y de 13 a 0 `execute`; el repositorio de 121 a 232 líneas y de 7
+  a 20 funciones y `execute`.
+- Pruebas modificadas: la caracterización propia y una guardia histórica de
+  `branding`. No cambió ninguna expectativa de ruta, payload, status, permiso,
+  SQL, parámetro, retorno, conexión o transacción.
+- Primera batería focal tras extraer: **54 passed y 3 fallos**, exactamente las
+  tres guardias propias de estructura previstas. Después de actualizar líneas,
+  conteos, superficie y consumidores, terminó con **57 passed**, 6 warnings.
+- Comparador ejecutable contra el `HEAD`: el primer intento del arnés no fue
+  evidencia válida porque el módulo histórico necesitaba `__file__`; al
+  declararlo y repetir, confirmó **13 de 13 SQL y parámetros exactos**, 13 de
+  13 hashes de texto iguales, mismo retorno y mismo ciclo de vida.
+- Batería específica integrada: **89 passed**, 6 warnings. Ruff sobre
+  controlador, repositorio y caracterización: correcto.
+- Primera compuerta global: **1088 passed y 1 fallo**; Ruff y `pip check`
+  correctos. El único fallo fue la enumeración exacta de consumidores de
+  `institucion_branding`, que todavía esperaba el controlador.
+- La guardia histórica se actualizó para reconocer el repositorio y conservar
+  su severidad; su ejecución aislada terminó con **1 passed** y Ruff correcto.
+- Repetición de la compuerta global con acceso válido al directorio temporal:
+  **1089 passed**, 5 warnings; Ruff correcto; `pip check` sin dependencias
+  rotas.
+- `git diff --check` previo a la documentación terminó en exit 0. Los avisos
+  fueron solo de normalización futura LF/CRLF.
+- No se ejecutó PostgreSQL real, staging, migración, producción, deploy, commit
+  ni push; tampoco se atribuye evidencia de GitHub Actions.
+- Staging, rollback y verificación manual quedaron documentados arriba. La
+  verificación manual propia se mantiene pendiente.
+- Revisión final: `git diff --check` terminó en exit 0 después de la
+  documentación. `git status --short --branch` mostró exactamente dos archivos
+  de producto —controlador y repositorio—, dos pruebas —la propia y la guardia
+  de `branding`— y los dos documentos. El índice no contiene filas activas y
+  marca `super_admin` como cerrado.
+- Siguiente acción exacta: ninguna subcapa ni dominio queda activo. Esperar una
+  orden explícita del usuario; no activar trabajo posterior por inferencia.
+
 ## Entrega al próximo chat
 
-- Capa activa: **7 para `super_admin`**.
-- Última capa cerrada: **7 para `profesores`**.
-- Última subcapa cerrada: **7.2**, extracción de las dos consultas de
-  autenticación y revalidación; 2 de 2 literales idénticos, 89 pruebas
-  específicas y compuerta global con 1089 pruebas.
-- Primera subcapa pendiente: **7.3**, extracción de las 13 operaciones de
-  provisionamiento y cierre de la capa.
+- Capa activa: **Ninguna**.
+- Última capa cerrada: **7 para `super_admin`**.
+- Última subcapa cerrada: **7.3**, extracción de las 13 operaciones del
+  provisionamiento; 13 de 13 SQL y parámetros exactos, 89 pruebas específicas
+  y compuerta global con 1089 pruebas.
+- Primera subcapa pendiente: **Ninguna**.
 - Verificaciones pendientes aceptadas: manuales de `profesores` y `branding`,
-  además de las heredadas del índice.
+  la manual propia de `super_admin` y las heredadas del índice.
 - Bloqueos: ninguno.
-- Siguiente acción exacta: esperar una orden nueva para ejecutar únicamente
-  7.3 y cerrar la capa sin activar trabajo posterior.
+- Siguiente acción exacta: informar que no hay capa activa y esperar una orden
+  explícita antes de activar cualquier trabajo posterior.

@@ -1,6 +1,6 @@
 # Guía maestra de evolución segura del backend
 
-Última revisión: 2026-08-22.
+Última revisión: 2026-08-23.
 
 ## Propósito
 
@@ -51,7 +51,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 7 | Resto de dominios — **`planeador_anual` migrado** | Migración individual con contratos y pruebas | **Cerrada** el 2026-08-22; 7.2 No aplica, verificación manual global reportada y sin entorno especificado | [07_PLANEADOR_ANUAL.md](./07_PLANEADOR_ANUAL.md) |
 | 7 | Resto de dominios — **`plan_de_clases` migrado** | Migración individual con contratos y pruebas | **Cerrada** el 2026-08-22; 7.2/7.3 No aplica, verificación manual global con reserva y sin publicación comprobada | [07_PLAN_DE_CLASES.md](./07_PLAN_DE_CLASES.md) |
 | 7 | Resto de dominios — **`branding` migrado** | Migración individual con contratos y pruebas | **Cerrada** el 2026-08-22; 7.2/7.3 No aplica, verificación manual pendiente y sin publicación comprobada | [07_BRANDING.md](./07_BRANDING.md) |
-| 7 | Resto de dominios — **`profesores`** | Migración individual con contratos y pruebas | **Activa** desde el 2026-08-23; 7.0 pendiente y no iniciada | [07_PROFESORES.md](./07_PROFESORES.md) |
+| 7 | Resto de dominios — **`profesores`** | Migración individual con contratos y pruebas | **Activa** desde el 2026-08-23; 7.0 cerrada, 7.1 pendiente y no iniciada | [07_PROFESORES.md](./07_PROFESORES.md) |
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
 cierre y el usuario ordene continuar, se crea su sucesora desde
@@ -281,8 +281,15 @@ manual propia permanece pendiente y no se comprobó publicación.
 proefesores» el 2026-08-23, después de recibir la decisión entre completar la
 verificación manual pendiente de `branding` o continuar localmente aceptándola.
 La errata inequívoca se registró como `profesores`; la activación es únicamente
-documental, usa como base el `HEAD` limpio `58eb5c2` y deja 7.0 pendiente y no
-iniciada. Su bitácora es [07_PROFESORES.md](./07_PROFESORES.md).
+documental y usa como base el `HEAD` limpio `58eb5c2`. Su **7.0 quedó cerrada
+el 2026-08-23** sin modificar producto: delimitó tres archivos propios, cuatro
+rutas admin y dos rutas externas de asignaciones bajo el mismo prefijo; contó
+diez sitios SQL inline —nueve alcanzables y uno en una función sin
+consumidores—, una tabla escrita y ningún N+1. Agregó 27 pruebas; las
+específicas terminaron con **45 passed** y la compuerta con **1059 passed**,
+Ruff correcto y dependencias íntegras. Registró doce hallazgos sin corregir.
+Su 7.1 está pendiente y no iniciada. La bitácora es
+[07_PROFESORES.md](./07_PROFESORES.md).
 
 Ningún otro se activa por inferencia: `super_admin` sigue en espera y exigirá
 su propia bitácora y una orden explícita.
@@ -1847,7 +1854,10 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   7.2 y 7.3 son **No aplica**. La compuerta sobre el commit limpio volvió a
   pasar con **1032 pruebas**, Ruff correcto y dependencias íntegras. Staging y
   rollback están documentados; la verificación manual propia queda pendiente.
-- Capa activa: **7 para `profesores`**; 7.0 pendiente y no iniciada.
+- Capa activa: **7 para `profesores`**; 7.0 cerrada y 7.1 pendiente y no
+  iniciada. La caracterización agregó 27 pruebas sin modificar producto; las
+  específicas terminaron con **45 passed** y la compuerta con **1059 passed**,
+  Ruff correcto y dependencias íntegras.
 - Decisión vigente al activar `profesores`: continuar localmente aceptando que
   sigan pendientes la verificación manual propia de `branding`, la
   calibración final de `DB_STATEMENT_TIMEOUT_MS`, la evidencia de GitHub
@@ -2005,9 +2015,15 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   acordada `main`, la orden explícita del usuario —con la errata inequívoca
   `proefesores`— y la decisión de continuar localmente aceptando la
   verificación manual de `branding` y las verificaciones heredadas pendientes.
-  La activación fue exclusivamente documental: 7.0 está pendiente y no
-  iniciada; no se inspeccionó ni modificó código, pruebas, consultas,
-  migraciones, esquemas ni configuración. `super_admin` permanece en espera.
+  La activación fue exclusivamente documental. Su **7.0 está cerrada**: tres
+  archivos propios y 450 líneas, cuatro rutas admin, diez sitios SQL inline,
+  una tabla escrita y ningún N+1. El prefijo contiene además dos rutas de
+  asignaciones y una función de clases propia no tiene consumidores. Agregó 27
+  pruebas sin modificar producto; las específicas terminaron con **45 passed**
+  y la compuerta con **1059 passed**, Ruff correcto y dependencias íntegras.
+  Los seis supuestos quedaron resueltos y los doce hallazgos se registraron sin
+  corregir. **7.1 está pendiente y no iniciada**; `super_admin` permanece en
+  espera.
 - [07_BRANDING.md](./07_BRANDING.md): **bitácora cerrada** de la capa 7 para el
   dominio `branding` y fuente de continuidad anterior. Registra el
   commit base limpio `bb34cf6f31413fdbbd2c1866b43f2da71f8ea03b`, la rama

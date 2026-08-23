@@ -203,6 +203,7 @@ def test_el_repositorio_de_ventas_es_el_octavo():
         "plan_de_clases_repository",
         "planeador_anual_repository",
         "planilla_repository",
+        "profesores_repository",
         "reportes_repository",
         "ventas_repository",
     }

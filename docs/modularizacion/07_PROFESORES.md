@@ -7,11 +7,16 @@
 - Estado: **Activa** desde el 2026-08-23 por orden explícita del usuario.
 - Commit base: `58eb5c2eb43a9d20708b75ca8bd798e9f13b33e6`.
 - Rama acordada: `main`.
-- Primera subcapa pendiente: **7.1**, extracción protegida del SQL alcanzable
-  por las cuatro rutas propias.
+- Primera subcapa pendiente: **7.2**, decisión explícita entre cerrar la capa
+  como refactorización pura o autorizar un cambio concreto de contrato ya
+  caracterizado.
 - Código de producto modificado al activar: **Ninguno**.
 - Código de producto modificado en 7.0: **Ninguno**. El diff funcional es un
   solo archivo nuevo de caracterización; los demás cambios son documentación.
+- Código de producto modificado en 7.1: el controlador propio y el nuevo
+  `app/repositories/profesores_repository.py`; no se modificaron rutas, schemas,
+  migraciones, configuración, dominios consumidores ni la función sin
+  consumidores.
 - Dominio de esta capa: **`profesores`, y solo ese**.
 - Autorización: el usuario escribió «activa el dominio proefesores»; se
   interpreta la errata inequívoca como `profesores`, el dominio que estaba en
@@ -67,7 +72,7 @@ Los seis supuestos de la activación quedaron resueltos con evidencia:
 |---:|---|---|
 | 1 | Frontera, archivos y consumidores por determinar | **RESUELTO CON FRONTERA PARTIDA.** Son tres archivos propios y cuatro rutas, pero el prefijo `/profesores` contiene además dos rutas de `asignaciones`; una función homónima de clases dentro del controlador propio no tiene consumidores |
 | 2 | Contratos HTTP y permisos por determinar | **RESUELTO.** Cuatro rutas síncronas, todas con admin activo, sin `response_model`; se fijaron 200, 403, 404, 409 y 422 por ASGI real |
-| 3 | Persistencia y recursos por determinar | **RESUELTO.** Diez sitios SQL inline, una tabla propia escrita, recursos manuales en cuatro funciones y `get_cursor()` en la función sin consumidores |
+| 3 | Persistencia y recursos por determinar | **RESUELTO.** Diez sitios SQL inline, una tabla propia escrita, recursos manuales en cinco funciones y `get_cursor()` en la función sin consumidores. El conteo «cuatro» registrado inicialmente en 7.0 se corrigió al fijar la guarda de 7.1 |
 | 4 | Posible crecimiento por tamaño por determinar | **RESUELTO.** No existe `execute` dentro de bucles; cada camino propio usa una conexión y entre una y tres consultas constantes |
 | 5 | Contratos compartidos por determinar | **RESUELTO.** Diez archivos externos acceden directamente a `profesor`; autenticación también actualiza su password, y tres tablas tienen clave foránea hacia ella |
 | 6 | Cobertura heredada y HTTP real por determinar | **RESUELTO.** Las dos suites compartidas pasan con 18 casos; siete son propios de profesores, ninguno observaba HTTP real. Se agregaron 27 casos de caracterización, incluidos contratos ASGI |
@@ -76,6 +81,11 @@ Los seis supuestos de la activación quedaron resueltos con evidencia:
 
 La frontera propia tiene **tres archivos y 450 líneas**. No existe repositorio
 de profesores y los **diez sitios `cursor.execute`** viven en el controlador.
+
+Ese es el inventario histórico al cerrar 7.0. Tras 7.1, la frontera tiene
+**cuatro archivos y 533 líneas**: el controlador pasó de 350 a 314 líneas, el
+nuevo repositorio tiene 119, nueve sitios alcanzables viven allí y permanece
+un solo `execute` inline en la función sin consumidores.
 
 | Archivo | Líneas | SQL ejecutado | Responsabilidad |
 |---|---:|---:|---|
@@ -214,19 +224,25 @@ base de datos.
 |---|---|---|
 | Línea base heredada compartida | `pytest` sobre las dos suites relacionadas | **18 passed**, 2 warnings heredados |
 | Caracterización nueva | `pytest tests\test_profesores_caracterizacion.py -q` | **27 passed**, 6 warnings heredados |
-| Pruebas específicas finales | Las tres suites relacionadas | **45 passed**, 6 warnings heredados |
+| Pruebas específicas finales de 7.0 | Las tres suites relacionadas | **45 passed**, 6 warnings heredados |
 | Ruff de la caracterización | Ruff sobre `test_profesores_caracterizacion.py` | **All checks passed** |
 | Compuerta dentro del sandbox | `.\venv\Scripts\python.exe scripts\verify.py` | **1029 passed y 30 errores de setup** por `PermissionError` del temporal global; Ruff y dependencias correctas |
 | Compuerta final fuera del sandbox | El mismo comando, con aprobación | **1059 passed**, Ruff correcto, dependencias íntegras |
+| Guardas rojas de 7.1 | Caracterización antes de producto | **5 failed, 24 passed**: cuatro señales de extracción pendiente y una imprecisión de 7.0 en el conteo de conexiones, corregida de cuatro a cinco |
+| Pruebas específicas finales de 7.1 | Las tres suites relacionadas | **47 passed**, 6 warnings heredados |
+| Guardas globales exactas | Cinco enumeraciones históricas de repositorios | **5 passed**, 1 warning de cache del entorno |
+| Ruff de 7.1 | Ocho archivos Python modificados | **All checks passed** |
+| Compuerta de 7.1 dentro del sandbox | `scripts\verify.py` | **1031 passed y 30 errores de setup** por `PermissionError` del temporal global; Ruff y dependencias correctas |
+| Compuerta final de 7.1 fuera del sandbox | El mismo comando, con aprobación | **1061 passed**, 5 warnings heredados, Ruff correcto, dependencias íntegras |
 
 ## Subcapas
 
 | Subcapa | Resultado | Estado |
 |---:|---|---|
 | 7.0 | Inventario, contratos y caracterización | **Cerrada el 2026-08-23** |
-| 7.1 | Extracción protegida del SQL alcanzable por las rutas propias | **Pendiente y no iniciada** |
-| 7.2 | Segunda extracción o integración | Pendiente de evidencia de 7.0 |
-| 7.3 | Retiro heredado y cierre | Pendiente de evidencia de 7.0 |
+| 7.1 | Extracción protegida del SQL alcanzable por las rutas propias | **Cerrada el 2026-08-23** |
+| 7.2 | Segunda extracción, integración o cierre como refactorización pura | **Pendiente de decisión explícita; no iniciada** |
+| 7.3 | Retiro heredado y cierre | Pendiente; no iniciada |
 
 Las subcapas se adaptan al trabajo real. Las innecesarias se marcan `No aplica`
 con una explicación; nunca se ejecutan dos sin orden explícita.
@@ -267,10 +283,9 @@ Todos quedaron cumplidos:
 - `git diff --check` es correcto y el diff es exclusivo de 7.0.
 - La bitácora registra resultados, decisiones, riesgos y siguiente acción.
 
-## Primera subcapa pendiente: alcance propuesto para 7.1
+## Subcapa cerrada: trabajo ejecutado en 7.1
 
-La evidencia permite proponer una extracción protegida, pero **no la autoriza
-en este turno**:
+La nueva orden «continua» autorizó exclusivamente esta extracción protegida:
 
 1. Agregar primero guards finales para los nueve sitios SQL alcanzables desde
    las cuatro rutas propias, incluidos texto, parámetros, retornos y recursos.
@@ -286,6 +301,30 @@ en este turno**:
 6. Actualizar solo los guards globales que enumeren exactamente repositorios y
    ejecutar específicas, Ruff, compuerta, `git diff --check` y alcance.
 7. Actualizar bitácora e índice y detenerse antes de 7.2.
+
+Todos los puntos quedaron ejecutados. Las nueve operaciones públicas reciben
+el cursor existente y el repositorio no abre ni cierra recursos, no confirma y
+no revierte. El controlador conserva normalización, validación, hashing,
+ensamblado, cinco conexiones manuales, commits, rollbacks y cierres. Los diez
+argumentos SQL del estado anterior y posterior forman el mismo multiconjunto
+AST: nueve se movieron y la consulta de clases sin consumidores quedó inline.
+
+## Primera subcapa pendiente: decisión requerida para 7.2
+
+La frontera de persistencia autorizada ya está cerrada. No existe una segunda
+extracción concreta justificada por 7.1. Antes de iniciar otra subcapa, el
+usuario debe elegir explícitamente entre:
+
+1. cerrar `profesores` como refactorización pura, marcando 7.2 y 7.3 como
+   `No aplica` y ejecutando la compuerta de cierre, staging, rollback y guion
+   manual; o
+2. autorizar por separado una 7.2 concreta sobre contratos ya caracterizados,
+   por ejemplo `response_model` o errores de dominio, demostrando que payloads
+   y status codes no cambian.
+
+Una orden genérica de continuidad no resuelve cuál alternativa debe ejecutarse:
+se requiere elegir expresamente cierre puro o una 7.2 concreta. Tampoco permite
+combinar 7.2 con el cierre ni activar `super_admin`.
 
 ## Criterios de cierre de la capa
 
@@ -323,6 +362,20 @@ en este turno**:
   consumidores reales.
 - **Al cerrar 7.0, dejar 7.1 sujeta a una orden nueva.** La evidencia permite
   proponer la extracción, pero no autoriza producto en este turno.
+- **Ejecutar únicamente 7.1 por la nueva orden «continua».** No se inicia 7.2
+  ni se cierra la capa por inferencia.
+- **Crear un repositorio plural con nueve operaciones.** Cada función recibe el
+  cursor existente y solo ejecuta y devuelve el resultado requerido por el
+  controlador; no administra conexiones ni transacciones.
+- **Conservar la consulta muerta inline.** Su única sentencia sigue en
+  `obtener_clases_profesor_controller`; moverla habría confundido la frontera
+  de asignaciones y creado persistencia para código sin consumidores.
+- **Corregir el conteo de propietarios de conexión.** La guarda roja mostró
+  que eran cinco funciones manuales, no cuatro. La corrección es documental y
+  de prueba; el producto no cambió ese conteo.
+- **Dejar 7.2 como decisión, no como implementación inferida.** La extracción
+  no demuestra por sí sola que deba añadirse `response_model` o una jerarquía
+  nueva de errores.
 - **No activar `super_admin`.** Permanece en espera y requiere una orden nueva.
 
 ## Riesgos
@@ -341,7 +394,7 @@ en este turno**:
   consumidores y consulta asignaciones sin los filtros de la función homónima.
 - **Contratos permisivos.** Password vacío, sueldo sin regla de negocio, estado
   sin `CHECK`, duplicidad de UNIQUE y precedencia 409/404 permanecen intactos.
-- **Recursos manuales.** Cuatro funciones poseen conexión y cursor de forma
+- **Recursos manuales.** Cinco funciones poseen conexión y cursor de forma
   explícita; una extracción debe conservar commits, rollbacks y cierres sin
   introducir `get_cursor()` por conveniencia.
 - **Publicación de `branding` no comprobada contra el remoto real.** Al activar,
@@ -454,20 +507,89 @@ en este turno**:
   inline la consulta de la función sin consumidores— y detenerse. No iniciar
   la extracción por inferencia.
 
+### 2026-08-23 — cierre de la subcapa 7.1
+
+- Modo de acceso: mismo checkout local en
+  `C:\Users\David\Documents\sistema_escolar_api`; Git y commits locales
+  validados directamente.
+- Autorización: la nueva orden «continua» habilitó únicamente la primera
+  subcapa pendiente, 7.1.
+- Precondiciones antes de modificar: rama `main`; árbol limpio según
+  `git status --porcelain=v1 --branch`, que mostró
+  `## main...origin/main [ahead 2]`; `HEAD`
+  `3ae2884652b96e4bb3a10648466820e87010994d`; el commit base
+  `58eb5c2eb43a9d20708b75ca8bd798e9f13b33e6` es ancestro.
+- Continuidad desde el base: los únicos commits posteriores son `4f459c1`, la
+  activación documental, y `3ae2884`, el cierre de 7.0. El segundo contiene
+  exactamente esta bitácora, el índice y la caracterización nueva; ambos están
+  explicados y no había divergencia local sin documentar.
+- Guardas antes de producto: se convirtieron a su forma final las expectativas
+  de frontera, superficie pública, recursos, consumidores y ausencia de N+1,
+  y se fijaron los textos SQL normalizados y parámetros de todos los caminos.
+  La ejecución roja terminó con **5 failed y 24 passed**. Cuatro fallos eran las
+  señales esperadas de extracción pendiente; el quinto reveló que 7.0 había
+  contado cuatro propietarios manuales de conexión cuando son cinco. Se
+  corrigió únicamente esa expectativa y este documento antes de extraer.
+- Producto: se creó `app/repositories/profesores_repository.py` con nueve
+  operaciones públicas que reciben cursor. Se actualizaron únicamente las
+  llamadas alcanzables en `app/controllers/profesor_controller.py`. La función
+  de clases sin consumidores conserva su SQL inline.
+- Equivalencia estructural: un comparador AST entre el controlador de
+  `3ae2884` y el controlador más repositorio actuales obtuvo
+  `{'before': 10, 'after': 10, 'identical': True}` para los primeros argumentos
+  de todos los `execute`.
+- Recursos y contratos: el controlador conserva cinco aperturas y cierres de
+  conexión, un `get_cursor()`, tres commits, seis rollbacks, normalización,
+  hashing, ensamblado y precedencia de errores. Las pruebas conservan conteos,
+  orden, parámetros, retornos, payloads, status codes y permiso admin.
+- Guardas globales: se añadió `profesores_repository` —y solo ese elemento— a
+  las cinco enumeraciones exactas heredadas de dashboard, notas, ventas,
+  asistencia y planilla; sus cinco casos terminaron con **5 passed**.
+- Pruebas específicas finales:
+  `pytest tests\test_profesores_caracterizacion.py tests\test_profesores_controlador.py tests\test_catalogos_pagination.py -q`
+  terminó con **47 passed** y 6 warnings heredados.
+- Ruff sobre los dos archivos de producto y las seis pruebas modificadas:
+  **All checks passed**.
+- La primera compuerta dentro del sandbox ejecutó **1031 pruebas** y produjo
+  **30 errores de setup** exclusivamente por `PermissionError` al directorio
+  temporal global de pytest; Ruff y dependencias pasaron. Repetida fuera del
+  sandbox con aprobación, terminó con **1061 passed**, 5 warnings heredados,
+  Ruff correcto y dependencias íntegras.
+- Archivos de producto de 7.1: el controlador y el nuevo repositorio. Pruebas:
+  la caracterización propia y las cinco enumeraciones globales. Documentación:
+  esta bitácora y el índice. No hubo DB, migraciones, producción, commit, push,
+  deploy ni GitHub Actions.
+- Revisión final: `git diff --check` terminó en exit 0 para todos los archivos
+  rastreados. `git diff --no-index --check -- NUL
+  app/repositories/profesores_repository.py` no reportó errores de whitespace;
+  su exit 1 solo indica que el archivo nuevo difiere de `NUL`. Los avisos fueron
+  exclusivamente de normalización futura LF/CRLF.
+- Alcance final observado por `git status --short --branch`: dos archivos de
+  producto, seis pruebas y dos documentos sobre
+  `main...origin/main [ahead 2]`; no aparecen rutas, schemas, migraciones,
+  configuración ni dominios consumidores modificados.
+- Siguiente acción exacta: pedir una decisión explícita entre cerrar la capa
+  como refactorización pura —7.2/7.3 `No aplica`— o autorizar una 7.2 concreta.
+  Detenerse sin iniciar ninguna de las dos alternativas y sin activar
+  `super_admin`.
+
 ## Entrega al próximo chat
 
 - Capa activa: **7 para `profesores`**.
-- Última subcapa terminada: **7.0**, inventario, contratos y caracterización.
-- Primera subcapa pendiente: **7.1**, extracción protegida de los nueve sitios
+- Última subcapa terminada: **7.1**, extracción protegida de los nueve sitios
   SQL alcanzables por las rutas propias.
-- Resultado de 7.0: tres archivos propios, cuatro rutas admin, diez sitios SQL
-  inline —nueve alcanzables y uno en una función sin consumidores—, una tabla
-  escrita, ninguna forma de N+1 y doce hallazgos sin corregir. Se agregaron 27
-  pruebas; las específicas terminaron con **45 passed** y la compuerta con
-  **1059 passed**, Ruff correcto y dependencias íntegras.
+- Primera subcapa pendiente: **7.2**, decisión explícita entre cierre como
+  refactorización pura o un cambio de contrato concreto; no iniciada.
+- Resultado acumulado: 7.0 delimitó tres archivos propios, cuatro rutas admin,
+  diez SQL —nueve alcanzables y uno en una función sin consumidores—, una tabla
+  escrita, ninguna forma de N+1 y doce hallazgos. En 7.1 los nueve alcanzables
+  pasaron a un repositorio sin recursos; el controlador conserva el décimo y
+  todo el ciclo de vida. La caracterización tiene 29 casos, las específicas
+  terminaron con **47 passed** y la compuerta con **1061 passed**, Ruff correcto
+  y dependencias íntegras.
 - Verificaciones pendientes: la manual de `branding` y las heredadas
   registradas en el índice; ninguna se considera cumplida.
 - Dominio en espera: `super_admin`.
 - Bloqueos: ninguno.
-- Siguiente acción exacta: esperar una orden nueva para ejecutar únicamente
-  7.1 y detenerse antes de 7.2.
+- Siguiente acción exacta: solicitar la decisión explícita sobre 7.2 y no
+  implementar, cerrar ni activar otro dominio por inferencia.

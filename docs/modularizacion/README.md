@@ -51,7 +51,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 7 | Resto de dominios — **`planeador_anual` migrado** | Migración individual con contratos y pruebas | **Cerrada** el 2026-08-22; 7.2 No aplica, verificación manual global reportada y sin entorno especificado | [07_PLANEADOR_ANUAL.md](./07_PLANEADOR_ANUAL.md) |
 | 7 | Resto de dominios — **`plan_de_clases` migrado** | Migración individual con contratos y pruebas | **Cerrada** el 2026-08-22; 7.2/7.3 No aplica, verificación manual global con reserva y sin publicación comprobada | [07_PLAN_DE_CLASES.md](./07_PLAN_DE_CLASES.md) |
 | 7 | Resto de dominios — **`branding` migrado** | Migración individual con contratos y pruebas | **Cerrada** el 2026-08-22; 7.2/7.3 No aplica, verificación manual pendiente y sin publicación comprobada | [07_BRANDING.md](./07_BRANDING.md) |
-| 7 | Resto de dominios — **`profesores`** | Migración individual con contratos y pruebas | **Activa** desde el 2026-08-23; 7.0 cerrada, 7.1 pendiente y no iniciada | [07_PROFESORES.md](./07_PROFESORES.md) |
+| 7 | Resto de dominios — **`profesores`** | Migración individual con contratos y pruebas | **Activa** desde el 2026-08-23; 7.0 y 7.1 cerradas, 7.2 pendiente de decisión explícita | [07_PROFESORES.md](./07_PROFESORES.md) |
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
 cierre y el usuario ordene continuar, se crea su sucesora desde
@@ -288,7 +288,14 @@ diez sitios SQL inline —nueve alcanzables y uno en una función sin
 consumidores—, una tabla escrita y ningún N+1. Agregó 27 pruebas; las
 específicas terminaron con **45 passed** y la compuerta con **1059 passed**,
 Ruff correcto y dependencias íntegras. Registró doce hallazgos sin corregir.
-Su 7.1 está pendiente y no iniciada. La bitácora es
+Su **7.1 quedó cerrada el mismo día**: nueve sitios SQL alcanzables pasaron a
+`profesores_repository`, cuyas nueve operaciones reciben el cursor y no
+administran recursos; la consulta de clases sin consumidores quedó inline. El
+comparador AST confirmó los diez argumentos SQL idénticos antes y después. La
+caracterización subió a 29 casos, las específicas terminaron con **47 passed**
+y la compuerta con **1061 passed**, Ruff correcto y dependencias íntegras. 7.2
+queda pendiente de una decisión explícita entre cierre como refactorización
+pura o un cambio concreto de contrato. La bitácora es
 [07_PROFESORES.md](./07_PROFESORES.md).
 
 Ningún otro se activa por inferencia: `super_admin` sigue en espera y exigirá
@@ -1854,10 +1861,11 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   7.2 y 7.3 son **No aplica**. La compuerta sobre el commit limpio volvió a
   pasar con **1032 pruebas**, Ruff correcto y dependencias íntegras. Staging y
   rollback están documentados; la verificación manual propia queda pendiente.
-- Capa activa: **7 para `profesores`**; 7.0 cerrada y 7.1 pendiente y no
-  iniciada. La caracterización agregó 27 pruebas sin modificar producto; las
-  específicas terminaron con **45 passed** y la compuerta con **1059 passed**,
-  Ruff correcto y dependencias íntegras.
+- Capa activa: **7 para `profesores`**; 7.0 y 7.1 cerradas y 7.2 pendiente de
+  decisión explícita. La caracterización tiene 29 casos; los nueve SQL
+  alcanzables viven en `profesores_repository` y el décimo permanece inline en
+  la función sin consumidores. Las específicas terminaron con **47 passed** y
+  la compuerta con **1061 passed**, Ruff correcto y dependencias íntegras.
 - Decisión vigente al activar `profesores`: continuar localmente aceptando que
   sigan pendientes la verificación manual propia de `branding`, la
   calibración final de `DB_STATEMENT_TIMEOUT_MS`, la evidencia de GitHub
@@ -2020,9 +2028,13 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   una tabla escrita y ningún N+1. El prefijo contiene además dos rutas de
   asignaciones y una función de clases propia no tiene consumidores. Agregó 27
   pruebas sin modificar producto; las específicas terminaron con **45 passed**
-  y la compuerta con **1059 passed**, Ruff correcto y dependencias íntegras.
-  Los seis supuestos quedaron resueltos y los doce hallazgos se registraron sin
-  corregir. **7.1 está pendiente y no iniciada**; `super_admin` permanece en
+  y la compuerta con **1059 passed**. Los seis supuestos quedaron resueltos y
+  los doce hallazgos se registraron sin corregir. Su **7.1 está cerrada**: nueve
+  SQL alcanzables pasaron a nueve operaciones de `profesores_repository` sin
+  mover recursos; el décimo sigue inline en la función sin consumidores. La
+  caracterización tiene 29 casos, las específicas terminaron con **47 passed**
+  y la compuerta con **1061 passed**, Ruff correcto y dependencias íntegras.
+  **7.2 está pendiente de decisión explícita**; `super_admin` permanece en
   espera.
 - [07_BRANDING.md](./07_BRANDING.md): **bitácora cerrada** de la capa 7 para el
   dominio `branding` y fuente de continuidad anterior. Registra el

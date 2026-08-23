@@ -253,6 +253,7 @@ def test_el_repositorio_de_planilla_es_el_duodecimo():
         "plan_de_clases_repository",
         "planeador_anual_repository",
         "planilla_repository",
+        "profesores_repository",
         "reportes_repository",
         "ventas_repository",
     }

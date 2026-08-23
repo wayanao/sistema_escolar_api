@@ -28,8 +28,21 @@ from app.schemas.profesor import ProfesorCreate, ProfesorEstadoUpdate
 ROOT = Path(__file__).resolve().parents[1]
 PROFESORES_PRODUCT_FILES = {
     "app/routes/profesores.py": 80,
-    "app/controllers/profesor_controller.py": 350,
+    "app/controllers/profesor_controller.py": 314,
+    "app/repositories/profesores_repository.py": 119,
     "app/schemas/profesor.py": 20,
+}
+PROFESORES_REPOSITORY = "app/repositories/profesores_repository.py"
+PROFESORES_REPOSITORY_FUNCTIONS = {
+    "obtener_profesor_por_documento",
+    "obtener_profesor_por_email",
+    "crear_profesor",
+    "listar_profesores",
+    "contar_profesores",
+    "listar_profesores_paginados",
+    "actualizar_profesor_con_password",
+    "actualizar_profesor_sin_password",
+    "actualizar_estado_profesor",
 }
 PROFESOR_ROW = (
     7,
@@ -110,6 +123,19 @@ def _execute_count(relative_path):
         and node.func.attr == "execute"
         for node in ast.walk(tree)
     )
+
+
+def _public_functions(relative_path):
+    tree = ast.parse(_source(relative_path))
+    return {
+        node.name: node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef) and not node.name.startswith("_")
+    }
+
+
+def _normalize_sql(query):
+    return " ".join(query.split())
 
 
 def _profesores_routes():
@@ -216,10 +242,11 @@ def test_frontera_archivos_sql_repositorio_y_montaje_queda_fijada():
         for path in PROFESORES_PRODUCT_FILES
     } == PROFESORES_PRODUCT_FILES
     assert _execute_count("app/routes/profesores.py") == 0
-    assert _execute_count("app/controllers/profesor_controller.py") == 10
+    assert (ROOT / PROFESORES_REPOSITORY).exists()
+    assert _execute_count("app/controllers/profesor_controller.py") == 1
+    assert _execute_count(PROFESORES_REPOSITORY) == 9
     assert _execute_count("app/schemas/profesor.py") == 0
     assert not (ROOT / "app/repositories/profesor_repository.py").exists()
-    assert not (ROOT / "app/repositories/profesores_repository.py").exists()
 
     mounted = {
         (method, route.path)
@@ -238,6 +265,34 @@ def test_frontera_archivos_sql_repositorio_y_montaje_queda_fijada():
     }
 
 
+def test_repositorio_fija_superficie_y_no_administra_recursos():
+    functions = _public_functions(PROFESORES_REPOSITORY)
+
+    assert set(functions) == PROFESORES_REPOSITORY_FUNCTIONS
+    assert all(function.args.args[0].arg == "cursor" for function in functions.values())
+
+    source = _source(PROFESORES_REPOSITORY)
+    for forbidden in (
+        "get_connection",
+        "get_cursor",
+        "commit()",
+        "rollback()",
+        ".close()",
+    ):
+        assert forbidden not in source
+
+
+def test_controlador_conserva_propiedad_de_recursos_y_transacciones():
+    source = _source("app/controllers/profesor_controller.py")
+
+    assert source.count("get_connection()") == 5
+    assert source.count("get_cursor()") == 1
+    assert source.count("conn.commit()") == 3
+    assert source.count("conn.rollback()") == 6
+    assert source.count("cursor.close()") == 5
+    assert source.count("conn.close()") == 5
+
+
 def test_consumidores_sql_directos_de_profesor_quedan_enumerados():
     consumers = {
         path.relative_to(ROOT).as_posix()
@@ -249,29 +304,33 @@ def test_consumidores_sql_directos_de_profesor_quedan_enumerados():
         "app/controllers/auth_controller.py",
         "app/controllers/nomina_controller.py",
         "app/controllers/prestamo_controller.py",
-        "app/controllers/profesor_controller.py",
         "app/dependencies.py",
         "app/repositories/asignaciones_repository.py",
         "app/repositories/boletin_repository.py",
         "app/repositories/estudiantes_repository.py",
         "app/repositories/notas_repository.py",
         "app/repositories/plan_de_clases_repository.py",
+        "app/repositories/profesores_repository.py",
         "app/repositories/reportes_repository.py",
     }
 
 
 def test_no_hay_execute_dentro_de_bucles_en_la_frontera_propia():
-    tree = ast.parse(_source("app/controllers/profesor_controller.py"))
-    loop_executes = [
-        call
-        for loop in ast.walk(tree)
-        if isinstance(loop, (ast.For, ast.AsyncFor, ast.While))
-        for call in ast.walk(loop)
-        if isinstance(call, ast.Call)
-        and isinstance(call.func, ast.Attribute)
-        and call.func.attr == "execute"
-    ]
-    assert loop_executes == []
+    for relative_path in (
+        "app/controllers/profesor_controller.py",
+        PROFESORES_REPOSITORY,
+    ):
+        tree = ast.parse(_source(relative_path))
+        loop_executes = [
+            call
+            for loop in ast.walk(tree)
+            if isinstance(loop, (ast.For, ast.AsyncFor, ast.While))
+            for call in ast.walk(loop)
+            if isinstance(call, ast.Call)
+            and isinstance(call.func, ast.Attribute)
+            and call.func.attr == "execute"
+        ]
+        assert loop_executes == [], relative_path
 
 
 def test_ddl_fija_unicidad_estado_y_tres_referencias_externas():
@@ -547,6 +606,21 @@ def test_crear_normaliza_valida_hashea_y_confirma_en_una_conexion(monkeypatch):
     assert result == 41
     assert len(connections) == 1
     assert len(cursor.calls) == 3
+    assert [_normalize_sql(query) for query, _params in cursor.calls] == [
+        (
+            "SELECT id FROM profesor WHERE TRIM(documento_identidad) = %s "
+            "AND (%s IS NULL OR id <> %s) LIMIT 1"
+        ),
+        (
+            "SELECT id FROM profesor WHERE LOWER(TRIM(email)) = %s "
+            "AND (%s IS NULL OR id <> %s) LIMIT 1"
+        ),
+        (
+            "INSERT INTO profesor ( nombre, apellido, documento_identidad, email, "
+            "telefono, password, sueldo, estado ) VALUES "
+            "(%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id"
+        ),
+    ]
     assert cursor.calls[0][1] == ("CC 123", None, None)
     assert cursor.calls[1][1] == ("ana@example.com", None, None)
     assert cursor.calls[2][1] == (
@@ -627,6 +701,14 @@ def test_listado_legacy_usa_una_conexion_y_conserva_forma(
     ]
     assert len(connections) == 1
     assert len(cursor.calls) == 1
+    where_sql = (
+        " WHERE COALESCE(LOWER(estado), 'activo') = %s" if where_present else ""
+    )
+    assert _normalize_sql(cursor.calls[0][0]) == (
+        "SELECT id, nombre, apellido, documento_identidad, email, telefono, sueldo, "
+        "COALESCE(LOWER(estado), 'activo') AS estado FROM profesor"
+        f"{where_sql} ORDER BY id"
+    )
     assert cursor.calls[0][1] == expected_params
     assert ("WHERE" in cursor.calls[0][0]) is where_present
     assert (connection.commits, connection.rollbacks) == (0, 0)
@@ -664,6 +746,20 @@ def test_listado_paginado_cuenta_y_lista_con_parametros_exactos(monkeypatch):
     }
     assert len(connections) == 1
     assert len(cursor.calls) == 2
+    expected_where = (
+        "WHERE COALESCE(LOWER(estado), 'activo') = %s AND ( "
+        "LOWER(nombre || ' ' || apellido) LIKE LOWER(%s) OR "
+        "LOWER(COALESCE(email, '')) LIKE LOWER(%s) OR "
+        "LOWER(COALESCE(documento_identidad, '')) LIKE LOWER(%s) )"
+    )
+    assert _normalize_sql(cursor.calls[0][0]) == (
+        f"SELECT COUNT(*) FROM profesor {expected_where}"
+    )
+    assert _normalize_sql(cursor.calls[1][0]) == (
+        "SELECT id, nombre, apellido, documento_identidad, email, telefono, sueldo, "
+        "COALESCE(LOWER(estado), 'activo') AS estado FROM profesor "
+        f"{expected_where} ORDER BY id LIMIT %s OFFSET %s"
+    )
     assert cursor.calls[0][1] == filtros
     assert cursor.calls[1][1] == filtros + [25, 50]
     assert (connection.commits, connection.rollbacks) == (0, 0)
@@ -698,6 +794,19 @@ def test_actualizar_conserva_las_dos_formas_sql_y_confirma(
     assert len(connections) == 1
     assert len(cursor.calls) == 3
     update_query, update_params = cursor.calls[2]
+    expected_set = (
+        "SET nombre = %s, apellido = %s, documento_identidad = %s, email = %s, "
+        "telefono = %s, password = %s, sueldo = %s, "
+        "estado = COALESCE(%s, estado, 'activo')"
+        if query_has_password
+        else (
+            "SET nombre = %s, apellido = %s, documento_identidad = %s, email = %s, "
+            "telefono = %s, sueldo = %s, estado = COALESCE(%s, estado, 'activo')"
+        )
+    )
+    assert _normalize_sql(update_query) == (
+        f"UPDATE profesor {expected_set} WHERE id = %s RETURNING id"
+    )
     assert ("password = %s" in update_query) is query_has_password
     assert update_params[-2:] == (None, 9)
     assert hashes == ([password] if query_has_password else [])
@@ -754,6 +863,10 @@ def test_actualizar_estado_normaliza_y_conserva_transaccion(
     assert result == expected
     assert len(connections) == 1
     assert len(cursor.calls) == 1
+    assert _normalize_sql(cursor.calls[0][0]) == (
+        "UPDATE profesor SET estado = %s WHERE id = %s "
+        "RETURNING id, COALESCE(LOWER(estado), 'activo')"
+    )
     assert cursor.calls[0][1] == ("inactivo", 8)
     assert (connection.commits, connection.rollbacks) == (commits, rollbacks)
     assert (cursor.closed, connection.closed) == (1, 1)

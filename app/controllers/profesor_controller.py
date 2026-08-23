@@ -1,4 +1,5 @@
 from app.database import get_connection, get_cursor
+from app.repositories import profesores_repository
 from app.security import get_password_hash
 from psycopg2 import IntegrityError
 
@@ -50,32 +51,20 @@ def _validar_campos_profesor(nombre, apellido, documento, email):
 
 
 def _validar_profesor_unico(cursor, documento, email, profesor_id=None):
-    cursor.execute(
-        """
-        SELECT id
-        FROM profesor
-        WHERE TRIM(documento_identidad) = %s
-          AND (%s IS NULL OR id <> %s)
-        LIMIT 1
-        """,
-        (documento, profesor_id, profesor_id),
-    )
-    if cursor.fetchone():
+    if profesores_repository.obtener_profesor_por_documento(
+        cursor,
+        documento,
+        profesor_id,
+    ):
         raise ProfesorDuplicadoError(
             f"Ya existe un profesor con el documento '{documento}'."
         )
 
-    cursor.execute(
-        """
-        SELECT id
-        FROM profesor
-        WHERE LOWER(TRIM(email)) = %s
-          AND (%s IS NULL OR id <> %s)
-        LIMIT 1
-        """,
-        (email, profesor_id, profesor_id),
-    )
-    if cursor.fetchone():
+    if profesores_repository.obtener_profesor_por_email(
+        cursor,
+        email,
+        profesor_id,
+    ):
         raise ProfesorDuplicadoError(
             f"Ya existe un profesor con el email '{email}'."
         )
@@ -96,30 +85,19 @@ def crear_profesor_controller(profesor):
         _validar_campos_profesor(nombre, apellido, documento, email)
         _validar_profesor_unico(cursor, documento, email)
 
-        cursor.execute("""
-            INSERT INTO profesor (
+        profesor_id = profesores_repository.crear_profesor(
+            cursor,
+            (
                 nombre,
                 apellido,
-                documento_identidad,
+                documento,
                 email,
-                telefono,
-                password,
-                sueldo,
-                estado
-            )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            RETURNING id
-        """, (
-            nombre,
-            apellido,
-            documento,
-            email,
-            profesor.telefono,
-            get_password_hash(profesor.password),
-            profesor.sueldo,
-            estado
-        ))
-        profesor_id = cursor.fetchone()[0]
+                profesor.telefono,
+                get_password_hash(profesor.password),
+                profesor.sueldo,
+                estado,
+            ),
+        )
 
         conn.commit()
         return profesor_id
@@ -145,22 +123,11 @@ def obtener_profesores_controller(estado="activo"):
         estado_where, params = _build_estado_filter(estado)
         where_sql = f"WHERE {estado_where}" if estado_where else ""
 
-        cursor.execute(f"""
-            SELECT
-                id,
-                nombre,
-                apellido,
-                documento_identidad,
-                email,
-                telefono,
-                sueldo,
-                COALESCE(LOWER(estado), 'activo') AS estado
-            FROM profesor
-            {where_sql}
-            ORDER BY id
-        """, params)
-
-        resultado = cursor.fetchall()
+        resultado = profesores_repository.listar_profesores(
+            cursor,
+            where_sql,
+            params,
+        )
     finally:
         cursor.close()
         conn.close()
@@ -204,25 +171,12 @@ def obtener_profesores_paginado_controller(limit=50, offset=0, busqueda=None, es
 
         where_sql = f"WHERE {' AND '.join(filtros)}" if filtros else ""
 
-        cursor.execute(f"SELECT COUNT(*) FROM profesor {where_sql}", params)
-        total = cursor.fetchone()[0]
-
-        cursor.execute(f"""
-            SELECT
-                id,
-                nombre,
-                apellido,
-                documento_identidad,
-                email,
-                telefono,
-                sueldo,
-                COALESCE(LOWER(estado), 'activo') AS estado
-            FROM profesor
-            {where_sql}
-            ORDER BY id
-            LIMIT %s OFFSET %s
-        """, params + [limit, offset])
-        resultado = cursor.fetchall()
+        total = profesores_repository.contar_profesores(cursor, where_sql, params)
+        resultado = profesores_repository.listar_profesores_paginados(
+            cursor,
+            where_sql,
+            params + [limit, offset],
+        )
 
         return {
             "total": total,
@@ -288,21 +242,36 @@ def actualizar_profesor_controller(profesor_id, profesor):
         _validar_profesor_unico(cursor, documento, email, profesor_id)
 
         if profesor.password:
-            cursor.execute('''
-                UPDATE profesor
-                SET nombre = %s, apellido = %s, documento_identidad = %s, email = %s, telefono = %s, password = %s, sueldo = %s, estado = COALESCE(%s, estado, 'activo')
-                WHERE id = %s
-                RETURNING id
-            ''', (nombre, apellido, documento, email, profesor.telefono, get_password_hash(profesor.password), profesor.sueldo, estado, profesor_id))
+            row = profesores_repository.actualizar_profesor_con_password(
+                cursor,
+                (
+                    nombre,
+                    apellido,
+                    documento,
+                    email,
+                    profesor.telefono,
+                    get_password_hash(profesor.password),
+                    profesor.sueldo,
+                    estado,
+                    profesor_id,
+                ),
+            )
         else:
-            cursor.execute('''
-                UPDATE profesor
-                SET nombre = %s, apellido = %s, documento_identidad = %s, email = %s, telefono = %s, sueldo = %s, estado = COALESCE(%s, estado, 'activo')
-                WHERE id = %s
-                RETURNING id
-            ''', (nombre, apellido, documento, email, profesor.telefono, profesor.sueldo, estado, profesor_id))
+            row = profesores_repository.actualizar_profesor_sin_password(
+                cursor,
+                (
+                    nombre,
+                    apellido,
+                    documento,
+                    email,
+                    profesor.telefono,
+                    profesor.sueldo,
+                    estado,
+                    profesor_id,
+                ),
+            )
 
-        if not cursor.fetchone():
+        if not row:
             conn.rollback()
             return {"error": "Profesor no encontrado"}
 
@@ -326,16 +295,11 @@ def actualizar_estado_profesor_controller(profesor_id, estado):
     conn = get_connection()
     cursor = conn.cursor()
     try:
-        cursor.execute(
-            """
-            UPDATE profesor
-            SET estado = %s
-            WHERE id = %s
-            RETURNING id, COALESCE(LOWER(estado), 'activo')
-            """,
-            (estado_normalizado, profesor_id),
+        row = profesores_repository.actualizar_estado_profesor(
+            cursor,
+            estado_normalizado,
+            profesor_id,
         )
-        row = cursor.fetchone()
         if not row:
             conn.rollback()
             return {"error": "Profesor no encontrado"}

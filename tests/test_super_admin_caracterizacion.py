@@ -28,8 +28,8 @@ ROOT = Path(__file__).resolve().parents[1]
 OWN_PRODUCT_FILES = {
     "app/routes/super_admin.py": 64,
     "app/controllers/super_admin_controller.py": 339,
-    "app/core/super_admin.py": 112,
-    "app/repositories/super_admin_repository.py": 97,
+    "app/core/super_admin.py": 100,
+    "app/repositories/super_admin_repository.py": 121,
 }
 PUBLIC_TABLE_PATTERN = re.compile(
     r"\b(?:FROM|JOIN|INTO|UPDATE)\s+(?:public\.)?"
@@ -250,8 +250,8 @@ def test_frontera_archivos_y_sql_extraido_queda_fijada():
     } == OWN_PRODUCT_FILES
     assert _execute_count("app/routes/super_admin.py") == 0
     assert _execute_count("app/controllers/super_admin_controller.py") == 13
-    assert _execute_count("app/core/super_admin.py") == 2
-    assert _execute_count("app/repositories/super_admin_repository.py") == 5
+    assert _execute_count("app/core/super_admin.py") == 0
+    assert _execute_count("app/repositories/super_admin_repository.py") == 7
     assert (ROOT / "app/repositories/super_admin_repository.py").exists()
     assert not (ROOT / "app/repositories/super_admins_repository.py").exists()
 
@@ -266,6 +266,8 @@ def test_repositorio_fija_superficie_y_no_administra_recursos():
     }
 
     assert set(functions) == {
+        "obtener_super_admin_por_email",
+        "obtener_estado_super_admin",
         "listar_tenants",
         "listar_auditoria_tenant",
         "obtener_tenant_para_estado",
@@ -919,7 +921,6 @@ def test_consumidores_directos_de_tablas_publicas_quedan_enumerados():
 
     assert consumers == {
         "app/controllers/super_admin_controller.py",
-        "app/core/super_admin.py",
         "app/core/tenant_status.py",
         "app/repositories/super_admin_repository.py",
     }

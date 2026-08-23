@@ -6,6 +6,7 @@ from starlette.concurrency import run_in_threadpool
 from app.config import settings
 from app.database import get_connection
 from app.globals import tenant_schema_var
+from app.repositories import super_admin_repository
 
 SUPER_ADMIN_ROLE = "super_admin"
 SUPER_ADMIN_TENANT = "public"
@@ -28,15 +29,10 @@ def authenticate_super_admin(email: str, password: str, verify_password) -> dict
     token, conn = _with_public_connection()
     cursor = conn.cursor()
     try:
-        cursor.execute(
-            """
-            SELECT id, nombre, email, password, estado
-            FROM public.super_admins
-            WHERE email = %s
-            """,
-            (str(email).strip().lower(),),
+        row = super_admin_repository.obtener_super_admin_por_email(
+            cursor,
+            str(email).strip().lower(),
         )
-        row = cursor.fetchone()
         if not row:
             return None
 
@@ -63,15 +59,7 @@ def validate_super_admin(user_id: int) -> None:
     token, conn = _with_public_connection()
     cursor = conn.cursor()
     try:
-        cursor.execute(
-            """
-            SELECT estado
-            FROM public.super_admins
-            WHERE id = %s
-            """,
-            (user_id,),
-        )
-        row = cursor.fetchone()
+        row = super_admin_repository.obtener_estado_super_admin(cursor, user_id)
         if not row or str(row[0] or "").strip().lower() != "activo":
             raise ValueError("Super admin no valido")
     finally:

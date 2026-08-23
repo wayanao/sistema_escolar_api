@@ -1,3 +1,27 @@
+def obtener_super_admin_por_email(cursor, email):
+    cursor.execute(
+        """
+            SELECT id, nombre, email, password, estado
+            FROM public.super_admins
+            WHERE email = %s
+            """,
+        (email,),
+    )
+    return cursor.fetchone()
+
+
+def obtener_estado_super_admin(cursor, super_admin_id):
+    cursor.execute(
+        """
+            SELECT estado
+            FROM public.super_admins
+            WHERE id = %s
+            """,
+        (super_admin_id,),
+    )
+    return cursor.fetchone()
+
+
 def listar_tenants(cursor):
     cursor.execute(
         """

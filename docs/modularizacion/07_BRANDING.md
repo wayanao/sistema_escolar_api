@@ -7,17 +7,21 @@
 - Estado: **Activa** desde el 2026-08-22 por orden explícita del usuario.
 - Commit base: `bb34cf6f31413fdbbd2c1866b43f2da71f8ea03b`.
 - Rama acordada: `main`.
-- Primera subcapa pendiente: **7.1**, no iniciada.
+- Primera subcapa pendiente: **7.2**, no iniciada.
 - Código de producto modificado al activar: **Ninguno**.
 - Código de producto modificado en 7.0: **Ninguno**. El diff funcional es un
   solo archivo nuevo de caracterización; los demás cambios son documentación.
+- Código de producto modificado en 7.1: el controlador propio y el nuevo
+  `branding_repository`; no se modificaron rutas, schemas, storage, migraciones
+  ni otros dominios.
 - Dominio de esta capa: **`branding`, y solo ese**. `profesores` y
   `super_admin` siguen en espera.
 - Autorización: el usuario nombró `branding`, ordenó activarlo y, después de
   recibir la advertencia, confirmó continuar localmente aceptando que las
   verificaciones heredadas permanezcan pendientes.
-- La activación es exclusivamente documental. No autoriza 7.0, commit, push,
-  deploy, migraciones reales ni acceso a producción.
+- La activación fue exclusivamente documental. Las órdenes posteriores
+  autorizaron 7.0 y 7.1 por separado; ninguna autoriza commit, push, deploy,
+  migraciones reales ni acceso a producción.
 
 ## Objetivo
 
@@ -89,6 +93,27 @@ Participan además piezas compartidas relacionadas: `app/services/storage.py`
 el `ContextVar` del tenant. `super_admin_controller.py` es un consumidor
 externo: inserta una fila vacía al crear un tenant. La frontera no autoriza
 modificarlo.
+
+### Resultado de la extracción 7.1
+
+La frontera propia queda en **cuatro archivos y 268 líneas**. Los siete usos
+SQL originales salieron del controlador y viven en seis operaciones del nuevo
+repositorio; la lectura de la columna de logo es una única operación con dos
+consumidores reales —subida y borrado—. El controlador conserva
+`get_cursor(commit=True)`, serialización, defaults, ensamblado de respuestas,
+tenant, offload y todos los efectos de storage.
+
+| Archivo | Líneas | SQL ejecutado | Responsabilidad tras 7.1 |
+|---|---:|---:|---|
+| `app/routes/branding.py` | 36 | 0 | Cuatro entradas HTTP, autenticación, admin y multipart |
+| `app/controllers/branding_controller.py` | 137 | 0 | Orquestación, recursos, respuestas, logos, storage y offload |
+| `app/repositories/branding_repository.py` | 66 | 6 | Siete usos originales: lectura/creación, actualización y operaciones de logo |
+| `app/schemas/branding.py` | 29 | 0 | Entrada permisiva y un esquema de respuesta no usado |
+
+El texto SQL, los parámetros y los retornos quedaron fijados literalmente en
+la caracterización antes de mover producto. Los consumidores directos de la
+tabla son ahora el repositorio y el escritor externo de `super_admin`; los
+conteos de consultas, conexiones y almacenamiento no cambiaron.
 
 ### Entradas HTTP, permisos y respuestas
 
@@ -226,13 +251,18 @@ base de datos.
 | Pruebas específicas finales | Las cuatro suites relacionadas | **50 passed**, 5 warnings heredados |
 | Ruff de la caracterización | `.\venv\Scripts\python.exe -m ruff check tests\test_branding_caracterizacion.py` | **All checks passed** |
 | Compuerta final | `.\venv\Scripts\python.exe scripts\verify.py` | **1030 passed**, Ruff correcto, dependencias íntegras |
+| Línea base de 7.1 | Las cuatro suites relacionadas | **50 passed**, 5 warnings heredados |
+| Señal previa a la extracción | `pytest tests\test_branding_caracterizacion.py -q` | **3 failed, 18 passed**; fallos esperados por siete SQL inline y repositorio ausente |
+| Pruebas específicas de 7.1 | Las cuatro suites relacionadas | **52 passed**, 5 warnings heredados |
+| Ruff de 7.1 | Ruff sobre controlador, repositorio y caracterización de branding | **All checks passed** |
+| Compuerta de 7.1 | `.\venv\Scripts\python.exe scripts\verify.py` | **1032 passed**, Ruff correcto, dependencias íntegras |
 
 ## Subcapas
 
 | Subcapa | Resultado | Estado |
 |---:|---|---|
 | 7.0 | Inventario, contratos, almacenamiento y caracterización | **Cerrada el 2026-08-22** |
-| 7.1 | Primera extracción protegida, solo si la evidencia la justifica | Pendiente |
+| 7.1 | Extracción protegida de los siete usos SQL a un repositorio sin recursos | **Cerrada el 2026-08-22** |
 | 7.2 | Segunda extracción o integración, solo si se autoriza | Pendiente |
 | 7.3 | Retiro heredado y cierre, si aplica | Pendiente |
 
@@ -277,15 +307,46 @@ Todos quedaron cumplidos:
 - `git diff --check` correcto y diff exclusivo de 7.0.
 - Bitácora actualizada con resultados, decisiones, riesgos y siguiente acción.
 
-## Siguiente subcapa pendiente: 7.1
+## Subcapa cerrada: trabajo ejecutado en 7.1
 
-La evidencia permite presentar para autorización una extracción limitada de
-los **siete sitios SQL** a un único `branding_repository`, conservando en el
-controlador la propiedad de `get_cursor(commit=True)`, el offload, el tenant,
-storage, orden de efectos y contratos. Antes de mover producto se deben fijar
-texto y parámetros exactos y decidir con evidencia cómo representar los dos
-pares de SQL de logo que ya tienen dos usos reales. **7.1 no está iniciada ni
-autorizada por inferencia.**
+1. Agregar primero guards finales del repositorio para texto SQL, parámetros,
+   retornos, superficie, ubicación y ausencia de propiedad de recursos.
+2. Confirmar la señal roja esperada antes de modificar producto.
+3. Crear un único `branding_repository` con seis operaciones que representan
+   los siete usos SQL originales; reutilizar la lectura de logo solo porque
+   tiene dos consumidores reales.
+4. Sustituir los siete `cursor.execute` del controlador sin mover
+   `get_cursor(commit=True)`, serialización JSON, defaults, tenant, offload,
+   storage, orden de efectos ni respuestas.
+5. Conservar literalmente consultas y parámetros, y mantener constantes los
+   conteos de conexiones, consultas y operaciones de almacenamiento.
+6. Actualizar únicamente los cinco guards globales que enumeran de forma
+   deliberada el conjunto exacto de repositorios.
+7. Ejecutar las pruebas específicas, Ruff, compuerta global,
+   `git diff --check` y revisión de alcance.
+8. Actualizar bitácora e índice y detenerse antes de 7.2.
+
+## Criterios de cierre de 7.1
+
+Todos quedaron cumplidos:
+
+- El controlador no contiene SQL y el repositorio no abre ni cierra recursos.
+- Consultas, parámetros, retornos, orden y efectos permanecen caracterizados.
+- Las cuatro suites específicas terminan con **52 passed**.
+- La compuerta global termina con **1032 passed**, Ruff correcto y dependencias
+  íntegras.
+- `git diff --check` es correcto y el diff pertenece exclusivamente a 7.1.
+- La bitácora registra resultados, decisiones, riesgos y siguiente acción.
+
+## Siguiente subcapa pendiente: 7.2
+
+La primera extracción ya agotó la separación arquitectónica justificada: el
+repositorio posee SQL y el controlador conserva recursos y orquestación. Los
+trece hallazgos siguen vivos porque corregir cualquiera alteraría comportamiento
+o ampliaría alcance. La siguiente acción exacta es presentar una decisión entre
+cerrar la capa como refactorización pura —marcando 7.2 y 7.3 `No aplica` en un
+turno posterior— o autorizar explícitamente una 7.2 concreta con su cambio de
+contrato. **7.2 no se inicia por esta ejecución.**
 
 ## Criterios de cierre de la capa
 
@@ -321,9 +382,23 @@ autorizada por inferencia.**
 - **No corregir los trece hallazgos.** La ausencia de fila, unicidad, validación
   de contenido, autorización de uploads, response models, errores y
   compensaciones quedan fuera de una subcapa de inventario.
-- **Dejar 7.1 sujeta a una orden nueva.** La evidencia permite proponer extraer
-  los siete sitios SQL, pero no autoriza aún producto ni una forma concreta de
-  representar los pares de logo.
+- **Al cerrar 7.0, dejar 7.1 sujeta a una orden nueva.** La evidencia permitió
+  proponer la extracción, pero no autorizó producto hasta la orden posterior.
+- **Ejecutar solo 7.1 por la nueva orden «continua».** No se inicia 7.2 ni se
+  corrige ningún hallazgo.
+- **Mantener los recursos en el controlador.** El repositorio recibe cursor y
+  no conoce conexión, commit, rollback, cierre, tenant, threadpool ni storage.
+- **Representar siete usos con seis operaciones.** La lectura de logo se
+  comparte entre subida y borrado porque tiene exactamente dos usos reales;
+  las otras cinco operaciones reflejan una sentencia cada una.
+- **Fijar SQL y parámetros antes de extraer.** La caracterización falló primero
+  por el estado previo y después protegió byte a byte las consultas movidas.
+- **Conservar la severidad de los guards globales.** Los cinco inventarios del
+  conjunto exacto se actualizaron para reconocer `branding_repository`; no se
+  relajó ninguna aserción.
+- **Dejar 7.2 como decisión explícita.** No hay una segunda extracción necesaria
+  demostrada; cerrar como refactorización pura o cambiar un contrato requiere
+  una orden posterior.
 
 ## Riesgos
 
@@ -333,11 +408,11 @@ autorizada por inferencia.**
   borrados después del commit; no hay transacción compartida ni compensación
   para un save seguido de fallo DB, y los errores de delete se absorben.
 - **Límite async/síncrono y tenant.** El camino POST está correctamente
-  protegido hoy; una extracción puede bloquear el event loop o perder el
-  `ContextVar` si mueve `_guardar_logo_leido` fuera de su offload.
+  protegido y 7.1 no movió `_guardar_logo_leido` fuera de su offload; un cambio
+  posterior aún podría bloquear el event loop o perder el `ContextVar`.
 - **Frontera compartida.** `/uploads`, `storage.py` y el insert de alta de tenant
-  son consumidores externos que una prueba limitada a los tres archivos
-  propios no protegería.
+  son consumidores externos que una prueba limitada a la frontera propia no
+  protegería.
 - **Integridad de fila débil.** DDL y controladores permiten ausencia o
   duplicados; los éxitos silenciosos medidos pueden producir datos o archivos
   no asociados.
@@ -450,19 +525,85 @@ autorizada por inferencia.**
   recursos, storage, offload y contratos— y detenerse. No iniciar la extracción
   por inferencia.
 
+### 2026-08-22 — cierre de la subcapa 7.1
+
+- Modo de acceso: mismo checkout local en
+  `C:\Users\David\Documents\sistema_escolar_api`; Git y commits locales
+  validados directamente.
+- Autorización: la nueva orden «continua» habilitó únicamente la primera
+  subcapa pendiente, 7.1.
+- Precondiciones antes de modificar: rama `main`; árbol limpio según
+  `git status --porcelain=v1 --branch`, que mostró
+  `## main...origin/main [ahead 2]`; `HEAD`
+  `008323712bc686644d361195974f7337e1414eef`; el commit base
+  `bb34cf6f31413fdbbd2c1866b43f2da71f8ea03b` es ancestro.
+- Continuidad desde el base: hay dos commits posteriores, `f53711b`
+  —activación documental— y `0083237` —cierre de 7.0 y caracterización—.
+  Ambos están explicados en esta bitácora y sus diffs coinciden con lo
+  registrado; no había commits locales sin explicar.
+- Estado de publicación observado: la referencia local `origin/main` está dos
+  commits por detrás. No se consultó el remoto real, no hubo push y no se
+  atribuye GitHub Actions.
+- Inspección limitada: bitácora activa, controlador, caracterización de
+  branding y los cinco guards exactos de repositorios que la compuerta señaló.
+  No se inspeccionó ni modificó código de `profesores`, `super_admin` u otra
+  capa en espera.
+- Línea base específica antes de modificar: `pytest` sobre
+  `test_branding_controlador.py`, `test_branding_upload_boundary.py`,
+  `test_uploads_permissions.py` y `test_branding_caracterizacion.py` terminó
+  con **50 passed** y 5 warnings heredados.
+- Caracterización agregada antes de producto: superficie final del repositorio,
+  ausencia de propiedad de recursos y comparación literal de SQL, parámetros y
+  retornos. `pytest tests/test_branding_caracterizacion.py -q` terminó con **3
+  failed, 18 passed**: siete
+  `execute` aún inline y repositorio ausente, exactamente el estado que debía
+  cambiar.
+- Producto: se creó `app/repositories/branding_repository.py` con seis
+  operaciones y se sustituyeron los siete usos SQL de
+  `app/controllers/branding_controller.py`. La lectura de logo sirve a subida y
+  borrado; `get_cursor(commit=True)`, JSON, defaults, tenant, offload, storage,
+  orden y respuestas permanecen en el controlador.
+- La primera repetición de la caracterización tras extraer terminó con **1
+  failed, 20 passed** únicamente porque el guard de líneas aún conservaba 181;
+  se actualizó al valor final 137 y se agregó el repositorio de 66 líneas al
+  inventario. El mismo comando de las cuatro suites específicas terminó con
+  **52 passed** y 5 warnings heredados.
+- `ruff check` sobre controlador, repositorio y caracterización terminó con
+  **All checks passed**.
+- La primera compuerta global posterior a la extracción terminó con **5 failed,
+  1027 passed**; los cinco fallos enumeraban el conjunto exacto de repositorios
+  y señalaban exclusivamente `branding_repository`. Se añadió el nombre a esos
+  cinco guards y se cambió el único conteo explícito de 13 a 14. La validación
+  dirigida terminó con **5 passed**.
+- Compuerta global final, `.\venv\Scripts\python.exe scripts\verify.py`:
+  **1032 passed**, 5 warnings heredados, Ruff correcto y dependencias íntegras.
+- Archivos funcionales: controlador y repositorio propios, caracterización de
+  branding y los cinco guards exactos. Documentación: esta bitácora y el índice
+  maestro. No se modificaron rutas, schemas, storage, migraciones,
+  configuración ni producto de otros dominios.
+- Revisión final: `git diff --check` terminó en exit 0; la comprobación
+  independiente del repositorio nuevo no reportó errores de whitespace —exit 1
+  porque difiere de `NUL`—. Los avisos fueron solo de normalización futura
+  LF/CRLF. El diff contiene exclusivamente los diez archivos de 7.1 sobre
+  `main...origin/main [ahead 2]`.
+- No hubo DB, migraciones reales, producción, commit, push ni deploy.
+- Siguiente acción exacta: presentar una decisión explícita entre cerrar esta
+  capa como refactorización pura —7.2 y 7.3 `No aplica`— o autorizar una 7.2
+  concreta. Detenerse sin iniciar 7.2.
+
 ## Entrega al próximo chat
 
 - Capa activa: **7 para `branding`**.
-- Última subcapa terminada: **7.0**, inventario, contratos, almacenamiento y
-  caracterización.
-- Primera subcapa pendiente: **7.1**, extracción protegida aún no autorizada.
-- Producto modificado en 7.0: ninguno; se agregó una caracterización de 19
-  casos y la compuerta terminó con **1030 pruebas**.
-- Resultado: tres archivos propios, cuatro rutas más `/uploads`, una tabla,
-  siete sitios SQL inline, escrituras DB/storage y ningún N+1 de aplicación.
+- Última subcapa terminada: **7.1**, extracción protegida de persistencia.
+- Primera subcapa pendiente: **7.2**, no iniciada y sin alcance autorizado.
+- Producto modificado en 7.1: controlador propio y nuevo repositorio; siete
+  usos SQL originales quedan representados por seis operaciones sin recursos.
+- Resultado: cuatro archivos propios y 268 líneas; rutas, contratos, SQL,
+  parámetros, conexiones, transacciones, tenant, offload, storage y ausencia de
+  N+1 conservados. Específicas **52 passed**; compuerta **1032 passed**.
 - Hallazgos: trece registrados y ninguno corregido.
 - Verificaciones heredadas: pendientes por decisión explícita del usuario.
 - Dominios en espera: `profesores` y `super_admin`.
 - Bloqueos: ninguno.
-- Siguiente acción exacta: presentar el alcance de 7.1 y esperar una orden
-  explícita; no iniciar producto por inferencia.
+- Siguiente acción exacta: decidir entre cerrar como refactorización pura o
+  autorizar una 7.2 concreta; no iniciar 7.2 por inferencia.

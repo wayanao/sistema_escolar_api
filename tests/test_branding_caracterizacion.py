@@ -1,11 +1,13 @@
-"""Caracterización de la frontera completa de branding para la subcapa 7.0.
+"""Caracterización de la frontera de branding para las subcapas 7.0 y 7.1.
 
 Complementa las pruebas heredadas de la capa 1 y de concurrencia. Fija la
 frontera, los contratos HTTP que no cubría el upload, los conteos de recursos y
-varios comportamientos heredados que esta capa registra sin corregir.
+varios comportamientos heredados que esta capa registra sin corregir. También
+fija el SQL y los parámetros antes de extraerlos al repositorio.
 """
 
 import ast
+import importlib
 import inspect
 import json
 from contextlib import contextmanager
@@ -28,7 +30,8 @@ from app.services import storage
 ROOT = Path(__file__).resolve().parents[1]
 BRANDING_PRODUCT_FILES = {
     "app/routes/branding.py": 36,
-    "app/controllers/branding_controller.py": 181,
+    "app/controllers/branding_controller.py": 137,
+    "app/repositories/branding_repository.py": 66,
     "app/schemas/branding.py": 29,
 }
 FULL_ROW = (
@@ -185,9 +188,9 @@ def test_frontera_archivos_sql_y_consumidores_queda_fijada():
         for path in BRANDING_PRODUCT_FILES
     } == BRANDING_PRODUCT_FILES
     assert _execute_count("app/routes/branding.py") == 0
-    assert _execute_count("app/controllers/branding_controller.py") == 7
+    assert _execute_count("app/controllers/branding_controller.py") == 0
     assert _execute_count("app/schemas/branding.py") == 0
-    assert not (ROOT / "app/repositories/branding_repository.py").exists()
+    assert _execute_count("app/repositories/branding_repository.py") == 6
 
     table_consumers = {
         path.relative_to(ROOT).as_posix()
@@ -195,9 +198,137 @@ def test_frontera_archivos_sql_y_consumidores_queda_fijada():
         if "institucion_branding" in path.read_text(encoding="utf-8")
     }
     assert table_consumers == {
-        "app/controllers/branding_controller.py",
         "app/controllers/super_admin_controller.py",
+        "app/repositories/branding_repository.py",
     }
+
+
+def test_repositorio_fija_superficie_y_no_administra_recursos():
+    tree = ast.parse(_source("app/repositories/branding_repository.py"))
+    functions = {
+        node.name: node.args.args[0].arg
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef)
+    }
+
+    assert functions == {
+        "obtener_branding": "cursor",
+        "crear_branding": "cursor",
+        "actualizar_branding": "cursor",
+        "obtener_logo": "cursor",
+        "actualizar_logo": "cursor",
+        "eliminar_logo": "cursor",
+    }
+    names = {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}
+    assert names.isdisjoint(
+        {"get_cursor", "get_connection", "commit", "rollback", "close"}
+    )
+
+
+def test_repositorio_conserva_sql_parametros_y_retornos_exactos():
+    repository = importlib.import_module("app.repositories.branding_repository")
+
+    cursor = CursorProbe([FULL_ROW])
+    assert repository.obtener_branding(cursor) == FULL_ROW
+    assert cursor.calls == [(
+        """
+            SELECT id, nombre_institucion, eslogan, logo_principal_url, logo_secundario_url,
+                   direccion, telefono, email, nit, codigo_dane, sitio_web,
+                   color_primario, color_secundario, configuracion_extra
+            FROM institucion_branding
+            ORDER BY id ASC
+            LIMIT 1
+        """,
+        None,
+    )]
+
+    cursor = CursorProbe([EMPTY_ROW])
+    assert repository.crear_branding(cursor) == EMPTY_ROW
+    assert cursor.calls == [(
+        """
+                INSERT INTO institucion_branding (nombre_institucion)
+                VALUES ('')
+                RETURNING id, nombre_institucion, eslogan, logo_principal_url, logo_secundario_url,
+                         direccion, telefono, email, nit, codigo_dane, sitio_web,
+                         color_primario, color_secundario, configuracion_extra
+            """,
+        None,
+    )]
+
+    parametros = (
+        "Colegio",
+        "Lema",
+        "Calle 1",
+        "555",
+        "info@colegio.edu",
+        "900",
+        "12345",
+        "colegio.edu",
+        "#111111",
+        "#222222",
+        '{"clave": "valor"}',
+    )
+    cursor = CursorProbe()
+    assert repository.actualizar_branding(cursor, parametros) is None
+    assert cursor.calls == [(
+        """
+            UPDATE institucion_branding
+            SET nombre_institucion = %s,
+                eslogan = %s,
+                direccion = %s,
+                telefono = %s,
+                email = %s,
+                nit = %s,
+                codigo_dane = %s,
+                sitio_web = %s,
+                color_primario = %s,
+                color_secundario = %s,
+                configuracion_extra = %s,
+                actualizado_en = CURRENT_TIMESTAMP
+            WHERE id = (SELECT id FROM institucion_branding ORDER BY id ASC LIMIT 1)
+        """,
+        parametros,
+    )]
+
+    cursor = CursorProbe([("/uploads/anterior.png",)])
+    assert repository.obtener_logo(cursor, "logo_principal_url") == (
+        "/uploads/anterior.png",
+    )
+    assert cursor.calls == [(
+        """
+            SELECT logo_principal_url FROM institucion_branding
+            ORDER BY id ASC LIMIT 1
+        """,
+        None,
+    )]
+
+    cursor = CursorProbe()
+    assert repository.actualizar_logo(
+        cursor,
+        "logo_secundario_url",
+        "/uploads/nuevo.png",
+    ) is None
+    assert cursor.calls == [(
+        """
+            UPDATE institucion_branding
+            SET logo_secundario_url = %s,
+                actualizado_en = CURRENT_TIMESTAMP
+            WHERE id = (SELECT id FROM institucion_branding ORDER BY id ASC LIMIT 1)
+        """,
+        ("/uploads/nuevo.png",),
+    )]
+
+    cursor = CursorProbe()
+    assert repository.eliminar_logo(cursor, "logo_principal_url") is None
+    assert cursor.calls == [(
+        """
+            UPDATE institucion_branding
+            SET logo_principal_url = NULL,
+                actualizado_en = CURRENT_TIMESTAMP
+            WHERE id = (SELECT id FROM institucion_branding ORDER BY id ASC LIMIT 1)
+        """,
+        None,
+    )]
 
 
 def test_storage_es_compartido_solo_por_los_consumidores_registrados():

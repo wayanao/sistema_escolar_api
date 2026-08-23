@@ -50,7 +50,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 7 | Resto de dominios — **`planilla` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `planilla` el 2026-08-21; verificación manual correcta y sin publicación comprobada | [07_PLANILLA.md](./07_PLANILLA.md) |
 | 7 | Resto de dominios — **`planeador_anual` migrado** | Migración individual con contratos y pruebas | **Cerrada** el 2026-08-22; 7.2 No aplica, verificación manual global reportada y sin entorno especificado | [07_PLANEADOR_ANUAL.md](./07_PLANEADOR_ANUAL.md) |
 | 7 | Resto de dominios — **`plan_de_clases` migrado** | Migración individual con contratos y pruebas | **Cerrada** el 2026-08-22; 7.2/7.3 No aplica, verificación manual global con reserva y sin publicación comprobada | [07_PLAN_DE_CLASES.md](./07_PLAN_DE_CLASES.md) |
-| 7 | Resto de dominios — **`branding`** | Migración individual con contratos y pruebas | **Activa** desde el 2026-08-22; 7.0 cerrada y 7.1 pendiente | [07_BRANDING.md](./07_BRANDING.md) |
+| 7 | Resto de dominios — **`branding`** | Migración individual con contratos y pruebas | **Activa** desde el 2026-08-22; 7.0 y 7.1 cerradas, 7.2 pendiente | [07_BRANDING.md](./07_BRANDING.md) |
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
 cierre y el usuario ordene continuar, se crea su sucesora desde
@@ -265,8 +265,12 @@ día** sin modificar producto: delimitó tres archivos propios, cuatro rutas má
 `/uploads`, una tabla, siete SQL inline, escrituras DB/storage y ningún N+1 de
 aplicación. Conservó las 31 pruebas heredadas y agregó 19; las específicas
 terminaron con **50 passed** y la compuerta con **1030 passed**, Ruff correcto
-y dependencias íntegras. Registró trece hallazgos sin corregir. Su **7.1 está
-pendiente y no iniciada**.
+y dependencias íntegras. Registró trece hallazgos sin corregir. Su **7.1 quedó
+cerrada**: los siete usos SQL se extrajeron a seis operaciones de un repositorio
+sin recursos, con SQL y parámetros literales protegidos. Las específicas
+terminaron con **52 passed** y la compuerta con **1032 passed**. **7.2 está
+pendiente y no iniciada**; debe decidirse entre cerrar como refactorización pura
+o autorizar un cambio concreto.
 
 Ningún otro se activa por inferencia: `profesores` y `super_admin` siguen en
 espera —son **dos**— y cada uno exigirá su propia bitácora y una orden
@@ -1822,8 +1826,14 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   producto; las específicas terminaron con **50 passed** y la compuerta con
   **1030 passed**, Ruff correcto y dependencias íntegras. Los seis supuestos
   quedaron resueltos y los trece hallazgos se registraron sin corregir.
-- Capa activa: **7 para `branding`**, con 7.0 cerrada y 7.1 pendiente y no
-  iniciada.
+- Resultado de 7.1 de `branding`: cuatro archivos propios y 268 líneas; los
+  siete usos SQL salieron del controlador y quedaron en seis operaciones de un
+  repositorio sin recursos. SQL, parámetros, conexiones, transacciones,
+  storage, offload, tenant y contratos se conservaron. Las específicas
+  terminaron con **52 passed** y la compuerta con **1032 passed**, Ruff correcto
+  y dependencias íntegras. Los trece hallazgos siguen vivos.
+- Capa activa: **7 para `branding`**, con 7.0 y 7.1 cerradas y 7.2 pendiente y
+  no iniciada.
 - Decisión vigente al activar `branding`: continuar localmente aceptando que
   sigan pendientes la
   calibración final de `DB_STATEMENT_TIMEOUT_MS`, la evidencia de GitHub
@@ -1986,10 +1996,13 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   escrituras DB/storage y ningún N+1 de aplicación. Resolvió los seis supuestos,
   agregó 19 pruebas sin modificar producto y registró trece hallazgos. Las
   específicas terminaron con **50 passed** y la compuerta con **1030 passed**,
-  Ruff correcto y dependencias íntegras. **7.1 está pendiente y no iniciada**;
-  la siguiente acción es presentar para autorización la extracción de los siete
-  sitios SQL a un único repositorio conservando recursos, storage, offload y
-  contratos. `profesores` y `super_admin` permanecen en espera.
+  Ruff correcto y dependencias íntegras. Su **7.1 está cerrada**: movió los
+  siete usos SQL a seis operaciones de `branding_repository` sin mover recursos,
+  storage, offload, tenant ni contratos. Las específicas terminaron con **52
+  passed** y la compuerta con **1032 passed**. **7.2 está pendiente y no
+  iniciada**; la siguiente acción es decidir explícitamente entre cerrar la capa
+  como refactorización pura o autorizar una 7.2 concreta. `profesores` y
+  `super_admin` permanecen en espera.
 - [07_PLAN_DE_CLASES.md](./07_PLAN_DE_CLASES.md): **bitácora cerrada** de la
   capa 7 para el dominio `plan_de_clases` y fuente de continuidad anterior.
   Registra el commit base limpio

@@ -7,6 +7,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.database import get_cursor
 from app.globals import tenant_schema_var
+from app.repositories import branding_repository
 from app.services.storage import delete_file, save_bytes, storage_url_for_key
 
 ALLOWED_IMAGE_TYPES = {"image/png", "image/jpeg", "image/jpg", "image/webp"}
@@ -16,25 +17,10 @@ MAX_LOGO_BYTES = 2 * 1024 * 1024  # 2MB
 
 def obtener_branding_controller():
     with get_cursor(commit=True) as cursor:
-        cursor.execute("""
-            SELECT id, nombre_institucion, eslogan, logo_principal_url, logo_secundario_url,
-                   direccion, telefono, email, nit, codigo_dane, sitio_web,
-                   color_primario, color_secundario, configuracion_extra
-            FROM institucion_branding
-            ORDER BY id ASC
-            LIMIT 1
-        """)
-        row = cursor.fetchone()
+        row = branding_repository.obtener_branding(cursor)
 
         if not row:
-            cursor.execute("""
-                INSERT INTO institucion_branding (nombre_institucion)
-                VALUES ('')
-                RETURNING id, nombre_institucion, eslogan, logo_principal_url, logo_secundario_url,
-                         direccion, telefono, email, nit, codigo_dane, sitio_web,
-                         color_primario, color_secundario, configuracion_extra
-            """)
-            row = cursor.fetchone()
+            row = branding_repository.crear_branding(cursor)
 
     return {
         "id": row[0],
@@ -56,34 +42,22 @@ def obtener_branding_controller():
 
 def actualizar_branding_controller(data):
     with get_cursor(commit=True) as cursor:
-        cursor.execute("""
-            UPDATE institucion_branding
-            SET nombre_institucion = %s,
-                eslogan = %s,
-                direccion = %s,
-                telefono = %s,
-                email = %s,
-                nit = %s,
-                codigo_dane = %s,
-                sitio_web = %s,
-                color_primario = %s,
-                color_secundario = %s,
-                configuracion_extra = %s,
-                actualizado_en = CURRENT_TIMESTAMP
-            WHERE id = (SELECT id FROM institucion_branding ORDER BY id ASC LIMIT 1)
-        """, (
-            data.nombre_institucion or "",
-            data.eslogan or "",
-            data.direccion or "",
-            data.telefono or "",
-            data.email or "",
-            data.nit or "",
-            data.codigo_dane or "",
-            data.sitio_web or "",
-            data.color_primario or "#0f314f",
-            data.color_secundario or "#526775",
-            json.dumps(data.configuracion_extra or {}),
-        ))
+        branding_repository.actualizar_branding(
+            cursor,
+            (
+                data.nombre_institucion or "",
+                data.eslogan or "",
+                data.direccion or "",
+                data.telefono or "",
+                data.email or "",
+                data.nit or "",
+                data.codigo_dane or "",
+                data.sitio_web or "",
+                data.color_primario or "#0f314f",
+                data.color_secundario or "#526775",
+                json.dumps(data.configuracion_extra or {}),
+            ),
+        )
 
     return obtener_branding_controller()
 
@@ -98,19 +72,10 @@ def _guardar_logo_leido(contenido: bytes, content_type: str | None, slot: str, e
     columna = "logo_principal_url" if slot == "principal" else "logo_secundario_url"
 
     with get_cursor(commit=True) as cursor:
-        cursor.execute(f"""
-            SELECT {columna} FROM institucion_branding
-            ORDER BY id ASC LIMIT 1
-        """)
-        row = cursor.fetchone()
+        row = branding_repository.obtener_logo(cursor, columna)
         url_anterior = row[0] if row else None
 
-        cursor.execute(f"""
-            UPDATE institucion_branding
-            SET {columna} = %s,
-                actualizado_en = CURRENT_TIMESTAMP
-            WHERE id = (SELECT id FROM institucion_branding ORDER BY id ASC LIMIT 1)
-        """, (nueva_url,))
+        branding_repository.actualizar_logo(cursor, columna, nueva_url)
 
     if url_anterior and url_anterior != nueva_url:
         delete_file(url_anterior)
@@ -163,19 +128,10 @@ def eliminar_logo_controller(slot: str):
 
     columna = "logo_principal_url" if slot == "principal" else "logo_secundario_url"
     with get_cursor(commit=True) as cursor:
-        cursor.execute(f"""
-            SELECT {columna} FROM institucion_branding
-            ORDER BY id ASC LIMIT 1
-        """)
-        row = cursor.fetchone()
+        row = branding_repository.obtener_logo(cursor, columna)
         url_anterior = row[0] if row else None
 
-        cursor.execute(f"""
-            UPDATE institucion_branding
-            SET {columna} = NULL,
-                actualizado_en = CURRENT_TIMESTAMP
-            WHERE id = (SELECT id FROM institucion_branding ORDER BY id ASC LIMIT 1)
-        """)
+        branding_repository.eliminar_logo(cursor, columna)
 
     delete_file(url_anterior)
     return {"mensaje": "Logo eliminado", "slot": slot}

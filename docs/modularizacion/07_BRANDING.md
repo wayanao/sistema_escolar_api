@@ -4,16 +4,17 @@
 
 ## Control
 
-- Estado: **Activa** desde el 2026-08-22 por orden explícita del usuario.
+- Estado: **Cerrada** el 2026-08-22 por orden explícita del usuario.
 - Commit base: `bb34cf6f31413fdbbd2c1866b43f2da71f8ea03b`.
 - Rama acordada: `main`.
-- Primera subcapa pendiente: **7.2**, no iniciada.
+- Primera subcapa pendiente: **Ninguna**. 7.2 y 7.3 son **No aplica**.
 - Código de producto modificado al activar: **Ninguno**.
 - Código de producto modificado en 7.0: **Ninguno**. El diff funcional es un
   solo archivo nuevo de caracterización; los demás cambios son documentación.
 - Código de producto modificado en 7.1: el controlador propio y el nuevo
   `branding_repository`; no se modificaron rutas, schemas, storage, migraciones
   ni otros dominios.
+- Commit de 7.1: `5ddd50470875f4740581897708e90804d079d2f2`.
 - Dominio de esta capa: **`branding`, y solo ese**. `profesores` y
   `super_admin` siguen en espera.
 - Autorización: el usuario nombró `branding`, ordenó activarlo y, después de
@@ -22,6 +23,8 @@
 - La activación fue exclusivamente documental. Las órdenes posteriores
   autorizaron 7.0 y 7.1 por separado; ninguna autoriza commit, push, deploy,
   migraciones reales ni acceso a producción.
+- El cierre no activa otro dominio. `profesores` y `super_admin` permanecen en
+  espera y requieren una orden nueva que nombre uno de ellos.
 
 ## Objetivo
 
@@ -263,8 +266,8 @@ base de datos.
 |---:|---|---|
 | 7.0 | Inventario, contratos, almacenamiento y caracterización | **Cerrada el 2026-08-22** |
 | 7.1 | Extracción protegida de los siete usos SQL a un repositorio sin recursos | **Cerrada el 2026-08-22** |
-| 7.2 | Segunda extracción o integración, solo si se autoriza | Pendiente |
-| 7.3 | Retiro heredado y cierre, si aplica | Pendiente |
+| 7.2 | Segunda extracción o cambio de contrato | **No aplica por cierre como refactorización pura** |
+| 7.3 | Retiro heredado adicional | **No aplica; no existe retiro autorizado** |
 
 Las subcapas se adaptan al trabajo real. Las innecesarias se marcan `No aplica`
 con una explicación; nunca se ejecutan dos sin orden explícita.
@@ -338,24 +341,27 @@ Todos quedaron cumplidos:
 - `git diff --check` es correcto y el diff pertenece exclusivamente a 7.1.
 - La bitácora registra resultados, decisiones, riesgos y siguiente acción.
 
-## Siguiente subcapa pendiente: 7.2
+## Punto de decisión resuelto: 7.2 y 7.3 No aplica
 
 La primera extracción ya agotó la separación arquitectónica justificada: el
 repositorio posee SQL y el controlador conserva recursos y orquestación. Los
 trece hallazgos siguen vivos porque corregir cualquiera alteraría comportamiento
-o ampliaría alcance. La siguiente acción exacta es presentar una decisión entre
-cerrar la capa como refactorización pura —marcando 7.2 y 7.3 `No aplica` en un
-turno posterior— o autorizar explícitamente una 7.2 concreta con su cambio de
-contrato. **7.2 no se inicia por esta ejecución.**
+o ampliaría alcance. El usuario ordenó **«cierra branding»** y eligió cerrar la
+capa como refactorización pura. No se agrega `response_model`, no se introducen
+errores de dominio y no se corrige ningún hallazgo. 7.2 y 7.3 quedan **No
+aplica**, sin haberse iniciado.
 
 ## Criterios de cierre de la capa
 
-- Todas las subcapas necesarias están cerradas.
-- Compuerta global correcta.
-- Contratos conservados o cambios explícitamente aprobados.
-- Staging, rollback y verificación manual documentados.
-- La capa queda cerrada y el siguiente dominio permanece en espera hasta una
-  nueva orden explícita.
+Todos quedaron cumplidos para el cierre documental:
+
+- Todas las subcapas necesarias están cerradas; 7.2 y 7.3 son `No aplica`.
+- Compuerta global correcta con **1032 passed**, Ruff correcto y dependencias
+  íntegras sobre el commit limpio de 7.1.
+- Contratos conservados; no se autorizó ni aplicó ningún cambio observable.
+- Staging, rollback y verificación manual están documentados más abajo. La
+  verificación manual propia permanece pendiente y no se marca como cumplida.
+- La capa queda cerrada y los dos dominios siguientes permanecen en espera.
 
 ## Decisiones
 
@@ -399,6 +405,14 @@ contrato. **7.2 no se inicia por esta ejecución.**
 - **Dejar 7.2 como decisión explícita.** No hay una segunda extracción necesaria
   demostrada; cerrar como refactorización pura o cambiar un contrato requiere
   una orden posterior.
+- **Cerrar `branding` como refactorización pura.** La orden explícita «cierra
+  branding» resuelve el punto de decisión: 7.2 y 7.3 son `No aplica`.
+- **No convertir los hallazgos en alcance de cierre.** `response_model`, errores
+  de dominio, unicidad, ausencia de fila, validación de contenido y compensación
+  DB/storage siguen sin cambios y no se presentan como deuda comprometida de
+  esta capa.
+- **No activar el siguiente dominio.** `profesores` y `super_admin` siguen en
+  espera hasta que el usuario nombre uno explícitamente.
 
 ## Riesgos
 
@@ -418,9 +432,51 @@ contrato. **7.2 no se inicia por esta ejecución.**
   no asociados.
 - **Señal de autorización observable.** `/uploads` distingue 403 de 404 después
   de comprobar existencia, lo que revela si un path ajeno existe.
-- **Publicación no comprobada contra el remoto real.** Solo se observó que la
-  referencia local `origin/main` coincide con `HEAD`; no se atribuye despliegue
-  ni GitHub Actions.
+- **Publicación no comprobada contra el remoto real.** Al cerrar, la referencia
+  local `origin/main` está tres commits por detrás de `HEAD`; no se consultó el
+  remoto real ni se atribuye push, despliegue o GitHub Actions.
+
+## Staging, rollback y verificación manual
+
+### Staging propuesto; no ejecutado
+
+1. Desplegar en un entorno no productivo el commit que contenga
+   `5ddd50470875f4740581897708e90804d079d2f2` y el cierre documental.
+2. Usar un tenant desechable con una fila de `institucion_branding` y logos de
+   prueba; no reutilizar credenciales ni objetos de producción.
+3. Verificar GET y PUT de `/branding`, incluidos el payload de 14 campos, los
+   defaults y los permisos de usuario frente a admin.
+4. Subir, reemplazar y eliminar ambos slots de logo; comprobar URL servida,
+   aislamiento por tenant y el orden observable storage/DB.
+5. Verificar los caminos caracterizados de fila ausente sin reinterpretarlos
+   como correctos: creación implícita por GET, PUT que devuelve defaults, upload
+   no asociado y DELETE exitoso.
+6. Confirmar 400 por slot/MIME/extensión/tamaño inválidos, 403 en mutaciones sin
+   admin y la distinción heredada 403/404 de `/uploads` ajenos.
+
+Estos pasos no se ejecutaron en esta sesión y no autorizan deploy ni acceso a
+producción.
+
+### Rollback
+
+- Punto anterior a la extracción de producto:
+  `008323712bc686644d361195974f7337e1414eef`.
+- Mientras los commits sigan solo locales, el usuario puede descartar o revertir
+  `5ddd504` mediante su flujo Git habitual. Este asistente no ejecuta esa acción.
+- Si 7.1 se publica, el rollback exige crear y publicar un revert de `5ddd504`,
+  seguido del despliegue correspondiente; no basta cambiar archivos locales.
+- No hay migraciones, DDL ni datos de backfill que revertir. Los logos o cambios
+  de branding creados por pruebas manuales son efectos de negocio normales y
+  deben limpiarse explícitamente en el tenant de staging si se desean retirar.
+
+### Verificación manual propia
+
+- Estado: **Pendiente**.
+- No consta ejecución en local, staging ni despliegue para esta capa.
+- La compuerta automática no sustituye la comprobación manual de GET/PUT,
+  ciclo de logos, permisos, tenant y storage descrita arriba.
+- Las verificaciones heredadas continúan pendientes y ninguna se marca como
+  cumplida por este cierre.
 
 ## Registro de ejecución
 
@@ -591,19 +647,55 @@ contrato. **7.2 no se inicia por esta ejecución.**
   capa como refactorización pura —7.2 y 7.3 `No aplica`— o autorizar una 7.2
   concreta. Detenerse sin iniciar 7.2.
 
+### 2026-08-22 — cierre de la capa para `branding`
+
+- Modo de acceso: mismo checkout local en
+  `C:\Users\David\Documents\sistema_escolar_api`; Git y commits locales
+  validados directamente.
+- Autorización explícita: el usuario ordenó **«cierra branding»** después de que
+  se le presentaran las dos salidas registradas al terminar 7.1.
+- Precondiciones: rama `main`; árbol limpio según
+  `git status --porcelain=v1 --branch`, que mostró
+  `## main...origin/main [ahead 3]`; `HEAD`
+  `5ddd50470875f4740581897708e90804d079d2f2`; el commit base
+  `bb34cf6f31413fdbbd2c1866b43f2da71f8ea03b` es ancestro.
+- Continuidad desde el base: `f53711b` activa documentalmente, `0083237` cierra
+  7.0 y `5ddd504` contiene 7.1. El último modifica exactamente los diez archivos
+  que registra la ejecución anterior y no introduce trabajo sin explicar.
+- Pruebas específicas de cierre sobre el commit limpio: **52 passed**, 5
+  warnings heredados.
+- Compuerta global de cierre, `.\venv\Scripts\python.exe scripts\verify.py`:
+  **1032 passed**, 5 warnings heredados, Ruff correcto y dependencias íntegras.
+- Decisión: cerrar como refactorización pura. 7.2 y 7.3 son **No aplica**; no se
+  añadió `response_model`, error de dominio, corrección funcional ni retiro
+  adicional.
+- Staging y rollback quedaron documentados. La verificación manual propia queda
+  **pendiente** y las verificaciones heredadas conservan su estado y riesgo.
+- Cambios de este cierre: únicamente esta bitácora y el índice maestro. No se
+  modificó producto, prueba, configuración, migración, schema ni dependencia.
+- Estado de publicación observado localmente: `origin/main` está tres commits
+  por detrás de `HEAD`. No se consultó el remoto real, no hubo push ni deploy y
+  no se atribuye GitHub Actions.
+- No hubo DB, migraciones reales, producción, commit, push ni deploy.
+- Siguiente acción exacta: mantener **ninguna capa activa**. Antes de activar
+  otra, elegir explícitamente `profesores` o `super_admin`, decidir si se
+  continúa aceptando las verificaciones pendientes y crear su bitácora en un
+  turno exclusivamente documental.
+
 ## Entrega al próximo chat
 
-- Capa activa: **7 para `branding`**.
-- Última subcapa terminada: **7.1**, extracción protegida de persistencia.
-- Primera subcapa pendiente: **7.2**, no iniciada y sin alcance autorizado.
+- Capa activa: **Ninguna**.
+- Última capa cerrada: **7 para `branding`**, el 2026-08-22.
+- Subcapas: 7.0 y 7.1 cerradas; 7.2 y 7.3 **No aplica**.
 - Producto modificado en 7.1: controlador propio y nuevo repositorio; siete
   usos SQL originales quedan representados por seis operaciones sin recursos.
 - Resultado: cuatro archivos propios y 268 líneas; rutas, contratos, SQL,
   parámetros, conexiones, transacciones, tenant, offload, storage y ausencia de
   N+1 conservados. Específicas **52 passed**; compuerta **1032 passed**.
 - Hallazgos: trece registrados y ninguno corregido.
+- Verificación manual propia de `branding`: **Pendiente**.
 - Verificaciones heredadas: pendientes por decisión explícita del usuario.
 - Dominios en espera: `profesores` y `super_admin`.
 - Bloqueos: ninguno.
-- Siguiente acción exacta: decidir entre cerrar como refactorización pura o
-  autorizar una 7.2 concreta; no iniciar 7.2 por inferencia.
+- Siguiente acción exacta: informar que no hay capa activa y esperar una orden
+  que nombre el siguiente dominio; no activarlo ni inspeccionarlo por inferencia.

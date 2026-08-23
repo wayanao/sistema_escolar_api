@@ -50,7 +50,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 7 | Resto de dominios — **`planilla` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `planilla` el 2026-08-21; verificación manual correcta y sin publicación comprobada | [07_PLANILLA.md](./07_PLANILLA.md) |
 | 7 | Resto de dominios — **`planeador_anual` migrado** | Migración individual con contratos y pruebas | **Cerrada** el 2026-08-22; 7.2 No aplica, verificación manual global reportada y sin entorno especificado | [07_PLANEADOR_ANUAL.md](./07_PLANEADOR_ANUAL.md) |
 | 7 | Resto de dominios — **`plan_de_clases` migrado** | Migración individual con contratos y pruebas | **Cerrada** el 2026-08-22; 7.2/7.3 No aplica, verificación manual global con reserva y sin publicación comprobada | [07_PLAN_DE_CLASES.md](./07_PLAN_DE_CLASES.md) |
-| 7 | Resto de dominios — **`branding`** | Migración individual con contratos y pruebas | **Activa** desde el 2026-08-22; 7.0 y 7.1 cerradas, 7.2 pendiente | [07_BRANDING.md](./07_BRANDING.md) |
+| 7 | Resto de dominios — **`branding` migrado** | Migración individual con contratos y pruebas | **Cerrada** el 2026-08-22; 7.2/7.3 No aplica, verificación manual pendiente y sin publicación comprobada | [07_BRANDING.md](./07_BRANDING.md) |
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
 cierre y el usuario ordene continuar, se crea su sucesora desde
@@ -257,9 +257,10 @@ después que ya verificó y que está «aparentemente bien»; la verificación m
 propia queda completada de forma global con esa reserva, sin entorno, artefacto
 ni desglose punto por punto. No se comprobó publicación.
 
-**Dominio activo: `branding`.** El usuario lo nombró, ordenó activarlo y
-confirmó continuar localmente aceptando que las verificaciones heredadas
-permanezcan pendientes. Su bitácora es [07_BRANDING.md](./07_BRANDING.md); la
+**Dominio migrado y cerrado: `branding`.** El usuario lo nombró, ordenó
+activarlo y confirmó continuar localmente aceptando que las verificaciones
+heredadas permanezcan pendientes. Su bitácora es
+[07_BRANDING.md](./07_BRANDING.md); la
 activación fue exclusivamente documental y su **7.0 quedó cerrada el mismo
 día** sin modificar producto: delimitó tres archivos propios, cuatro rutas más
 `/uploads`, una tabla, siete SQL inline, escrituras DB/storage y ningún N+1 de
@@ -268,9 +269,12 @@ terminaron con **50 passed** y la compuerta con **1030 passed**, Ruff correcto
 y dependencias íntegras. Registró trece hallazgos sin corregir. Su **7.1 quedó
 cerrada**: los siete usos SQL se extrajeron a seis operaciones de un repositorio
 sin recursos, con SQL y parámetros literales protegidos. Las específicas
-terminaron con **52 passed** y la compuerta con **1032 passed**. **7.2 está
-pendiente y no iniciada**; debe decidirse entre cerrar como refactorización pura
-o autorizar un cambio concreto.
+terminaron con **52 passed** y la compuerta con **1032 passed**. Al terminar
+7.1, 7.2 quedó pendiente y no iniciada; el usuario ordenó después cerrar como
+refactorización pura, por lo que 7.2 y 7.3 quedaron **No aplica**. La compuerta
+de cierre sobre el commit limpio volvió a pasar con **1032 pruebas**, Ruff correcto y
+dependencias íntegras. Staging y rollback están documentados; la verificación
+manual propia permanece pendiente y no se comprobó publicación.
 
 Ningún otro se activa por inferencia: `profesores` y `super_admin` siguen en
 espera —son **dos**— y cada uno exigirá su propia bitácora y una orden
@@ -1832,8 +1836,11 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   storage, offload, tenant y contratos se conservaron. Las específicas
   terminaron con **52 passed** y la compuerta con **1032 passed**, Ruff correcto
   y dependencias íntegras. Los trece hallazgos siguen vivos.
-- Capa activa: **7 para `branding`**, con 7.0 y 7.1 cerradas y 7.2 pendiente y
-  no iniciada.
+- Cierre de `branding`: el usuario ordenó cerrarla como refactorización pura;
+  7.2 y 7.3 son **No aplica**. La compuerta sobre el commit limpio volvió a
+  pasar con **1032 pruebas**, Ruff correcto y dependencias íntegras. Staging y
+  rollback están documentados; la verificación manual propia queda pendiente.
+- Capa activa: **Ninguna**.
 - Decisión vigente al activar `branding`: continuar localmente aceptando que
   sigan pendientes la
   calibración final de `DB_STATEMENT_TIMEOUT_MS`, la evidencia de GitHub
@@ -1985,7 +1992,7 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
 
 ## Archivos de continuidad
 
-- [07_BRANDING.md](./07_BRANDING.md): **bitácora activa** de la capa 7 para el
+- [07_BRANDING.md](./07_BRANDING.md): **bitácora cerrada** de la capa 7 para el
   dominio `branding` y **fuente de continuidad más reciente**. **Es el
   documento que un chat nuevo debe leer después de este índice.** Registra el
   commit base limpio `bb34cf6f31413fdbbd2c1866b43f2da71f8ea03b`, la rama
@@ -1999,10 +2006,12 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   Ruff correcto y dependencias íntegras. Su **7.1 está cerrada**: movió los
   siete usos SQL a seis operaciones de `branding_repository` sin mover recursos,
   storage, offload, tenant ni contratos. Las específicas terminaron con **52
-  passed** y la compuerta con **1032 passed**. **7.2 está pendiente y no
-  iniciada**; la siguiente acción es decidir explícitamente entre cerrar la capa
-  como refactorización pura o autorizar una 7.2 concreta. `profesores` y
-  `super_admin` permanecen en espera.
+  passed** y la compuerta con **1032 passed**. El usuario ordenó cerrar como
+  refactorización pura: 7.2 y 7.3 son **No aplica** y la compuerta de cierre
+  volvió a pasar con **1032 pruebas**. Staging y rollback están documentados;
+  la verificación manual propia queda pendiente. No hay capa activa;
+  `profesores` y `super_admin` permanecen en espera y ninguno se activa por
+  inferencia.
 - [07_PLAN_DE_CLASES.md](./07_PLAN_DE_CLASES.md): **bitácora cerrada** de la
   capa 7 para el dominio `plan_de_clases` y fuente de continuidad anterior.
   Registra el commit base limpio

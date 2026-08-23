@@ -52,7 +52,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 7 | Resto de dominios — **`plan_de_clases` migrado** | Migración individual con contratos y pruebas | **Cerrada** el 2026-08-22; 7.2/7.3 No aplica, verificación manual global con reserva y sin publicación comprobada | [07_PLAN_DE_CLASES.md](./07_PLAN_DE_CLASES.md) |
 | 7 | Resto de dominios — **`branding` migrado** | Migración individual con contratos y pruebas | **Cerrada** el 2026-08-22; 7.2/7.3 No aplica, verificación manual pendiente y sin publicación comprobada | [07_BRANDING.md](./07_BRANDING.md) |
 | 7 | Resto de dominios — **`profesores` migrado** | Migración individual con contratos y pruebas | **Cerrada** el 2026-08-23; 7.2/7.3 No aplica, verificación manual pendiente y sin publicación comprobada | [07_PROFESORES.md](./07_PROFESORES.md) |
-| 7 | Resto de dominios — **`super_admin`** | Migración individual con contratos y pruebas | **Activa** desde el 2026-08-23; 7.0 pendiente y no iniciada | [07_SUPER_ADMIN.md](./07_SUPER_ADMIN.md) |
+| 7 | Resto de dominios — **`super_admin`** | Migración individual con contratos y pruebas | **Activa** desde el 2026-08-23; 7.0 cerrada, 7.1 pendiente | [07_SUPER_ADMIN.md](./07_SUPER_ADMIN.md) |
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
 cierre y el usuario ordene continuar, se crea su sucesora desde
@@ -306,8 +306,12 @@ pendiente y no se comprobó publicación. La bitácora es
 verificación manual permanece pendiente y la indicación de que `super_admin`
 seguía en espera. La orden nombra el dominio y autoriza continuar localmente
 aceptando ese pendiente. La activación es exclusivamente documental, usa como
-base el `HEAD` limpio `2ec924a` y no inspecciona ni modifica producto. Su 7.0
-está pendiente y no iniciada. La bitácora es
+base el `HEAD` limpio `2ec924a`. Su 7.0 delimitó 20 sitios SQL propios —18 en
+el controlador y 2 en autenticación—, agregó 27 casos de caracterización sin
+modificar producto y cerró con 88 pruebas específicas y una compuerta global
+de 1088 pruebas. La primera pendiente es 7.1, limitada a extraer los cinco
+sitios de listar, auditar y cambiar estado; provisionamiento y autenticación
+quedan fuera. La bitácora es
 [07_SUPER_ADMIN.md](./07_SUPER_ADMIN.md).
 
 No queda otro dominio enumerado en espera, y no se inicia trabajo adicional por
@@ -1873,9 +1877,11 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   7.2 y 7.3 son **No aplica**. La compuerta sobre el commit limpio volvió a
   pasar con **1032 pruebas**, Ruff correcto y dependencias íntegras. Staging y
   rollback están documentados; la verificación manual propia queda pendiente.
-- Capa activa: **7 para `super_admin`**; activación exclusivamente documental,
-  commit base limpio `2ec924a` y 7.0 pendiente y no iniciada. La última cerrada
-  es **7 para `profesores`**; 7.0 y 7.1 están cerradas, 7.2/7.3 son **No
+- Capa activa: **7 para `super_admin`**; commit base limpio `2ec924a`, 7.0
+  cerrada con producto intacto, 27 casos nuevos, 88 pruebas específicas y
+  compuerta global de 1088 pruebas. 7.1 es la primera pendiente y se limita a
+  los cinco sitios SQL de listar, auditar y cambiar estado. La última capa
+  cerrada es **7 para `profesores`**; 7.0 y 7.1 están cerradas, 7.2/7.3 son **No
   aplica**, la compuerta de cierre terminó con **1061 pruebas** y su
   verificación manual propia queda pendiente.
 - Decisión vigente al activar `profesores`: continuar localmente aceptando que
@@ -1884,8 +1890,8 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   Actions posterior a la capa 0, los pasos manuales no confirmados heredados y
   la rotación de la credencial privilegiada de la capa 4. Ninguna se marca como
   cumplida.
-- No queda otro dominio enumerado en espera. `super_admin` está activo y no se
-  inspeccionó ni implementó por la orden de activación.
+- No queda otro dominio enumerado en espera. `super_admin` está activo; 7.0 se
+  cerró sin modificar producto y 7.1 no se ha iniciado.
 - **Punto de decisión abierto al terminar 7.1**, con **tres** salidas y no dos:
   dónde vive el `UPDATE pagos`, `response_model` para las cuatro lecturas, y los
   errores de dominio. La tercera es **más fácil aquí que en `notas`**: este
@@ -2036,8 +2042,10 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   acordada `main`, la orden explícita «sigue super admin» y la decisión de
   continuar localmente aceptando las verificaciones manuales de `profesores` y
   `branding` y las heredadas pendientes. La activación fue exclusivamente
-  documental: no inspeccionó ni modificó producto, pruebas, SQL, configuración
-  o base de datos. **7.0 está pendiente y no iniciada.**
+  documental. Después, 7.0 inventarió la frontera privilegiada, agregó 27
+  casos sin modificar producto y pasó 88 pruebas específicas y la compuerta
+  global con 1088 pruebas. **7.0 está cerrada; 7.1 es la primera pendiente** y
+  extraerá únicamente los cinco sitios SQL de listar, auditar y cambiar estado.
 - [07_PROFESORES.md](./07_PROFESORES.md): **bitácora cerrada** de la capa 7 para
   el dominio `profesores` y fuente de continuidad anterior. Registra el
   commit base limpio `58eb5c2eb43a9d20708b75ca8bd798e9f13b33e6`, la rama

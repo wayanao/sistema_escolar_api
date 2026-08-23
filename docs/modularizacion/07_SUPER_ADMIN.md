@@ -7,7 +7,11 @@
 - Estado: **Activa** desde el 2026-08-23 por orden explícita del usuario.
 - Commit base: `2ec924a3308581b746a61fa24a44f71433034dbc`.
 - Rama acordada: `main`.
-- Primera subcapa pendiente: **7.0**, inventario, contratos y caracterización.
+- Primera subcapa pendiente: **7.1**, primera extracción protegida del bloque
+  de consulta y cambio de estado de tenants.
+- Subcapa 7.0: **Cerrada** el 2026-08-23 con producto intacto, 27 pruebas de
+  caracterización nuevas, 88 pruebas específicas y compuerta global de 1088
+  pruebas.
 - Código de producto modificado al activar: **Ninguno**.
 - Dominio de esta capa: **`super_admin`, y solo ese**.
 - Autorización: el usuario escribió «sigue super admin» después de que se le
@@ -95,48 +99,141 @@ no inspecciona código ni infiere la frontera; 7.0 debe delimitarla con evidenci
 
 | Comprobación | Comando | Resultado |
 |---|---|---|
-| Pruebas específicas | Por determinar en 7.0 | Pendiente |
-| Suite global | `.\venv\Scripts\python.exe scripts\verify.py` | Pendiente para 7.0 |
-| Ruff | Archivos de la subcapa | Pendiente |
-| Dependencias | Incluidas en `scripts\verify.py` | Pendiente para 7.0 |
+| Línea base heredada | `.\venv\Scripts\python.exe -m pytest tests\test_super_admin.py tests\test_tenant_provisioning.py tests\test_esquema_base.py tests\test_auth_threadpool.py tests\test_auth_tenant.py -q` | **61 passed**, 6 warnings |
+| Caracterización 7.0 | `.\venv\Scripts\python.exe -m pytest tests\test_super_admin_caracterizacion.py -q` | **27 passed**, 6 warnings |
+| Pruebas específicas integradas | Línea base heredada más `tests\test_super_admin_caracterizacion.py` | **88 passed**, 6 warnings |
+| Suite global | `.\venv\Scripts\python.exe scripts\verify.py` | **1088 passed**, 5 warnings; Ruff correcto; dependencias íntegras |
+| Ruff específico | `.\venv\Scripts\python.exe -m ruff check tests\test_super_admin_caracterizacion.py` | Correcto |
+| Dependencias | Incluidas en `scripts\verify.py` | Íntegras |
 
 ## Subcapas
 
 | Subcapa | Resultado | Estado |
 |---:|---|---|
-| 7.0 | Inventario, contratos y caracterización | **Pendiente y no iniciada** |
-| 7.1 | Primera extracción protegida | Pendiente de evidencia de 7.0 |
-| 7.2 | Segunda extracción o integración | Pendiente de evidencia de 7.0 |
-| 7.3 | Retiro heredado y cierre | Pendiente de evidencia de 7.0 |
+| 7.0 | Inventario, contratos y caracterización | **Cerrada** el 2026-08-23 |
+| 7.1 | Extraer las cinco operaciones SQL de consulta y estado de tenants | **Pendiente; siguiente acción exacta** |
+| 7.2 | Provisionamiento privilegiado y autenticación, por decidir con evidencia de 7.1 | Pendiente |
+| 7.3 | Retiro heredado y cierre | Pendiente |
 
 Las subcapas se adaptan al trabajo real. Las innecesarias se marcan `No aplica`
 con una explicación; nunca se ejecutan dos sin orden explícita.
 
-## Primera subcapa pendiente: trabajo exacto para 7.0
+## Resultado de 7.0: frontera e inventario
 
-1. Delimitar la frontera real de `super_admin` por entradas, llamadores,
-   tablas, consumidores y efectos laterales antes de contar o modificar nada.
-2. Inspeccionar únicamente la documentación, fuentes y pruebas relacionadas
-   con esa frontera.
-3. Inventariar contratos HTTP, permisos, privilegios, alcance global,
-   ownership, tenant, SQL, transacciones, recursos y comportamiento observable.
-4. Medir consultas y conexiones por camino y buscar dependencias del tamaño de
-   entrada o resultado.
-5. Identificar consumidores y dependencias compartidas sin modificar dominios
-   cerrados.
-6. Revisar las pruebas relacionadas y agregar caracterización sin cambiar
-   expectativas heredadas.
-7. Resolver los supuestos documentales que produzca el inventario y registrar
-   hallazgos sin corregirlos.
-8. Archivos modificables en 7.0: pruebas de caracterización del dominio, esta
-   bitácora y el índice maestro. No modificar producto durante el inventario.
-9. Ejecutar pruebas específicas, Ruff sobre la caracterización, la compuerta
-   global, `git diff --check` y revisión de alcance.
-10. Actualizar esta bitácora con archivos, comandos, resultados, decisiones,
-    riesgos y la siguiente acción exacta.
-11. Detenerse al cerrar 7.0. No iniciar 7.1 en el mismo turno.
+### Entradas, archivos y consumidores
 
-## Criterios de cierre de la subcapa
+- Frontera propia: `app/routes/super_admin.py` —64 líneas—,
+  `app/controllers/super_admin_controller.py` —393 líneas— y
+  `app/core/super_admin.py` —112 líneas—. No existía repositorio del dominio.
+- Entrada compartida: `POST /login` en `app/routes/auth.py`, cuyo dispatcher en
+  `app/controllers/auth_controller.py` deriva los códigos privilegiados a
+  `autenticar_super_admin`.
+- Entradas propias: cuatro operaciones síncronas, sin `response_model`, todas
+  protegidas por `get_current_super_admin`: `GET /super-admin/tenants`, `POST
+  /super-admin/tenants`, `PATCH /super-admin/tenants/{tenant_id}/estado` y `GET
+  /super-admin/tenants/{tenant_id}/estado-auditoria`.
+- Los schemas de entrada `TenantCreate` y `TenantEstadoUpdate` están definidos
+  inline en la ruta. Pydantic conserva el 422 previo al controlador cuando
+  faltan campos requeridos.
+- Consumidores directos de las tablas públicas de esta frontera:
+  `super_admin_controller.py`, `core/super_admin.py` y
+  `core/tenant_status.py`. No se modificó el último por ser una dependencia
+  compartida y no una extracción autorizada.
+
+### Seguridad, tenant y contratos observables
+
+- Los códigos de login privilegiado son exactamente `super_admin`,
+  `superadmin` y `plataforma`; autentican contra `public.super_admins` y solo
+  aceptan una fila con estado `activo` y contraseña válida.
+- El JWT y la revalidación exigen rol `super_admin`, tenant `public`, id entero
+  y super admin todavía activo. La respuesta canónica de rechazo del guard es
+  401. El guard asíncrono conserva la validación síncrona fuera del event loop.
+- No existe ownership tenant para estas rutas: la identidad privilegiada puede
+  enumerar, crear y cambiar tenants globalmente. El id del super admin se pasa
+  al provisionamiento y a la auditoría de cambios de estado.
+- Las cuatro rutas conservan 200 en sus caminos felices y devuelven directamente
+  las listas o diccionarios del controlador. Los errores propios observados son
+  404 para tenant ausente, 409 para conflicto de integridad y 422 para estado o
+  datos de alta inválidos, además del 422 de Pydantic.
+- Un cambio al mismo estado ejecuta rollback y devuelve el tenant sin insertar
+  auditoría. Un cambio real actualiza el estado manual, inserta auditoría y hace
+  commit. Los estados admitidos son `activo`, `en_mora`, `suspendido` y
+  `cancelado`.
+
+### SQL, recursos y transacciones medidos
+
+- La frontera propia contiene 20 sitios `cursor.execute`: 18 en el controlador
+  y 2 en el núcleo de autenticación/revalidación. No hay `execute` dentro de un
+  bucle ni cantidad de consultas dependiente del tamaño de entrada o resultado.
+- Login privilegiado: una conexión pública y una consulta. Revalidación del
+  guard: una conexión pública y una consulta por petición protegida.
+- Listado de tenants y auditoría: cada controlador usa una conexión pública y
+  una consulta; la auditoría ordena descendente y limita a 50 filas. Incluido
+  el guard, cada petición usa dos conexiones secuenciales y dos consultas.
+- Cambio de estado ausente o sin cambio: una conexión y una consulta en el
+  controlador, seguida de rollback; con el guard son dos conexiones y dos
+  consultas. Cambio real: una conexión, tres consultas y commit en el
+  controlador; con el guard son dos conexiones y cuatro consultas.
+- Provisionamiento exitoso: una conexión y una transacción de 13 llamadas
+  observables a `execute` en este orden: insertar colegio, crear schema, fijar
+  `search_path` local, ejecutar el SQL base, comprobar historial público,
+  copiar historial cuando existe, fijar `search_path` tenant/public, sembrar
+  branding, copiar plantilla predefinida, crear admin tenant, volver a
+  `public`, crear suscripción e insertar evento de auditoría. Con el guard son
+  dos conexiones y 14 llamadas a `execute`.
+- La lectura completa del SQL base cuenta como una llamada observable al
+  cursor aunque contenga varias sentencias. El controlador conserva el
+  `commit`; cualquier excepción revierte y cierra cursor/conexión, y el
+  `ContextVar` vuelve a su valor anterior. `IntegrityError` se traduce a 409.
+- `get_connection` y el helper público son los dueños actuales de contexto,
+  conexión y cursor; ninguna extracción futura puede mover silenciosamente
+  `commit`, `rollback`, cierre o cambios de `search_path`.
+
+### Tablas y restricciones observadas
+
+- Autenticación usa `public.super_admins`; gestión usa `public.colegios`,
+  `public.tenant_suscripciones`, `public.tenant_estado_auditoria` y
+  `public.tenant_eventos_auditoria`, además de tablas tenant sembradas durante
+  el alta.
+- Las migraciones versionadas fijan email único para super admins; tenant único
+  y días de gracia no negativos para suscripciones; y claves foráneas de las
+  auditorías. Las tablas de auditoría no declaran `ON DELETE` para sus claves
+  foráneas.
+- No existe migración versionada que cree `public.colegios`; su definición se
+  localizó únicamente en `scripts/legacy/setup_saas.py`, con unicidad de
+  subdominio y esquema. La observación queda registrada, no corregida.
+
+### Caracterización agregada
+
+- `tests/test_super_admin_caracterizacion.py` agrega 27 casos ejecutados y fija
+  la frontera, el montaje HTTP, dependencia exacta, 200/401/422, payloads,
+  schemas, dispatch de login, matrices de autenticación y revalidación, SQL y
+  recursos de listar/auditar/cambiar estado, las 13 operaciones y rollback del
+  provisionamiento, consumidores directos y DDL público.
+- También fija que no existe repositorio todavía, que son 18 sitios SQL en el
+  controlador y 2 en el núcleo, y que no hay ejecuciones dentro de bucles.
+- No se cambió ninguna expectativa heredada ni archivo de producto.
+
+## Primera subcapa pendiente: trabajo exacto para 7.1
+
+1. Extraer únicamente los cinco sitios SQL del bloque de listado, auditoría y
+   cambio de estado desde `super_admin_controller.py` a un repositorio propio
+   del dominio.
+2. Hacer que las operaciones del repositorio reciban el cursor; el controlador
+   debe conservar validación, normalización, mapeo, contexto `public`, conexión,
+   cursor, `commit`, `rollback` y cierre.
+3. Conservar literalmente SQL, parámetros, orden, conteos, 200/401/404/422,
+   payloads y el caso sin cambio que revierte sin auditar.
+4. No tocar los 13 sitios del provisionamiento, los 2 sitios de
+   `core/super_admin.py`, rutas, schemas inline, dispatcher compartido,
+   `tenant_status.py`, migraciones ni dominios cerrados.
+5. Mantener la caracterización y actualizar cualquier guarda estructural que
+   deba reconocer el repositorio sin debilitar los conteos de frontera.
+6. Ejecutar pruebas específicas, Ruff, compuerta global, `git diff --check` y
+   revisión exclusiva de alcance; actualizar esta bitácora y detenerse antes
+   de 7.2.
+
+## Criterios de cierre de la subcapa 7.0
 
 - Frontera delimitada con evidencia y sin reabrir dominios cerrados.
 - Contratos privilegiados y tenant fijados por pruebas ejecutables.
@@ -144,6 +241,11 @@ con una explicación; nunca se ejecutan dos sin orden explícita.
 - Pruebas específicas, Ruff, compuerta y dependencias correctas.
 - `git diff --check` correcto y diff exclusivo de 7.0.
 - Bitácora actualizada con resultados, riesgos y siguiente acción.
+
+Todos se cumplieron el 2026-08-23. La primera ejecución de la compuerta bajo
+sandbox no fue evidencia válida porque 30 casos no pudieron crear su fixture
+temporal; la repetición autorizada con acceso al directorio temporal terminó
+completa y verde.
 
 ## Criterios de cierre de la capa
 
@@ -167,6 +269,17 @@ con una explicación; nunca se ejecutan dos sin orden explícita.
   7.0 en este turno.
 - **No inferir la frontera privilegiada.** Archivos, rutas, permisos y tablas
   quedan como preguntas que 7.0 debe resolver con evidencia.
+- **Caracterizar también las entradas compartidas.** El login privilegiado y
+  la revalidación viven fuera de la ruta propia, pero forman parte del contrato
+  de seguridad de la capa; se inspeccionaron y fijaron sin modificarlos.
+- **Separar la primera extracción por riesgo transaccional.** 7.1 queda limitada
+  a los cinco sitios SQL de listar, auditar y cambiar estado. Los 13 sitios del
+  provisionamiento y los 2 del núcleo de autenticación permanecen intactos
+  hasta nueva evidencia y una subcapa posterior.
+- **No corregir hallazgos durante el inventario.** La ausencia de una migración
+  versionada para `public.colegios`, los schemas inline y la ausencia de
+  `response_model` se registran como comportamiento o riesgo actual, no como
+  autorización de rediseño.
 
 ## Riesgos
 
@@ -183,6 +296,24 @@ con una explicación; nunca se ejecutan dos sin orden explícita.
 - **Publicación no comprobada contra el remoto real.** `HEAD` coincide con la
   referencia local `origin/main`, pero no se consultó el remoto ni se verificó
   deploy o GitHub Actions.
+- **Provisionamiento de alto impacto.** El alta combina DDL, ejecución del SQL
+  base, semillas, credenciales, suscripción y auditoría en una sola transacción
+  de 13 llamadas observables. Cambiar orden, `search_path` o ownership podría
+  dejar un tenant parcial o contaminar otro schema.
+- **Origen heredado de `public.colegios`.** No hay una migración pública
+  versionada que cree la tabla que sostiene la frontera; la única definición
+  localizada está en un script legacy. La capa no debe fingir que esa
+  precondición está gestionada por el runner actual.
+- **Contrato de respuesta implícito.** Las cuatro rutas carecen de
+  `response_model` y exponen directamente diccionarios/listas del controlador;
+  una extracción podría alterar formas o normalizaciones sin que FastAPI las
+  estabilice.
+- **Doble acceso público por ruta protegida.** El guard revalida en una conexión
+  y la operación abre otra. Es comportamiento medido y no se optimiza por
+  inferencia.
+- **Integridad de auditoría.** Las claves foráneas de auditoría no usan `ON
+  DELETE`; una eliminación futura de tenants o super admins tendría efectos no
+  caracterizados y queda fuera de alcance.
 
 ## Registro de ejecución
 
@@ -229,13 +360,71 @@ con una explicación; nunca se ejecutan dos sin orden explícita.
 - Siguiente acción exacta: ejecutar únicamente 7.0 conforme al trabajo exacto
   de esta bitácora y detenerse antes de 7.1.
 
+### 2026-08-23 — cierre de la subcapa 7.0
+
+- Modo de acceso: mismo checkout local en
+  `C:\Users\David\Documents\sistema_escolar_api`; Git y commits locales se
+  validaron directamente.
+- Autorización: después de la activación documental, el usuario escribió
+  «continua». Conforme a esta bitácora, la orden autorizó solamente 7.0.
+- Precondiciones antes de modificar: rama `main`; árbol limpio confirmado con
+  `git status --porcelain=v1 --branch`, que mostró
+  `## main...origin/main [ahead 1]`; `HEAD`
+  `a3212ecf7519feb490634bf7397b09936c1a05fd`; y base
+  `2ec924a3308581b746a61fa24a44f71433034dbc` comprobada como ancestro.
+- Continuidad posterior al base: existía únicamente `a3212ec`, cuyo diff
+  contenía la creación de esta bitácora y la actualización del índice para la
+  activación. Coincide con la ejecución registrada y no había divergencia sin
+  explicar.
+- Alcance inspeccionado: exclusivamente rutas, controlador, núcleo de
+  autenticación, dispatcher de login, estado tenant, sesión DB, migraciones
+  públicas, definición legacy de `public.colegios` y pruebas relacionadas con
+  la frontera documentada arriba.
+- Línea base heredada antes de agregar caracterización: **61 passed**, 6
+  warnings.
+- Archivo agregado: `tests/test_super_admin_caracterizacion.py`, con 27 casos.
+  Documentación modificada: esta bitácora y
+  `docs/modularizacion/README.md`. Archivos de producto modificados:
+  **ninguno**.
+- Caracterización aislada: **27 passed**, 6 warnings. Ruff específico: correcto.
+- Batería específica integrada: **88 passed**, 6 warnings.
+- Primera ejecución de `.\venv\Scripts\python.exe scripts\verify.py` dentro del
+  sandbox: pytest informó **1058 passed y 30 errores de setup**, todos por
+  `PermissionError` al acceder a
+  `C:\Users\David\AppData\Local\Temp\pytest-of-David`; Ruff y `pip check`
+  pasaron. Ese intento se registra como inválido, no como regresión ni como
+  compuerta cumplida.
+- Repetición autorizada de la misma compuerta con acceso al directorio temporal:
+  **1088 passed**, 5 warnings; Ruff correcto; `pip check` sin dependencias
+  rotas.
+- No se ejecutó PostgreSQL real, migración, producción, deploy, commit ni push;
+  tampoco se atribuye evidencia de GitHub Actions.
+- Decisión de siguiente frontera: 7.1 extraerá solo los cinco sitios SQL de
+  listar, auditar y cambiar estado, con cursor recibido y recursos/transacción
+  aún en el controlador. Provisionamiento y autenticación quedan fuera.
+- Whitespace: `git diff --check` terminó en exit 0 para los dos documentos;
+  `git diff --no-index --check -- NUL
+  tests\test_super_admin_caracterizacion.py` no reportó errores —su exit 1
+  indica que el archivo nuevo difiere de `NUL`—. Los únicos avisos fueron de
+  normalización futura LF/CRLF y del perfil local de PowerShell.
+- Revisión de alcance: `git status --short --branch` mostró exactamente esta
+  bitácora y el índice modificados, más la caracterización nueva, sobre
+  `main...origin/main [ahead 1]`. El índice contiene una sola fila **Activa**,
+  correspondiente a `super_admin`.
+- Siguiente acción exacta: esperar una orden nueva para iniciar únicamente 7.1
+  y detenerse antes de 7.2.
+
 ## Entrega al próximo chat
 
 - Capa activa: **7 para `super_admin`**.
 - Última capa cerrada: **7 para `profesores`**.
-- Primera subcapa pendiente: **7.0**, inventario, contratos y caracterización.
+- Última subcapa cerrada: **7.0**, inventario, contratos y caracterización; 27
+  casos nuevos, 88 pruebas específicas y compuerta global con 1088 pruebas.
+- Primera subcapa pendiente: **7.1**, extracción de los cinco sitios SQL de
+  listar, auditar y cambiar estado; no incluye provisionamiento ni
+  autenticación.
 - Verificaciones pendientes aceptadas: manuales de `profesores` y `branding`,
   además de las heredadas del índice.
 - Bloqueos: ninguno.
 - Siguiente acción exacta: esperar una orden nueva para ejecutar únicamente
-  7.0 y detenerse antes de 7.1.
+  7.1 y detenerse antes de 7.2.

@@ -50,7 +50,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 7 | Resto de dominios — **`planilla` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `planilla` el 2026-08-21; verificación manual correcta y sin publicación comprobada | [07_PLANILLA.md](./07_PLANILLA.md) |
 | 7 | Resto de dominios — **`planeador_anual` migrado** | Migración individual con contratos y pruebas | **Cerrada** el 2026-08-22; 7.2 No aplica, verificación manual global reportada y sin entorno especificado | [07_PLANEADOR_ANUAL.md](./07_PLANEADOR_ANUAL.md) |
 | 7 | Resto de dominios — **`plan_de_clases` migrado** | Migración individual con contratos y pruebas | **Cerrada** el 2026-08-22; 7.2/7.3 No aplica, verificación manual global con reserva y sin publicación comprobada | [07_PLAN_DE_CLASES.md](./07_PLAN_DE_CLASES.md) |
-| 7 | Resto de dominios — **`branding`** | Migración individual con contratos y pruebas | **Activa** desde el 2026-08-22; 7.0 pendiente y no iniciada | [07_BRANDING.md](./07_BRANDING.md) |
+| 7 | Resto de dominios — **`branding`** | Migración individual con contratos y pruebas | **Activa** desde el 2026-08-22; 7.0 cerrada y 7.1 pendiente | [07_BRANDING.md](./07_BRANDING.md) |
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
 cierre y el usuario ordene continuar, se crea su sucesora desde
@@ -260,8 +260,13 @@ ni desglose punto por punto. No se comprobó publicación.
 **Dominio activo: `branding`.** El usuario lo nombró, ordenó activarlo y
 confirmó continuar localmente aceptando que las verificaciones heredadas
 permanezcan pendientes. Su bitácora es [07_BRANDING.md](./07_BRANDING.md); la
-activación es exclusivamente documental y su **7.0 está pendiente y no
-iniciada**.
+activación fue exclusivamente documental y su **7.0 quedó cerrada el mismo
+día** sin modificar producto: delimitó tres archivos propios, cuatro rutas más
+`/uploads`, una tabla, siete SQL inline, escrituras DB/storage y ningún N+1 de
+aplicación. Conservó las 31 pruebas heredadas y agregó 19; las específicas
+terminaron con **50 passed** y la compuerta con **1030 passed**, Ruff correcto
+y dependencias íntegras. Registró trece hallazgos sin corregir. Su **7.1 está
+pendiente y no iniciada**.
 
 Ningún otro se activa por inferencia: `profesores` y `super_admin` siguen en
 espera —son **dos**— y cada uno exigirá su propia bitácora y una orden
@@ -1811,7 +1816,14 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   manual propia quedó completada de forma global con la reserva
   «aparentemente bien», sin entorno, artefacto ni desglose punto por punto. No
   se comprobó publicación.
-- Capa activa: **7 para `branding`**, con 7.0 pendiente y no iniciada.
+- Resultado de 7.0 de `branding`: tres archivos propios y 246 líneas, cuatro
+  rutas propias más `/uploads`, una tabla, siete sitios SQL inline, escrituras
+  DB/storage y ningún N+1 de aplicación. Agregó 19 pruebas sin modificar
+  producto; las específicas terminaron con **50 passed** y la compuerta con
+  **1030 passed**, Ruff correcto y dependencias íntegras. Los seis supuestos
+  quedaron resueltos y los trece hallazgos se registraron sin corregir.
+- Capa activa: **7 para `branding`**, con 7.0 cerrada y 7.1 pendiente y no
+  iniciada.
 - Decisión vigente al activar `branding`: continuar localmente aceptando que
   sigan pendientes la
   calibración final de `DB_STATEMENT_TIMEOUT_MS`, la evidencia de GitHub
@@ -1968,12 +1980,16 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   documento que un chat nuevo debe leer después de este índice.** Registra el
   commit base limpio `bb34cf6f31413fdbbd2c1866b43f2da71f8ea03b`, la rama
   acordada `main`, la orden explícita de activar el dominio y la decisión de
-  continuar localmente aceptando las verificaciones heredadas pendientes. La
-  activación fue exclusivamente documental: no inspeccionó código ni pruebas
-  del dominio. Su **7.0 está pendiente y no iniciada**; debe delimitar la
-  frontera, resolver los supuestos documentales, caracterizar contratos, SQL,
-  concurrencia y almacenamiento, y detenerse antes de 7.1. `profesores` y
-  `super_admin` permanecen en espera.
+  continuar localmente aceptando las verificaciones heredadas pendientes. Su
+  **7.0 está cerrada**: delimitó tres archivos propios, cuatro rutas más el
+  endpoint compartido `/uploads`, una tabla, siete sitios SQL inline,
+  escrituras DB/storage y ningún N+1 de aplicación. Resolvió los seis supuestos,
+  agregó 19 pruebas sin modificar producto y registró trece hallazgos. Las
+  específicas terminaron con **50 passed** y la compuerta con **1030 passed**,
+  Ruff correcto y dependencias íntegras. **7.1 está pendiente y no iniciada**;
+  la siguiente acción es presentar para autorización la extracción de los siete
+  sitios SQL a un único repositorio conservando recursos, storage, offload y
+  contratos. `profesores` y `super_admin` permanecen en espera.
 - [07_PLAN_DE_CLASES.md](./07_PLAN_DE_CLASES.md): **bitácora cerrada** de la
   capa 7 para el dominio `plan_de_clases` y fuente de continuidad anterior.
   Registra el commit base limpio

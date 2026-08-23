@@ -7,8 +7,10 @@
 - Estado: **Activa** desde el 2026-08-22 por orden explícita del usuario.
 - Commit base: `bb34cf6f31413fdbbd2c1866b43f2da71f8ea03b`.
 - Rama acordada: `main`.
-- Primera subcapa pendiente: **7.0**, no iniciada.
+- Primera subcapa pendiente: **7.1**, no iniciada.
 - Código de producto modificado al activar: **Ninguno**.
+- Código de producto modificado en 7.0: **Ninguno**. El diff funcional es un
+  solo archivo nuevo de caracterización; los demás cambios son documentación.
 - Dominio de esta capa: **`branding`, y solo ese**. `profesores` y
   `super_admin` siguen en espera.
 - Autorización: el usuario nombró `branding`, ordenó activarlo y, después de
@@ -55,27 +57,125 @@ delimitarla con evidencia antes de proponer cualquier extracción.
   `boletin` y `observaciones`; y la rotación de la credencial privilegiada
   registrada en la capa 4.
 
-## Supuestos documentales que 7.0 debe resolver
+## Supuestos documentales resueltos en 7.0
 
-La activación no inspeccionó fuentes ni pruebas de `branding`. Estas referencias
-del índice son **supuestos**, no conclusiones verificadas:
+Los seis supuestos de la activación quedaron resueltos: **cuatro confirmados y
+dos confirmados con matiz**.
 
-1. `branding` constituye una frontera de dominio pendiente y separable.
-2. Usa `app/services/storage.py`; la capa 6 registró que solo `branding` y
-   `plan_de_clases` consumían ese servicio en aquel momento.
-3. La capa 2 registró una lectura async de branding que descargaba trabajo de
-   almacenamiento y DB a un worker. 7.0 debe comprobar el estado vigente y la
-   preservación del `ContextVar` del tenant.
-4. Métodos, paths, payloads, status codes, permisos, ownership, respuestas,
-   SQL, conexiones, transacciones y efectos de almacenamiento están por
-   determinar.
-5. La cantidad y ubicación de archivos, rutas, pruebas, consumidores y
-   persistencia propias están por determinar.
-6. No está verificado si el dominio escribe base de datos, archivos o ambos, ni
-   si existe N+1 de consultas, conexiones u operaciones de almacenamiento.
+| # | Supuesto documental | Resultado de 7.0 |
+|---:|---|---|
+| 1 | `branding` es una frontera pendiente y separable | **CONFIRMADO CON MATIZ.** Tiene tres archivos propios y cuatro rutas, pero el endpoint compartido `/uploads` sirve sus logos y `super_admin_controller.py` inserta la fila inicial al crear un tenant |
+| 2 | Usa `app/services/storage.py` | **CONFIRMADO.** Branding guarda y elimina objetos; el servicio también lo consumen `plan_de_clases_controller.py` y `main.py` |
+| 3 | La subida async descarga storage y DB a un worker preservando tenant | **CONFIRMADO.** Lee el `UploadFile` antes del offload y ejecuta save, URL, DB y limpieza dentro de `run_in_threadpool`; las pruebas heredadas demuestran workers concurrentes, `ContextVar` aislado y espera ante cancelación |
+| 4 | Contratos, SQL, recursos y efectos estaban por determinar | **CONFIRMADO COMO TRABAJO Y RESUELTO.** El inventario y los conteos quedan fijados más abajo |
+| 5 | Cantidad y ubicación de archivos, rutas, pruebas, consumidores y persistencia estaban por determinar | **CONFIRMADO COMO TRABAJO Y RESUELTO.** Son tres archivos propios, cuatro rutas propias más `/uploads`, siete SQL inline, dos consumidores compartidos directos y un escritor externo |
+| 6 | Escrituras y posible N+1 no estaban verificados | **CONFIRMADO CON MATIZ.** Escribe una tabla y almacenamiento local o R2/S3; no hay N+1 de aplicación, pero sí dos conexiones constantes en el PUT |
 
-La subcapa 7.0 debe confirmar, matizar, refutar o atribuir correctamente cada
-supuesto, sin corregir los hallazgos que descubra.
+## Inventario y contratos fijados en 7.0
+
+La frontera propia tiene **tres archivos y 246 líneas**. No existe un
+`branding_repository` y los **siete sitios `cursor.execute`** viven en el
+controlador.
+
+| Archivo | Líneas | SQL ejecutado | Responsabilidad |
+|---|---:|---:|---|
+| `app/routes/branding.py` | 36 | 0 | Cuatro entradas HTTP, autenticación, admin y multipart |
+| `app/controllers/branding_controller.py` | 181 | 7 | Lectura, actualización, logos, DB, storage y offload |
+| `app/schemas/branding.py` | 29 | 0 | Entrada permisiva y un esquema de respuesta no usado |
+
+Participan además piezas compartidas relacionadas: `app/services/storage.py`
+—150 líneas, local o R2/S3—; el acceso `/uploads/{file_path:path}` de
+`app/main.py`; `get_current_user` y `get_current_active_admin`; `get_cursor` y
+el `ContextVar` del tenant. `super_admin_controller.py` es un consumidor
+externo: inserta una fila vacía al crear un tenant. La frontera no autoriza
+modificarlo.
+
+### Entradas HTTP, permisos y respuestas
+
+Ninguna entrada declara `response_model`. Las cuatro rutas propias requieren
+usuario autenticado y tres exigen además admin activo:
+
+| Método | Path | Permiso observable | Respuesta o efecto principal |
+|---|---|---|---|
+| GET | `/branding` | Cualquier usuario autenticado | Objeto de 14 campos; si no hay fila, la crea y devuelve valores por defecto |
+| PUT | `/branding` | Admin activo | Actualiza la primera fila y la relee en otra conexión |
+| POST | `/branding/logo` | Admin activo | Guarda logo principal o secundario y devuelve `{"url": ..., "slot": ...}` |
+| DELETE | `/branding/logo` | Admin activo | Limpia el slot y devuelve `{"mensaje": "Logo eliminado", "slot": ...}` |
+| GET | `/uploads/{file_path:path}` | Usuario autenticado del mismo tenant | Sirve el logo local o remoto; no exige admin |
+
+La interfaz ASGI fijó 200 para lectura y actualización válidas, 403 para una
+mutación como profesor, 422 para un cuerpo JSON incompatible y 400 para un
+slot inválido. Las validaciones de logo producen 400 por slot, MIME, extensión
+o tamaño; autenticación puede producir 401 y `/uploads` 403 o 404. Las rutas no
+capturan fallos inesperados del controlador, DB o proveedor.
+
+### Persistencia, conexiones, concurrencia y almacenamiento
+
+- La tabla propia es `institucion_branding`. El DDL tiene clave primaria, pero
+  **no impone una sola fila** ni declara `NOT NULL` en los campos de negocio;
+  el seed `WHERE NOT EXISTS` no sustituye esa restricción.
+- Las siete sentencias son: lectura e inserción inicial; actualización de datos;
+  y dos pares dinámicos de lectura/actualización de la columna del logo. Los
+  nombres dinámicos solo pueden ser los dos slots validados.
+- Todos los bloques usan `get_cursor(commit=True)`: el context manager posee
+  conexión, cursor, commit, rollback y cierre.
+- GET usa **1 conexión y 1 consulta** con fila, o **1 y 2** si debe insertarla.
+- PUT usa **2 conexiones y 2 consultas** con fila, o **2 y 3** si no existía.
+- POST de logo usa **1 conexión y 2 consultas**, una escritura de archivo y
+  hasta un borrado posterior. DELETE usa **1 conexión y 2 consultas** más un
+  borrado posterior.
+- No hay `execute` dentro de bucles: **no existe N+1 de aplicación** en
+  consultas, conexiones ni operaciones de almacenamiento.
+- La subida conserva el límite async/síncrono: validaciones y lectura del
+  `UploadFile` ocurren antes de `run_in_threadpool`; save, URL, DB y borrado
+  posterior corren en un worker con el tenant preservado.
+- El key es `branding/{tenant}/logo_{slot}_{uuid}{ext}` y la URL observable es
+  `/uploads/...`. La validación acepta PNG/JPEG/WebP hasta 2 MiB según MIME y
+  extensión declarados.
+- `/uploads` comprueba primero existencia y después tenant. En local no abre DB;
+  en remoto puede hacer HEAD y luego GET. El handler es síncrono y FastAPI lo
+  descarga a su threadpool.
+
+## Hallazgos registrados en 7.0; ninguno corregido
+
+1. **El GET escribe.** `GET /branding` abre una transacción con commit e inserta
+   una fila si no existe; no es una lectura pura.
+2. **La unicidad de la fila es solo una convención.** El DDL no impide varias
+   filas y todo el dominio elige la primera por `ORDER BY id ASC LIMIT 1`.
+3. **El PUT puede perder silenciosamente la entrada.** Si no existe fila, el
+   `UPDATE` afecta cero registros; la relectura crea una fila vacía y responde
+   200 con defaults, no con los datos enviados.
+4. **La subida puede responder éxito sin asociar el logo.** Sin fila previa,
+   guarda el archivo, el `UPDATE` afecta cero registros y devuelve la URL sin
+   comprobar `rowcount`.
+5. **DB y almacenamiento no comparten transacción.** Un fallo DB posterior al
+   save deja el objeto nuevo huérfano. Tras confirmar DB, el borrado anterior
+   puede fallar y `delete_file` absorbe el error; DELETE puede responder éxito
+   dejando el archivo.
+6. **La validación confía en declaraciones del cliente.** No inspecciona la
+   firma del contenido y lee el archivo completo antes de aplicar el límite de
+   2 MiB.
+7. **`/uploads` revela existencia antes de autorizar.** Un path ajeno existente
+   produce 403 y uno inexistente 404 porque el filesystem o proveedor se
+   consulta antes de comprobar el tenant.
+8. **El PUT no relee dentro de la transacción de escritura.** Confirma y abre
+   una segunda conexión; una escritura concurrente puede cambiar lo que devuelve.
+9. **Esquema y DDL son permisivos.** Email y colores no validan formato, los
+   textos no tienen límites Pydantic y casi todos los campos admiten nulos en
+   DB; el esquema normaliza algunos nulos solo al ensamblar la respuesta.
+10. **Ninguna ruta usa `response_model`.** La clase `Branding` existe pero no
+    protege ninguna respuesta; POST y DELETE tienen formas distintas.
+11. **Los errores son heterogéneos.** Hay 400 propios y 422 de Pydantic, pero
+    fallos inesperados de DB/storage se propagan; algunos borrados fallidos se
+    silencian completamente.
+12. **La tabla tiene un escritor fuera de la frontera.** El alta de tenant en
+    `super_admin_controller.py` inserta la fila inicial y debe quedar protegida
+    por la compuerta global si se extrae persistencia.
+13. **Eliminar sin fila responde éxito.** Ejecuta SELECT y UPDATE, solicita
+    `delete_file(None)` y devuelve «Logo eliminado» sin comprobar afectación.
+
+Los trece hallazgos quedan registrados sin cambiar producto, expectativas ni
+base de datos.
 
 ## Alcance autorizado
 
@@ -120,16 +220,18 @@ supuesto, sin corregir los hallazgos que descubra.
 
 | Comprobación | Comando | Resultado |
 |---|---|---|
-| Pruebas específicas | Por determinar después de delimitar la frontera en 7.0 | Pendiente |
-| Suite global | `.\venv\Scripts\python.exe scripts\verify.py` | Pendiente |
-| Ruff | Alcance por determinar en 7.0 | Pendiente |
-| Dependencias | Incluidas en la compuerta global | Pendiente |
+| Pruebas específicas heredadas | `pytest` sobre controlador, upload boundary y permisos de uploads | **31 passed**, 5 warnings heredados |
+| Compuerta heredada | `.\venv\Scripts\python.exe scripts\verify.py` | **1011 passed**, Ruff correcto, dependencias íntegras |
+| Caracterización nueva | `pytest tests\test_branding_caracterizacion.py` | **19 passed**, 5 warnings heredados |
+| Pruebas específicas finales | Las cuatro suites relacionadas | **50 passed**, 5 warnings heredados |
+| Ruff de la caracterización | `.\venv\Scripts\python.exe -m ruff check tests\test_branding_caracterizacion.py` | **All checks passed** |
+| Compuerta final | `.\venv\Scripts\python.exe scripts\verify.py` | **1030 passed**, Ruff correcto, dependencias íntegras |
 
 ## Subcapas
 
 | Subcapa | Resultado | Estado |
 |---:|---|---|
-| 7.0 | Inventario, contratos, almacenamiento y caracterización | **Pendiente** |
+| 7.0 | Inventario, contratos, almacenamiento y caracterización | **Cerrada el 2026-08-22** |
 | 7.1 | Primera extracción protegida, solo si la evidencia la justifica | Pendiente |
 | 7.2 | Segunda extracción o integración, solo si se autoriza | Pendiente |
 | 7.3 | Retiro heredado y cierre, si aplica | Pendiente |
@@ -137,7 +239,7 @@ supuesto, sin corregir los hallazgos que descubra.
 Las subcapas se adaptan al trabajo real. Las innecesarias se marcan `No aplica`
 con una explicación; nunca se ejecutan dos sin orden explícita.
 
-## Subcapa activa: trabajo exacto de 7.0
+## Subcapa cerrada: trabajo ejecutado en 7.0
 
 1. Delimitar la frontera real de `branding` por entradas, llamadores, tablas,
    consumidores y efectos de almacenamiento antes de contar o modificar nada.
@@ -163,7 +265,9 @@ con una explicación; nunca se ejecutan dos sin orden explícita.
     riesgos y la siguiente acción exacta.
 12. **Detenerse al cerrar 7.0. No iniciar 7.1 en el mismo turno.**
 
-## Criterios de cierre de la subcapa
+## Criterios de cierre de 7.0
+
+Todos quedaron cumplidos:
 
 - La frontera queda delimitada con evidencia y sin reabrir otros dominios.
 - Los seis supuestos quedan resueltos uno por uno.
@@ -172,6 +276,16 @@ con una explicación; nunca se ejecutan dos sin orden explícita.
 - Pruebas específicas, Ruff, compuerta y dependencias correctas.
 - `git diff --check` correcto y diff exclusivo de 7.0.
 - Bitácora actualizada con resultados, decisiones, riesgos y siguiente acción.
+
+## Siguiente subcapa pendiente: 7.1
+
+La evidencia permite presentar para autorización una extracción limitada de
+los **siete sitios SQL** a un único `branding_repository`, conservando en el
+controlador la propiedad de `get_cursor(commit=True)`, el offload, el tenant,
+storage, orden de efectos y contratos. Antes de mover producto se deben fijar
+texto y parámetros exactos y decidir con evidencia cómo representar los dos
+pares de SQL de logo que ya tienen dos usos reales. **7.1 no está iniciada ni
+autorizada por inferencia.**
 
 ## Criterios de cierre de la capa
 
@@ -196,19 +310,39 @@ con una explicación; nunca se ejecutan dos sin orden explícita.
   7.0 en este turno.
 - **No inferir la frontera por nombres o referencias heredadas.** Los datos
   previos se registran como supuestos que 7.0 debe contrastar.
+- **Ejecutar solo 7.0 por la orden «continua».** La subcapa agrega
+  caracterización y documentación, sin cambios de producto ni inicio de 7.1.
+- **Incluir `/uploads` y el storage en la frontera observable, pero no como
+  archivos propios.** Ambos afectan el ciclo de vida y acceso de los logos;
+  `super_admin_controller.py` queda registrado únicamente como escritor externo.
+- **Conservar las 31 pruebas heredadas.** Ya protegen el orden storage/DB, el
+  offload, la cancelación y el tenant; los 19 casos nuevos cubren los huecos sin
+  cambiar una sola expectativa previa.
+- **No corregir los trece hallazgos.** La ausencia de fila, unicidad, validación
+  de contenido, autorización de uploads, response models, errores y
+  compensaciones quedan fuera de una subcapa de inventario.
+- **Dejar 7.1 sujeta a una orden nueva.** La evidencia permite proponer extraer
+  los siete sitios SQL, pero no autoriza aún producto ni una forma concreta de
+  representar los pares de logo.
 
 ## Riesgos
 
 - **Verificaciones heredadas pendientes.** Se aceptó continuar sin cerrarlas;
   conservan su riesgo y esta capa no puede presentarlas como cumplidas.
-- **Almacenamiento con efectos externos.** La documentación vincula branding
-  con `storage.py`; hasta 7.0 no se conocen propiedad, compensaciones ni punto
-  real de rollback.
-- **Límite async/síncrono y tenant.** La capa 2 protegió un camino de branding;
-  una extracción podría bloquear el event loop o perder el `ContextVar` si no
-  conserva el offload vigente.
-- **Frontera y consumidores desconocidos.** Inspeccionar por nombres podría
-  omitir rutas o piezas compartidas, como ocurrió en dominios anteriores.
+- **Almacenamiento con efectos externos.** Save ocurre antes de DB y los
+  borrados después del commit; no hay transacción compartida ni compensación
+  para un save seguido de fallo DB, y los errores de delete se absorben.
+- **Límite async/síncrono y tenant.** El camino POST está correctamente
+  protegido hoy; una extracción puede bloquear el event loop o perder el
+  `ContextVar` si mueve `_guardar_logo_leido` fuera de su offload.
+- **Frontera compartida.** `/uploads`, `storage.py` y el insert de alta de tenant
+  son consumidores externos que una prueba limitada a los tres archivos
+  propios no protegería.
+- **Integridad de fila débil.** DDL y controladores permiten ausencia o
+  duplicados; los éxitos silenciosos medidos pueden producir datos o archivos
+  no asociados.
+- **Señal de autorización observable.** `/uploads` distingue 403 de 404 después
+  de comprobar existencia, lo que revela si un path ajeno existe.
 - **Publicación no comprobada contra el remoto real.** Solo se observó que la
   referencia local `origin/main` coincide con `HEAD`; no se atribuye despliegue
   ni GitHub Actions.
@@ -258,13 +392,77 @@ con una explicación; nunca se ejecutan dos sin orden explícita.
 - Siguiente acción exacta: ejecutar únicamente 7.0 conforme al trabajo exacto
   de esta bitácora y detenerse antes de 7.1.
 
+### 2026-08-22 — cierre de la subcapa 7.0
+
+- Modo de acceso: mismo checkout local en
+  `C:\Users\David\Documents\sistema_escolar_api`; Git y commits locales
+  validados directamente.
+- Autorización: la orden «continua» habilitó únicamente la primera subcapa
+  pendiente, 7.0.
+- Precondiciones antes de modificar: rama `main`; árbol limpio según
+  `git status --porcelain=v1 --branch`, que mostró
+  `## main...origin/main [ahead 1]`; `HEAD`
+  `f53711bbbe84977ed2e13279e655584a299807cc`; el commit base
+  `bb34cf6f31413fdbbd2c1866b43f2da71f8ea03b` es ancestro.
+- Continuidad desde el base: existe un solo commit posterior, `f53711b`
+  (`feat(branding): add initial documentation and activate branding domain`).
+  Su diff crea esta bitácora y modifica el índice maestro, exactamente como
+  registra la activación. No había commits locales sin explicar.
+- Estado de publicación observado: la referencia local `origin/main` está un
+  commit por detrás. No se consultó el remoto real, no hubo push y no se
+  atribuye GitHub Actions.
+- Fuentes inspeccionadas: los tres archivos propios; `storage.py`; el montaje,
+  autorización y servicio de `/uploads`; dependencias, `get_cursor` y
+  `ContextVar` relacionados; el insert externo de alta de tenant; el DDL base y
+  las dos migraciones de branding; y las tres suites heredadas relacionadas.
+  No se inspeccionaron los dominios en espera.
+- Línea base específica dentro del sandbox: **25 passed y 6 errores de setup**
+  por `PermissionError` al directorio temporal global de pytest, no por fallos
+  del producto. La repetición fuera de esa restricción terminó con **31
+  passed** y 5 warnings heredados.
+- Compuerta heredada dentro del sandbox: **982 passed y 29 errores de setup**
+  por el mismo `PermissionError`; Ruff y dependencias sí pasaron. La repetición
+  fuera de la restricción terminó con **1011 passed**, Ruff correcto y
+  dependencias íntegras.
+- Archivo funcional agregado: `tests/test_branding_caracterizacion.py`, con
+  **19 pruebas** de frontera, rutas, permisos, HTTP ASGI, esquemas, SQL,
+  conexiones, ausencia de fila, DDL, storage y autorización de `/uploads`.
+  Código de producto modificado: **ninguno**.
+- Verificación nueva: **19 passed**. Suite específica final: **50 passed** y 5
+  warnings heredados. Ruff de la prueba nueva: **All checks passed**.
+  Compuerta global final: **1030 passed**, Ruff correcto y dependencias
+  íntegras.
+- Los seis supuestos quedaron resueltos —cuatro confirmados y dos confirmados
+  con matiz— y los trece hallazgos se registraron sin corregirlos.
+- Archivos de la subcapa: la caracterización nueva, esta bitácora y
+  `docs/modularizacion/README.md`. No hubo DB, migraciones, producción, commit,
+  push ni deploy.
+- Revisión final: `git diff --check` terminó en exit 0 para los dos documentos;
+  `git diff --no-index --check -- NUL tests/test_branding_caracterizacion.py`
+  no reportó errores de whitespace —exit 1 porque el archivo nuevo difiere de
+  `NUL`—. Los avisos fueron únicamente de normalización futura LF/CRLF.
+  `git status --short --branch` mostró exactamente esos tres archivos sobre
+  `main...origin/main [ahead 1]`; no hay archivos de producto, configuración,
+  migraciones ni otros dominios. El índice y las bitácoras conservan una sola
+  capa **Activa**, `branding`.
+- Siguiente acción exacta: presentar para autorización el alcance de 7.1 —la
+  extracción de los siete sitios SQL a un único repositorio conservando
+  recursos, storage, offload y contratos— y detenerse. No iniciar la extracción
+  por inferencia.
+
 ## Entrega al próximo chat
 
 - Capa activa: **7 para `branding`**.
-- Última subcapa terminada: ninguna; la activación fue documental.
-- Primera subcapa pendiente: **7.0**, inventario, contratos, almacenamiento y
+- Última subcapa terminada: **7.0**, inventario, contratos, almacenamiento y
   caracterización.
+- Primera subcapa pendiente: **7.1**, extracción protegida aún no autorizada.
+- Producto modificado en 7.0: ninguno; se agregó una caracterización de 19
+  casos y la compuerta terminó con **1030 pruebas**.
+- Resultado: tres archivos propios, cuatro rutas más `/uploads`, una tabla,
+  siete sitios SQL inline, escrituras DB/storage y ningún N+1 de aplicación.
+- Hallazgos: trece registrados y ninguno corregido.
 - Verificaciones heredadas: pendientes por decisión explícita del usuario.
 - Dominios en espera: `profesores` y `super_admin`.
 - Bloqueos: ninguno.
-- Siguiente acción exacta: ejecutar únicamente 7.0 y detenerse antes de 7.1.
+- Siguiente acción exacta: presentar el alcance de 7.1 y esperar una orden
+  explícita; no iniciar producto por inferencia.

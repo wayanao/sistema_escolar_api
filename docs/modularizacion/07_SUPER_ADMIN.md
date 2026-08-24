@@ -1,6 +1,6 @@
 # Capa 7: super_admin
 
-Última revisión: 2026-08-23.
+Última revisión: 2026-08-24.
 
 ## Control
 
@@ -847,6 +847,50 @@ autorizada ni se creó ningún tenant real.
 - Siguiente acción exacta: ninguna subcapa ni dominio queda activo. Esperar una
   orden explícita del usuario; no activar trabajo posterior por inferencia.
 
+### 2026-08-24 — compatibilidad de la caracterización con FastAPI 0.137+
+
+- Modo de acceso: mismo checkout local en
+  `C:\Users\David\Documents\sistema_escolar_api`; Git y commits locales se
+  validaron directamente.
+- Autorización: el usuario escribió «OK HAZLO» para corregir el fallo análogo
+  de `super_admin` observado en GitHub Actions. Esta autorización no reactiva
+  la capa ni abre una subcapa.
+- Precondiciones antes de modificar: rama acordada `main`; árbol limpio
+  confirmado con `git status --porcelain=v1 --branch`, que mostró
+  `## main...origin/main`; `HEAD`
+  `1d4657c2fd2ad73d43bf928d4bb3e4318f19c4bc`; y base
+  `2ec924a3308581b746a61fa24a44f71433034dbc` ancestro del `HEAD`.
+- Continuidad posterior al base: los cinco commits de activación y subcapas de
+  `super_admin` están explicados en esta bitácora. El commit posterior
+  `1d4657c` modifica únicamente la caracterización y bitácora de `profesores`,
+  como registra `07_PROFESORES.md`; no había divergencia ni cambios sin
+  explicar.
+- Evidencia remota aportada por el usuario: Backend quality #33 sobre
+  `1d4657c` terminó con **1088 passed y 1 fallo**; Ruff y `pip check` pasaron.
+  La corrección previa de `profesores` quedó validada y el único fallo restante
+  fue esta caracterización, que asumía que `main.app.routes` era una lista
+  plana de `APIRoute` y obtuvo un conjunto vacío con FastAPI 0.141.1.
+- Una búsqueda focal en `tests/` confirmó que esta era la única referencia
+  restante a `main.app.routes` con ese patrón de caracterización.
+- Archivo modificado: `tests/test_super_admin_caracterizacion.py`. La prueba
+  obtiene ahora las rutas montadas desde `main.app.openapi()["paths"]` y sigue
+  fijando exactamente los cuatro endpoints `/super-admin` y `POST /login`.
+- Batería específica integrada: **89 passed**, 6 warnings. Ruff sobre la
+  caracterización: correcto.
+- Compuerta global con acceso válido al directorio temporal: **1089 passed**,
+  5 warnings; Ruff correcto; `pip check` sin dependencias rotas.
+- No cambió código de producto, rutas, payloads, status codes, permisos,
+  tenant, ownership, SQL, transacciones, configuración ni dependencias. No se
+  ejecutó base de datos, staging, producción, migración, deploy, commit ni
+  push.
+- La verificación manual propia permanece pendiente. GitHub Actions también
+  queda pendiente hasta que el usuario publique esta corrección y exista
+  evidencia de un run nuevo; no se atribuye como verificada por la ejecución
+  local.
+- La capa 7 continúa **Cerrada**, sin subcapa ni dominio activo. Siguiente
+  acción exacta: el usuario revisa y publica los dos archivos modificados y
+  comprueba el nuevo run de Backend quality; no activar trabajo posterior.
+
 ## Entrega al próximo chat
 
 - Capa activa: **Ninguna**.
@@ -856,7 +900,8 @@ autorizada ni se creó ningún tenant real.
   y compuerta global con 1089 pruebas.
 - Primera subcapa pendiente: **Ninguna**.
 - Verificaciones pendientes aceptadas: manuales de `profesores` y `branding`,
-  la manual propia de `super_admin` y las heredadas del índice.
+  la manual propia de `super_admin`, las heredadas del índice y un run exitoso
+  de GitHub Actions después de publicar esta corrección.
 - Bloqueos: ninguno.
 - Siguiente acción exacta: informar que no hay capa activa y esperar una orden
   explícita antes de activar cualquier trabajo posterior.

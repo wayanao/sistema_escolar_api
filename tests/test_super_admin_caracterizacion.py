@@ -321,11 +321,11 @@ def test_cuatro_rutas_privilegiadas_y_login_compartido_quedan_montados():
     )
 
     mounted = {
-        (method, route.path)
-        for route in main.app.routes
-        if isinstance(route, APIRoute)
-        for method in route.methods
-        if route.path.startswith("/super-admin") or route.path == "/login"
+        (method.upper(), path)
+        for path, operations in main.app.openapi()["paths"].items()
+        if path.startswith("/super-admin") or path == "/login"
+        for method in operations
+        if method in {"delete", "get", "head", "options", "patch", "post", "put", "trace"}
     }
     assert mounted == set(routes) | {("POST", "/login")}
 

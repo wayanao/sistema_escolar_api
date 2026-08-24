@@ -151,13 +151,18 @@ def fijar_orden_boletin_materia(cursor, posicion, curso_id, materia_id):
 
 
 def buscar_profesor_activo(cursor, profesor_id):
-    """Fila testigo si el profesor existe y esta activo. `None` si no."""
+    """Fila testigo si el profesor existe y esta activo. `None` si no.
+
+    El lock serializa altas y ediciones que comparten profesor hasta que la
+    transaccion complete sus validaciones de cruce y su escritura.
+    """
     cursor.execute(
         """
         SELECT 1
         FROM profesor
         WHERE id = %s
           AND COALESCE(LOWER(estado), 'activo') = 'activo'
+        FOR NO KEY UPDATE
         """,
         (profesor_id,),
     )
@@ -165,13 +170,18 @@ def buscar_profesor_activo(cursor, profesor_id):
 
 
 def buscar_curso_activo(cursor, curso_id):
-    """Fila testigo si el curso existe y esta activo. `None` si no."""
+    """Fila testigo si el curso existe y esta activo. `None` si no.
+
+    Se toma despues del profesor para que todas las altas y ediciones usen el
+    mismo orden y serialicen tambien los cruces del curso o salon.
+    """
     cursor.execute(
         """
         SELECT 1
         FROM cursos
         WHERE id = %s
           AND COALESCE(LOWER(estado), 'activo') = 'activo'
+        FOR NO KEY UPDATE
         """,
         (curso_id,),
     )

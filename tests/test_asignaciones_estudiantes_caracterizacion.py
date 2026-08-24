@@ -176,6 +176,10 @@ def test_asignar_profesor_camino_feliz_cuesta_doce_consultas(conexion_de):
 
     assert respuesta == {"mensaje": "Asignación creada", "id": 77}
     assert len(cursor.ejecutadas) == 12
+    assert "FOR NO KEY UPDATE" in cursor.sql[0].upper()
+    assert "FROM profesor" in cursor.sql[0]
+    assert "FOR NO KEY UPDATE" in cursor.sql[1].upper()
+    assert "FROM cursos" in cursor.sql[1]
     assert conn.commits == 1
     assert conn.cerrada is True
     assert cursor.cerrado is True
@@ -412,6 +416,10 @@ def test_editar_permite_cambiar_solo_el_horario_con_historial(conexion_de):
     assert respuesta == {"mensaje": "Asignación actualizada"}
     assert conn.commits == 1
     assert len(cursor.ejecutadas) == 10
+    assert "FOR NO KEY UPDATE" in cursor.sql[1].upper()
+    assert "FROM profesor" in cursor.sql[1]
+    assert "FOR NO KEY UPDATE" in cursor.sql[2].upper()
+    assert "FROM cursos" in cursor.sql[2]
     # No se consulta el historial porque la relacion academica no cambia.
     assert not any("information_schema.columns" in sql for sql in cursor.sql)
     update_sql, update_params = cursor.ejecutadas[-1]

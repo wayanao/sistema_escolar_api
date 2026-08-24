@@ -235,6 +235,13 @@ Lo que sigue es un resumen para orientarse; **el estado vivo está en
   perfil pasó de `N+1`/`2N+1` a **2/3 conexiones totales** como admin/profesor.
   Conserva contratos y aislamiento tenant; `frontend-react` no cambió. Staging,
   verificación manual, commit, push y CI siguen pendientes.
+- **Corrección puntual posterior al cierre de la capa 6**, autorizada y
+  ejecutada localmente el 2026-08-24 sin reabrirla: las precondiciones existentes
+  de profesor y curso toman `FOR NO KEY UPDATE` en orden fijo y serializan altas
+  o ediciones que podrían solaparse. Conserva 12/10 consultas, contratos y
+  aislamiento tenant; no requiere frontend ni migración. La prueba concurrente
+  con PostgreSQL real, staging, renovación de workers, commit, push y CI siguen
+  pendientes.
 - Suite al día: **1116 pruebas**, exit 0. Partió de 606 al activar la capa 5 y de
   669 al activar la capa 6.
 - **Un hallazgo se retiró** tras revisarlo: el «filtro de ownership por pago» no
@@ -393,15 +400,16 @@ cancela**.
 
 ### Lo que dejó abierto la capa 6
 
-- **El alta y la edición de asignaciones no toman ningún lock.** Es el riesgo más
-  directo del backend hoy. La validación de cruce de horarios lee, decide y
-  escribe bajo `READ COMMITTED`, sin `pg_advisory_xact_lock` y sin `FOR UPDATE`,
-  así que **dos peticiones simultáneas pueden crear dos clases solapadas** para
-  el mismo profesor o el mismo salón. La restricción `UNIQUE` de la base solo
-  cubre el duplicado exacto, no el solapamiento. Es el análogo del hueco que la
-  capa 5 encontró en `POST /pagos`; aquel se corrigió a medias con un candado por
-  estudiante y **este sigue intacto**. El arreglo tendría la misma forma: tomar
-  el lock por profesor y por curso como primera sentencia del registro.
+- ~~El alta y la edición de asignaciones no toman ningún lock.~~ **Corregido
+  localmente el 2026-08-24**, con autorización explícita y sin reabrir la capa:
+  las lecturas existentes de profesor y curso activos toman `FOR NO KEY UPDATE`
+  en orden profesor → curso. Esto conserva las 12/10 consultas de alta/edición,
+  rutas, payloads y 400/409, y serializa a los escritores que comparten profesor
+  o salón sin advisory keys ni migración. La compuerta terminó con **1116
+  pruebas**. Sigue pendiente demostrar la espera y revalidación con dos
+  conexiones PostgreSQL reales en staging, renovar todos los workers al
+  publicar y obtener evidencia posterior de CI; no atribuyas esas verificaciones
+  todavía.
 - **`GET /estudiantes/{id}` devuelve `SELECT *`**, así que su contrato observable
   es el esquema entero de la tabla: añadir una columna cambia la respuesta de la
   API sin tocar código.

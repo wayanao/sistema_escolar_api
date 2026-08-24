@@ -40,7 +40,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 3 | Migraciones y tenants | Todos los tenants versionados, runner bloqueado y alta reproducible | **Cerrada**; reparó producción y verificó en uso | [03_MIGRACIONES_TENANTS.md](./03_MIGRACIONES_TENANTS.md) |
 | 4 | Reportes financieros | Dominio modular, N+1 eliminado y consultas medidas | **Cerrada**; N+1 de 5N a 15 constantes, medido en producción | [04_REPORTES_FINANCIEROS.md](./04_REPORTES_FINANCIEROS.md) |
 | 5 | Pagos y tipos de pago | Dominio financiero modularizado y protegido | **Cerrada**; SQL inline de 23 a 3, sin tocar la base | [05_PAGOS_TIPOS_PAGO.md](./05_PAGOS_TIPOS_PAGO.md) |
-| 6 | Asignaciones y estudiantes | Dominios grandes separados con contratos estables | **Cerrada**; SQL inline de 52 a 1, sin tocar la base | [06_ASIGNACIONES_ESTUDIANTES.md](./06_ASIGNACIONES_ESTUDIANTES.md) |
+| 6 | Asignaciones y estudiantes | Dominios grandes separados con contratos estables | **Cerrada**; SQL inline de 52 a 1; lock de concurrencia corregido localmente el 2026-08-24 | [06_ASIGNACIONES_ESTUDIANTES.md](./06_ASIGNACIONES_ESTUDIANTES.md) |
 | 7 | Resto de dominios — **`dashboard` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `dashboard` el 2026-08-19; publicada y verificada a mano | [07_DASHBOARD.md](./07_DASHBOARD.md) |
 | 7 | Resto de dominios — **`notas` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `notas` el 2026-08-19; verificada a mano. **Publicada el 2026-08-20**, después de escribirse su bitácora | [07_NOTAS.md](./07_NOTAS.md) |
 | 7 | Resto de dominios — **`ventas` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `ventas` el 2026-08-20; verificada a mano. **Publicada el 2026-08-20**, después de escribirse su bitácora | [07_VENTAS.md](./07_VENTAS.md) |
@@ -54,16 +54,19 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 7 | Resto de dominios — **`profesores` migrado** | Migración individual con contratos y pruebas | **Cerrada** el 2026-08-23; 7.2/7.3 No aplica, verificación manual pendiente y sin publicación comprobada | [07_PROFESORES.md](./07_PROFESORES.md) |
 | 7 | Resto de dominios — **`super_admin` migrado** | Migración individual con contratos y pruebas | **Cerrada** el 2026-08-23; 7.0–7.3 completas, verificación manual pendiente y sin publicación comprobada | [07_SUPER_ADMIN.md](./07_SUPER_ADMIN.md) |
 
-**Estado vigente:** no hay una capa activa. El 2026-08-24 se completaron dos
+**Estado vigente:** no hay una capa activa. El 2026-08-24 se completaron tres
 correcciones locales autorizadas sobre capas cerradas, sin reabrirlas: el mapeo
 seguro a 500 de los siete fallos de infraestructura de
-`tipos_pagos_controller`, y después el N+1 de conexiones de los permisos de
-`asistencia`. Este último pasó de `N+1`/`2N+1` a **2/3 conexiones totales** como
-admin/profesor y la compuerta local terminó con **1116 pruebas**. Staging,
-verificación manual, commit, push y evidencia de GitHub Actions de esta última
-corrección siguen pendientes y bajo control del usuario. Las menciones
-cronológicas anteriores que presentan cualquiera de estos hallazgos como abierto
-describen el estado de su fecha, no el vigente.
+`tipos_pagos_controller`, el N+1 de conexiones de los permisos de `asistencia`
+y la protección de concurrencia al crear o editar asignaciones. Esta última
+añade `FOR NO KEY UPDATE` a las dos precondiciones existentes de profesor y
+curso, conserva **12/10 consultas** en alta/edición y serializa los cruces sin
+migración ni cambios de frontend. La compuerta local terminó con **1116
+pruebas**. Su verificación con dos conexiones PostgreSQL reales, staging,
+commit, push, despliegue y evidencia posterior de GitHub Actions siguen
+pendientes y bajo control del usuario. Las menciones cronológicas anteriores que
+presentan cualquiera de estos hallazgos como abierto describen el estado de su
+fecha, no el vigente.
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
 cierre y el usuario ordene continuar, se crea su sucesora desde
@@ -2360,13 +2363,16 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   cerrada** de la capa 6 y fuente de continuidad **hasta que se activó la capa
   7**. Registra el commit base
   `589cb6d`, el inventario de 6.0 con sus 19 entradas HTTP, dos tablas escritas y
-  16 claves foráneas, los **diez hallazgos sin corregir** —entre ellos la
-  ausencia de lock frente a horarios solapados y el código muerto duplicado que el
-  usuario decidió conservar—, las cuatro extracciones de 6.1 a 6.5 con sus
+  16 claves foráneas, los diez hallazgos originales —el lock frente a horarios
+  solapados quedó **corregido localmente el 2026-08-24** y el código muerto
+  duplicado que el usuario decidió conservar sigue abierto—, las cuatro
+  extracciones de 6.1 a 6.5 con sus
   decisiones tomadas con evidencia, el supuesto de `storage` **refutado**, y el
   cierre de la capa con su rollback, su verificación manual local y la advertencia
   de que **no llegó a publicarse**. Fue la fuente de continuidad **hasta que se
-  activó la capa 7**; sus diez hallazgos siguen vivos.
+  activó la capa 7**; los demás hallazgos que la bitácora no marca como
+  corregidos siguen vivos. La corrección del lock conserva pendiente una prueba
+  concurrente con PostgreSQL real, staging, publicación y CI posterior.
 - [05_PAGOS_TIPOS_PAGO.md](./05_PAGOS_TIPOS_PAGO.md): **bitácora cerrada** de la
   capa 5. Conserva sus hallazgos y el paso 2 acordado y no iniciado, la clave de
   idempotencia de `POST /pagos`. Registra también las correcciones puntuales
@@ -2411,8 +2417,10 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   autorizaciones puntuales de las capas 3 a 6 fueron consumidas y retiradas;
   conserva **una preparada para la capa 7**, que exige rellenar antes qué dominio
   se aborda, porque esa capa es «uno a la vez» y no un bloque. Registra también
-  lo que dejaron abiertas las capas 5 y 6 —la clave de idempotencia y la ausencia
-  de lock frente a horarios solapados— y cuatro lecciones nuevas de la capa 6.
+  lo que dejaron abiertas las capas 5 y 6 —la clave de idempotencia y los
+  hallazgos de asignaciones todavía vigentes— y cuatro lecciones nuevas de la
+  capa 6. Registra que el lock frente a horarios solapados quedó corregido
+  localmente y que su prueba concurrente en PostgreSQL real sigue pendiente.
   Incluye
   las tres trampas que dejó la capa 3: el endpoint `-pooler`, los nombres sin
   cualificar que resuelve el `search_path`, y que los ensayos necesitan schema

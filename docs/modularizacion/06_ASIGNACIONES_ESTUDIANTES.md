@@ -1,6 +1,6 @@
 # Capa 6: asignaciones y estudiantes
 
-Última revisión: 2026-08-17.
+Última revisión: 2026-08-24.
 
 ## Control
 
@@ -14,8 +14,9 @@
   commit base **ya está desplegado**: un push a `main` dispara el despliegue en
   este repositorio.
 - Primera subcapa pendiente: **ninguna**. Las cinco subcapas, **6.0 a 6.5**,
-  quedaron **cerradas** el 2026-08-17. El **cierre de la capa** queda supeditado
-  a la verificación manual, que el usuario decidió ejecutar él mismo.
+  quedaron **cerradas** el 2026-08-17. La verificación manual requerida para el
+  cierre fue ejecutada por el usuario ese mismo día y quedó registrada como
+  correcta.
 - Código de producto modificado al activar: **ninguno**. Tampoco en 6.0. En 6.1:
   `app/controllers/estudiante_controller.py` y el nuevo
   `app/repositories/estudiantes_repository.py`, sin cambios en rutas, payloads,
@@ -1408,3 +1409,146 @@ despliegue.
   clases solapadas—, el `SELECT *` de `GET /estudiantes/{id}`, las dos rarezas de
   status code, el coste de hasta 14 consultas de `asignacion_tiene_historial` y
   las tres parejas de literales gemelos sin unificar.
+
+## 2026-08-24 — corrección puntual posterior al cierre: concurrencia de asignaciones
+
+**La capa 6 sigue cerrada y no se activó ninguna capa.** Esta entrada sustituye
+solo el estado vigente del hallazgo sobre altas y ediciones concurrentes. Los
+registros anteriores conservan correctamente la situación que existía al
+inventariar y cerrar la capa.
+
+- Autorización: el usuario pidió verificar a fondo la protección frente a
+  asignaciones solapadas, confirmó que la solución iba acorde con la
+  modularización y después ordenó explícitamente **hacerla**. No autorizó commit,
+  push, deploy, migraciones ni acceso a producción.
+- Precondiciones: rama `main`; árbol limpio confirmado con
+  `git status --porcelain=v1 --branch`; `HEAD` y la referencia local
+  `origin/main` coincidían en
+  `bbf3bfb555d582e7700101595bdf2f088fe32681`. El commit base de la fuente de
+  continuidad más reciente,
+  `2ec924a3308581b746a61fa24a44f71433034dbc`, y el base histórico de esta capa,
+  `589cb6d1391161c692a6f24aee9d523317cbb1ce`, son ancestros del `HEAD`. Los
+  nueve commits posteriores al base de continuidad están explicados en las
+  bitácoras de `super_admin`, `profesores`, pagos o asistencia y en el índice.
+- Carrera confirmada: el alta y la edición leían los cruces bajo `READ
+  COMMITTED` y escribían después sin proteger el hueco. Dos transacciones podían
+  leer el mismo estado vacío, insertar o actualizar intervalos distintos —por lo
+  que el índice de duplicado exacto no colisionaba— y confirmar dos clases
+  solapadas para el mismo profesor o curso/salón. Bloquear solo filas ya
+  existentes de `asignaciones` tampoco cerraría el hueco cuando aún no hay
+  ninguna.
+- Evidencia test-first: se exigió primero que los caminos felices de alta y
+  edición tomaran los locks de profesor y curso en sus posiciones existentes,
+  sin sumar consultas. Contra el código anterior terminaron **2 failed y 43
+  deselected**; faltaba `FOR NO KEY UPDATE` en ambos SQL.
+- Producto: `app/repositories/asignaciones_repository.py` añade únicamente
+  `FOR NO KEY UPDATE` a `buscar_profesor_activo` y `buscar_curso_activo`. Ambos
+  controladores ya ejecutaban esas lecturas dentro de su única transacción y en
+  orden fijo **profesor → curso**, antes de validar responsable, duplicado,
+  jornada y cruces. No se agregó ninguna función, consulta, conexión ni
+  abstracción.
+- Garantía obtenida entre escritores que usan estos flujos: dos operaciones con
+  el mismo profesor se serializan sobre su fila; dos con el mismo curso/salón se
+  serializan sobre la fila del curso. La segunda continúa después del cierre de
+  la primera y las consultas posteriores observan el estado confirmado. El
+  mismo lock de curso cierra además la carrera del trigger de profesor
+  responsable y evita que dos altas simultáneas del mismo grupo creen dos raíces
+  `asignacion_academica_id` independientes.
+- Tenant y transacción: los padres viven dentro de las tablas de cada schema
+  tenant, así que no se construyeron claves globales ni se añadió el tenant al
+  payload o al SQL. Los locks duran hasta el `commit` o el rollback que ejecuta
+  el cierre de la conexión. `DB_LOCK_TIMEOUT_MS` continúa en 10000; no se cambió
+  su mapeo de error.
+- Contrato preservado: no cambian rutas, payloads, permisos admin, tenant,
+  ownership, reglas de jornada o cruce, intervalos contiguos permitidos,
+  mensajes ni status codes. Los cruces siguen produciendo sus mismos **400** y
+  los duplicados exactos sus mismos **409**. Alta y edición conservan **12 y 10
+  consultas**, respectivamente.
+- Frontend revisado, sin cambios: conserva `POST /asignaciones` y
+  `PUT /asignaciones/{id}` con el mismo payload, muestra
+  `error.response.data.detail` sin ramificar entre 400/409/500 y no hace retries.
+  Su batería focal previa a implementar terminó con **17 pruebas**.
+- Pruebas específicas tras implementar: los dos casos test-first terminaron con
+  **2 passed y 43 deselected**; el conjunto de asignaciones, estudiantes y el
+  consumidor histórico de profesores terminó con **73 passed**. Ruff focal
+  sobre producto y caracterización: correcto.
+- Compuerta global: el primer intento dentro del sandbox terminó con **1086
+  passed y 30 errores de setup**, todos por `PermissionError` al acceder a
+  `AppData/Local/Temp/pytest-of-David`; Ruff y `pip check` sí pasaron. Esa
+  ejecución no cuenta como evidencia válida. La repetición exacta con acceso a
+  temporales terminó con **1116 passed**, 5 warnings heredados, Ruff correcto y
+  dependencias íntegras, todo en exit 0.
+- Comandos y resultados exactos:
+  - `.\venv\Scripts\python.exe -m pytest -q -p no:cacheprovider
+    tests\test_asignaciones_estudiantes_caracterizacion.py -k
+    "camino_feliz_cuesta_doce_consultas or
+    editar_permite_cambiar_solo_el_horario_con_historial"`: primero **2 failed,
+    43 deselected**; después de producto, **2 passed, 43 deselected**.
+  - `.\venv\Scripts\python.exe -m pytest -q -p no:cacheprovider
+    tests\test_asignaciones_estudiantes_caracterizacion.py
+    tests\test_asignaciones_activo.py tests\test_asignaciones_controlador.py
+    tests\test_asignaciones_pagination.py tests\test_estudiantes_controlador.py
+    tests\test_estudiantes_pagination.py tests\test_profesores_controlador.py`:
+    **73 passed**.
+  - `.\venv\Scripts\python.exe -m ruff check --no-cache
+    app\repositories\asignaciones_repository.py
+    tests\test_asignaciones_estudiantes_caracterizacion.py`: correcto.
+  - `.\venv\Scripts\python.exe scripts\verify.py`: intento restringido
+    inválido con **1086 passed y 30 errores de setup**; repetición autorizada con
+    acceso a temporales: **1116 passed**, Ruff correcto y `pip check` íntegro.
+  - `git diff --check`: exit 0; solo avisos de normalización futura LF/CRLF.
+- Archivos modificados: `app/repositories/asignaciones_repository.py`,
+  `tests/test_asignaciones_estudiantes_caracterizacion.py`, esta bitácora, el
+  índice maestro y `PROMPT_CONTINUACION.md`. No se modificó frontend,
+  controlador, ruta, schema Pydantic, migración, esquema SQL, configuración ni
+  dependencia.
+- Cambio SQL explícitamente autorizado: los dos literales de precondición ya no
+  son byte a byte iguales a los del cierre de 6.4 porque incorporan el lock. Los
+  comparadores históricos describen correctamente aquella refactorización; esta
+  corrección funcional registra y prueba la diferencia.
+- No se ejecutó PostgreSQL real, staging, producción, migración, deploy, commit
+  ni push. Tampoco se atribuye un run nuevo de GitHub Actions.
+
+### Staging y verificación manual pendientes
+
+La garantía real debe comprobarse en PostgreSQL no productivo con dos conexiones
+físicas y el mismo schema tenant:
+
+1. Pausar una primera alta después de bloquear profesor y curso; lanzar otra
+   alta solapada con el mismo profesor y distinto curso, comprobar que espera,
+   confirmar la primera y verificar que la segunda conserva el 400 del profesor.
+2. Repetir con profesores distintos y el mismo curso, esperando el 400 del
+   curso/salón.
+3. Repetir al menos un caso `PUT` contra `POST` o contra otro `PUT`, y comprobar
+   que queda una sola franja válida.
+4. Confirmar que dos horarios no solapados siguen guardándose y comparten una
+   sola raíz académica cuando corresponde.
+
+Esta verificación permanece **pendiente**: la suite actual usa dobles y el
+workflow de CI no levanta PostgreSQL. Durante una publicación deben renovarse
+todos los workers antes de atribuir la garantía al despliegue; una versión vieja
+no coopera con los locks nuevos.
+
+### Rollback, decisiones y riesgos
+
+- Rollback puramente de código: retirar las dos cláusulas y las expectativas y
+  documentación asociadas. No hay DDL ni datos escritos por esta ejecución.
+- Se eligieron locks sobre las filas padre en vez de advisory locks: quedan
+  aislados naturalmente por tenant, no necesitan claves, hash ni consultas
+  nuevas. `FOR NO KEY UPDATE` ofrece exclusión mutua sin bloquear el `KEY SHARE`
+  de claves foráneas ajenas.
+- No se añadieron constraints `EXCLUDE`: las horas viven como `varchar`, harían
+  falta dos restricciones, `btree_gist`, revisión de datos, una migración para
+  todos los tenants y traducción del SQLSTATE `23P01`.
+- No se bloqueó la fila de la asignación al iniciar `PUT`. Dos ediciones del
+  mismo id todavía pueden tener semántica de última escritura; es un hallazgo
+  diferente y no se mezcló con la protección de solapamientos.
+- Riesgo residual: operaciones del mismo profesor o curso se serializan aunque
+  correspondan a días distintos; una espera superior al `lock_timeout` vigente
+  se propaga como fallo de infraestructura. Un escritor directo o un worker con
+  código anterior puede omitir la garantía de aplicación.
+- Estado: corrección local automática **completa**; verificación concurrente en
+  PostgreSQL real, staging, commit, push, deploy y CI posterior **pendientes**.
+- Siguiente acción exacta: el usuario revisa el diff y, si decide publicarlo,
+  renueva todos los workers y ejecuta el guion concurrente anterior en staging.
+  No iniciar otro hallazgo ni activar una capa por inferencia.

@@ -1,6 +1,6 @@
 # Guía maestra de evolución segura del backend
 
-Última revisión: 2026-08-23.
+Última revisión: 2026-08-24.
 
 ## Propósito
 
@@ -53,6 +53,15 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 7 | Resto de dominios — **`branding` migrado** | Migración individual con contratos y pruebas | **Cerrada** el 2026-08-22; 7.2/7.3 No aplica, verificación manual pendiente y sin publicación comprobada | [07_BRANDING.md](./07_BRANDING.md) |
 | 7 | Resto de dominios — **`profesores` migrado** | Migración individual con contratos y pruebas | **Cerrada** el 2026-08-23; 7.2/7.3 No aplica, verificación manual pendiente y sin publicación comprobada | [07_PROFESORES.md](./07_PROFESORES.md) |
 | 7 | Resto de dominios — **`super_admin` migrado** | Migración individual con contratos y pruebas | **Cerrada** el 2026-08-23; 7.0–7.3 completas, verificación manual pendiente y sin publicación comprobada | [07_SUPER_ADMIN.md](./07_SUPER_ADMIN.md) |
+
+**Estado vigente:** no hay una capa activa. El 2026-08-24 se corrigió
+localmente, con autorización explícita y sin reabrir la capa 5, el hallazgo de
+los siete fallos de infraestructura de `tipos_pagos_controller`: ahora sus rutas
+responden 500 sin filtrar detalles internos y conservan los 400/404/409 de
+dominio. La compuerta local pasó con 1107 pruebas; la verificación manual en
+staging, commit, push y evidencia de GitHub Actions siguen pendientes y bajo
+control del usuario. Las menciones cronológicas anteriores que dicen que este
+hallazgo seguía pendiente describen el estado de su fecha, no el vigente.
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
 cierre y el usuario ordene continuar, se crea su sucesora desde
@@ -558,10 +567,11 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   corrigió la mitad con autorización explícita, añadiendo un advisory lock por
   estudiante que cierra el hueco concurrente; el duplicado parcial separado en el
   tiempo sigue abierto y necesita la clave, que es el paso 2 acordado y no
-  iniciado—; siete funciones de tipos de pago absorben `Exception` y presentan un
-  fallo de infraestructura como 400 o 404 —el 2026-08-17 se corrigió la mitad:
-  ya registran el traceback, que antes se perdía; cambiar los códigos a 500 sigue
-  pendiente—; y los dos upsert de tipos de pago abrían **dos
+  iniciado—; siete funciones de tipos de pago absorbían `Exception` y presentaban
+  un fallo de infraestructura como 400 o 404 —el 2026-08-17 se añadió el
+  traceback y el 2026-08-24 se completó localmente el mapeo seguro a 500 tras
+  revisar el frontend; staging y publicación siguen pendientes—; y los dos
+  upsert de tipos de pago abrían **dos
   conexiones por petición** —corregido el 2026-08-17: ahora releen con su propio
   cursor antes de confirmar, lo que cerró además una ventana en la que un
   `commit` correcto se reportaba como 400—.
@@ -2339,17 +2349,22 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   de que **no llegó a publicarse**. Fue la fuente de continuidad **hasta que se
   activó la capa 7**; sus diez hallazgos siguen vivos.
 - [05_PAGOS_TIPOS_PAGO.md](./05_PAGOS_TIPOS_PAGO.md): **bitácora cerrada** de la
-  capa 5. Conserva los siete hallazgos registrados sin corregir y el paso 2
-  acordado y no iniciado, la clave de idempotencia de `POST /pagos`.
+  capa 5. Conserva sus hallazgos y el paso 2 acordado y no iniciado, la clave de
+  idempotencia de `POST /pagos`. Registra también las correcciones puntuales
+  posteriores al cierre: el lock parcial, el logging de fallos, una conexión por
+  upsert y, el 2026-08-24, el mapeo local de los siete fallos de infraestructura
+  a 500 con revisión del frontend y compuerta de 1107 pruebas. Esta última
+  corrección conserva pendiente staging, commit, push y evidencia de CI.
   Registra el commit base `f4d0913`, las
   verificaciones heredadas aceptadas como pendientes, el inventario de 5.0 con
   sus 19 entradas HTTP, seis tablas escritas, contratos, idempotencia y línea
-  base de consultas, los **ocho hallazgos registrados sin corregir**, las
+  base de consultas, los **ocho hallazgos originales con su estado posterior**,
+  incluidas correcciones y un hallazgo retirado, las
   extracciones de 5.1 a 5.3 con la unificación SQL autorizada y la decisión sobre
   dónde vive el contacto con `ventas`, y el cierre de la capa con su rollback,
   su verificación manual local y la advertencia de que **no llegó a publicarse**.
-  Fue la fuente de continuidad **hasta que se activó la capa 6**; sus ocho
-  hallazgos siguen vivos.
+  Fue la fuente de continuidad **hasta que se activó la capa 6**; siguen vivos
+  únicamente los que la bitácora no marca como corregidos o retirados.
 - [04_REPORTES_FINANCIEROS.md](./04_REPORTES_FINANCIEROS.md): **bitácora
   cerrada** de la capa 4. Conserva el cierre de 4.3 con su medición sobre
   producción y la verificación manual del usuario, el hallazgo de que el informe

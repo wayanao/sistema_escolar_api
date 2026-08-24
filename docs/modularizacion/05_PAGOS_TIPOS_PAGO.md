@@ -672,16 +672,20 @@ la subcapa. Corregir cualquiera exige una decisión explícita del usuario.
   caracteres y guarda `motivo_anulacion`, `fecha_anulacion` y `anulado_por`. Un
   filtro de ownership aquí no protegería de nada y rompería el caso normal. Se
   deja anotado para que nadie vuelva a levantarlo.
-- **Siete funciones absorben `Exception` a secas** y devuelven `None`/`False`.
+- **~~Siete funciones absorben `Exception` a secas y confunden infraestructura
+  con dominio.~~ Corregido localmente el 2026-08-24.**
   Confirmado y detallado el 2026-08-17: cinco acaban en **400** —crear,
   actualizar, configuración, asignar cursos y guardar valor personalizado— y dos
   en **404** —desasignar curso y eliminar valor personalizado—, y esos dos
   mienten activamente, porque dicen «no encontrado» cuando la base está caída.
   Los errores de dominio sí se propagan: cinco de las siete tienen un `except`
   específico antes que vuelve a lanzar. **Se corrigió a medias el 2026-08-17**:
-  ahora registran la excepción con su traceback. Cambiar los status codes a 500
-  sigue **pendiente** y exige comprobar antes qué hace `frontend-react` con esos
-  400 y 404.
+  ahora registraban la excepción con su traceback. El 2026-08-24 se completó la
+  corrección con autorización explícita: `frontend-react` fue revisado y ya
+  trataba 400, 404 y 500 por el mismo camino genérico; las siete escrituras ahora
+  propagan `TipoPagoInfraestructuraError` y sus rutas responden **500** con un
+  detalle fijo que no filtra la excepción. Los sentinelas y excepciones de
+  dominio conservan sus **400/404/409**. Ver el registro añadido al final.
 - **~~Dos conexiones por petición~~ en los dos upsert de tipos de pago.
   Corregido el 2026-08-17.** Al revisarlo se comprobó que las dos conexiones **se
   solapaban** —el `return` se evalúa antes del `finally`— y que la parte de
@@ -1292,3 +1296,83 @@ Forma prevista, a confirmar cuando se aborde:
 - Siguiente acción exacta: la capa 6 quedó activada el 2026-08-17 con su propia
   bitácora; el trabajo continúa allí, en 6.0. Esta bitácora solo se retoma si el
   usuario ordena expresamente abordar uno de sus hallazgos abiertos.
+
+## 2026-08-24 — corrección puntual posterior al cierre: infraestructura responde 500
+
+**La capa 5 sigue cerrada y no se activó ninguna capa.** Esta entrada sustituye
+solo el estado actual del hallazgo de los cinco 400 y dos 404; los registros
+históricos anteriores describen correctamente lo que ocurría cuando se
+escribieron.
+
+- Autorización: el usuario pidió verificar a fondo el mapeo, incluido el
+  frontend, y después ordenó explícitamente **hacerlo**. No autorizó commit,
+  push, deploy, migraciones ni acceso a producción.
+- Precondiciones: rama `main`; `git status --porcelain=v1 --branch` mostró el
+  checkout limpio antes de editar; `HEAD` y la referencia local `origin/main`
+  coincidían en `de46ad8e4eb5d4c08a6c57a7a9c18206550d9be1`. El commit base de
+  la fuente de continuidad, `2ec924a3308581b746a61fa24a44f71433034dbc`, es
+  ancestro de ese `HEAD`, y todos los commits posteriores quedaron explicados
+  por `07_SUPER_ADMIN.md` o `07_PROFESORES.md`.
+- Evidencia test-first: se cambió primero la expectativa del caso de creación
+  para exigir propagación. Contra el código anterior falló con `DID NOT RAISE`:
+  el error se registraba y revertía, pero todavía se convertía en `None`.
+- Frontend revisado, sin cambios: los cuatro consumidores relevantes solo
+  distinguen `409`; `400`, `404` y `500` usan el mismo aviso genérico, conservan
+  los formularios o filas para reintento y leen `detail` si existe. El
+  interceptor global solo trata `401`. El borrado de curso no consume el
+  `DELETE`: guarda el reemplazo completo mediante el `PUT` ya cubierto.
+- Producto: se añadió `TipoPagoInfraestructuraError` en
+  `app/controllers/tipos_pagos_controller.py`. Los siete manejadores genéricos
+  conservan `logger.exception` y `rollback`, pero ahora encadenan y propagan esa
+  excepción en vez de devolver `None` o `False`. Las siete rutas consumidoras
+  la convierten en `HTTPException(500)` con el detalle fijo
+  `Error interno al procesar la operación de tipos de pago`; el mensaje interno
+  no se expone.
+- Contrato preservado: no cambian rutas, payloads de éxito, permisos admin,
+  tenant, ownership, SQL, parámetros, orden de sentencias, commits exitosos ni
+  cierres de recursos. Los resultados legítimos siguen dando sus mismos
+  **400/404** y `TipoPagoDuplicadoError`, `MigracionPendienteError` y
+  `ValueError` conservan sus **409/400** y detalles.
+- Pruebas: `tests/test_pagos_escrituras_caracterizacion.py` cubre las siete
+  escrituras —causa, log, rollback, cero commits y cierre—, las siete
+  traducciones a 500 sin filtración, siete casos de no regresión de dominio y
+  una guardia AST que prohíbe volver a devolver sentinelas desde esos
+  `except Exception`.
+- Resultados específicos:
+  - `python -m pytest tests/test_pagos_escrituras_caracterizacion.py -q`:
+    **81 passed**;
+  - `python -m pytest tests/test_threadpool_capacity.py
+    tests/test_catalogos_pagination.py -q`: **26 passed**;
+  - en `frontend-react`, `pnpm exec vitest run` sobre
+    `useFormularioTipoPago`, `useConfiguracionTipoPago`,
+    `useAsignacionCursosTipoPago` y `useValoresPersonalizadosPago`:
+    **4 archivos, 12 pruebas, exit 0**;
+  - Ruff focal sobre los tres archivos de código/prueba: **exit 0**.
+- Compuerta global: la primera ejecución dentro del sandbox terminó con
+  **1077 passed y 30 errores de preparación**, todos por
+  `PermissionError` al crear `AppData/Local/Temp/pytest-of-David`; Ruff y
+  `pip check` sí pasaron. La repetición del mismo `python scripts/verify.py`
+  fuera del sandbox, con acceso a temporales, terminó con **1107 passed**, Ruff
+  correcto y dependencias íntegras, todo en **exit 0**.
+- Archivos modificados: `app/controllers/tipos_pagos_controller.py`,
+  `app/routes/tipos_pagos.py`,
+  `tests/test_pagos_escrituras_caracterizacion.py`, esta bitácora y el índice
+  maestro, más `PROMPT_CONTINUACION.md` para que el traspaso no presente el
+  hallazgo como abierto. Ningún archivo de `frontend-react` se modificó.
+- Riesgo residual: los fallos al abrir conexión o cursor ocurren antes de los
+  `try` existentes y ya salían como 500, pero no pasan por este detalle fijo ni
+  por estos logs. Un fallo del propio `rollback` también podría ocultar la causa
+  original. Ambos asuntos quedan fuera de esta corrección y no se rediseñan.
+- Staging y verificación manual pendiente: en un entorno desechable, provocar
+  un fallo controlado de base de datos durante una de las siete escrituras y
+  confirmar respuesta `500` con el detalle fijo, ausencia de datos internos en
+  el body, traceback con contexto en el log y ninguna escritura confirmada;
+  después repetir un duplicado, un recurso inexistente y una migración pendiente
+  para confirmar sus 409/400/404 actuales. **No se ejecutó esta verificación ni
+  se atribuye evidencia a GitHub Actions.**
+- Rollback: no requiere rollback de datos ni migraciones. Antes de publicar se
+  pueden descartar exclusivamente los seis archivos listados; después de un
+  eventual commit, revertir únicamente ese commit devuelve el mapeo anterior.
+- Siguiente acción exacta: revisión del diff por el usuario y, si lo aprueba,
+  su verificación manual en staging y su flujo de commit/push. No hay subcapa
+  activa ni se inicia otro hallazgo.

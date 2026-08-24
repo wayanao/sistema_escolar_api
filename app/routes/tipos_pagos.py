@@ -21,9 +21,12 @@ from app.controllers.tipos_pagos_controller import (
     eliminar_valor_personalizado_estudiante,
     MigracionPendienteError,
     TipoPagoDuplicadoError,
+    TipoPagoInfraestructuraError,
 )
 
 router = APIRouter(tags=["Tipos Pagos"], dependencies=[Depends(get_current_active_admin)])
+
+_ERROR_INTERNO_TIPOS_PAGO = "Error interno al procesar la operación de tipos de pago"
 
 
 # -----------------------------------------------------------------------------
@@ -77,6 +80,8 @@ def create_tipo_pago(tipo: TipoPago):
         res = crear_tipo_pago(tipo.nombre, tipo.valor)
     except TipoPagoDuplicadoError as e:
         raise HTTPException(status_code=409, detail=str(e))
+    except TipoPagoInfraestructuraError:
+        raise HTTPException(status_code=500, detail=_ERROR_INTERNO_TIPOS_PAGO)
 
     if not res:
         raise HTTPException(status_code=400, detail='No se pudo crear el tipo de pago')
@@ -94,6 +99,8 @@ def update_tipo_pago(id: int, tipo: TipoPago):
         res = actualizar_tipo_pago(id, tipo.nombre, tipo.valor)
     except TipoPagoDuplicadoError as e:
         raise HTTPException(status_code=409, detail=str(e))
+    except TipoPagoInfraestructuraError:
+        raise HTTPException(status_code=500, detail=_ERROR_INTERNO_TIPOS_PAGO)
 
     if not res:
         raise HTTPException(status_code=400, detail='Error al actualizar')
@@ -134,6 +141,8 @@ def update_configuracion_tipo_pago(id: int, config: ConfiguracionTipoPago):
         res = actualizar_configuracion_tipo_pago(id, payload)
     except MigracionPendienteError as e:
         raise HTTPException(status_code=409, detail=str(e))
+    except TipoPagoInfraestructuraError:
+        raise HTTPException(status_code=500, detail=_ERROR_INTERNO_TIPOS_PAGO)
 
     if not res:
         raise HTTPException(status_code=400, detail='No se pudo actualizar la configuración')
@@ -150,7 +159,11 @@ def get_cursos_asignados(id: int):
 
 @router.put('/tipos-pagos/{id}/cursos')
 def put_cursos_asignados(id: int, payload: CursoAsignacionPayload):
-    res = upsert_cursos_asignados(id, [c.model_dump() for c in payload.cursos])
+    try:
+        res = upsert_cursos_asignados(id, [c.model_dump() for c in payload.cursos])
+    except TipoPagoInfraestructuraError:
+        raise HTTPException(status_code=500, detail=_ERROR_INTERNO_TIPOS_PAGO)
+
     if res is None:
         raise HTTPException(status_code=400, detail='No se pudo asignar cursos')
     return {"message": "Cursos asignados", "cursos": res}
@@ -158,7 +171,11 @@ def put_cursos_asignados(id: int, payload: CursoAsignacionPayload):
 
 @router.delete('/tipos-pagos/{id}/cursos/{curso_id}')
 def delete_curso_asignado(id: int, curso_id: int):
-    res = eliminar_curso_asignado(id, curso_id)
+    try:
+        res = eliminar_curso_asignado(id, curso_id)
+    except TipoPagoInfraestructuraError:
+        raise HTTPException(status_code=500, detail=_ERROR_INTERNO_TIPOS_PAGO)
+
     if not res:
         raise HTTPException(status_code=404, detail='Asignación no encontrada')
     return {"message": "Curso desasignado"}
@@ -193,6 +210,8 @@ def put_valor_personalizado_estudiante(
         raise HTTPException(status_code=409, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except TipoPagoInfraestructuraError:
+        raise HTTPException(status_code=500, detail=_ERROR_INTERNO_TIPOS_PAGO)
 
     if res is None:
         raise HTTPException(status_code=400, detail='No se pudo guardar el valor personalizado')
@@ -205,6 +224,8 @@ def delete_valor_personalizado_estudiante(estudiante_id: int, tipo_pago_id: int)
         res = eliminar_valor_personalizado_estudiante(estudiante_id, tipo_pago_id)
     except MigracionPendienteError as e:
         raise HTTPException(status_code=409, detail=str(e))
+    except TipoPagoInfraestructuraError:
+        raise HTTPException(status_code=500, detail=_ERROR_INTERNO_TIPOS_PAGO)
 
     if not res:
         raise HTTPException(status_code=404, detail='Valor personalizado no encontrado')

@@ -214,19 +214,22 @@ Lo que sigue es un resumen para orientarse; **el estado vivo está en
   extracción, ninguna de las cuales cambió de expectativa.
 - Verificación manual de la capa 5: **hecha por el usuario y correcta**, en local
   contra el árbol de trabajo. Al cerrarla no había push; **se publicó después**,
-  el 2026-08-17, junto con las tres correcciones puntuales de abajo.
-- **Tres correcciones puntuales posteriores al cierre**, cada una autorizada
+  el 2026-08-17, junto con las tres primeras correcciones puntuales de abajo.
+- **Cuatro correcciones puntuales posteriores al cierre**, cada una autorizada
   explícitamente y registrada en `05_PAGOS_TIPOS_PAGO.md`. La capa **no se
   reabrió**: son correcciones sobre hallazgos que la capa dejó anotados.
   1. **Candado de registro de pagos**: `registrar_pago_controller` toma un
      `pg_advisory_xact_lock` por estudiante, así que un doble clic ya no cobra
      dos veces. La clave de idempotencia sigue pendiente.
   2. **Registro de fallos absorbidos** en `tipos_pagos_controller`: los siete
-     `except Exception` ya dejan traceback. Los status codes no cambiaron.
+     `except Exception` ya dejan traceback.
   3. **Una sola conexión por upsert**: los dos upsert de tipos de pago releen con
      su cursor antes de confirmar. Cerró además una ventana en la que un `commit`
      correcto se reportaba como 400.
-- Suite al día: **714 pruebas**, exit 0. Partió de 606 al activar la capa 5 y de
+  4. **Mapeo de infraestructura a 500**, corregido localmente el 2026-08-24 tras
+     revisar `frontend-react`: conserva los 400/404/409 de dominio y no filtra
+     detalles internos. Staging, commit, push y CI siguen pendientes.
+- Suite al día: **1107 pruebas**, exit 0. Partió de 606 al activar la capa 5 y de
   669 al activar la capa 6.
 - **Un hallazgo se retiró** tras revisarlo: el «filtro de ownership por pago» no
   era un hueco. Ver el detalle en la bitácora antes de volver a levantarlo.
@@ -442,13 +445,15 @@ cancela**.
   cruzar de colegio, dentro de un colegio no hay admins con alcance parcial, y la
   anulación queda auditada con motivo, fecha y responsable. No lo vuelvas a
   levantar.
-- **Siete funciones de `tipos_pagos_controller` capturan `Exception` a secas** y
-  devuelven `None`/`False`: cinco acaban en 400 y dos en 404, y esos dos dicen
+- ~~Siete funciones de `tipos_pagos_controller` capturan `Exception` a secas y
+  devuelven `None`/`False`.~~ Cinco acababan en 400 y dos en 404, y esos dos decían
   «no encontrado» cuando la base está caída. El 2026-08-17 se corrigió la mitad:
   ya **registran la excepción con su traceback**, que antes desaparecía sin
   rastro, y una guardia estructural en las pruebas impide que alguien vuelva a
-  dejar un `except Exception` mudo. **Sigue pendiente** cambiar los status codes
-  a 500, que es contrato observable y exige revisar antes `frontend-react`.
+  dejar un `except Exception` mudo. **Corregido localmente el 2026-08-24** tras
+  revisar `frontend-react`: los siete caminos propagan un error específico y
+  las rutas lo traducen a 500 con detalle fijo; los resultados de dominio
+  conservan sus status. Sigue pendiente staging, commit, push y evidencia de CI.
 - ~~Los dos upsert de tipos de pago abren dos conexiones por petición.~~
   **Corregido el 2026-08-17**: releen con su propio cursor antes de confirmar.
   Eso cerró además una ventana peor que no se había visto: si la relectura

@@ -10,8 +10,8 @@ tres cosas que una extraccion posterior podria romper en silencio:
    confirma, quien revierte y quien cierra conexion y cursor;
 3. las columnas que la capa 4 lee, que se escriben aqui.
 
-No prueba comportamiento nuevo ni corrige nada: congela lo que hoy ocurre,
-incluidas las rarezas.
+La linea base tambien conserva las correcciones puntuales posteriores que
+endurecen la frontera sin cambiar sus resultados de dominio.
 """
 
 import inspect
@@ -604,26 +604,6 @@ def test_crear_tipo_pago_duplicado_no_inserta_y_revierte(conexion):
     assert conn.commits == 0
     assert conn.rollbacks == 1
     assert conn.cerrada is True
-
-
-def test_un_fallo_de_infraestructura_al_crear_se_absorbe_y_devuelve_none(conexion):
-    """Rareza conservada: la ruta lo convierte en 400, no en 500."""
-    conn, cursor = conexion(modulo=tipos_pagos_controller)
-    original = cursor.execute
-
-    def execute_que_falla(query, params=None):
-        if str(query).strip().lower().startswith("insert into tipos_de_pagos"):
-            raise RuntimeError("conexion perdida")
-        return original(query, params)
-
-    cursor.execute = execute_que_falla
-    cursor.filas = []
-
-    resultado = tipos_pagos_controller.crear_tipo_pago("Matricula", 100)
-
-    assert resultado is None
-    assert conn.commits == 0
-    assert conn.rollbacks == 1
 
 
 def test_el_upsert_de_cursos_asignados_es_idempotente_por_on_conflict(conexion):
@@ -1222,12 +1202,7 @@ def test_registrar_pago_toma_un_advisory_lock_por_estudiante_antes_de_leer_la_de
 
 
 # ---------------------------------------------------------------------------
-# 10. Los fallos que se absorben quedan registrados
-#
-# Las siete funciones de tipos de pago siguen capturando `Exception` y
-# devolviendo None/False, y las rutas siguen traduciendo eso a 400 o 404: el
-# contrato no cambia. Lo que cambia es que la excepcion ya no desaparece sin
-# rastro. Sin estas pruebas, quitar el registro no rompe nada visible.
+# 10. Los fallos de infraestructura no se confunden con resultados de dominio
 # ---------------------------------------------------------------------------
 
 def _romper_en(cursor, prefijo):
@@ -1242,32 +1217,220 @@ def _romper_en(cursor, prefijo):
     cursor.execute = execute
 
 
-def test_un_fallo_absorbido_al_crear_queda_en_el_log_con_traceback(conexion, caplog):
+@pytest.mark.parametrize(
+    ("funcion", "argumentos", "prefijo_sql", "contexto_log"),
+    [
+        ("crear_tipo_pago", ("Matricula", 100), "insert into tipos_de_pagos", "crear"),
+        ("actualizar_tipo_pago", (4, "Pension", 100), "update tipos_de_pagos", "4"),
+        (
+            "actualizar_configuracion_tipo_pago",
+            (4, {"activo": False}),
+            "update tipos_de_pagos",
+            "4",
+        ),
+        (
+            "upsert_cursos_asignados",
+            (4, [{"curso_id": 3, "valor": 100}]),
+            "delete from tipos_pagos_cursos",
+            "4",
+        ),
+        (
+            "eliminar_curso_asignado",
+            (4, 3),
+            "delete from tipos_pagos_cursos",
+            "4",
+        ),
+        (
+            "upsert_valor_personalizado_estudiante",
+            (1, 4, 80),
+            "insert into tipos_pagos_estudiantes",
+            "4",
+        ),
+        (
+            "eliminar_valor_personalizado_estudiante",
+            (1, 4),
+            "update tipos_pagos_estudiantes",
+            "4",
+        ),
+    ],
+)
+def test_las_siete_escrituras_propagan_y_registran_fallos_de_infraestructura(
+    conexion,
+    caplog,
+    funcion,
+    argumentos,
+    prefijo_sql,
+    contexto_log,
+):
     conn, cursor = conexion(modulo=tipos_pagos_controller)
-    _romper_en(cursor, "insert into tipos_de_pagos")
+    _romper_en(cursor, prefijo_sql)
 
     with caplog.at_level("ERROR", logger="app.controllers.tipos_pagos_controller"):
-        resultado = tipos_pagos_controller.crear_tipo_pago("Matricula", 100)
+        with pytest.raises(tipos_pagos_controller.TipoPagoInfraestructuraError) as exc_info:
+            getattr(tipos_pagos_controller, funcion)(*argumentos)
 
-    assert resultado is None
+    assert isinstance(exc_info.value.__cause__, RuntimeError)
+    assert str(exc_info.value.__cause__) == "conexion perdida"
+    assert conn.commits == 0
     assert conn.rollbacks == 1
+    assert conn.cerrada is True
+    assert cursor.cerrado is True
     registro = caplog.records[-1]
     assert registro.levelname == "ERROR"
     assert registro.exc_info is not None, "el traceback debe conservarse"
-    assert "crear el tipo de pago" in registro.getMessage()
+    assert contexto_log in registro.getMessage()
 
 
-def test_un_fallo_absorbido_al_asignar_cursos_identifica_el_tipo_de_pago(conexion, caplog):
-    _conn, cursor = conexion(modulo=tipos_pagos_controller)
-    _romper_en(cursor, "delete from tipos_pagos_cursos")
-
-    with caplog.at_level("ERROR", logger="app.controllers.tipos_pagos_controller"):
-        resultado = tipos_pagos_controller.upsert_cursos_asignados(
-            4, [{"curso_id": 3, "valor": 100}]
+@pytest.mark.parametrize(
+    ("colaborador", "handler", "argumentos"),
+    [
+        (
+            "crear_tipo_pago",
+            "create_tipo_pago",
+            (rutas_tipos_pagos.TipoPago(nombre="Matricula", valor=100),),
+        ),
+        (
+            "actualizar_tipo_pago",
+            "update_tipo_pago",
+            (4, rutas_tipos_pagos.TipoPago(nombre="Pension", valor=100)),
+        ),
+        (
+            "actualizar_configuracion_tipo_pago",
+            "update_configuracion_tipo_pago",
+            (4, rutas_tipos_pagos.ConfiguracionTipoPago(activo=False)),
+        ),
+        (
+            "upsert_cursos_asignados",
+            "put_cursos_asignados",
+            (4, rutas_tipos_pagos.CursoAsignacionPayload(cursos=[])),
+        ),
+        ("eliminar_curso_asignado", "delete_curso_asignado", (4, 3)),
+        (
+            "upsert_valor_personalizado_estudiante",
+            "put_valor_personalizado_estudiante",
+            (
+                1,
+                4,
+                rutas_tipos_pagos.ValorPersonalizadoEstudiante(valor=80),
+            ),
+        ),
+        (
+            "eliminar_valor_personalizado_estudiante",
+            "delete_valor_personalizado_estudiante",
+            (1, 4),
+        ),
+    ],
+)
+def test_las_siete_rutas_mapean_fallos_de_infraestructura_a_500_sin_filtrarlos(
+    monkeypatch,
+    colaborador,
+    handler,
+    argumentos,
+):
+    def fallar(*_args, **_kwargs):
+        raise tipos_pagos_controller.TipoPagoInfraestructuraError(
+            "host=db-interno password=secreto"
         )
 
-    assert resultado is None
-    assert "4" in caplog.records[-1].getMessage()
+    monkeypatch.setattr(rutas_tipos_pagos, colaborador, fallar)
+
+    with pytest.raises(rutas_tipos_pagos.HTTPException) as exc_info:
+        getattr(rutas_tipos_pagos, handler)(*argumentos)
+
+    assert exc_info.value.status_code == 500
+    assert exc_info.value.detail == (
+        "Error interno al procesar la operación de tipos de pago"
+    )
+    assert "db-interno" not in exc_info.value.detail
+    assert "secreto" not in exc_info.value.detail
+
+
+@pytest.mark.parametrize(
+    ("colaborador", "handler", "argumentos", "resultado", "status", "detalle"),
+    [
+        (
+            "crear_tipo_pago",
+            "create_tipo_pago",
+            (rutas_tipos_pagos.TipoPago(nombre="Pension", valor=100),),
+            tipos_pagos_controller.TipoPagoDuplicadoError("Tipo duplicado"),
+            409,
+            "Tipo duplicado",
+        ),
+        (
+            "actualizar_tipo_pago",
+            "update_tipo_pago",
+            (4, rutas_tipos_pagos.TipoPago(nombre="Pension", valor=100)),
+            False,
+            400,
+            "Error al actualizar",
+        ),
+        (
+            "actualizar_configuracion_tipo_pago",
+            "update_configuracion_tipo_pago",
+            (4, rutas_tipos_pagos.ConfiguracionTipoPago(activo=False)),
+            tipos_pagos_controller.MigracionPendienteError("Migración pendiente"),
+            409,
+            "Migración pendiente",
+        ),
+        (
+            "upsert_cursos_asignados",
+            "put_cursos_asignados",
+            (4, rutas_tipos_pagos.CursoAsignacionPayload(cursos=[])),
+            None,
+            400,
+            "No se pudo asignar cursos",
+        ),
+        (
+            "eliminar_curso_asignado",
+            "delete_curso_asignado",
+            (4, 3),
+            False,
+            404,
+            "Asignación no encontrada",
+        ),
+        (
+            "upsert_valor_personalizado_estudiante",
+            "put_valor_personalizado_estudiante",
+            (
+                1,
+                4,
+                rutas_tipos_pagos.ValorPersonalizadoEstudiante(valor=80),
+            ),
+            ValueError("Estudiante no encontrado"),
+            400,
+            "Estudiante no encontrado",
+        ),
+        (
+            "eliminar_valor_personalizado_estudiante",
+            "delete_valor_personalizado_estudiante",
+            (1, 4),
+            False,
+            404,
+            "Valor personalizado no encontrado",
+        ),
+    ],
+)
+def test_los_resultados_de_dominio_conservan_sus_status_y_detalles(
+    monkeypatch,
+    colaborador,
+    handler,
+    argumentos,
+    resultado,
+    status,
+    detalle,
+):
+    def responder(*_args, **_kwargs):
+        if isinstance(resultado, Exception):
+            raise resultado
+        return resultado
+
+    monkeypatch.setattr(rutas_tipos_pagos, colaborador, responder)
+
+    with pytest.raises(rutas_tipos_pagos.HTTPException) as exc_info:
+        getattr(rutas_tipos_pagos, handler)(*argumentos)
+
+    assert exc_info.value.status_code == status
+    assert exc_info.value.detail == detalle
 
 
 def test_el_error_de_dominio_no_se_registra_porque_no_es_un_fallo(conexion, caplog):
@@ -1281,25 +1444,50 @@ def test_el_error_de_dominio_no_se_registra_porque_no_es_un_fallo(conexion, capl
     assert caplog.records == []
 
 
-def test_las_siete_funciones_que_absorben_excepciones_registran_el_fallo():
-    """Guardia estructural: si alguien anade un `except Exception` mudo, falla."""
+def test_las_siete_funciones_genericas_registran_revierten_y_propagan_el_fallo():
+    """Impide volver a convertir infraestructura en un sentinela de dominio."""
     import ast
-    import inspect
 
     fuente = inspect.getsource(tipos_pagos_controller)
-    mudos = []
-    for nodo in ast.walk(ast.parse(fuente)):
-        if not isinstance(nodo, ast.FunctionDef):
+    esperadas = {
+        "crear_tipo_pago",
+        "actualizar_tipo_pago",
+        "actualizar_configuracion_tipo_pago",
+        "upsert_cursos_asignados",
+        "eliminar_curso_asignado",
+        "upsert_valor_personalizado_estudiante",
+        "eliminar_valor_personalizado_estudiante",
+    }
+    encontradas = set()
+    defectos = []
+    for nodo in ast.parse(fuente).body:
+        if not isinstance(nodo, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
         for manejador in [h for h in ast.walk(nodo) if isinstance(h, ast.ExceptHandler)]:
             captura_todo = manejador.type is None or (
                 isinstance(manejador.type, ast.Name) and manejador.type.id == "Exception"
             )
-            registra = any(
-                "logger." in ast.unparse(sentencia) for sentencia in manejador.body
-            )
-            relanza = any(isinstance(s, ast.Raise) for s in manejador.body)
-            if captura_todo and not registra and not relanza:
-                mudos.append(nodo.name)
+            if not captura_todo:
+                continue
 
-    assert mudos == [], f"absorben excepciones sin registrarlas: {sorted(set(mudos))}"
+            encontradas.add(nodo.name)
+            texto = "\n".join(ast.unparse(sentencia) for sentencia in manejador.body)
+            propaga = any(
+                isinstance(sentencia, ast.Raise)
+                and isinstance(sentencia.exc, ast.Name)
+                and sentencia.exc.id == "TipoPagoInfraestructuraError"
+                for sentencia in manejador.body
+            )
+            devuelve_sentinela = any(
+                isinstance(sentencia, ast.Return) for sentencia in ast.walk(manejador)
+            )
+            if (
+                "logger.exception" not in texto
+                or "rollback" not in texto
+                or not propaga
+                or devuelve_sentinela
+            ):
+                defectos.append(nodo.name)
+
+    assert encontradas == esperadas
+    assert defectos == []

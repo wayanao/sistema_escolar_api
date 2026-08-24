@@ -4,16 +4,18 @@ from app.database import get_connection
 
 logger = logging.getLogger(__name__)
 
-# Las siete funciones de este modulo capturan `Exception` a secas y devuelven
-# None/False, que las rutas traducen a 400 o 404. Eso oculta un fallo de
-# infraestructura tras un codigo de error del cliente. Cambiar esos status codes
-# tocaria el contrato del frontend, asi que de momento se conserva el
-# comportamiento y solo se registra la excepcion con su traceback: antes
-# desaparecia sin dejar rastro y no habia forma de diagnosticarla despues.
+# Las siete escrituras distinguen sus resultados de dominio de los fallos
+# inesperados: los primeros conservan sus sentinelas o excepciones especificas y
+# los segundos se registran, revierten y se propagan para que la frontera HTTP
+# los exponga como errores internos.
 
 
 class TipoPagoDuplicadoError(Exception):
     """Se lanza cuando ya existe un tipo de pago con el mismo nombre."""
+
+
+class TipoPagoInfraestructuraError(RuntimeError):
+    """Encapsula un fallo inesperado sin exponer detalles internos por HTTP."""
 
 # =============================================================================
 # CRUD básico (NO modificar firmas: usado por flujos existentes)
@@ -38,10 +40,10 @@ def crear_tipo_pago(nombre, valor=0):
     except TipoPagoDuplicadoError:
         conn.rollback()
         raise
-    except Exception:
+    except Exception as exc:
         logger.exception("Fallo inesperado al crear el tipo de pago")
         conn.rollback()
-        return None
+        raise TipoPagoInfraestructuraError from exc
     finally:
         cursor.close()
         conn.close()
@@ -82,10 +84,10 @@ def actualizar_tipo_pago(id, nombre, valor=0):
     except TipoPagoDuplicadoError:
         conn.rollback()
         raise
-    except Exception:
+    except Exception as exc:
         logger.exception("Fallo inesperado al actualizar el tipo de pago %s", id)
         conn.rollback()
-        return False
+        raise TipoPagoInfraestructuraError from exc
     finally:
         cursor.close()
         conn.close()
@@ -304,12 +306,12 @@ def actualizar_configuracion_tipo_pago(id, config):
     except MigracionPendienteError:
         conn.rollback()
         raise
-    except Exception:
+    except Exception as exc:
         logger.exception(
             "Fallo inesperado al actualizar la configuracion del tipo de pago %s", id
         )
         conn.rollback()
-        return False
+        raise TipoPagoInfraestructuraError from exc
     finally:
         cursor.close()
         conn.close()
@@ -424,12 +426,12 @@ def upsert_cursos_asignados(tipo_pago_id, asignaciones):
         asignados = _consultar_cursos_asignados(cursor, tipo_pago_id)
         conn.commit()
         return asignados
-    except Exception:
+    except Exception as exc:
         logger.exception(
             "Fallo inesperado al asignar cursos al tipo de pago %s", tipo_pago_id
         )
         conn.rollback()
-        return None
+        raise TipoPagoInfraestructuraError from exc
     finally:
         cursor.close()
         conn.close()
@@ -447,14 +449,14 @@ def eliminar_curso_asignado(tipo_pago_id, curso_id):
             conn.commit()
             return True
         return False
-    except Exception:
+    except Exception as exc:
         logger.exception(
             "Fallo inesperado al desasignar el curso %s del tipo de pago %s",
             curso_id,
             tipo_pago_id,
         )
         conn.rollback()
-        return False
+        raise TipoPagoInfraestructuraError from exc
     finally:
         cursor.close()
         conn.close()
@@ -612,7 +614,7 @@ def upsert_valor_personalizado_estudiante(
     except (MigracionPendienteError, ValueError):
         conn.rollback()
         raise
-    except Exception:
+    except Exception as exc:
         logger.exception(
             "Fallo inesperado al guardar el valor personalizado del tipo de pago %s "
             "para el estudiante %s",
@@ -620,7 +622,7 @@ def upsert_valor_personalizado_estudiante(
             estudiante_id,
         )
         conn.rollback()
-        return None
+        raise TipoPagoInfraestructuraError from exc
     finally:
         cursor.close()
         conn.close()
@@ -651,7 +653,7 @@ def eliminar_valor_personalizado_estudiante(estudiante_id, tipo_pago_id):
     except MigracionPendienteError:
         conn.rollback()
         raise
-    except Exception:
+    except Exception as exc:
         logger.exception(
             "Fallo inesperado al eliminar el valor personalizado del tipo de pago %s "
             "del estudiante %s",
@@ -659,7 +661,7 @@ def eliminar_valor_personalizado_estudiante(estudiante_id, tipo_pago_id):
             estudiante_id,
         )
         conn.rollback()
-        return False
+        raise TipoPagoInfraestructuraError from exc
     finally:
         cursor.close()
         conn.close()

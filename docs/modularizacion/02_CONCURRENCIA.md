@@ -1,6 +1,6 @@
 # Capa 2: concurrencia
 
-Última revisión: 2026-08-13.
+Última revisión: 2026-08-24.
 
 ## Control
 
@@ -28,6 +28,14 @@
 - Cierre: **2.0–2.6 cerradas** el 2026-08-13. La medición formal, la
   compuerta global, staging, rollback y verificación manual quedaron
   documentados; la capa 3 permanece en espera y no fue activada.
+- Revalidación posterior al cierre: el 2026-08-24 se auditó de nuevo
+  `MAX_DB_CONNECTIONS_PER_THREADPOOL_WORKER = 2`. El barrido estático e
+  intermodular y las pruebas dirigidas **no detectaron un camino con más de una
+  conexión simultánea**, pero eso deja `H=1` solo como hipótesis candidata, no
+  como cota operativa demostrada. El valor **se conserva en 2 como factor
+  conservador**: con el modelo formal todavía en `R=0`, mantiene cinco tokens;
+  si el `H` real fuera 1, la diferencia actuaría como margen implícito. No cambió
+  producto ni configuración.
 - Autorización: orden explícita del usuario el 2026-08-12, después de cerrar la
   capa 1 y commitear su reconciliación documental.
 
@@ -1669,28 +1677,151 @@ puede crearse desde la plantilla tras una orden explícita del usuario.
   autorización específica de `PROMPT_CONTINUACION.md` para crear únicamente
   `03_MIGRACIONES_TENANTS.md`, actualizar el índice y detenerse antes de 3.0.
 
+### 2026-08-24 — revalidación puntual posterior al cierre del margen de capacidad
+
+- Modo de acceso: mismo checkout local en
+  `C:\Users\David\Documents\sistema_escolar_api`; Git y los commits locales se
+  validaron directamente.
+- Autorización: el usuario ordenó «Revalidar el margen de capacidad
+  `MAX_DB_CONNECTIONS_PER_THREADPOOL_WORKER=2`. ahora esto». La capa 2 sigue
+  cerrada; esta orden no activa una subcapa ni una capa nueva.
+- Precondiciones: rama `main`; árbol limpio confirmado con
+  `git status --porcelain=v1 --branch`; `HEAD` y la referencia local
+  `origin/main` coincidentes en
+  `721f38219893e6678f09ca52c7de3ea03f505e2c`. El base de continuidad vigente,
+  `2ec924a3308581b746a61fa24a44f71433034dbc`, y el base histórico de esta capa,
+  `b24cb8d3f1a8fa1d48699ed5732d4013ab6fe7f9`, son ancestros. Los diez commits
+  posteriores al base de continuidad están explicados por las bitácoras de
+  `super_admin`, `profesores`, pagos, asistencia y asignaciones; el último toca
+  exactamente los cinco archivos documentados por la corrección del lock.
+  El reflog local de `origin/main` registra actualizaciones por push para
+  `9a90462`, `bbf3bfb` y `721f382`; esto no demuestra despliegue ni un run de CI.
+- Documentos leídos en el orden requerido: índice maestro completo,
+  `07_SUPER_ADMIN.md` completo como fuente de continuidad, instrucciones
+  locales —no existen— y esta bitácora completa como dueña del hallazgo.
+- Configuración observada: `DB_POOL_MIN_CONNECTIONS=1` y
+  `DB_POOL_MAX_CONNECTIONS=10` en el entorno local de desarrollo. Cada proceso
+  construye su propio `ThreadedConnectionPool`; solo `app/db/session.py` llama
+  directamente a `pool.getconn()`. El limitador por defecto de AnyIO continúa
+  derivando `10 // 2 = 5` tokens y también limita trabajo síncrono sin DB.
+- Metodología estática reproducible:
+
+  ```powershell
+  rg -n -C 3 "\b(get_connection|get_cursor)\s*\(" app -g '*.py'
+  rg -n "run_in_threadpool|to_thread|BackgroundTasks|background_tasks|create_task|ThreadPoolExecutor|run_in_executor" app -g '*.py'
+  rg -n "\.getconn\s*\(|\bget_pool\s*\(|ThreadedConnectionPool\s*\(" app -g '*.py'
+  ```
+
+  Un escaneo AST efímero, ejecutado en memoria y no conservado como script,
+  contó **161 adquisiciones** en **160 funciones** y 40 archivos de `app/`, sin
+  una función `async` que adquiriera DB directamente. Esos conteos son
+  diagnósticos y no una garantía exhaustiva. El barrido no encontró otro
+  `pool.getconn()`, executor crudo, `BackgroundTasks`, generador que retuviera DB
+  ni dependencia directa de `get_connection`/`get_cursor`. Los cuatro offloads
+  explícitos usan `run_in_threadpool` y FastAPI envía los handlers síncronos al
+  mismo limitador compartido.
+- El barrido intermodular marcó los bordes donde un dueño de conexión llama a
+  otra función capaz de abrirla. Revisados uno a uno, autenticación, branding,
+  notas, planilla, observaciones y asistencia cierran el primer `with` o
+  `finally` antes del siguiente checkout. Los locks de asignaciones prolongan
+  una sola transacción pero no abren otra conexión. Los dos upsert que
+  originaron `H=2` releen hoy con el mismo cursor y su prueba conserva
+  `peak == 1`.
+- Resultado técnico: en el alcance acotado del barrido y de los casos dirigidos
+  **no se detectó `H>1`** ni un consumidor HTTP fuera del limitador. Las
+  múltiples conexiones de dashboard, notas y asistencia son secuenciales. Esto
+  convierte `H=1` en candidato para una futura medición, pero no prueba que sea
+  una cota operativa exhaustiva. El modelo existente sigue teniendo **reserva
+  formal `R=0`**; la ausencia de consumidores externos en este inventario local
+  tampoco demuestra que `R=0` sea suficiente en despliegue.
+- La prueba sintética de dos leases por worker sigue siendo útil como control de
+  seguridad: con cinco tokens ocupa las diez conexiones sin `PoolError`, y con
+  seis reproduce dos `PoolError`. No demuestra que producto use dos leases;
+  demuestra qué ocurriría si un camino omitido volviera a anidarlos.
+- Decisión: **no cambiar la constante ni elevar el threadpool de 5 a 10**. El
+  valor 2 deja de describirse como consumo real demostrado y queda como factor
+  conservador. Con la fórmula vigente y `R=0` formal produce cinco tokens; si el
+  `H` real fuera 1, las otras cinco conexiones serían un margen **implícito**.
+  Cambiar directamente a 1 asignaría los diez tokens y consumiría ese margen
+  implícito; la reserva formal ya es cero en ambos casos. No existe evidencia
+  local del número real de procesos/réplicas, del límite de conexiones de Neon
+  ni de carga representativa que justifique ese cambio operativo.
+- Si más adelante se autoriza aumentar capacidad, separar explícitamente
+  el `H=1` candidato de una reserva formal `R`: con pool 10, solo después de
+  demostrar esa cota, `R=1` o `R=2` daría nueve u ocho tokens. Antes debe
+  instrumentarse checkout/checkin por thread, probar mezcla de auth, permisos,
+  lecturas, escrituras y storage con dos tenants, confirmar
+  workers/réplicas/límite del proveedor y ejecutar carga en staging sin
+  `PoolError`, fugas ni timeouts. La decisión de conservar 2 queda resuelta; la
+  idoneidad de `H=1` para ampliar capacidad **no está demostrada ni iniciada** y
+  exigiría una optimización explícita nueva.
+- Pruebas dirigidas:
+
+  ```powershell
+  .\venv\Scripts\python.exe -m pytest -q -p no:cacheprovider tests\test_threadpool_capacity.py tests\test_auth_threadpool.py tests\test_tenant_context_concurrency.py tests\test_db_pool_timeouts.py
+  ```
+
+  Resultado: **45 passed**, 5 warnings heredados.
+- Medición hermética de autenticación, cinco rondas: mediana total **104,424
+  ms**, retraso adicional del heartbeat **8,287 ms**, solapamiento dos, ambas
+  fronteras en workers, tenants correctos y contexto exterior restaurado. Usa
+  DB falsa y ninguna red; no es una medición operativa.
+
+  ```powershell
+  .\venv\Scripts\python.exe -B scripts\measure_auth_concurrency.py --runs 5 --validation-ms 100 --heartbeat-ms 20 --json
+  ```
+
+- Compuerta global: el intento restringido fue inválido —**1086 passed y 30
+  errores de setup** por permisos sobre el temporal de pytest—. La repetición
+  con acceso válido terminó con **1116 passed**, 5 warnings heredados, Ruff
+  correcto, dependencias íntegras y exit 0.
+
+  ```powershell
+  .\venv\Scripts\python.exe scripts\verify.py
+  git diff --check
+  ```
+
+  La segunda ejecución de `verify.py` usó acceso válido al temporal de pytest;
+  `git diff --check` terminó sin errores.
+- Archivos modificados: únicamente esta bitácora, el índice maestro y
+  `PROMPT_CONTINUACION.md`. No cambió código, pruebas, frontend, pool,
+  configuración, rutas, contratos, SQL, transacciones ni dependencias.
+- No se ejecutó PostgreSQL real, staging, producción, migración, deploy, commit
+  ni push; tampoco se atribuye un run nuevo de GitHub Actions.
+- Siguiente acción exacta: el usuario revisa y publica, si lo decide, esta
+  reconciliación documental. La capacidad permanece en cinco tokens por
+  proceso; cualquier aumento exige una nueva orden y la evidencia no productiva
+  descrita arriba.
+
 ## Entrega al próximo chat
 
-- Capa activa: **ninguna**.
-- Última capa terminada: **2, concurrencia**; subcapas 2.0–2.6 cerradas.
-- Primera subcapa pendiente: **ninguna**.
-- Hallazgo central: el inventario actual correcto es 140 rutas; 138 atravesaban
-  las dependencias async con DB síncrona. Sus tres llamadas DB ya usan el
-  threadpool estándar. El pico HTTP inventariado es dos conexiones por worker y
-  el limitador compartido deriva cinco tokens frente al pool de diez.
-- Verificación local vigente: medición formal 5/5, 81 pruebas dirigidas y
-  60/60 casos sensibles previos; compuerta global en exit 0 con 477 pruebas,
-  Ruff y dependencias correctos.
-  El cierre está publicado en la referencia local `origin/main`; GitHub Actions
-  posterior al cierre no se presenta como verificada sin evidencia del run.
+- Capa activa: **ninguna**. La fuente de continuidad general vigente es
+  `07_SUPER_ADMIN.md`; esta bitácora sigue siendo la dueña de la capacidad.
+- Capa 2: **cerrada**; subcapas 2.0–2.6 completas. La auditoría posterior no la
+  reabrió ni creó una subcapa.
+- Trabajo pendiente de esta auditoría: **ninguno para conservar la capacidad
+  actual**. La decisión de mantener 2 está completa. Demostrar que `H=1` sirve
+  para elevarla sería una optimización nueva, no iniciada, con autorización y
+  evidencia propias.
+- Hallazgo central: el inventario correcto de cierre fue 140 rutas; 138
+  atravesaban dependencias async con DB síncrona y sus tres llamadas DB usan el
+  threadpool estándar. La revalidación del 2026-08-24 **no detectó `H>1`**, pero
+  no demuestra operativamente la cota candidata `H=1`. Conserva el factor 2 y
+  cinco tokens frente al pool de diez; con `R=0` formal, la holgura adicional es
+  implícita si el `H` real resulta ser 1.
+- Verificación local vigente: revalidación de capacidad con **45 pruebas
+  dirigidas**, medición hermética 5/5 —medianas de 104,424 ms totales y 8,287 ms
+  de heartbeat— y compuerta global en exit 0 con **1116 pruebas**, Ruff y
+  dependencias correctos.
+  El cierre histórico de la capa 2 está publicado en la referencia local
+  `origin/main`; esta reconciliación documental aún no tiene commit ni push y
+  GitHub Actions no se presenta como verificada sin evidencia de un run nuevo.
 - Verificación operativa pendiente: la calibración heredada de
   `DB_STATEMENT_TIMEOUT_MS` continúa pendiente y no debe marcarse como cumplida.
 - Riesgos conservados: cola de cinco workers para trabajo sync compartido,
   invariante H/R por reauditar ante nuevas fronteras, cancelación protegida,
   storage/DB no atómicos y dependencias flotantes.
-- Siguiente capa: **3, migraciones y tenants, en espera**. No tiene bitácora y no
-  puede activarse con una instrucción genérica de continuar.
-- Siguiente acción exacta: esperar una orden explícita entre mantener el programa
-  cerrado o activar solo la capa 3. Si se autoriza activarla, crear únicamente
-  su bitácora e índice y detenerse; no implementar 3.0 en ese mismo turno sin
-  autorización inequívoca adicional.
+- Siguiente acción exacta: el usuario revisa esta reconciliación documental. Un
+  chat posterior debe volver al índice maestro y a `07_SUPER_ADMIN.md`; no debe
+  activar trabajo nuevo por inferencia ni cambiar la capacidad desde esta
+  bitácora histórica.

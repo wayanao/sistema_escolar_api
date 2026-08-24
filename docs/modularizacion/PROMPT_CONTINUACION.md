@@ -226,22 +226,25 @@ Lo que sigue es un resumen para orientarse; **el estado vivo está en
   3. **Una sola conexión por upsert**: los dos upsert de tipos de pago releen con
      su cursor antes de confirmar. Cerró además una ventana en la que un `commit`
      correcto se reportaba como 400.
-  4. **Mapeo de infraestructura a 500**, corregido localmente el 2026-08-24 tras
+  4. **Mapeo de infraestructura a 500**, corregido el 2026-08-24 tras
      revisar `frontend-react`: conserva los 400/404/409 de dominio y no filtra
-     detalles internos. Staging, commit, push y CI siguen pendientes.
+     detalles internos. El reflog local de `origin/main` registra su push en
+     `9a90462`; staging, despliegue comprobado y CI siguen pendientes.
 - **Corrección puntual posterior al cierre de `asistencia`**, autorizada y
   ejecutada localmente el 2026-08-24 sin reabrir la capa: el permiso de asignación
   se valida una vez y la pertenencia de todo el lote en una consulta batch. El
   perfil pasó de `N+1`/`2N+1` a **2/3 conexiones totales** como admin/profesor.
-  Conserva contratos y aislamiento tenant; `frontend-react` no cambió. Staging,
-  verificación manual, commit, push y CI siguen pendientes.
+  Conserva contratos y aislamiento tenant; `frontend-react` no cambió. El
+  reflog local de `origin/main` registra su push en `bbf3bfb`; staging,
+  verificación manual, despliegue comprobado y CI siguen pendientes.
 - **Corrección puntual posterior al cierre de la capa 6**, autorizada y
   ejecutada localmente el 2026-08-24 sin reabrirla: las precondiciones existentes
   de profesor y curso toman `FOR NO KEY UPDATE` en orden fijo y serializan altas
   o ediciones que podrían solaparse. Conserva 12/10 consultas, contratos y
-  aislamiento tenant; no requiere frontend ni migración. La prueba concurrente
-  con PostgreSQL real, staging, renovación de workers, commit, push y CI siguen
-  pendientes.
+  aislamiento tenant; no requiere frontend ni migración. El reflog local de
+  `origin/main` registra su push en `721f382`. La prueba concurrente con
+  PostgreSQL real, staging, despliegue y renovación comprobada de workers y CI
+  siguen pendientes.
 - Suite al día: **1116 pruebas**, exit 0. Partió de 606 al activar la capa 5 y de
   669 al activar la capa 6.
 - **Un hallazgo se retiró** tras revisarlo: el «filtro de ownership por pago» no
@@ -380,7 +383,8 @@ cancela**.
   pero aquí además **se devuelve el mensaje interno**.
 - **Hasta cuatro conexiones por petición**, en serie y sin anidar, en el camino
   de notas con asignación, que además **resuelve la asignación académica dos
-  veces**. Pertenece a la auditoría de capacidad de la capa 2.
+  veces**. La auditoría acotada de capacidad del 2026-08-24 no detectó `H>1` en
+  este coste secuencial, pero no convirtió `H=1` en cota operativa demostrada.
 - **El filtro de rendimiento consulta la base desde la capa de rutas** y **fuera**
   del `try/except`, así que un fallo de infraestructura ahí sale como **500** y
   no como el 400 del resto del endpoint.
@@ -401,12 +405,13 @@ cancela**.
 ### Lo que dejó abierto la capa 6
 
 - ~~El alta y la edición de asignaciones no toman ningún lock.~~ **Corregido
-  localmente el 2026-08-24**, con autorización explícita y sin reabrir la capa:
+  el 2026-08-24**, con autorización explícita y sin reabrir la capa:
   las lecturas existentes de profesor y curso activos toman `FOR NO KEY UPDATE`
   en orden profesor → curso. Esto conserva las 12/10 consultas de alta/edición,
   rutas, payloads y 400/409, y serializa a los escritores que comparten profesor
   o salón sin advisory keys ni migración. La compuerta terminó con **1116
-  pruebas**. Sigue pendiente demostrar la espera y revalidación con dos
+  pruebas**. El reflog local de `origin/main` registra su push en `721f382`.
+  Sigue pendiente demostrar la espera y revalidación con dos
   conexiones PostgreSQL reales en staging, renovar todos los workers al
   publicar y obtener evidencia posterior de CI; no atribuyas esas verificaciones
   todavía.
@@ -467,7 +472,8 @@ cancela**.
   dejar un `except Exception` mudo. **Corregido localmente el 2026-08-24** tras
   revisar `frontend-react`: los siete caminos propagan un error específico y
   las rutas lo traducen a 500 con detalle fijo; los resultados de dominio
-  conservan sus status. Sigue pendiente staging, commit, push y evidencia de CI.
+  conservan sus status. El reflog local de `origin/main` registra su push en
+  `9a90462`; sigue pendiente staging, despliegue comprobado y evidencia de CI.
 - ~~Los dos upsert de tipos de pago abren dos conexiones por petición.~~
   **Corregido el 2026-08-17**: releen con su propio cursor antes de confirmar.
   Eso cerró además una ventana peor que no se había visto: si la relectura
@@ -478,14 +484,18 @@ cancela**.
   2026-08-24**: una comprobación de asignación y una consulta batch dejan 2
   conexiones totales como admin y 3 como profesor para lotes de 1, 5 y 30. Los
   seis hallazgos restantes de `07_ASISTENCIA.md` siguen abiertos; esta corrección
-  aún no tiene staging, commit, push ni evidencia de CI.
-- **Pendiente para una auditoría de la capa 2**: al corregir lo anterior,
-  `MAX_DB_CONNECTIONS_PER_THREADPOOL_WORKER = 2` —de donde salen los 5 workers
-  para el pool de 10— **se quedó sin ningún ejemplo real que la respalde**. Un
-  barrido de `app/` no encontró ya ningún camino que anide conexiones, pero es
-  estático y solo ve anidamiento dentro del mismo módulo, así que no es garantía.
-  La constante **se conserva como margen** y subirla exigiría auditar de nuevo la
-  capacidad, no inferirlo.
+  está publicada en `bbf3bfb` según el reflog local de `origin/main`, pero aún no
+  tiene staging, despliegue comprobado ni evidencia de CI.
+- ~~Auditar `MAX_DB_CONNECTIONS_PER_THREADPOOL_WORKER = 2`.~~ **Revalidado el
+  2026-08-24**: el inventario intermodular acotado y las pruebas dirigidas no
+  detectaron `H>1`; las conexiones múltiples de auth, dashboard, notas,
+  asistencia, planilla y branding son secuenciales. `H=1` queda como hipótesis
+  candidata, no como cota operativa demostrada. La constante **permanece en 2**
+  y conserva 5 workers para el pool de 10. El modelo formal sigue en `R=0`; si
+  el `H` real fuera 1, el factor adicional sería margen implícito. La decisión de
+  mantener 2 está completa. Demostrar `H=1` para una futura ampliación no se ha
+  iniciado y exige orden propia, instrumentación, reserva formal `R`, confirmar
+  workers/réplicas/límite del proveedor y carga en staging.
 - **Código duplicado byte a byte**: `pagos_controller._tabla_pagos_aplicaciones_existe`
   y `cobros.tabla_pagos_aplicaciones_existe` son la misma función. La pública ya
   tiene dos consumidores reales, así que deduplicar no crearía una abstracción

@@ -40,11 +40,11 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 3 | Migraciones y tenants | Todos los tenants versionados, runner bloqueado y alta reproducible | **Cerrada**; reparó producción y verificó en uso | [03_MIGRACIONES_TENANTS.md](./03_MIGRACIONES_TENANTS.md) |
 | 4 | Reportes financieros | Dominio modular, N+1 eliminado y consultas medidas | **Cerrada**; N+1 de 5N a 15 constantes, medido en producción | [04_REPORTES_FINANCIEROS.md](./04_REPORTES_FINANCIEROS.md) |
 | 5 | Pagos y tipos de pago | Dominio financiero modularizado y protegido | **Cerrada**; SQL inline de 23 a 3, sin tocar la base | [05_PAGOS_TIPOS_PAGO.md](./05_PAGOS_TIPOS_PAGO.md) |
-| 6 | Asignaciones y estudiantes | Dominios grandes separados con contratos estables | **Cerrada**; SQL inline de 52 a 1; lock de concurrencia corregido localmente el 2026-08-24 | [06_ASIGNACIONES_ESTUDIANTES.md](./06_ASIGNACIONES_ESTUDIANTES.md) |
+| 6 | Asignaciones y estudiantes | Dominios grandes separados con contratos estables | **Cerrada**; SQL inline de 52 a 1; lock de concurrencia corregido y publicado en `721f382`; verificación PostgreSQL real pendiente | [06_ASIGNACIONES_ESTUDIANTES.md](./06_ASIGNACIONES_ESTUDIANTES.md) |
 | 7 | Resto de dominios — **`dashboard` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `dashboard` el 2026-08-19; publicada y verificada a mano | [07_DASHBOARD.md](./07_DASHBOARD.md) |
 | 7 | Resto de dominios — **`notas` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `notas` el 2026-08-19; verificada a mano. **Publicada el 2026-08-20**, después de escribirse su bitácora | [07_NOTAS.md](./07_NOTAS.md) |
 | 7 | Resto de dominios — **`ventas` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `ventas` el 2026-08-20; verificada a mano. **Publicada el 2026-08-20**, después de escribirse su bitácora | [07_VENTAS.md](./07_VENTAS.md) |
-| 7 | Resto de dominios — **`asistencia` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `asistencia` el 2026-08-21; verificada a mano y publicada. N+1 de permisos corregido localmente el 2026-08-24; staging/publicación de la corrección pendientes | [07_ASISTENCIA.md](./07_ASISTENCIA.md) |
+| 7 | Resto de dominios — **`asistencia` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `asistencia` el 2026-08-21; verificada a mano y publicada. N+1 de permisos corregido y publicado en `bbf3bfb`; staging de la corrección pendiente | [07_ASISTENCIA.md](./07_ASISTENCIA.md) |
 | 7 | Resto de dominios — **`boletin` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `boletin` el 2026-08-21; verificada a mano y **sin publicar**. Ver la advertencia de desfase más abajo | [07_BOLETIN.md](./07_BOLETIN.md) |
 | 7 | Resto de dominios — **`observaciones` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `observaciones` el 2026-08-21; verificada a mano. **Publicada el 2026-08-21**, después de escribirse su bitácora | [07_OBSERVACIONES.md](./07_OBSERVACIONES.md) |
 | 7 | Resto de dominios — **`planilla` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `planilla` el 2026-08-21; verificación manual correcta y sin publicación comprobada | [07_PLANILLA.md](./07_PLANILLA.md) |
@@ -55,18 +55,32 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 7 | Resto de dominios — **`super_admin` migrado** | Migración individual con contratos y pruebas | **Cerrada** el 2026-08-23; 7.0–7.3 completas, verificación manual pendiente y sin publicación comprobada | [07_SUPER_ADMIN.md](./07_SUPER_ADMIN.md) |
 
 **Estado vigente:** no hay una capa activa. El 2026-08-24 se completaron tres
-correcciones locales autorizadas sobre capas cerradas, sin reabrirlas: el mapeo
+correcciones autorizadas sobre capas cerradas, sin reabrirlas: el mapeo
 seguro a 500 de los siete fallos de infraestructura de
 `tipos_pagos_controller`, el N+1 de conexiones de los permisos de `asistencia`
 y la protección de concurrencia al crear o editar asignaciones. Esta última
 añade `FOR NO KEY UPDATE` a las dos precondiciones existentes de profesor y
 curso, conserva **12/10 consultas** en alta/edición y serializa los cruces sin
 migración ni cambios de frontend. La compuerta local terminó con **1116
-pruebas**. Su verificación con dos conexiones PostgreSQL reales, staging,
-commit, push, despliegue y evidencia posterior de GitHub Actions siguen
-pendientes y bajo control del usuario. Las menciones cronológicas anteriores que
+pruebas**. El reflog local de `origin/main` registra los pushes de esas
+correcciones en `9a90462`, `bbf3bfb` y `721f382`; `HEAD` y esa referencia
+coinciden en `721f382`. Esto no demuestra despliegue ni CI: staging, la prueba
+con dos conexiones PostgreSQL reales aplicable al lock, despliegue y evidencia
+posterior de GitHub Actions siguen pendientes y bajo control del usuario. Las
+menciones cronológicas anteriores que
 presentan cualquiera de estos hallazgos como abierto describen el estado de su
 fecha, no el vigente.
+
+También el 2026-08-24 se completó la auditoría autorizada de
+`MAX_DB_CONNECTIONS_PER_THREADPOOL_WORKER = 2`. El barrido acotado y las pruebas
+dirigidas **no detectaron `H>1`**; las aperturas múltiples de dashboard, notas y
+asistencia son secuenciales. Eso deja `H=1` como hipótesis candidata, no como
+cota operativa demostrada. La constante **permanece en 2** y el pool de 10
+conserva cinco tokens. El modelo formal continúa en `R=0`; si el `H` real fuera
+1, el factor adicional aportaría margen implícito. No cambió producto ni
+configuración. Una futura ampliación exige demostrar la cota, separar `H` de una
+reserva formal `R`, confirmar procesos/réplicas y medir carga en staging; no es
+una corrección pendiente para mantener el estado seguro actual.
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
 cierre y el usuario ordene continuar, se crea su sucesora desde
@@ -660,13 +674,15 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   repositorio un push a `main` dispara el despliegue. Las líneas fechadas que
   describen el estado del 2026-08-16 se conservan intactas: eran ciertas
   entonces.
-- **Pendiente heredado que apareció el 2026-08-17**: al quitar el anidamiento de
+- **Auditoría heredada completada el 2026-08-24**: al quitar el anidamiento de
   conexiones de los dos upsert, la constante
   `MAX_DB_CONNECTIONS_PER_THREADPOOL_WORKER = 2` de la capa 2 —de donde salen los
-  5 workers para el pool de 10— **se quedó sin ningún ejemplo real que la
-  respalde**. Se conserva como margen y **no se tocó**: cambiarla exige una
-  auditoría de capacidad propia, no una inferencia. El barrido que lo detectó es
-  estático y solo ve anidamiento dentro del mismo módulo.
+  5 workers para el pool de 10— se quedó sin un ejemplo real. La revisión
+  intermodular acotada no detectó `H>1`, pero tampoco demuestra que el `H=1`
+  candidato sea una cota operativa. **La constante no se tocó**: el modelo
+  conserva `R=0` formal y cinco tokens; si el `H` real fuera 1, la diferencia
+  sería margen implícito. Elevar capacidad requeriría una decisión propia,
+  instrumentación, reserva explícita y carga en staging.
 - Capa 6 **activada** el 2026-08-17 por orden explícita del usuario. Commit
   base: `589cb6d1391161c692a6f24aee9d523317cbb1ce`, el `HEAD` limpio vigente en
   `main` y coincidente con la referencia local `origin/main`, que el reflog
@@ -876,8 +892,9 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   las consultas sino **las conexiones**: el camino de notas con asignación abre
   **cuatro en serie** —dos precondiciones de permiso, una comprobación de acceso
   y la consulta—, y resuelve la asignación académica **dos veces**. Es la
-  evidencia real que le faltaba a la constante de capacidad de la capa 2, que se
-  registra **sin actuar**.
+  evidencia del coste secuencial que faltaba, pero **no** prueba dos leases
+  simultáneos por worker. Se registró **sin actuar**; la auditoría específica
+  posterior no detectó `H>1`, sin convertir `H=1` en cota operativa demostrada.
 - Resultado de 7.1: las **8 sentencias** salieron del controlador a
   `app/repositories/dashboard_repository.py`, **ocho funciones** que reciben el
   cursor existente más los **dos fragmentos** que componen las consultas de
@@ -1386,9 +1403,12 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   midiendo el controlador**, que abre una sola conexión en sus dos caminos; solo
   aparece al medir el camino HTTP completo. Es el **tercer caso** de conexiones
   en serie tras los 4 de dashboard y los 4 o 5 de notas, y **el primero cuyo
-  número crece con el tamaño de la entrada**: la evidencia real que le faltaba a
-  `MAX_DB_CONNECTIONS_PER_THREADPOOL_WORKER = 2`. Se registra **sin actuar**, y
-  las dos funciones viven en `app/core/permissions.py`, **fuera de alcance**.
+  número crece con el tamaño de la entrada**. Esta evidencia mide conexiones
+  **totales y secuenciales** por petición, no leases simultáneos por worker, por
+  lo que no respalda `MAX_DB_CONNECTIONS_PER_THREADPOOL_WORKER = 2`. Se registró
+  **sin actuar** y la auditoría específica del 2026-08-24 no detectó `H>1`, pero
+  dejó `H=1` como hipótesis pendiente de demostración operativa; las dos
+  funciones vivían en `app/core/permissions.py`, **fuera de aquel alcance**.
 - Hallazgos de 7.0 de `asistencia`, **registrados y sin corregir**: son **ocho**.
   Además del N+1, el permiso de asignación **se comprueba N veces con el mismo
   argumento** pese a que la ruta ya validó que todos comparten asignación; las
@@ -2252,10 +2272,11 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
 - [07_ASISTENCIA.md](./07_ASISTENCIA.md): **bitácora cerrada** de la capa 7 para
   el dominio `asistencia`. Fue la fuente de continuidad **hasta que se cerró
   `boletin`**. De sus ocho hallazgos, los dos ligados al N+1 de permisos quedaron
-  **corregidos localmente el 2026-08-24 con orden explícita**; seis siguen
+  **corregidos el 2026-08-24 con orden explícita y publicados en `bbf3bfb`**;
+  seis siguen
   abiertos. La corrección deja 2 conexiones totales como admin y 3 como profesor
   para lotes de 1, 5 y 30, pasó 1116 pruebas y conserva pendientes staging,
-  verificación manual, commit, push y CI. **Advertencia histórica sobre este
+  verificación manual, despliegue comprobado y CI. **Advertencia histórica sobre este
   archivo**: su bloque de cierre aún contiene el estado de publicación de su
   fecha —«no publicada» y rollback local—, que dejó de ser cierto con el push del
   2026-08-21 a las 13:00:34. La entrada nueva al final de la bitácora sustituye el
@@ -2364,7 +2385,7 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   7**. Registra el commit base
   `589cb6d`, el inventario de 6.0 con sus 19 entradas HTTP, dos tablas escritas y
   16 claves foráneas, los diez hallazgos originales —el lock frente a horarios
-  solapados quedó **corregido localmente el 2026-08-24** y el código muerto
+  solapados quedó **corregido el 2026-08-24 y publicado en `721f382`** y el código muerto
   duplicado que el usuario decidió conservar sigue abierto—, las cuatro
   extracciones de 6.1 a 6.5 con sus
   decisiones tomadas con evidencia, el supuesto de `storage` **refutado**, y el
@@ -2372,14 +2393,15 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   de que **no llegó a publicarse**. Fue la fuente de continuidad **hasta que se
   activó la capa 7**; los demás hallazgos que la bitácora no marca como
   corregidos siguen vivos. La corrección del lock conserva pendiente una prueba
-  concurrente con PostgreSQL real, staging, publicación y CI posterior.
+  concurrente con PostgreSQL real, staging, despliegue comprobado y CI posterior.
 - [05_PAGOS_TIPOS_PAGO.md](./05_PAGOS_TIPOS_PAGO.md): **bitácora cerrada** de la
   capa 5. Conserva sus hallazgos y el paso 2 acordado y no iniciado, la clave de
   idempotencia de `POST /pagos`. Registra también las correcciones puntuales
   posteriores al cierre: el lock parcial, el logging de fallos, una conexión por
   upsert y, el 2026-08-24, el mapeo local de los siete fallos de infraestructura
-  a 500 con revisión del frontend y compuerta de 1107 pruebas. Esta última
-  corrección conserva pendiente staging, commit, push y evidencia de CI.
+  a 500 con revisión del frontend y compuerta de 1107 pruebas. Esta última se
+  publicó en `9a90462` y conserva pendiente staging, despliegue comprobado y
+  evidencia de CI.
   Registra el commit base `f4d0913`, las
   verificaciones heredadas aceptadas como pendientes, el inventario de 5.0 con
   sus 19 entradas HTTP, seis tablas escritas, contratos, idempotencia y línea
@@ -2404,7 +2426,10 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   índices.
 - [02_CONCURRENCIA.md](./02_CONCURRENCIA.md): bitácora cerrada de la capa 2;
   conserva la medición, el límite de capacidad, staging, rollback, verificación
-  manual y riesgos residuales.
+  manual y riesgos residuales. Registra además la revalidación autorizada del
+  2026-08-24: no se detectó `H>1`, `H=1` sigue siendo una hipótesis candidata,
+  el valor 2 conserva cinco tokens por proceso y no habrá ampliación sin cota
+  demostrada, reserva explícita y staging.
 - [01_FUNDACION_BASE_DATOS.md](./01_FUNDACION_BASE_DATOS.md): bitácora cerrada de
   la capa 1; conserva pendiente el valor operativo final de `statement_timeout`
   tras la primera medición de 4.0, y registra la lección de que un cambio en el

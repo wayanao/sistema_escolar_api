@@ -1,6 +1,6 @@
 # Capa 7: profesores
 
-Última revisión: 2026-08-23.
+Última revisión: 2026-08-24.
 
 ## Control
 
@@ -649,6 +649,64 @@ permanece pendiente; no se presenta como realizada.
   deploy ni GitHub Actions y no se atribuye publicación.
 - Siguiente dominio: `super_admin`, en espera. No se crea su bitácora ni se
   inspecciona o activa por esta orden.
+
+### 2026-08-24 — corrección de compatibilidad de la caracterización con FastAPI 0.137+
+
+- Modo de acceso: mismo checkout local en
+  `C:\Users\David\Documents\sistema_escolar_api`; Git y commits locales se
+  validaron directamente.
+- Autorización: tras aportar la evidencia de dos intentos fallidos del job
+  `Backend quality #31`, el usuario autorizó con «hazlo» corregir únicamente
+  la prueba de montaje y registrar el resultado, sin reabrir la capa ni
+  activar trabajo posterior.
+- Precondiciones antes de modificar: rama `main`; árbol limpio confirmado con
+  `git status --porcelain=v1 --branch`, que mostró `## main...origin/main`;
+  `HEAD` `289e8245b6d113706ad7fe70044625ab7c3a9849`; y commit base de la
+  fuente de continuidad más reciente, `2ec924a3308581b746a61fa24a44f71433034dbc`,
+  comprobado como ancestro.
+- Continuidad posterior a ese base: los cinco commits son la activación y las
+  subcapas 7.0 a 7.3 de `super_admin`; sus archivos y propósitos coinciden con
+  `07_SUPER_ADMIN.md`. No había cambios ni commits sin explicar.
+- Evidencia remota aportada por el usuario: el run
+  `32669836751`, job `97403798859`, y su repetición fallaron sobre
+  `2ec924a3308581b746a61fa24a44f71433034dbc` con **1060 passed y 1 failed**.
+  Ruff y `pip check` pasaron. El único fallo fue esta caracterización, que
+  obtuvo un conjunto vacío al recorrer `main.app.routes` como una lista plana
+  de `APIRoute`.
+- La ruta `PUT /profesores/{profesor_id}` y
+  `app.include_router(profesores.router)` ya existen en ese commit; no se
+  modificó ni duplicó ninguna ruta. CI instaló FastAPI **0.141.1** y Starlette
+  **1.6.0**, mientras el entorno local usa FastAPI **0.136.1** y Starlette
+  **1.0.0**. FastAPI 0.137 cambió `router.routes` a una estructura que puede
+  contener routers intermedios, por lo que la prueba dependía de un detalle
+  interno incompatible con la versión admitida por `requirements.txt`.
+- Archivo funcional modificado:
+  `tests/test_profesores_caracterizacion.py`. La comprobación del montaje usa
+  ahora `main.app.openapi()["paths"]`, el contrato público de la aplicación,
+  y conserva exactamente los mismos seis pares de método y path. No cambian
+  producto, rutas, payloads, status codes, permisos, tenant, ownership, SQL,
+  transacciones, configuración ni dependencias.
+- Pruebas específicas:
+  `pytest tests\test_profesores_caracterizacion.py tests\test_profesores_controlador.py tests\test_catalogos_pagination.py -q`
+  terminó con **47 passed** y 6 warnings heredados. Ruff específico terminó
+  correctamente.
+- Primera compuerta global dentro del sandbox: **1059 passed y 30 errores de
+  setup**, todos por `PermissionError` al crear fixtures temporales; Ruff y
+  `pip check` pasaron. Ese intento no se considera evidencia válida.
+- Repetición autorizada fuera del sandbox:
+  `.\venv\Scripts\python.exe scripts\verify.py` terminó con **1089 passed**,
+  5 warnings heredados, Ruff correcto y dependencias íntegras.
+- Decisión: adaptar la caracterización al contrato OpenAPI y no fijar ni
+  degradar FastAPI dentro de esta corrección. Una política de versiones sería
+  trabajo separado y requeriría autorización propia.
+- No se ejecutó PostgreSQL, staging, migración, producción, deploy, commit ni
+  push. La verificación manual de `profesores` permanece pendiente.
+- GitHub Actions posterior a la corrección permanece **pendiente**: no se
+  presentará como verificada hasta que el usuario publique el cambio y aporte
+  un run exitoso asociado al nuevo commit.
+- Siguiente acción exacta: revisar este diff; después, si el usuario decide
+  publicarlo, ejecutar la misma compuerta en GitHub Actions y registrar el run.
+  No activar otra capa por inferencia.
 
 ## Entrega al próximo chat
 

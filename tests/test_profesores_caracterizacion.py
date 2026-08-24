@@ -249,11 +249,11 @@ def test_frontera_archivos_sql_repositorio_y_montaje_queda_fijada():
     assert not (ROOT / "app/repositories/profesor_repository.py").exists()
 
     mounted = {
-        (method, route.path)
-        for route in main.app.routes
-        if isinstance(route, APIRoute)
-        for method in route.methods
-        if route.path.startswith("/profesores")
+        (method.upper(), path)
+        for path, operations in main.app.openapi()["paths"].items()
+        if path.startswith("/profesores")
+        for method in operations
+        if method in {"delete", "get", "head", "options", "patch", "post", "put", "trace"}
     }
     assert mounted == {
         ("POST", "/profesores"),

@@ -8,10 +8,12 @@ class FakeCursor:
     def __init__(self, result):
         self.result = result
         self.closed = False
+        self.execute_count = 0
         self.executed_query = None
         self.executed_params = None
 
     def execute(self, query, params):
+        self.execute_count += 1
         self.executed_query = query
         self.executed_params = params
 
@@ -145,6 +147,53 @@ def test_require_estudiante_in_asignacion_blocks_mismatch(monkeypatch):
         permissions.require_estudiante_in_asignacion(10, 11)
 
     assert exc.value.status_code == 403
+
+
+def test_require_estudiantes_in_asignacion_allows_complete_batch(monkeypatch):
+    connection = FakeConnection((3,))
+    monkeypatch.setattr(permissions, "get_connection", lambda: connection)
+
+    permissions.require_estudiantes_in_asignacion([10, 12, 15], 11)
+
+    cursor = connection.cursor_instance
+    assert cursor.execute_count == 1
+    assert "COUNT(*)" in cursor.executed_query
+    assert "e.id = ANY(%s)" in cursor.executed_query
+    assert cursor.executed_params == ([10, 12, 15], 11)
+    assert cursor.closed is True
+    assert connection.closed is True
+
+
+def test_require_estudiantes_in_asignacion_blocks_partial_batch(monkeypatch):
+    connection = FakeConnection((2,))
+    monkeypatch.setattr(permissions, "get_connection", lambda: connection)
+
+    with pytest.raises(HTTPException) as exc:
+        permissions.require_estudiantes_in_asignacion([10, 12, 15], 11)
+
+    assert exc.value.status_code == 403
+    assert exc.value.detail == "El estudiante no pertenece a esta asignación"
+    assert connection.cursor_instance.execute_count == 1
+    assert connection.cursor_instance.closed is True
+    assert connection.closed is True
+
+
+def test_require_estudiantes_in_asignacion_propagates_database_errors_and_closes(monkeypatch):
+    class FailingCursor(FakeCursor):
+        def execute(self, query, params):
+            super().execute(query, params)
+            raise RuntimeError("database unavailable")
+
+    connection = FakeConnection(None)
+    connection.cursor_instance = FailingCursor(None)
+    monkeypatch.setattr(permissions, "get_connection", lambda: connection)
+
+    with pytest.raises(RuntimeError, match="database unavailable"):
+        permissions.require_estudiantes_in_asignacion([10, 12], 11)
+
+    assert connection.cursor_instance.execute_count == 1
+    assert connection.cursor_instance.closed is True
+    assert connection.closed is True
 
 
 def test_require_plan_de_clases_access_allows_owner_profesor(monkeypatch):

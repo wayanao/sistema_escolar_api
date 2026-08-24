@@ -229,7 +229,13 @@ Lo que sigue es un resumen para orientarse; **el estado vivo está en
   4. **Mapeo de infraestructura a 500**, corregido localmente el 2026-08-24 tras
      revisar `frontend-react`: conserva los 400/404/409 de dominio y no filtra
      detalles internos. Staging, commit, push y CI siguen pendientes.
-- Suite al día: **1107 pruebas**, exit 0. Partió de 606 al activar la capa 5 y de
+- **Corrección puntual posterior al cierre de `asistencia`**, autorizada y
+  ejecutada localmente el 2026-08-24 sin reabrir la capa: el permiso de asignación
+  se valida una vez y la pertenencia de todo el lote en una consulta batch. El
+  perfil pasó de `N+1`/`2N+1` a **2/3 conexiones totales** como admin/profesor.
+  Conserva contratos y aislamiento tenant; `frontend-react` no cambió. Staging,
+  verificación manual, commit, push y CI siguen pendientes.
+- Suite al día: **1116 pruebas**, exit 0. Partió de 606 al activar la capa 5 y de
   669 al activar la capa 6.
 - **Un hallazgo se retiró** tras revisarlo: el «filtro de ownership por pago» no
   era un hueco. Ver el detalle en la bitácora antes de volver a levantarlo.
@@ -459,6 +465,12 @@ cancela**.
   Eso cerró además una ventana peor que no se había visto: si la relectura
   fallaba tras el `commit`, la ruta respondía 400 sobre una escritura ya
   guardada.
+- ~~`POST /asistencia` abre una conexión de pertenencia por estudiante y repite
+  N veces el mismo permiso de asignación.~~ **Corregido localmente el
+  2026-08-24**: una comprobación de asignación y una consulta batch dejan 2
+  conexiones totales como admin y 3 como profesor para lotes de 1, 5 y 30. Los
+  seis hallazgos restantes de `07_ASISTENCIA.md` siguen abiertos; esta corrección
+  aún no tiene staging, commit, push ni evidencia de CI.
 - **Pendiente para una auditoría de la capa 2**: al corregir lo anterior,
   `MAX_DB_CONNECTIONS_PER_THREADPOOL_WORKER = 2` —de donde salen los 5 workers
   para el pool de 10— **se quedó sin ningún ejemplo real que la respalde**. Un

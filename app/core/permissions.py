@@ -92,6 +92,32 @@ def require_estudiante_in_asignacion(estudiante_id: int, asignacion_id: int) -> 
     )
 
 
+def require_estudiantes_in_asignacion(estudiante_ids: list[int], asignacion_id: int) -> None:
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            """
+            SELECT COUNT(*)
+            FROM estudiantes e
+            JOIN asignaciones a ON a.curso_id = e.curso_id
+            WHERE e.id = ANY(%s) AND a.id = %s
+            """,
+            (estudiante_ids, asignacion_id),
+        )
+        resultado = cursor.fetchone()
+        if resultado and resultado[0] == len(estudiante_ids):
+            return
+    finally:
+        cursor.close()
+        conn.close()
+
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="El estudiante no pertenece a esta asignación",
+    )
+
+
 def require_plan_de_clases_access(plan_id: int, current_user: dict, detail: str = "No autorizado") -> None:
     if current_user.get("rol") == "admin":
         return

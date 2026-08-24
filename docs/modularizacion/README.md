@@ -44,7 +44,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 7 | Resto de dominios — **`dashboard` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `dashboard` el 2026-08-19; publicada y verificada a mano | [07_DASHBOARD.md](./07_DASHBOARD.md) |
 | 7 | Resto de dominios — **`notas` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `notas` el 2026-08-19; verificada a mano. **Publicada el 2026-08-20**, después de escribirse su bitácora | [07_NOTAS.md](./07_NOTAS.md) |
 | 7 | Resto de dominios — **`ventas` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `ventas` el 2026-08-20; verificada a mano. **Publicada el 2026-08-20**, después de escribirse su bitácora | [07_VENTAS.md](./07_VENTAS.md) |
-| 7 | Resto de dominios — **`asistencia` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `asistencia` el 2026-08-21; verificada a mano. **Publicada el 2026-08-21**, después de escribirse su bitácora | [07_ASISTENCIA.md](./07_ASISTENCIA.md) |
+| 7 | Resto de dominios — **`asistencia` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `asistencia` el 2026-08-21; verificada a mano y publicada. N+1 de permisos corregido localmente el 2026-08-24; staging/publicación de la corrección pendientes | [07_ASISTENCIA.md](./07_ASISTENCIA.md) |
 | 7 | Resto de dominios — **`boletin` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `boletin` el 2026-08-21; verificada a mano y **sin publicar**. Ver la advertencia de desfase más abajo | [07_BOLETIN.md](./07_BOLETIN.md) |
 | 7 | Resto de dominios — **`observaciones` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `observaciones` el 2026-08-21; verificada a mano. **Publicada el 2026-08-21**, después de escribirse su bitácora | [07_OBSERVACIONES.md](./07_OBSERVACIONES.md) |
 | 7 | Resto de dominios — **`planilla` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `planilla` el 2026-08-21; verificación manual correcta y sin publicación comprobada | [07_PLANILLA.md](./07_PLANILLA.md) |
@@ -54,14 +54,16 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 7 | Resto de dominios — **`profesores` migrado** | Migración individual con contratos y pruebas | **Cerrada** el 2026-08-23; 7.2/7.3 No aplica, verificación manual pendiente y sin publicación comprobada | [07_PROFESORES.md](./07_PROFESORES.md) |
 | 7 | Resto de dominios — **`super_admin` migrado** | Migración individual con contratos y pruebas | **Cerrada** el 2026-08-23; 7.0–7.3 completas, verificación manual pendiente y sin publicación comprobada | [07_SUPER_ADMIN.md](./07_SUPER_ADMIN.md) |
 
-**Estado vigente:** no hay una capa activa. El 2026-08-24 se corrigió
-localmente, con autorización explícita y sin reabrir la capa 5, el hallazgo de
-los siete fallos de infraestructura de `tipos_pagos_controller`: ahora sus rutas
-responden 500 sin filtrar detalles internos y conservan los 400/404/409 de
-dominio. La compuerta local pasó con 1107 pruebas; la verificación manual en
-staging, commit, push y evidencia de GitHub Actions siguen pendientes y bajo
-control del usuario. Las menciones cronológicas anteriores que dicen que este
-hallazgo seguía pendiente describen el estado de su fecha, no el vigente.
+**Estado vigente:** no hay una capa activa. El 2026-08-24 se completaron dos
+correcciones locales autorizadas sobre capas cerradas, sin reabrirlas: el mapeo
+seguro a 500 de los siete fallos de infraestructura de
+`tipos_pagos_controller`, y después el N+1 de conexiones de los permisos de
+`asistencia`. Este último pasó de `N+1`/`2N+1` a **2/3 conexiones totales** como
+admin/profesor y la compuerta local terminó con **1116 pruebas**. Staging,
+verificación manual, commit, push y evidencia de GitHub Actions de esta última
+corrección siguen pendientes y bajo control del usuario. Las menciones
+cronológicas anteriores que presentan cualquiera de estos hallazgos como abierto
+describen el estado de su fecha, no el vigente.
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
 cierre y el usuario ordene continuar, se crea su sucesora desde
@@ -1541,6 +1543,22 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   existe: las 37 pruebas de `asistencia` más las 12 heredadas cubren este camino.
   **`07_ASISTENCIA.md` no se editó**: está cerrada y corregirla exige una orden
   propia; esta es la línea que conserva la evidencia.
+- **Corrección ejecutada localmente el 2026-08-24 con orden explícita.** La capa
+  sigue cerrada y ninguna otra se activó. Se aplicaron exactamente los pasos A y
+  B: una sola llamada a `require_asignacion_access` y una guardia nueva que
+  comprueba todo el lote con `ANY(%s)` y `COUNT(*)`, sin cambiar la función
+  singular que consumen `boletines` y `observaciones`. Para lotes de 1, 5 y 30,
+  las pruebas fijan **2 conexiones totales como admin y 3 como profesor**. Se
+  preservaron los 422, ambos 403 y su precedencia, el tenant por `search_path`,
+  el lote original, el SQL y la transacción del controlador. Esta es además la
+  primera modificación autorizada de una expectativa heredada: el acceso a la
+  asignación ahora se espera una vez, no N. Las específicas terminaron con **72
+  passed** y la compuerta con **1116 passed**, Ruff correcto y dependencias
+  íntegras. El primer intento de compuerta tuvo 30 errores de preparación por el
+  directorio temporal restringido; la repetición fuera del sandbox pasó. No se
+  modificó `frontend-react`; staging, verificación manual, commit, push y CI no
+  constan. La bitácora cerrada se actualizó porque esta vez la orden propia sí
+  llegó.
 - Capa 7 **activada para el dominio `boletin`** el 2026-08-21 por orden
   explícita del usuario, en el mismo turno que autorizó corregir el estado de
   publicación de `asistencia`. Commit base:
@@ -2230,14 +2248,15 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   posición.
 - [07_ASISTENCIA.md](./07_ASISTENCIA.md): **bitácora cerrada** de la capa 7 para
   el dominio `asistencia`. Fue la fuente de continuidad **hasta que se cerró
-  `boletin`**; sus ocho hallazgos siguen vivos, encabezados por el **N+1 en
-  conexiones**, y **no se corrigen desde la capa activa**. **Advertencia sobre
-  este archivo**: su estado de publicación quedó desfasado, igual que le pasó a
-  `07_NOTAS.md` y a `07_VENTAS.md`. Lo declara «no publicada» y describe su
-  rollback como puramente local, y **ya no es cierto** desde el push del
-  2026-08-21 a las 13:00:34; el renglón corregido está en «Estado actual», más
-  arriba. La bitácora **no se editó** porque corregir una capa cerrada exige una
-  orden explícita. Registra el commit base
+  `boletin`**. De sus ocho hallazgos, los dos ligados al N+1 de permisos quedaron
+  **corregidos localmente el 2026-08-24 con orden explícita**; seis siguen
+  abiertos. La corrección deja 2 conexiones totales como admin y 3 como profesor
+  para lotes de 1, 5 y 30, pasó 1116 pruebas y conserva pendientes staging,
+  verificación manual, commit, push y CI. **Advertencia histórica sobre este
+  archivo**: su bloque de cierre aún contiene el estado de publicación de su
+  fecha —«no publicada» y rollback local—, que dejó de ser cierto con el push del
+  2026-08-21 a las 13:00:34. La entrada nueva al final de la bitácora sustituye el
+  estado del N+1, no reescribe esa cronología. Registra el commit base
   `a894441f8676b0486e3395f88179cdf6cba61430` —publicado y desplegado,
   comprobado contra el remoto real—, la autorización del usuario y el rechazo
   previo de la orden que no nombraba dominio, el alcance limitado a un solo
@@ -2258,7 +2277,7 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   conexiones en los dos caminos**; las **cinco** guardias que fallaron y el
   patrón de que **cada migración añade una enumeración de repositorios**, así que
   el número crece en uno cada vez; el **punto de decisión resuelto** que cerró la
-  capa sin abrir una 7.2 dejando **el N+1 en conexiones sin tocar**; y el cierre
+  capa sin abrir una 7.2 dejando entonces **el N+1 en conexiones sin tocar**; y el cierre
   con su rollback —**local, porque la capa sigue sin publicar**—, su staging, su
   **verificación manual con la cobertura real que el usuario reportó** —solo el
   paso 3 consta— y los **riesgos que deja abiertos**.

@@ -67,8 +67,8 @@ def test_guardar_asistencia_valida_permisos_y_envia_lote(monkeypatch):
     )
     monkeypatch.setattr(
         asistencia,
-        "require_estudiante_in_asignacion",
-        lambda estudiante_id, asignacion_id: estudiantes_validados.append((estudiante_id, asignacion_id)),
+        "require_estudiantes_in_asignacion",
+        lambda estudiante_ids, asignacion_id: estudiantes_validados.append((estudiante_ids, asignacion_id)),
     )
     monkeypatch.setattr(
         asistencia,
@@ -79,8 +79,56 @@ def test_guardar_asistencia_valida_permisos_y_envia_lote(monkeypatch):
     response = asistencia.guardar_asistencia(data, current_user={"id": 3, "rol": "profesor"})
 
     assert response == {"mensaje": "2 registros"}
-    assert asignaciones_validadas == [(10, 3), (10, 3)]
-    assert estudiantes_validados == [(1, 10), (2, 10)]
+    assert asignaciones_validadas == [(10, 3)]
+    assert estudiantes_validados == [([1, 2], 10)]
+
+
+def test_guardar_asistencia_conserva_precedencia_del_permiso_de_asignacion(monkeypatch):
+    def denegar_asignacion(asignacion_id, current_user):
+        raise HTTPException(status_code=403, detail="No autorizado")
+
+    monkeypatch.setattr(asistencia, "require_asignacion_access", denegar_asignacion)
+    monkeypatch.setattr(
+        asistencia,
+        "require_estudiantes_in_asignacion",
+        lambda *_args: pytest.fail("No debe validar pertenencia sin acceso a la asignación"),
+    )
+    monkeypatch.setattr(
+        asistencia,
+        "guardar_asistencia_controller",
+        lambda _lote: pytest.fail("No debe escribir sin acceso a la asignación"),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        asistencia.guardar_asistencia(
+            [crear_registro(estudiante_id=1), crear_registro(estudiante_id=2)],
+            current_user={"id": 3, "rol": "profesor"},
+        )
+
+    assert exc.value.status_code == 403
+    assert exc.value.detail == "No autorizado"
+
+
+def test_guardar_asistencia_no_escribe_si_un_estudiante_no_pertenece(monkeypatch):
+    def denegar_pertenencia(estudiante_ids, asignacion_id):
+        raise HTTPException(status_code=403, detail="El estudiante no pertenece a esta asignación")
+
+    monkeypatch.setattr(asistencia, "require_asignacion_access", lambda *_args: None)
+    monkeypatch.setattr(asistencia, "require_estudiantes_in_asignacion", denegar_pertenencia)
+    monkeypatch.setattr(
+        asistencia,
+        "guardar_asistencia_controller",
+        lambda _lote: pytest.fail("No debe escribir un lote con un estudiante ajeno"),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        asistencia.guardar_asistencia(
+            [crear_registro(estudiante_id=1), crear_registro(estudiante_id=2)],
+            current_user={"id": 1, "rol": "admin"},
+        )
+
+    assert exc.value.status_code == 403
+    assert exc.value.detail == "El estudiante no pertenece a esta asignación"
 
 
 class FakeCursor:

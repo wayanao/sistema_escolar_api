@@ -13,16 +13,15 @@ Lo que ninguno de los dos toca, y este archivo fija:
 - la frontera real del dominio, que resulto ser de tres archivos y no de dos;
 - los DOS idiomas de conexion que conviven, herencia de que 1.4g migrase
   1 sitio de 2;
-- los conteos de consultas y de conexiones, incluido el N+1 en CONEXIONES del
-  bucle de permisos de la ruta, que es el peor perfil que ha medido el programa;
+- los conteos de consultas y de conexiones, incluido el perfil O(1) que deja la
+  correccion puntual posterior al cierre para los permisos de escritura;
 - el contrato HTTP real de las dos entradas, medido por ASGI;
 - los dos consumidores ajenos ya migrados que leen esta tabla;
-- los hallazgos que 7.0 registra sin corregir.
+- los hallazgos que 7.0 registra; el N+1 de permisos ya queda corregido.
 
-Nada de lo que aqui se fija se corrige: 7.0 inventaria y caracteriza, no arregla.
-Varias de estas pruebas documentan comportamiento que parece defectuoso; se
-fijan tal como estan hoy para que una extraccion posterior no los cambie sin que
-alguien lo note.
+La mayor parte del archivo conserva la caracterizacion de 7.0. El bloque 6 se
+actualiza con la correccion puntual posterior al cierre que elimina el N+1 de
+permisos, sin cambiar el contrato HTTP ni la persistencia del controlador.
 """
 
 import ast
@@ -494,11 +493,10 @@ def test_la_escritura_no_valida_el_estado(instrumentado):
 
 
 # ---------------------------------------------------------------------------
-# Bloque 6: el N+1 en CONEXIONES del bucle de permisos.
+# Bloque 6: perfil O(1) de conexiones en los permisos de escritura.
 #
-# Es el hallazgo mas importante de esta subcapa y el peor perfil de conexiones
-# que ha medido el programa. `dashboard` tenia 4, `notas` 4 o 5 y `ventas` 1.
-# Aqui el numero CRECE con el tamano del curso.
+# La correccion puntual posterior al cierre valida una vez la asignacion y una
+# vez el lote completo de estudiantes. El numero ya no crece con el curso.
 # ---------------------------------------------------------------------------
 
 
@@ -507,13 +505,14 @@ def ruta_instrumentada(monkeypatch, instrumentado):
     """Cuenta las conexiones de TODO el camino: permisos mas controlador."""
     from app.core import permissions
 
-    def instalar(fetches=()):
+    def instalar(fetches=(), respuestas_permisos=()):
         registro = instrumentado(fetches)
         registro.conexiones_permisos = 0
+        respuestas = list(respuestas_permisos)
 
         def fake_get_connection():
             registro.conexiones_permisos += 1
-            return ConexionInstrumentada(CursorInstrumentado(fetches=[(1,)] * 50))
+            return ConexionInstrumentada(CursorInstrumentado(fetches=[respuestas.pop(0)]))
 
         monkeypatch.setattr(permissions, "get_connection", fake_get_connection)
         return registro
@@ -521,52 +520,63 @@ def ruta_instrumentada(monkeypatch, instrumentado):
     return instalar
 
 
-def test_la_escritura_abre_una_conexion_por_estudiante_siendo_admin(ruta_instrumentada):
-    """HALLAZGO: N+1 en CONEXIONES. Un curso de 30 abre 31 conexiones en serie.
-
-    `require_estudiante_in_asignacion` abre su propia conexion y la ruta la
-    llama una vez por estudiante del lote. `require_asignacion_access` no
-    cuesta nada siendo admin porque sale antes.
-    """
+@pytest.mark.parametrize("cantidad", [1, 5, 30])
+def test_la_escritura_admin_mantiene_dos_conexiones_sin_importar_el_lote(
+    ruta_instrumentada,
+    cantidad,
+):
     from app.routes import asistencia as ruta
 
-    registro = ruta_instrumentada([(ASIGNACION_RESUELTA,)])
-    lote = [_registro(estudiante_id=i) for i in range(1, 6)]
+    registro = ruta_instrumentada(
+        [(ASIGNACION_RESUELTA,)],
+        respuestas_permisos=[(cantidad,)],
+    )
+    lote = [_registro(estudiante_id=i) for i in range(1, cantidad + 1)]
 
     ruta.guardar_asistencia(lote, current_user=ADMIN)
 
-    assert registro.conexiones_permisos == 5
+    assert registro.conexiones_permisos == 1
     assert registro.conexiones == 1
-    assert registro.conexiones_permisos + registro.conexiones == 6
+    assert registro.conexiones_permisos + registro.conexiones == 2
 
 
-def test_la_escritura_abre_dos_conexiones_por_estudiante_siendo_profesor(ruta_instrumentada):
-    """HALLAZGO: siendo profesor son 2N+1. Un curso de 30 abre 61."""
+@pytest.mark.parametrize("cantidad", [1, 5, 30])
+def test_la_escritura_profesor_mantiene_tres_conexiones_sin_importar_el_lote(
+    ruta_instrumentada,
+    cantidad,
+):
     from app.routes import asistencia as ruta
 
-    registro = ruta_instrumentada([(ASIGNACION_RESUELTA,)])
-    lote = [_registro(estudiante_id=i) for i in range(1, 6)]
+    registro = ruta_instrumentada(
+        [(ASIGNACION_RESUELTA,)],
+        respuestas_permisos=[(1,), (cantidad,)],
+    )
+    lote = [_registro(estudiante_id=i) for i in range(1, cantidad + 1)]
 
     ruta.guardar_asistencia(lote, current_user=PROFESOR)
 
-    assert registro.conexiones_permisos == 10
+    assert registro.conexiones_permisos == 2
     assert registro.conexiones == 1
-    assert registro.conexiones_permisos + registro.conexiones == 11
+    assert registro.conexiones_permisos + registro.conexiones == 3
 
 
-def test_el_permiso_de_asignacion_se_comprueba_una_vez_por_estudiante(monkeypatch):
-    """HALLAZGO. La ruta ya valido que TODOS comparten asignacion, y aun asi
-    repite la comprobacion con el MISMO argumento una vez por estudiante."""
+def test_los_permisos_se_comprueban_una_vez_para_el_lote_completo(monkeypatch):
     from app.routes import asistencia as ruta
 
-    vistos = []
-    monkeypatch.setattr(ruta, "require_asignacion_access", lambda a, u: vistos.append(a))
-    monkeypatch.setattr(ruta, "require_estudiante_in_asignacion", lambda e, a: None)
+    asignaciones = []
+    lotes = []
+    monkeypatch.setattr(ruta, "require_asignacion_access", lambda a, u: asignaciones.append(a))
+    monkeypatch.setattr(
+        ruta,
+        "require_estudiantes_in_asignacion",
+        lambda estudiantes, asignacion: lotes.append((estudiantes, asignacion)),
+    )
     monkeypatch.setattr(ruta, "guardar_asistencia_controller", lambda lote: {"mensaje": "ok"})
 
     ruta.guardar_asistencia([_registro(estudiante_id=i) for i in range(1, 5)], current_user=ADMIN)
 
-    assert vistos == [10, 10, 10, 10]
+    assert asignaciones == [10]
+    assert lotes == [([1, 2, 3, 4], 10)]
 
 
 def test_la_lectura_abre_una_sola_conexion_siendo_admin(ruta_instrumentada):
@@ -607,8 +617,8 @@ def test_solo_la_escritura_exige_que_el_estudiante_pertenezca():
     escritura = fuente.split("def guardar_asistencia")[1].split("def historial")[0]
     lectura = fuente.split("def historial")[1]
 
-    assert "require_estudiante_in_asignacion(" in escritura
-    assert "require_estudiante_in_asignacion(" not in lectura
+    assert "require_estudiantes_in_asignacion(" in escritura
+    assert "require_estudiantes_in_asignacion(" not in lectura
 
 
 # ---------------------------------------------------------------------------

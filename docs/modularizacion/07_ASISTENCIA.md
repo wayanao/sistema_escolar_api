@@ -1,12 +1,16 @@
 # Capa 7: asistencia
 
-Última revisión: 2026-08-20.
+Última revisión: 2026-08-24.
 
 ## Control
 
 - Estado: **Cerrada** el 2026-08-21, con sus dos subcapas **7.0 y 7.1**
   completas —ambas del 2026-08-20— y la **verificación manual ejecutada por el
   usuario con resultado correcto**. Activada el 2026-08-20.
+- Corrección puntual posterior al cierre: el 2026-08-24 el usuario autorizó
+  eliminar el N+1 de conexiones de los permisos de escritura. Quedó implementada
+  y verificada localmente **sin reabrir la capa ni activar otra**. Staging,
+  verificación manual, commit, push y evidencia de CI siguen pendientes.
 - Commit base: `a894441f8676b0486e3395f88179cdf6cba61430`.
 - Rama acordada: `main`.
 - Primera subcapa pendiente: **ninguna definida**. Con 7.1 la **frontera de
@@ -381,13 +385,13 @@ evidencia, **7.1 queda definida** y el resto sigue abierto. Las subcapas
 innecesarias se marcarán `No aplica` con explicación. **Nunca se ejecutan dos
 subcapas en el mismo turno.**
 
-## Hallazgos de 7.0, registrados y sin corregir
+## Hallazgos de 7.0 y estado posterior
 
-Son **ocho**. Ninguno se corrige en esta capa: 7.0 inventaría y caracteriza, no
-arregla. Todos quedan fijados por aserción para que una extracción posterior no
-los cambie sin que alguien lo note.
+7.0 registró **ocho** sin corregir ninguno. La corrección puntual autorizada el
+2026-08-24 resolvió los dos primeros; **seis siguen abiertos**. El texto de cada
+hallazgo conserva la línea base histórica y añade su estado vigente.
 
-1. **N+1 en CONEXIONES, y es el peor perfil que ha medido el programa.**
+1. **N+1 en CONEXIONES —corregido localmente el 2026-08-24.** En la línea base
    `require_estudiante_in_asignacion` **abre su propia conexión** y la ruta la
    llama **una vez por estudiante del lote**. Siendo admin, guardar la
    asistencia de un curso de 30 abre **31 conexiones en serie**; siendo
@@ -397,13 +401,18 @@ los cambie sin que alguien lo note.
    primero cuyo número crece con el tamaño de la entrada.** Las dos funciones
    viven en `app/core/permissions.py`, **infraestructura compartida y fuera de
    alcance**, igual que `require_estudiante_access` lo estuvo para `notas`.
-   Verificado por aserción con lotes de cinco.
-2. **El permiso de asignación se comprueba N veces con el mismo argumento.** La
+   Verificado por aserción con lotes de cinco. **Estado vigente:** la ruta usa
+   una guardia batch nueva y mantiene **2 conexiones totales como admin y 3 como
+   profesor** para lotes de 1, 5 y 30. La guardia singular permanece intacta
+   para `boletines` y `observaciones`.
+2. **El permiso de asignación se comprobaba N veces con el mismo argumento
+   —corregido localmente el 2026-08-24.** La
    ruta **ya validó** que los N registros comparten `asignacion_id`, y aun así
    llama a `require_asignacion_access` una vez por estudiante con el mismo
    valor. Es desperdicio puro. La prueba heredada
    `test_guardar_asistencia_valida_permisos_y_envia_lote` **ya lo fijaba por
-   aserción** —espera `[(10, 3), (10, 3)]`— sin señalarlo como defecto.
+   aserción** —esperaba `[(10, 3), (10, 3)]`— sin señalarlo como defecto. La
+   expectativa autorizada ahora es una sola comprobación por lote.
 3. **Las tres validaciones de lote viven en la capa de rutas.** Que el lote no
    esté vacío, que los registros compartan asignación, fecha y periodo, y que no
    haya estudiantes duplicados: las tres son **reglas de dominio** y ninguna se
@@ -1216,12 +1225,12 @@ y revertir exigirá otro push. La publicación la decide y la ejecuta el usuario
 **No se atribuye ningún run de GitHub Actions**: esa evidencia sigue sin
 obtenerse desde la capa 0.
 
-### Riesgos que la capa deja abiertos
+### Riesgos que la capa dejó abiertos y estado posterior
 
-- **El N+1 en conexiones.** Pasar lista a un curso de 30 abre 31 conexiones
-  siendo admin y 61 siendo profesor, contra un pool de 10 y 5 workers. Es el
-  riesgo más directo que deja esta capa, está **activo en producción** y es
-  **anterior a este trabajo**.
+- ~~**El N+1 en conexiones.**~~ **Corregido localmente el 2026-08-24**: para un
+  lote de 30 el camino abre 2 conexiones totales como admin y 3 como profesor.
+  La verificación manual, commit, push y evidencia de CI de esta corrección aún
+  no constan, por lo que no se atribuye a producción.
 - **Las reglas del lote viven en la capa de rutas**, así que llamar al
   controlador fuera de la ruta admite un lote heterogéneo y borra por un
   contexto e inserta por otro.
@@ -1384,3 +1393,100 @@ abiertos y **anteriores** a esta capa; están en la lista de los ocho:
 - Siguiente acción exacta: **esperar la decisión del usuario** sobre el punto de
   decisión y la verificación manual. Una instrucción genérica de continuar no la
   sustituye.
+
+## 2026-08-24 — corrección puntual posterior al cierre: permisos O(1)
+
+**La capa 7 para `asistencia` sigue cerrada y no se activó ninguna capa.** Esta
+entrada sustituye únicamente el estado vigente de los hallazgos 1 y 2. Los
+registros anteriores conservan la situación que existía al cerrar la capa y al
+medir el defecto el 2026-08-21.
+
+- Autorización: el usuario nombró el pendiente «Optimización N+1 de conexiones
+  en asistencia» y ordenó hacerlo. No autorizó commit, push, deploy, migraciones
+  ni acceso a producción.
+- Precondiciones: rama `main`; `git status --porcelain=v1 --branch` mostró el
+  checkout limpio antes de editar; `HEAD` y la referencia local `origin/main`
+  coincidían en `9a90462117884d0bf88697154d6eec261d5021ba`. El commit base de
+  la fuente de continuidad más reciente,
+  `2ec924a3308581b746a61fa24a44f71433034dbc`, y el base histórico de esta
+  bitácora, `a894441f8676b0486e3395f88179cdf6cba61430`, son ancestros de ese
+  `HEAD`. Los ocho commits posteriores al base de continuidad quedaron
+  explicados en `07_SUPER_ADMIN.md`, `07_PROFESORES.md`,
+  `05_PAGOS_TIPOS_PAGO.md` o el índice maestro.
+- Línea base focal antes de editar: `tests/test_asistencia_caracterizacion.py`,
+  `tests/test_asistencia_historial.py`, `tests/test_asistencia_validaciones.py` y
+  `tests/test_permissions.py`: **63 passed, 5 warnings**.
+- Evidencia test-first: primero se cambiaron las expectativas para exigir un
+  perfil constante y una sola validación del lote. Contra el código anterior el
+  conjunto directo terminó con **12 failed, 55 passed**: faltaba la guardia
+  batch y los conteos todavía crecían con el número de estudiantes.
+- Producto: `app/core/permissions.py` incorpora
+  `require_estudiantes_in_asignacion`, que abre una sola conexión y ejecuta una
+  sola consulta con `e.id = ANY(%s)`, compara `COUNT(*)` con el tamaño del lote y
+  conserva el 403 exacto `El estudiante no pertenece a esta asignación`. La
+  función singular queda intacta porque tiene tres consumidores reales fuera
+  del bucle: uno en `boletines` y dos en `observaciones`.
+- Ruta: `app/routes/asistencia.py` conserva primero las validaciones 422 del
+  lote, después llama una sola vez a `require_asignacion_access` y una sola vez
+  a la guardia batch. El controlador recibe `data` intacto y en el mismo orden.
+- Contrato preservado: no cambian método, path, payload, 200 de éxito, 422 de
+  validación, 403 ni sus detalles, autenticación, roles, ownership, tenant,
+  orden de precedencia, SQL del controlador, parámetros de escritura,
+  transacción, `commit`, `rollback` ni respuesta. Los fallos SQL del permiso no
+  se capturan ni se convierten en 403: se propagan como infraestructura y los
+  recursos se cierran en `finally`.
+- Tenant: la consulta nueva sigue entrando por `get_connection`; conserva el
+  aislamiento por `tenant_schema_var` y `search_path`. No se añadió tenant al
+  payload ni un predicado nuevo al SQL.
+- Perfil comprobado con dobles para lotes de **1, 5 y 30**: admin pasa de `N+1`
+  conexiones a **2 totales** —una de pertenencia y una del controlador—;
+  profesor pasa de `2N+1` a **3** —asignación, pertenencia y controlador—. El
+  modelo documentado el 2026-08-21 proyecta además bajar a aproximadamente 39 y
+  43 round-trips para un lote de 30; esa latencia **no se midió contra una base
+  real en este turno**.
+- Frontend revisado, sin cambios: conserva un único `POST /asistencia` con el
+  array ordenado, recarga el historial solo tras éxito y muestra
+  `error.response.data.detail` ante un fallo. El número de conexiones y guardias
+  internas no forma parte de su contrato.
+- Pruebas añadidas o actualizadas: perfil O(1) para admin/profesor, una llamada
+  por permiso, lote original intacto, precedencia del 403 de asignación, rechazo
+  de pertenencia también para admin, SQL y parámetros batch, cierre de recursos
+  en éxito/rechazo/error y propagación de fallos de base de datos.
+- Resultados específicos:
+  - conjunto directo tras implementar: **67 passed, 5 warnings**;
+  - conjunto focal final, incluidos historial y permisos: **72 passed, 5
+    warnings**;
+  - Ruff focal sobre los cinco archivos de producto/prueba: **exit 0**.
+- Compuerta global: la primera ejecución dentro del sandbox terminó con **1086
+  passed y 30 errores de preparación**, todos por `PermissionError` al acceder a
+  `AppData/Local/Temp/pytest-of-David`; Ruff y `pip check` sí pasaron. La
+  repetición del mismo `python scripts/verify.py` fuera del sandbox, con acceso a
+  temporales, terminó con **1116 passed**, Ruff correcto y dependencias íntegras,
+  todo en **exit 0**.
+- Archivos modificados: `app/core/permissions.py`,
+  `app/routes/asistencia.py`, `tests/test_permissions.py`,
+  `tests/test_asistencia_caracterizacion.py`,
+  `tests/test_asistencia_validaciones.py`, esta bitácora, el índice maestro y
+  `PROMPT_CONTINUACION.md`. Ningún archivo de `frontend-react` se modificó.
+- Decisión registrada: se ejecutó el plan de dos pasos ya documentado y se
+  descartó compartir el cursor del controlador. Esa alternativa cambiaría
+  firmas usadas por otros dominios y abriría la transacción antes de terminar
+  las validaciones.
+- Riesgos residuales: autorización, pertenencia y escritura siguen en
+  conexiones separadas, por lo que la ventana TOCTOU preexistente no cambia. La
+  guardia batch presupone una colección no vacía y sin duplicados; su único
+  consumidor la llama después de las validaciones 422 que garantizan ambas
+  condiciones. Validar todo el lote en una sola consulta usa una instantánea
+  única en vez de N instantáneas sucesivas, sin cambio observable esperado.
+- Staging y verificación manual pendiente: en un tenant no productivo, guardar
+  un lote de 30 como admin y como profesor dueño, confirmar el mismo 200 y el
+  historial; repetir con profesor ajeno y con un estudiante de otro curso para
+  confirmar ambos 403; repetir en el segundo tenant para comprobar aislamiento.
+  Si el entorno expone métricas del pool, confirmar 2 y 3 adquisiciones. **No se
+  ejecutó este guion ni se atribuye evidencia a GitHub Actions.**
+- Rollback: no requiere rollback de datos ni migraciones. Antes de un commit se
+  pueden descartar exclusivamente los ocho archivos listados; después de un
+  eventual commit, revertir únicamente ese commit restaura el bucle anterior.
+- Siguiente acción exacta: revisión del diff por el usuario y, si lo aprueba,
+  verificación manual en staging y su flujo de commit/push. No hay subcapa
+  pendiente, no hay capa activa y no se inicia otro hallazgo.

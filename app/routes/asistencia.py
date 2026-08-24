@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from app.dependencies import get_current_user
-from app.core.permissions import require_asignacion_access, require_estudiante_in_asignacion
+from app.core.permissions import require_asignacion_access, require_estudiantes_in_asignacion
 from typing import List
 from app.schemas.asistencia import AsistenciaCreate
 from app.controllers.asistencia_controller import guardar_asistencia_controller
@@ -32,9 +32,11 @@ def guardar_asistencia(data: List[AsistenciaCreate], current_user: dict = Depend
             raise HTTPException(status_code=422, detail="La asistencia contiene estudiantes duplicados.")
         estudiantes_vistos.add(item.estudiante_id)
 
-    for item in data:
-        require_asignacion_access(item.asignacion_id, current_user)
-        require_estudiante_in_asignacion(item.estudiante_id, item.asignacion_id)
+    require_asignacion_access(referencia.asignacion_id, current_user)
+    require_estudiantes_in_asignacion(
+        [item.estudiante_id for item in data],
+        referencia.asignacion_id,
+    )
     return guardar_asistencia_controller(data)
 
 

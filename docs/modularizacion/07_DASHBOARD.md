@@ -348,10 +348,10 @@ hallazgos abiertos es por tanto **nueve**: **seis** heredados de 7.0 que siguen
 intactos, las **dos** divergencias que sustituyen al refutado, y el
 **undécimo**.
 
-**Actualizado ese mismo día**: corregidas las siete entradas que absorbían
-`Exception`, el recuento baja a **ocho** abiertos —cinco heredados intactos, las
-dos divergencias y el undécimo—, con **cuatro** de los diez originales
-resueltos.
+**Actualizado ese mismo día**, tras dos correcciones más: resueltas las siete
+entradas que absorbían `Exception` y la validación que consultaba fuera del
+`try`. El recuento baja a **siete** abiertos —cuatro heredados intactos, las dos
+divergencias y el undécimo—, con **cinco** de los diez originales resueltos.
 
 - **CORREGIDO Y PUBLICADO EN `9f19089` EL 2026-08-25 — las dos precondiciones de permiso
   ignoraban el estado `activo`.** Era el hallazgo más importante de 7.0 porque
@@ -476,12 +476,42 @@ resueltos.
   es de **solo lectura**, sus controladores no lanzan errores de negocio y todo
   lo que cae en esos siete `except` es infraestructura. Crear la clase habría
   sido una abstracción con **un solo uso**, que el índice prohíbe.
-- **El filtro de rendimiento consulta la base desde la capa de rutas.** No es
-  SQL inline —la invariante que dejó 6.5 se conserva: las rutas de este dominio
-  no contienen SQL, y una prueba lo fija—, pero `validar_filtro_rendimiento_profesor`
-  llama a dos funciones que abren conexión, y lo hace **fuera** del
-  `try/except`. Consecuencia observable: un fallo de infraestructura **ahí** sale
-  como **500**, mientras que el mismo fallo dentro del endpoint sale como 400.
+- **CORREGIDO LOCALMENTE EL 2026-08-25 — el filtro de rendimiento consultaba la
+  base desde la capa de rutas, fuera del `try/except`.** No es SQL inline —la
+  invariante que dejó 6.5 se conserva: las rutas de este dominio no contienen
+  SQL, y una prueba lo fija—, pero `validar_filtro_rendimiento_profesor` llama a
+  una función que abre conexión, y lo hacía **fuera** de todo `try`.
+
+  **El diagnóstico de 7.0 quedó obsoleto dos veces y se comprobó por ASGI antes
+  de corregir.** Decía que un fallo ahí salía como **500** frente al **400** del
+  endpoint. La primera mitad dejó de ser cierta al corregirse el hallazgo
+  anterior, que llevó el endpoint a 500. Y la segunda **nunca fue exacta**: no
+  salía un 500 limpio, sino que **la excepción escapaba del endpoint sin
+  manejar** y la resolvía el servidor ASGI, así que no producía el
+  `{"detail": …}` del resto de la API ni pasaba por el log del módulo.
+
+  **Estado vigente:** el `try` envuelve la llamada que toca la base, con
+  `except HTTPException: raise` **delante** del genérico. Los dos caminos
+  producen ahora el mismo 500 con la misma constante y el mismo registro, y los
+  tres rechazos legítimos siguen intactos. Comprobado por ASGI en cinco
+  caminos: fallo en el endpoint **500**, fallo en la validación **500**, curso
+  ajeno **403**, sin curso **422**, asignación ajena **403**.
+
+  **Lo que hacía delicada esta corrección, y que costó una regresión atrapada
+  por las pruebas**: `HTTPException` **también es `Exception`**. La primera
+  versión envolvía la llamada sin el `except HTTPException: raise`, y
+  `validar_filtro_rendimiento_profesor_controller` **lanza una 403 propia desde
+  dentro**, vía `require_asignacion_access`. Esa 403 se convertía en 500.
+  `test_performance_filter_preserves_assignment_access_error` lo detectó de
+  inmediato. Es la razón por la que la validación vivía entera fuera del `try`,
+  y quedó fijada por una prueba parametrizada nueva que falla si alguien vuelve
+  a ampliar ese `try`.
+
+  **Fuera de alcance, registrado**: `require_profesor_scope` y
+  `require_asignacion_access` también abren conexión fuera del `try`, en las
+  siete entradas. Viven en `app/core/permissions.py`, **infraestructura
+  compartida por varios dominios**, así que un fallo de infraestructura ahí
+  sigue escapando sin manejar. Corregirlo excede una corrección de dashboard.
 - **Doble validación divergente de `dias`.** La ruta rechaza con **422** fuera
   de 0..31; el controlador **recorta en silencio** y cae a 7 ante un valor no
   numérico. Por HTTP el recorte es inalcanzable, porque `Query(ge=0, le=31)`
@@ -819,12 +849,14 @@ el estado de su momento y **se conservan intactas**: eran ciertas entonces.
 - ~~La asignación académica se resolvía **dos veces**.~~ **Corregido localmente
   el 2026-08-25**: la lectura reutiliza la resolución de la validación; profesor
   y admin ahorran una consulta.
-- Los **cinco hallazgos heredados** de 7.0 que siguen intactos, las **dos
-  divergencias** que sustituyeron al del promedio tras refutarlo —el redondeo
-  `ROUND(…, 1)` frente a `TRUNC(…, 2)` y el `periodo` ausente—, y el **undécimo
-  que introdujeron las propias correcciones**, más `response_model` sin añadir.
-  **Ocho abiertos en total**, y el usuario decidió el 2026-08-25 **no corregir
-  las dos divergencias nuevas**.
+- Los **cuatro hallazgos heredados** de 7.0 que siguen intactos —la doble
+  validación de `dias`, la pareja de literales gemelos, las f-strings en SQL y
+  el `periodo: int = 1` inalcanzable—, las **dos divergencias** que sustituyeron
+  al del promedio tras refutarlo, y el **undécimo que introdujeron las propias
+  correcciones**, más `response_model` sin añadir. **Siete abiertos en total**, y
+  el usuario decidió el 2026-08-25 **no corregir las dos divergencias nuevas**.
+  Queda además, **fuera del dominio**, que las guardas de permiso de
+  `app/core/permissions.py` abren conexión fuera del `try`.
 - Heredados: calibración de `DB_STATEMENT_TIMEOUT_MS` de la capa 1, ausencia de
   evidencia de GitHub Actions desde la capa 0, la credencial privilegiada de la
   capa 4 sin rotar, los hallazgos abiertos de las capas 5 y 6 —incluida la clave
@@ -1619,6 +1651,62 @@ Con la verificación manual ejecutada, la capa queda cerrada.
   pero por caminos distintos y sin pasar por el log nuevo.
 - Estado: la capa continúa **Cerrada**. **Cuatro** de los diez hallazgos
   originales corregidos; abiertos: **ocho**.
+- Siguiente acción exacta: el usuario revisa el diff y decide cuándo publicar.
+  **No iniciar otro hallazgo sin orden explícita.**
+
+## 2026-08-25 — corrección puntual posterior al cierre: la validación fuera del `try`
+
+- Modo de acceso: mismo checkout local; Git y el árbol comprobados
+  directamente.
+- Autorización: el usuario ordenó continuar tras señalarse este hallazgo como el
+  que **acababa de ganar relevancia** al corregirse el anterior. La orden cubre
+  solo el filtro de rendimiento.
+- Precondiciones: rama `main`, árbol **limpio**, `HEAD` y `origin/main`
+  coincidentes en `bb46761d47e7387ff583e75ebcc75bcbb7bac44c`.
+- **Se midió antes de tocar, y el diagnóstico de 7.0 resultó obsoleto por
+  partida doble.** Afirmaba un 500 frente a un 400; la primera mitad murió con
+  la corrección anterior, y la segunda **nunca fue exacta**: por ASGI se observó
+  que la excepción **escapaba del endpoint sin manejar**, no que produjera un
+  500 limpio. La diferencia importa: sin manejar, el cliente no recibe el
+  `{"detail": …}` del resto de la API y el fallo no pasa por el log del módulo.
+- Producto modificado: **únicamente `app/routes/dashboard.py`**, y dentro de él
+  **solo** `validar_filtro_rendimiento_profesor`. La llamada al controlador
+  queda envuelta en un `try` con **`except HTTPException: raise` delante** del
+  genérico, que registra y traduce a 500 con la misma constante que el resto.
+- **Regresión introducida y atrapada por la caracterización.** La primera
+  versión omitió el `except HTTPException: raise`. Como
+  `validar_filtro_rendimiento_profesor_controller` **lanza una 403 propia desde
+  dentro** vía `require_asignacion_access`, esa 403 se convertía en **500**.
+  `test_performance_filter_preserves_assignment_access_error` falló en el acto y
+  se corrigió antes de seguir. **Es la demostración de por qué la validación
+  vivía fuera del `try`**, y la razón de que se añadiera una guardia nueva.
+- Contrato conservado: los **tres rechazos legítimos** siguen exactamente
+  igual. Verificado por ASGI en cinco caminos: fallo en el endpoint **500**,
+  fallo en la validación **500** con el mismo cuerpo, curso ajeno **403**, sin
+  curso **422**, asignación ajena **403**. El texto interno no aparece en
+  ninguna respuesta.
+- Pruebas: la guardia de línea base
+  `..._infrastructure_errors_stay_outside_controller_translation` **exigía justo
+  lo contrario** —que el `RuntimeError` saliera crudo del endpoint— y falló al
+  corregir, que era la señal esperada; se sustituyó por
+  `..._infrastructure_errors_become_a_handled_500`, que conserva la parte que no
+  cambia: que el controller final no llegue a ejecutarse. Se añadieron
+  `test_performance_filter_translates_infrastructure_failures_to_500` y una
+  **guardia parametrizada** sobre los tres rechazos que **falla si alguien
+  amplía ese `try`**.
+- Compuerta global: **1125 pruebas, exit 0**, Ruff correcto, dependencias
+  íntegras. `git diff --check` limpio.
+- PostgreSQL real, migraciones, staging, producción, deploy, commit y push:
+  **ninguno**.
+- Rollback: sacar la llamada del `try`, retirar los dos `except` y restaurar la
+  guardia anterior. No hay rollback de datos.
+- Riesgo residual **registrado y fuera de alcance**: `require_profesor_scope` y
+  `require_asignacion_access` también abren conexión fuera del `try` en las
+  siete entradas, y viven en `app/core/permissions.py`, **infraestructura
+  compartida**. Un fallo de infraestructura ahí **sigue escapando sin manejar**.
+  Corregirlo excede una corrección de dashboard y **exigiría una orden propia**.
+- Estado: la capa continúa **Cerrada**. **Cinco** de los diez hallazgos
+  originales corregidos; abiertos: **siete**.
 - Siguiente acción exacta: el usuario revisa el diff y decide cuándo publicar.
   **No iniciar otro hallazgo sin orden explícita.**
 

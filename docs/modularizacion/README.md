@@ -165,6 +165,29 @@ queda en el log. Compuerta: **1121 pruebas, exit 0**; el diff son **dos
 archivos**. Sigue **sin commitear ni publicar**. Recuento: **cuatro** de los diez
 hallazgos originales corregidos y **ocho abiertos**.
 
+**Quinta corrección puntual de dashboard, 2026-08-25: la validación consultaba
+la base fuera del `try`.** El diagnóstico de 7.0 **quedó obsoleto por partida
+doble** y se midió por ASGI antes de corregir: decía un 500 frente a un 400, la
+primera mitad murió con la corrección anterior, y la segunda **nunca fue
+exacta** —no salía un 500 limpio, sino que **la excepción escapaba del endpoint
+sin manejar**, así que el cliente no recibía el `{"detail": …}` del resto de la
+API y el fallo no pasaba por el log del módulo—. Ahora la llamada que toca la
+base va dentro de un `try` con **`except HTTPException: raise` delante** del
+genérico, y los dos caminos producen el mismo 500 con la misma constante.
+**Costó una regresión, atrapada en el acto por la caracterización**:
+`HTTPException` **también es `Exception`**, y el controlador lanza una 403
+propia desde dentro vía `require_asignacion_access`, así que la primera versión
+la convertía en 500. Es la demostración de por qué esa validación vivía fuera
+del `try`, y quedó fijada por una **guardia parametrizada nueva que falla si
+alguien vuelve a ampliarlo**. Verificado por ASGI en **cinco caminos**: los dos
+fallos dan 500 y los **tres rechazos legítimos** —403 curso ajeno, 422 sin curso
+y 403 asignación ajena— siguen intactos. Compuerta: **1125 pruebas, exit 0**.
+**Registrado y fuera de alcance**: `require_profesor_scope` y
+`require_asignacion_access` también abren conexión fuera del `try`, pero viven en
+`app/core/permissions.py`, **infraestructura compartida por varios dominios**, y
+corregirlo exigiría una orden propia. Recuento: **cinco** de los diez hallazgos
+originales corregidos y **siete abiertos**.
+
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
 cierre y el usuario ordene continuar, se crea su sucesora desde
 `PLANTILLA_CAPA.md`, se registra el commit base vigente y se actualiza esta

@@ -287,6 +287,65 @@ def test_performance_filter_requires_course_before_db_checks(monkeypatch):
     assert exc.value.detail == "Debes seleccionar un curso para consultar rendimiento"
 
 
+def test_performance_filter_translates_infrastructure_failures_to_500(
+    monkeypatch, caplog
+):
+    """Un fallo de la validacion ya no escapa sin manejar.
+
+    Antes, la consulta de la validacion vivia **fuera** de todo `try`, asi que
+    un fallo de infraestructura ahi **escapaba del endpoint** y lo resolvia el
+    servidor ASGI: no producia el `{"detail": ...}` del resto de la API ni
+    pasaba por el log del modulo. Ahora coincide con el camino del endpoint.
+    """
+    def fail_controller(*_a, **_k):
+        raise RuntimeError("detalle-interno-que-no-debe-salir")
+
+    monkeypatch.setattr(
+        dashboard, "validar_filtro_rendimiento_profesor_controller", fail_controller
+    )
+
+    with caplog.at_level(logging.ERROR, logger=dashboard.__name__):
+        with pytest.raises(HTTPException) as exc:
+            dashboard.validar_filtro_rendimiento_profesor(7, 4, 12, PROFESOR)
+
+    assert exc.value.status_code == 500
+    assert exc.value.detail == dashboard._ERROR_INTERNO_DASHBOARD
+    assert "detalle-interno-que-no-debe-salir" not in str(exc.value.detail)
+    assert caplog.records and caplog.records[-1].exc_info is not None
+
+
+@pytest.mark.parametrize(
+    ("curso_id", "asignacion_id", "retorno", "status"),
+    [
+        (None, None, (True, True, 77), 422),
+        (4, 12, (False, None, None), 403),
+        (4, 12, (True, False, None), 403),
+    ],
+)
+def test_performance_filter_rejections_are_not_swallowed_as_500(
+    monkeypatch, curso_id, asignacion_id, retorno, status
+):
+    """Guardia del riesgo que hizo delicada esta correccion.
+
+    `HTTPException` **tambien es `Exception`**, asi que si el `try` de la
+    validacion llegara a envolver los `raise` de rechazo, el 422 y los dos 403
+    se convertirian en 500. Esta prueba falla si alguien amplia ese `try`.
+    """
+    monkeypatch.setattr(
+        dashboard,
+        "validar_filtro_rendimiento_profesor_controller",
+        lambda *_a, **_k: retorno,
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        dashboard.validar_filtro_rendimiento_profesor(
+            7, curso_id, asignacion_id, PROFESOR
+        )
+
+    assert exc.value.status_code == status
+    assert exc.value.detail != dashboard._ERROR_INTERNO_DASHBOARD
+
+
 def test_performance_filter_rejects_course_outside_profesor_scope(monkeypatch):
     monkeypatch.setattr(
         dashboard,
@@ -338,13 +397,22 @@ def test_performance_filter_preserves_assignment_access_error(monkeypatch):
         (dashboard.obtener_notas_altas_profesor, "obtener_notas_altas_profesor_controller"),
     ],
 )
-def test_performance_filter_infrastructure_errors_stay_outside_controller_translation(
+def test_performance_filter_infrastructure_errors_become_a_handled_500(
     monkeypatch,
     route,
     controller_name,
 ):
-    def fail_filter(*_args):
-        raise RuntimeError("fallo-infraestructura")
+    """Antes la excepcion **escapaba del endpoint**; ahora sale como 500.
+
+    Esta prueba sustituye a la guardia de linea base, que exigia justo lo
+    contrario: que el `RuntimeError` saliera crudo del endpoint. Aquel
+    comportamiento hacia que el fallo lo resolviera el servidor ASGI, sin el
+    `{"detail": ...}` del resto de la API y sin pasar por el log del modulo.
+
+    Lo que **no** cambia es que el controller final no llegue a ejecutarse.
+    """
+    def fail_filter(*_args, **_kwargs):
+        raise RuntimeError("detalle-interno-que-no-debe-salir")
 
     monkeypatch.setattr(dashboard, "require_profesor_scope", lambda *_a, **_k: None)
     monkeypatch.setattr(
@@ -358,8 +426,12 @@ def test_performance_filter_infrastructure_errors_stay_outside_controller_transl
         lambda *_a, **_k: pytest.fail("el controller final no debe ejecutarse"),
     )
 
-    with pytest.raises(RuntimeError, match="fallo-infraestructura"):
+    with pytest.raises(HTTPException) as exc:
         route(7, curso_id=4, asignacion_id=12, current_user=PROFESOR)
+
+    assert exc.value.status_code == 500
+    assert exc.value.detail == dashboard._ERROR_INTERNO_DASHBOARD
+    assert "detalle-interno-que-no-debe-salir" not in str(exc.value.detail)
 
 
 def test_performance_filter_rejects_assignment_from_another_course(monkeypatch):

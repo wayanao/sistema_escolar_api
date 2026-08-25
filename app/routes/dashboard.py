@@ -33,16 +33,30 @@ def validar_filtro_rendimiento_profesor(
     if curso_id is None:
         raise HTTPException(status_code=422, detail="Debes seleccionar un curso para consultar rendimiento")
 
-    (
-        tiene_curso,
-        tiene_asignacion,
-        asignacion_academica_id,
-    ) = validar_filtro_rendimiento_profesor_controller(
-        profesor_id,
-        curso_id,
-        asignacion_id,
-        current_user,
-    )
+    # `HTTPException` **tambien es `Exception`**, y este controlador lanza una
+    # 403 propia desde dentro, via `require_asignacion_access`. Por eso hay que
+    # dejarla pasar intacta antes de capturar el resto: sin el primer `except`,
+    # ese 403 se convertiria en 500. Los `raise` de mas abajo quedan fuera del
+    # `try` por la misma razon.
+    try:
+        (
+            tiene_curso,
+            tiene_asignacion,
+            asignacion_academica_id,
+        ) = validar_filtro_rendimiento_profesor_controller(
+            profesor_id,
+            curso_id,
+            asignacion_id,
+            current_user,
+        )
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception(
+            "Fallo al validar el filtro de rendimiento del profesor %s", profesor_id
+        )
+        raise HTTPException(status_code=500, detail=_ERROR_INTERNO_DASHBOARD)
+
     if not tiene_curso:
         raise HTTPException(status_code=403, detail="No tienes permisos para consultar este curso")
 

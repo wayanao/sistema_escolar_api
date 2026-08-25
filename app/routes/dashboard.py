@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, Query
 from app.dependencies import get_current_active_admin, get_current_user, HTTPException
 from app.core.permissions import require_asignacion_access, require_profesor_scope
@@ -11,6 +13,13 @@ from app.controllers.dashboard_controller import (
     obtener_ranking_rendimiento_controller,
     validar_filtro_rendimiento_profesor_controller,
 )
+
+logger = logging.getLogger(__name__)
+
+# Mensaje unico que reciben los siete paneles ante un fallo de infraestructura.
+# No expone el texto de la excepcion: antes viajaba en el `detail` y un error de
+# PostgreSQL podia llegar al navegador.
+_ERROR_INTERNO_DASHBOARD = "No se pudo cargar la informacion del panel"
 
 router = APIRouter(tags=['Dashboard'], dependencies=[Depends(get_current_user)])
 
@@ -53,8 +62,9 @@ def obtener_cumpleanos_admin(
 ):
     try:
         return obtener_cumpleanos_admin_controller(dias=dias)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    except Exception:
+        logger.exception("Fallo al cargar los cumpleanos del panel de administracion")
+        raise HTTPException(status_code=500, detail=_ERROR_INTERNO_DASHBOARD)
 
 
 @router.get('/dashboard/cumpleanos/profesor/{profesor_id}')
@@ -66,8 +76,9 @@ def obtener_cumpleanos_profesor(
     require_profesor_scope(profesor_id, current_user, detail="No tienes permisos para consultar datos de otro profesor")
     try:
         return obtener_cumpleanos_profesor_controller(profesor_id, dias=dias)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    except Exception:
+        logger.exception("Fallo al cargar los cumpleanos del profesor %s", profesor_id)
+        raise HTTPException(status_code=500, detail=_ERROR_INTERNO_DASHBOARD)
 
 
 @router.get('/dashboard/inasistencias/{profesor_id}')
@@ -79,8 +90,9 @@ def obtener_inasistencias_profesor(
     try:
         data = obtener_inasistencias_profesor_controller(profesor_id)
         return data
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    except Exception:
+        logger.exception("Fallo al cargar las inasistencias del profesor %s", profesor_id)
+        raise HTTPException(status_code=500, detail=_ERROR_INTERNO_DASHBOARD)
 
 
 @router.get('/dashboard/notas-bajas/{profesor_id}')
@@ -102,8 +114,9 @@ def obtener_notas_bajas_profesor(
             asignacion_academica_id=asignacion_academica_id,
         )
         return data
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    except Exception:
+        logger.exception("Fallo al cargar las notas bajas del profesor %s", profesor_id)
+        raise HTTPException(status_code=500, detail=_ERROR_INTERNO_DASHBOARD)
 
 
 @router.get('/dashboard/notas-altas/{profesor_id}')
@@ -125,8 +138,9 @@ def obtener_notas_altas_profesor(
             asignacion_academica_id=asignacion_academica_id,
         )
         return data
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    except Exception:
+        logger.exception("Fallo al cargar las notas altas del profesor %s", profesor_id)
+        raise HTTPException(status_code=500, detail=_ERROR_INTERNO_DASHBOARD)
 
 
 @router.get('/dashboard/ranking/{asignacion_id}/{periodo}')
@@ -139,8 +153,9 @@ def obtener_ranking_rendimiento(
     try:
         data = obtener_ranking_rendimiento_controller(asignacion_id, periodo)
         return data
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    except Exception:
+        logger.exception("Fallo al cargar el ranking de bajo rendimiento de la asignacion %s", asignacion_id)
+        raise HTTPException(status_code=500, detail=_ERROR_INTERNO_DASHBOARD)
 
 
 @router.get('/dashboard/ranking-mejor/{asignacion_id}/{periodo}')
@@ -153,5 +168,6 @@ def obtener_ranking_mejor_rendimiento(
     try:
         data = obtener_ranking_mejor_rendimiento_controller(asignacion_id, periodo)
         return data
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    except Exception:
+        logger.exception("Fallo al cargar el ranking de mejor rendimiento de la asignacion %s", asignacion_id)
+        raise HTTPException(status_code=500, detail=_ERROR_INTERNO_DASHBOARD)

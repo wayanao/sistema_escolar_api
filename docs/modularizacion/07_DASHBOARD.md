@@ -348,6 +348,11 @@ hallazgos abiertos es por tanto **nueve**: **seis** heredados de 7.0 que siguen
 intactos, las **dos** divergencias que sustituyen al refutado, y el
 **undécimo**.
 
+**Actualizado ese mismo día**: corregidas las siete entradas que absorbían
+`Exception`, el recuento baja a **ocho** abiertos —cinco heredados intactos, las
+dos divergencias y el undécimo—, con **cuatro** de los diez originales
+resueltos.
+
 - **CORREGIDO Y PUBLICADO EN `9f19089` EL 2026-08-25 — las dos precondiciones de permiso
   ignoraban el estado `activo`.** Era el hallazgo más importante de 7.0 porque
   **toca permisos**.
@@ -449,13 +454,28 @@ intactos, las **dos** divergencias que sustituyen al refutado, y el
   a por periodo— y obligaría a decidir **qué periodo por defecto** y si la ruta
   lo acepta como parámetro. Es una decisión propia, separada de la del redondeo,
   y no se toma por inferencia.
-- **Las siete entradas absorben `Exception` y responden 400 con `str(e)`.** Un
-  fallo de infraestructura se presenta como error del cliente **y el texto de la
-  excepción viaja en el `detail`**, así que un error de PostgreSQL puede llegar
-  al navegador. Es la misma familia que el hallazgo de la capa 5 en
-  `tipos_pagos_controller`, pero aquí **no se registra nada en el log** y además
-  **se devuelve el mensaje interno**. Cambiar el status code es contrato
-  observable; registrar el traceback no lo es.
+- **CORREGIDO LOCALMENTE EL 2026-08-25 — las siete entradas absorbían
+  `Exception` y respondían 400 con `str(e)`.** Un fallo de infraestructura se
+  presentaba como error del cliente **y el texto de la excepción viajaba en el
+  `detail`**, así que un error de PostgreSQL podía llegar al navegador. Era la
+  misma familia que el hallazgo de la capa 5 en `tipos_pagos_controller`, pero
+  aquí **no se registraba nada en el log** y además **se devolvía el mensaje
+  interno**.
+
+  **Estado vigente:** las siete responden **500** con una constante única,
+  `_ERROR_INTERNO_DASHBOARD`, y registran el fallo con `logger.exception`, que
+  conserva el traceback. **El texto de la excepción ya no sale del servidor.**
+  Los demás status codes no se tocan: el 422 por curso ausente, los dos 403 del
+  filtro y los de permisos siguen exactamente igual, porque se lanzan **fuera**
+  del `try`.
+
+  **Decisión: no se introdujo una excepción de dominio**, a diferencia de
+  `tipos_pagos`, que sí definió `TipoPagoInfraestructuraError`. Allí hacía falta
+  **distinguir** un fallo de infraestructura de errores de negocio que debían
+  conservar su 409 o su 400. Aquí no hay nada de lo que distinguirla: dashboard
+  es de **solo lectura**, sus controladores no lanzan errores de negocio y todo
+  lo que cae en esos siete `except` es infraestructura. Crear la clase habría
+  sido una abstracción con **un solo uso**, que el índice prohíbe.
 - **El filtro de rendimiento consulta la base desde la capa de rutas.** No es
   SQL inline —la invariante que dejó 6.5 se conserva: las rutas de este dominio
   no contienen SQL, y una prueba lo fija—, pero `validar_filtro_rendimiento_profesor`
@@ -799,11 +819,11 @@ el estado de su momento y **se conservan intactas**: eran ciertas entonces.
 - ~~La asignación académica se resolvía **dos veces**.~~ **Corregido localmente
   el 2026-08-25**: la lectura reutiliza la resolución de la validación; profesor
   y admin ahorran una consulta.
-- Los **seis hallazgos heredados** de 7.0 que siguen intactos, las **dos
+- Los **cinco hallazgos heredados** de 7.0 que siguen intactos, las **dos
   divergencias** que sustituyeron al del promedio tras refutarlo —el redondeo
   `ROUND(…, 1)` frente a `TRUNC(…, 2)` y el `periodo` ausente—, y el **undécimo
   que introdujeron las propias correcciones**, más `response_model` sin añadir.
-  **Nueve abiertos en total**, y el usuario decidió el 2026-08-25 **no corregir
+  **Ocho abiertos en total**, y el usuario decidió el 2026-08-25 **no corregir
   las dos divergencias nuevas**.
 - Heredados: calibración de `DB_STATEMENT_TIMEOUT_MS` de la capa 1, ausencia de
   evidencia de GitHub Actions desde la capa 0, la credencial privilegiada de la
@@ -1541,6 +1561,66 @@ Con la verificación manual ejecutada, la capa queda cerrada.
   inalcanzable— **no se inician sin orden**, y ninguna de las dos divergencias
   recién registradas se corrige sin una decisión previa sobre cuál es la regla
   académica.
+
+## 2026-08-25 — corrección puntual posterior al cierre: `Exception` absorbida y `str(e)` filtrado
+
+- Modo de acceso: mismo checkout local; Git y el árbol comprobados
+  directamente.
+- Autorización: el usuario ordenó continuar tras haberse identificado este
+  hallazgo como **el más serio de los que quedaban**. La orden cubre solo estas
+  siete entradas.
+- Precondiciones: rama `main`, árbol **limpio**, `HEAD` y `origin/main`
+  coincidentes en `451fb7bf51144056f983f92a6e080ef4c000cd4f`.
+- **Riesgo evaluado antes de tocar nada, y descartado con evidencia.** El cambio
+  de 400 a 500 es contrato observable, así que se comprobó **en el frontend
+  desplegado** si alguien depende de él: **ningún consumidor del dashboard lee
+  `status` ni `detail`**. `useRendimientoProfesor`, `useRankingProfesor`,
+  `useInasistenciasProfesor`, `useCumpleanosProfesor` y `useDashboardAdmin`
+  capturan de forma genérica y muestran **su propia constante**. El cambio es
+  por tanto **invisible para el frontend**. Es la primera vez en el programa que
+  una corrección se valida contra el repositorio del cliente antes de aplicarse.
+- Producto modificado: **únicamente `app/routes/dashboard.py`**. Se añadieron
+  `logging`, un `logger` de módulo y la constante `_ERROR_INTERNO_DASHBOARD`, y
+  los **siete** manejadores —idénticos entre sí, verificado antes de sustituir—
+  pasaron de `except Exception as e: HTTPException(400, str(e))` a
+  `except Exception: logger.exception(...); HTTPException(500, constante)`. Cada
+  uno registra **qué panel** falló y con qué id.
+- Contrato conservado salvo lo que el hallazgo exigía cambiar: no cambian
+  métodos, paths, query params, payloads de éxito, promedios, orden, tenant,
+  ownership ni roles. El **422** por curso ausente, los **dos 403** del filtro y
+  los de permisos siguen igual, porque se lanzan **fuera** del `try`.
+- Decisión registrada: **no se introdujo una excepción de dominio**, al
+  contrario que en `tipos_pagos`. Allí servía para distinguir infraestructura de
+  errores de negocio; aquí **no hay errores de negocio** que distinguir, así que
+  la clase habría tenido **un solo uso**.
+- Pruebas: `test_dashboard_routes_translate_controller_errors_to_400` era la
+  guardia que fijaba el comportamiento anterior. Se sustituyó por
+  `..._to_500`, que sobre las **siete** entradas comprueba el 500, que el
+  `detail` es la constante, que **el texto interno no viaja al cliente** y que
+  **sí queda en el log con su `exc_info`**.
+- **Verificación por ASGI, con una respuesta HTTP real.** Es la técnica que 7.0
+  de `notas` introdujo y la única que observa un status code de verdad; en este
+  hallazgo era obligada, porque el hallazgo **es** sobre status codes. Se
+  condujo la aplicación con un controlador que lanza
+  `RuntimeError('FATAL: password authentication failed for user "admin"')`.
+  Resultado: **status 500**, cuerpo
+  `{"detail":"No se pudo cargar la informacion del panel"}` y **la credencial no
+  aparece en la respuesta**, mientras el traceback completo sí queda en el log.
+- Compuerta global: **1121 pruebas, exit 0**, Ruff correcto, dependencias
+  íntegras. `git diff --check` limpio. El diff son **dos archivos**.
+- PostgreSQL real, migraciones, staging, producción, deploy, commit y push:
+  **ninguno**. No se atribuye evidencia de GitHub Actions.
+- Rollback: devolver los siete manejadores a `except Exception as e` con
+  `HTTPException(400, str(e))`, retirar el logger y la constante, y restaurar la
+  prueba anterior. No hay rollback de datos.
+- Riesgos residuales: el **otro** hallazgo sigue vivo y ahora es más visible —el
+  filtro de rendimiento consulta la base **fuera** del `try`, así que un fallo
+  *ahí* sale como 500 por la vía de FastAPI, no por esta—. El resultado coincide,
+  pero por caminos distintos y sin pasar por el log nuevo.
+- Estado: la capa continúa **Cerrada**. **Cuatro** de los diez hallazgos
+  originales corregidos; abiertos: **ocho**.
+- Siguiente acción exacta: el usuario revisa el diff y decide cuándo publicar.
+  **No iniciar otro hallazgo sin orden explícita.**
 
 ## Entrega al próximo chat
 

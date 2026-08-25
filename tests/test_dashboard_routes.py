@@ -1,3 +1,4 @@
+import logging
 import inspect
 from collections import Counter
 
@@ -135,8 +136,9 @@ def test_dashboard_routes_delegate_without_transforming_response(
     ("route", "controller_name", "route_args", "route_kwargs", "_expected_args", "_expected_kwargs"),
     ROUTE_CASES,
 )
-def test_dashboard_routes_translate_controller_errors_to_400(
+def test_dashboard_routes_translate_controller_errors_to_500(
     monkeypatch,
+    caplog,
     route,
     controller_name,
     route_args,
@@ -144,17 +146,34 @@ def test_dashboard_routes_translate_controller_errors_to_400(
     _expected_args,
     _expected_kwargs,
 ):
+    """Un fallo de infraestructura sale como 500, se registra y no se filtra.
+
+    Antes salia como **400 con `str(e)` en el `detail`**, asi que un error de
+    PostgreSQL podia llegar al navegador y no quedaba rastro en el log. Las dos
+    cosas cambian aqui; el mensaje que ve el cliente es una constante.
+    """
     def fail_controller(*_args, **_kwargs):
-        raise ValueError("fallo-controlado")
+        raise ValueError("detalle-interno-que-no-debe-salir")
 
     _allow_route_guards(monkeypatch)
     monkeypatch.setattr(dashboard, controller_name, fail_controller)
 
-    with pytest.raises(HTTPException) as exc:
-        _invoke(route, route_args, route_kwargs)
+    with caplog.at_level(logging.ERROR, logger=dashboard.__name__):
+        with pytest.raises(HTTPException) as exc:
+            _invoke(route, route_args, route_kwargs)
 
-    assert exc.value.status_code == 400
-    assert exc.value.detail == "fallo-controlado"
+    assert exc.value.status_code == 500
+    assert exc.value.detail == dashboard._ERROR_INTERNO_DASHBOARD
+
+    # El texto interno no viaja al cliente...
+    assert "detalle-interno-que-no-debe-salir" not in str(exc.value.detail)
+
+    # ...pero si queda en el log, con su traceback.
+    assert caplog.records, "el fallo debe registrarse"
+    registro = caplog.records[-1]
+    assert registro.levelno == logging.ERROR
+    assert registro.exc_info is not None
+    assert "detalle-interno-que-no-debe-salir" in caplog.text
 
 
 @pytest.mark.parametrize(

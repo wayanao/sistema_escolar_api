@@ -142,6 +142,29 @@ dejar las dos registradas y sin corregir**, la primera porque cruza a
 recuento pasa a **nueve** hallazgos abiertos: seis heredados intactos, las dos
 divergencias nuevas y el undécimo. **No se modificó producto ni pruebas.**
 
+**Cuarta corrección puntual de dashboard, 2026-08-25: `Exception` absorbida y
+`str(e)` filtrado al cliente.** Las siete entradas respondían **400 con el texto
+de la excepción en el `detail`**, así que **un error de PostgreSQL podía llegar
+al navegador**, y además **no se registraba nada**. Ahora responden **500** con
+una constante única y registran el fallo con `logger.exception`, que conserva el
+traceback. Los demás status codes **no cambian** —el 422 y los dos 403 se lanzan
+fuera del `try`—. **El riesgo del cambio de status code se descartó con
+evidencia antes de aplicarlo**: se comprobó en el **frontend desplegado** que
+**ningún consumidor del dashboard lee `status` ni `detail`** —los cinco hooks
+capturan de forma genérica y muestran su propia constante—, así que el cambio es
+**invisible** para el cliente. Es la primera vez en el programa que una
+corrección se valida contra el repositorio del frontend antes de aplicarse.
+**Decisión: no se introdujo una excepción de dominio**, al contrario que en
+`tipos_pagos`: allí distinguía infraestructura de errores de negocio, y aquí
+dashboard es de solo lectura y **no tiene errores de negocio**, así que la clase
+habría tenido un solo uso. **Verificado con una respuesta HTTP real por ASGI**,
+la técnica de 7.0 de `notas` y la única que observa un status code de verdad: un
+`RuntimeError` con una credencial de PostgreSQL sale como **500** con el cuerpo
+genérico y **la credencial no aparece en la respuesta**, mientras el traceback
+queda en el log. Compuerta: **1121 pruebas, exit 0**; el diff son **dos
+archivos**. Sigue **sin commitear ni publicar**. Recuento: **cuatro** de los diez
+hallazgos originales corregidos y **ocho abiertos**.
+
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
 cierre y el usuario ordene continuar, se crea su sucesora desde
 `PLANTILLA_CAPA.md`, se registra el commit base vigente y se actualiza esta

@@ -24,7 +24,11 @@ def validar_filtro_rendimiento_profesor(
     if curso_id is None:
         raise HTTPException(status_code=422, detail="Debes seleccionar un curso para consultar rendimiento")
 
-    tiene_curso, tiene_asignacion = validar_filtro_rendimiento_profesor_controller(
+    (
+        tiene_curso,
+        tiene_asignacion,
+        asignacion_academica_id,
+    ) = validar_filtro_rendimiento_profesor_controller(
         profesor_id,
         curso_id,
         asignacion_id,
@@ -34,10 +38,12 @@ def validar_filtro_rendimiento_profesor(
         raise HTTPException(status_code=403, detail="No tienes permisos para consultar este curso")
 
     if asignacion_id is None:
-        return
+        return None
 
     if not tiene_asignacion:
         raise HTTPException(status_code=403, detail="La asignación no pertenece al curso seleccionado")
+
+    return asignacion_academica_id
 
 
 @router.get('/dashboard/cumpleanos/admin')
@@ -85,12 +91,15 @@ def obtener_notas_bajas_profesor(
     current_user: dict = Depends(get_current_user)
 ):
     require_profesor_scope(profesor_id, current_user, detail="No tienes permisos para consultar datos de otro profesor")
-    validar_filtro_rendimiento_profesor(profesor_id, curso_id, asignacion_id, current_user)
+    asignacion_academica_id = validar_filtro_rendimiento_profesor(
+        profesor_id, curso_id, asignacion_id, current_user
+    )
     try:
         data = obtener_notas_bajas_profesor_controller(
             profesor_id,
             curso_id=curso_id,
             asignacion_id=asignacion_id,
+            asignacion_academica_id=asignacion_academica_id,
         )
         return data
     except Exception as e:
@@ -105,12 +114,15 @@ def obtener_notas_altas_profesor(
     current_user: dict = Depends(get_current_user)
 ):
     require_profesor_scope(profesor_id, current_user, detail="No tienes permisos para consultar datos de otro profesor")
-    validar_filtro_rendimiento_profesor(profesor_id, curso_id, asignacion_id, current_user)
+    asignacion_academica_id = validar_filtro_rendimiento_profesor(
+        profesor_id, curso_id, asignacion_id, current_user
+    )
     try:
         data = obtener_notas_altas_profesor_controller(
             profesor_id,
             curso_id=curso_id,
             asignacion_id=asignacion_id,
+            asignacion_academica_id=asignacion_academica_id,
         )
         return data
     except Exception as e:

@@ -101,6 +101,27 @@ producción, deploy, commit ni push de la segunda corrección. Quedan **ocho
 hallazgos de dashboard**; staging, verificación manual, publicación y CI de la
 reducción de conexiones siguen pendientes.
 
+**Tercera corrección puntual de dashboard, 2026-08-25, y auditoría posterior.**
+La resolución académica duplicada quedó corregida: la validación devuelve el ID
+que ya resolvió y la lectura final lo reutiliza, así que el profesor baja de
+**6 a 5 consultas** y el admin de **5 a 4**, ambos con dos conexiones. Sigue
+**sin commitear ni publicar**. La auditoría que el usuario pidió antes de
+commitear confirmó que **no falta código**: la duplicación desaparece en las dos
+entradas afectadas, **no quedan otros caminos con el mismo patrón** —los dos
+rankings no lo tenían, porque `require_asignacion_access` consulta
+`asignaciones` por id y no resuelve la académica—, los conteos están fijados por
+aserción y los tres caminos de rechazo siguen lanzando. Compuerta con el árbol
+tal cual: **1121 passed**, exit 0. **La auditoría encontró además un hallazgo
+que no constaba y que no venía de 7.0: lo introdujeron las propias
+correcciones.** `profesor_tiene_curso_controller` y
+`profesor_tiene_asignacion_en_curso_controller` quedaron **sin consumidor en
+producción** desde la reducción de conexiones, que **ya está publicada**, y cada
+una **sigue abriendo su propia conexión**. Es el primer hallazgo del programa
+**introducido por una corrección** en vez de heredado. **Decisión del usuario:
+registrarlo sin retirar nada**, como la capa 6 hizo con su código muerto
+duplicado; retirarlo exigiría una orden explícita. Hallazgos de dashboard
+abiertos: **ocho** —siete heredados de 7.0 más el undécimo—.
+
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
 cierre y el usuario ordene continuar, se crea su sucesora desde
 `PLANTILLA_CAPA.md`, se registra el commit base vigente y se actualiza esta

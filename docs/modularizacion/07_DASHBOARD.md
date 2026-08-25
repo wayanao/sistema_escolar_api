@@ -9,9 +9,10 @@
   correcto**. Activada el 2026-08-17.
 - Correcciones puntuales posteriores al cierre: el 2026-08-25 el usuario
   autorizó primero exigir `asignaciones.activo = TRUE` en las dos
-  precondiciones de rendimiento y después reducir las conexiones seriales de
-  ese flujo. La primera quedó publicada en `9f19089`; la segunda permanece
-  local. La capa sigue **Cerrada**, sin subcapa activa, y quedan **ocho
+  precondiciones de rendimiento, después reducir las conexiones seriales y por
+  último reutilizar la resolución académica. Las dos primeras quedaron
+  publicadas en `9f19089` y `1f1ffc9`; la tercera permanece local. La capa sigue
+  **Cerrada**, sin subcapa activa, y quedan **siete
   hallazgos abiertos**.
 - Commit base: `123637ee80895023ecece9c32df526ef4eddd1e5`.
 - Rama acordada: `main`.
@@ -333,9 +334,13 @@ nuevo** y **ningún archivo rastreado modificado**, igual que los de 5.0 y 6.0.
 
 ## Hallazgos de 7.0 y estado posterior
 
-7.0 registró **diez** sin corregir ninguno. Las dos correcciones puntuales
-autorizadas el 2026-08-25 resolvieron los dos primeros; **ocho siguen abiertos**.
-El texto conserva la línea base histórica y añade el estado vigente.
+7.0 registró **diez** sin corregir ninguno. Las tres correcciones puntuales
+autorizadas el 2026-08-25 resolvieron los tres primeros; **siete siguen
+abiertos**. El texto conserva la línea base histórica y añade el estado vigente.
+
+**Hay además un hallazgo undécimo, que no venía de 7.0: lo introdujeron las
+propias correcciones.** Está al final de la lista, marcado como tal. El total
+abierto es por tanto **ocho**: los siete heredados más ese.
 
 - **CORREGIDO Y PUBLICADO EN `9f19089` EL 2026-08-25 — las dos precondiciones de permiso
   ignoraban el estado `activo`.** Era el hallazgo más importante de 7.0 porque
@@ -349,7 +354,7 @@ El texto conserva la línea base histórica y añade el estado vigente.
   «borra». **Estado vigente:** las dos consultas testigo conservan sus
   parámetros y añaden `AND activo = TRUE`; si no existe una asignación activa,
   las rutas conservan sus respuestas 403 ya caracterizadas.
-- **CORREGIDO LOCALMENTE EL 2026-08-25 — hasta cuatro conexiones por petición,
+- **CORREGIDO Y PUBLICADO EN `1f1ffc9` EL 2026-08-25 — hasta cuatro conexiones por petición,
   en serie.** El camino de notas con asignación abría cuatro conexiones
   sucesivas: una por cada precondición y una para la consulta. **No había
   anidamiento**, por lo que no contradecía
@@ -357,9 +362,12 @@ El texto conserva la línea base histórica y añade el estado vigente.
   precondiciones comparten una conexión y la lectura final conserva otra; el
   máximo baja de **4 a 2** sin cambiar las **6 consultas** del profesor ni las
   **5 del admin**.
-- **La asignación académica se resuelve dos veces** en ese mismo camino, con el
-  mismo `asignacion_id`: una en la precondición de pertenencia y otra dentro del
-  controlador, cada una en su propia conexión.
+- **CORREGIDO LOCALMENTE EL 2026-08-25 — la asignación académica se resolvía dos
+  veces** en ese mismo camino, con el mismo `asignacion_id`: una en la
+  precondición de pertenencia y otra dentro del controlador. **Estado vigente:**
+  la validación devuelve el ID académico ya resuelto y la lectura final lo
+  reutiliza. El profesor baja de **6 a 5 consultas** y el admin de **5 a 4**;
+  ambos conservan dos conexiones.
 - **Dos definiciones distintas de «promedio» en el mismo panel.** Notas altas y
   bajas promedian **los promedios por clase**, `TRUNC(AVG(promedio_clase), 2)`;
   los rankings promedian **las notas planas**,
@@ -398,6 +406,41 @@ El texto conserva la línea base histórica y añade el estado vigente.
 - **`periodo: int = 1` es un parámetro de ruta con valor por defecto** en los
   dos rankings. Al estar en el path nunca puede faltar, así que el defecto es
   inalcanzable.
+
+### Hallazgo 11, **introducido por las propias correcciones** el 2026-08-25
+
+- **`profesor_tiene_curso_controller` y
+  `profesor_tiene_asignacion_en_curso_controller` quedaron sin ningún consumidor
+  en producción.** No venía de 7.0: en el commit base de la capa,
+  `123637ee80895023ecece9c32df526ef4eddd1e5`, las **dos estaban vivas** y
+  `app/routes/dashboard.py` las importaba y las llamaba. La corrección del
+  hallazgo 2 —la reducción de conexiones, **publicada en `1f1ffc9`**— absorbió
+  su lógica dentro de `validar_filtro_rendimiento_profesor_controller`, y desde
+  entonces **ningún código de `app/` las invoca**: solo las mantienen vivas
+  cuatro pruebas de `tests/test_dashboard_caracterizacion.py`.
+
+  Lo que agrava el detalle es que **cada una sigue abriendo su propia
+  conexión** con `get_connection()`, que es exactamente el recurso que aquella
+  corrección buscaba ahorrar. No hay consecuencia funcional —no se ejecutan en
+  ningún camino HTTP—, pero **es código muerto que ya está publicado y
+  desplegado**, y hasta hoy **no constaba en ninguna parte**.
+
+  **Detectado el 2026-08-25**, al auditar qué faltaba del hallazgo 3. **Decisión
+  del usuario ese mismo día: registrarlo sin retirar nada**, para que las
+  correcciones puntuales sigan siendo cambios de comportamiento y no arrastren
+  borrados de producto. Es el mismo criterio que la capa 6 aplicó al código
+  muerto duplicado de `obtener_clases_profesor_controller`, que también se
+  conservó por decisión explícita.
+
+  Retirarlas —y con ellas las cuatro pruebas que solo existen para sostenerlas—
+  queda como **trabajo disponible que exigiría una orden explícita**. No debe
+  hacerse por inferencia ni «de paso» en otra corrección.
+
+- **Matiz relacionado, este sí deliberado y ya documentado**: el fallback de
+  `_obtener_notas_profesor`, que resuelve el ID académico cuando nadie se lo
+  suministra, **tampoco tiene consumidor en el camino HTTP**, porque la ruta
+  siempre entrega el valor ya validado. Se conserva a propósito para los
+  llamadores directos y no se cuenta como hallazgo.
 
 ## Subcapa 7.1 — trabajo exacto, ejecutado y cerrado
 
@@ -653,7 +696,7 @@ pruebas**, Ruff correcto y `pip check` íntegro.
 - No cambió rutas, payloads, status codes, permisos, tenant, ownership,
   transacciones, timeouts, dependencias ni configuración.
 - Durante 7.0 y 7.1 **no corrigió ninguno de los diez hallazgos**. La corrección
-  puntual del 2026-08-25 resolvió después los dos primeros; **ocho siguen
+  puntual del 2026-08-25 resolvió después los tres primeros; **siete siguen
   vivos**.
 - **No necesitó autorizar ni un solo cambio de texto SQL**, como la capa 6.
 
@@ -678,11 +721,14 @@ el estado de su momento y **se conservan intactas**: eran ciertas entonces.
 - **Dos definiciones distintas de promedio** en el mismo panel, y una tercera en
   estudiantes.
 - ~~Hasta **cuatro conexiones por petición** en el camino más caro.~~
-  **Corregido localmente el 2026-08-25**: el máximo es ahora **dos**, sin
-  alterar consultas, parámetros ni límites de error.
-- La asignación académica se sigue resolviendo **dos veces**. Es el siguiente
-  hallazgo independiente y no se corrigió para conservar el SQL observable.
-- Los **ocho hallazgos restantes** de 7.0, más `response_model` sin añadir.
+  **Corregido y publicado en `1f1ffc9` el 2026-08-25**: el máximo es ahora
+  **dos**, sin alterar parámetros ni límites de error.
+- ~~La asignación académica se resolvía **dos veces**.~~ **Corregido localmente
+  el 2026-08-25**: la lectura reutiliza la resolución de la validación; profesor
+  y admin ahorran una consulta.
+- Los **siete hallazgos restantes** de 7.0, más el **undécimo que introdujeron
+  las propias correcciones** —las dos precondiciones huérfanas—, más
+  `response_model` sin añadir. **Ocho abiertos en total.**
 - Heredados: calibración de `DB_STATEMENT_TIMEOUT_MS` de la capa 1, ausencia de
   evidencia de GitHub Actions desde la capa 0, la credencial privilegiada de la
   capa 4 sin rotar, los hallazgos abiertos de las capas 5 y 6 —incluida la clave
@@ -1234,6 +1280,120 @@ Con la verificación manual ejecutada, la capa queda cerrada.
 - Siguiente acción exacta: el usuario revisa el diff y decide cuándo ejecutar
   staging/publicar. El siguiente hallazgo es la resolución duplicada de la
   asignación académica; **no iniciarlo sin otra orden explícita**.
+
+## 2026-08-25 — corrección puntual posterior al cierre: resolución académica duplicada
+
+- Modo de acceso: mismo checkout local del backend; Git, el árbol y los commits
+  locales se comprobaron directamente.
+- Autorización: después de entregar la reducción de conexiones e identificar
+  expresamente la resolución duplicada como siguiente hallazgo no iniciado, el
+  usuario respondió «continua». La orden cubre solo esa consulta duplicada.
+- Precondiciones: rama `main`, árbol limpio confirmado con `git status`, `HEAD`
+  y la referencia local `origin/main` coincidentes en
+  `1f1ffc9d7395676abf73e1b77304178d47110534`. Ese commit contiene exactamente
+  los nueve archivos de la reducción de conexiones. El base
+  `123637ee80895023ecece9c32df526ef4eddd1e5` sigue siendo ancestro y el único
+  commit posterior a `9f19089`, `1f1ffc9`, está explicado por la entrada
+  anterior. La coincidencia con `origin/main` demuestra publicación, no CI ni
+  despliegue.
+- Caracterización antes de producto: las suites relacionadas partieron de
+  **99 passed**. Se cambiaron primero el contrato de traspaso y los conteos; la
+  señal esperada fue **10 failed y 72 passed** porque la validación aún devolvía
+  dos valores, la ruta descartaba el ID resuelto y el controlador no aceptaba
+  reutilizarlo.
+- Producto modificado: únicamente
+  `app/controllers/dashboard_controller.py` y `app/routes/dashboard.py`. La
+  validación devuelve ahora el `asignacion_academica_id` que ya comprobó; la
+  ruta lo entrega al controlador final y este omite la segunda llamada a
+  `resolver_asignacion_academica_id_cursor`. Los llamadores directos que no
+  suministren el ID resuelto conservan el fallback anterior.
+- SQL y recursos: profesor con asignación pasa de **6 a 5 consultas**; admin de
+  **5 a 4**. Ambos conservan **2 conexiones**. Sin asignación permanece en 2/2.
+  Se elimina únicamente el segundo `SELECT` del resolvedor; las cuatro
+  consultas de validación, la consulta agregada, sus parámetros y el ID
+  académico usado por el filtro permanecen iguales.
+- Contrato conservado: no cambian métodos, paths, query params, payloads,
+  promedios, orden, colores, tenant, ownership, roles, 422, mensajes 403 ni el
+  límite 500/400. La validación sigue fuera del `try/except` y la lectura final
+  dentro, cada una con su conexión.
+- Pruebas modificadas:
+  `tests/test_dashboard_caracterizacion.py` fija 5/2 y 4/2 y exige una sola
+  resolución;
+  `tests/test_dashboard_controlador.py` demuestra que el controlador reutiliza
+  `77` sin llamar al resolvedor; y
+  `tests/test_dashboard_routes.py` fija el traspaso exacto del ID resuelto.
+- Verificación específica: dashboard terminó con **82 passed**; al incluir
+  permisos compartidos, **100 passed**. Ruff del alcance informó
+  **All checks passed**.
+- Compuerta global: `scripts/verify.py` se ejecutó con acceso válido al temporal
+  de pytest y terminó con **1121 passed**, 5 warnings heredados, Ruff correcto,
+  dependencias íntegras y exit 0.
+- Frontend: no se modificó ni requiere adaptación; el cambio es interno y la
+  superficie HTTP permanece idéntica.
+- PostgreSQL real, migraciones, staging, producción, deploy, commit y push de
+  esta corrección: **ninguno**. No se atribuye evidencia de GitHub Actions.
+- Staging propuesto: ejecutar notas altas y bajas con una asignación derivada
+  cuya `asignacion_academica_id` apunte a la base, comprobar el mismo payload y
+  observar una sola consulta de resolución. Repetir como profesor y admin, y
+  verificar los mismos 403 con una asignación ajena o de otro curso.
+- Rollback: dejar de devolver/reenviar el ID académico resuelto, restaurar el
+  resolvedor dentro de la lectura final y devolver las expectativas a 6/2 y
+  5/2. No hay rollback de datos.
+- Riesgos residuales: validación y lectura continúan en conexiones distintas,
+  por lo que permanece la ventana TOCTOU. El fallback del controlador sigue
+  resolviendo el ID para sus llamadores directos; la ruta HTTP usa siempre el
+  valor ya validado.
+- Estado: la capa continúa **Cerrada**. Tres de los diez hallazgos originales
+  están corregidos y **siete siguen abiertos**, a los que se suma el undécimo
+  que las correcciones introdujeron: **ocho en total**. Staging, verificación
+  manual,
+  publicación y CI de esta corrección quedan pendientes.
+- Siguiente acción exacta: el usuario revisa el diff y decide cuándo ejecutar
+  staging/publicar. El siguiente hallazgo son las dos definiciones distintas de
+  promedio; **no iniciarlo sin otra orden explícita**.
+
+## 2026-08-25 — auditoría del hallazgo 3 y registro del hallazgo 11
+
+- Modo de acceso: mismo checkout local del backend; Git y el árbol se
+  comprobaron directamente.
+- Motivo: el usuario pidió verificar **qué faltaba del hallazgo en curso** antes
+  de commitear. La auditoría no modificó producto ni pruebas.
+- Precondiciones: rama `main`, `HEAD` y `origin/main` coincidentes en
+  `1f1ffc9d7395676abf73e1b77304178d47110534`, con la corrección del hallazgo 3
+  **sin commitear** en seis archivos del árbol.
+- **Lo que se confirmó del hallazgo 3, comprobándolo y no dándolo por bueno:**
+  - la duplicación desaparece en las dos entradas afectadas, para profesor y
+    para admin;
+  - **no quedan otros caminos con el mismo patrón**. Los dos rankings parecían
+    candidatos, pero `require_asignacion_access` consulta `asignaciones` por id
+    y **no** resuelve la académica, así que resuelven una sola vez;
+  - los conteos están **fijados por aserción** y no solo afirmados en prosa:
+    `(5, 2)` para profesor, `(4, 2)` para admin y una comprobación explícita de
+    que hay **una sola** resolución;
+  - los tres caminos de rechazo siguen lanzando: el 422 por curso ausente y los
+    dos 403. El `return` que pasó a `return None` cubre únicamente el camino sin
+    asignación, donde el controlador no resolvía nada;
+  - compuerta global con el árbol tal cual: **1121 pruebas, exit 0**, Ruff
+    correcto y dependencias íntegras.
+- **Lo que la auditoría encontró y no constaba**: las dos precondiciones
+  `profesor_tiene_curso_controller` y
+  `profesor_tiene_asignacion_en_curso_controller` quedaron **sin consumidor en
+  producción** desde la corrección del hallazgo 2, que **ya está publicada**.
+  Sigue en la lista de hallazgos como el **undécimo**, y es el primero del
+  programa **introducido por una corrección** en vez de heredado.
+- **Decisión del usuario**: registrarlo **sin retirar nada**. No se borra código
+  de producto ni pruebas. El precedente es la capa 6 con
+  `obtener_clases_profesor_controller`.
+- Archivos modificados en este turno: **solo esta bitácora**. Código de
+  producto y pruebas: **ninguno**.
+- PostgreSQL real, migraciones, staging, producción, deploy, commit y push:
+  **ninguno**. No se atribuye evidencia de GitHub Actions.
+- Estado: la capa continúa **Cerrada**. Del hallazgo 3 **no falta código**: solo
+  commit, publicación, staging y verificación manual. Hallazgos abiertos:
+  **ocho** —los siete heredados de 7.0 más el undécimo—.
+- Siguiente acción exacta: el usuario commitea y decide cuándo publicar. **No
+  retirar las dos funciones huérfanas ni iniciar el hallazgo del promedio sin
+  una orden explícita.**
 
 ## Entrega al próximo chat
 

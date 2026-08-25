@@ -45,7 +45,11 @@ ROUTE_CASES = [
         (7,),
         {"curso_id": 4, "asignacion_id": 12, "current_user": PROFESOR},
         (7,),
-        {"curso_id": 4, "asignacion_id": 12},
+        {
+            "curso_id": 4,
+            "asignacion_id": 12,
+            "asignacion_academica_id": 77,
+        },
         id="notas-bajas",
     ),
     pytest.param(
@@ -54,7 +58,11 @@ ROUTE_CASES = [
         (7,),
         {"curso_id": 4, "asignacion_id": None, "current_user": PROFESOR},
         (7,),
-        {"curso_id": 4, "asignacion_id": None},
+        {
+            "curso_id": 4,
+            "asignacion_id": None,
+            "asignacion_academica_id": None,
+        },
         id="notas-altas",
     ),
     pytest.param(
@@ -88,7 +96,9 @@ def _allow_route_guards(monkeypatch):
     monkeypatch.setattr(
         dashboard,
         "validar_filtro_rendimiento_profesor",
-        lambda *_a, **_k: None,
+        lambda _profesor_id, _curso_id, asignacion_id, _current_user: (
+            77 if asignacion_id is not None else None
+        ),
     )
 
 
@@ -262,7 +272,7 @@ def test_performance_filter_rejects_course_outside_profesor_scope(monkeypatch):
     monkeypatch.setattr(
         dashboard,
         "validar_filtro_rendimiento_profesor_controller",
-        lambda *_a: (False, None),
+        lambda *_a: (False, None, None),
     )
 
     with pytest.raises(HTTPException) as exc:
@@ -276,7 +286,7 @@ def test_performance_filter_accepts_course_without_assignment(monkeypatch):
     monkeypatch.setattr(
         dashboard,
         "validar_filtro_rendimiento_profesor_controller",
-        lambda *_a: (True, None),
+        lambda *_a: (True, None, None),
     )
 
     dashboard.validar_filtro_rendimiento_profesor(7, 4, None, PROFESOR)
@@ -337,7 +347,7 @@ def test_performance_filter_rejects_assignment_from_another_course(monkeypatch):
     monkeypatch.setattr(
         dashboard,
         "validar_filtro_rendimiento_profesor_controller",
-        lambda *_a: (True, False),
+        lambda *_a: (True, False, 77),
     )
 
     with pytest.raises(HTTPException) as exc:
@@ -355,12 +365,13 @@ def test_performance_filter_passes_exact_scope_to_consolidated_check(monkeypatch
         lambda profesor_id, curso_id, asignacion_id, current_user: calls.append(
             (profesor_id, curso_id, asignacion_id, current_user)
         )
-        or (True, True),
+        or (True, True, 77),
     )
 
-    dashboard.validar_filtro_rendimiento_profesor(7, 4, 12, PROFESOR)
+    resultado = dashboard.validar_filtro_rendimiento_profesor(7, 4, 12, PROFESOR)
 
     assert calls == [(7, 4, 12, PROFESOR)]
+    assert resultado == 77
 
 
 def test_dashboard_router_preserves_paths_methods_and_dependencies():

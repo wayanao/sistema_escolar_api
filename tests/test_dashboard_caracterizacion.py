@@ -433,7 +433,7 @@ def test_las_precondiciones_comparten_conexion_y_conservan_orden_sql(espia):
         PROFESOR,
     )
 
-    assert resultado == (True, True)
+    assert resultado == (True, True, 77)
     assert len(registro.conexiones) == 1
     assert registro.parametros == [(7, 4), (12, 7), (12,), (77, 7, 4)]
     assert registro.conexiones[0].cerrada is True
@@ -506,38 +506,33 @@ def test_notas_sin_asignacion_cuestan_dos_consultas_y_dos_conexiones(espia):
     assert (len(registro.consultas), len(registro.conexiones)) == (2, 2)
 
 
-def test_notas_con_asignacion_de_un_profesor_cuestan_seis_consultas_y_dos_conexiones(espia):
-    """Las precondiciones comparten conexion sin cambiar sus cuatro consultas.
-
-    La lectura final conserva una segunda conexion y la asignacion academica se
-    sigue resolviendo dos veces. Esa duplicacion es otro hallazgo, no parte de
-    esta correccion.
-    """
+def test_notas_con_asignacion_de_un_profesor_cuestan_cinco_consultas_y_dos_conexiones(espia):
+    """La lectura reutiliza el id academico resuelto por las precondiciones."""
     registro = espia(
         filas=[],
-        unicos_por_conexion=[[(1,), (1,), (77,), (1,)], [(77,)]],
+        unicos_por_conexion=[[(1,), (1,), (77,), (1,)], []],
     )
 
     dashboard.obtener_notas_bajas_profesor(
         7, curso_id=4, asignacion_id=12, current_user=PROFESOR
     )
 
-    assert (len(registro.consultas), len(registro.conexiones)) == (6, 2)
+    assert (len(registro.consultas), len(registro.conexiones)) == (5, 2)
     resoluciones = [texto for texto in registro.textos if "asignacion_academica_id" in texto]
-    assert len(resoluciones) == 2
+    assert len(resoluciones) == 1
 
 
 def test_notas_con_asignacion_de_un_admin_ahorran_la_comprobacion_de_acceso(espia):
     registro = espia(
         filas=[],
-        unicos_por_conexion=[[(1,), (77,), (1,)], [(77,)]],
+        unicos_por_conexion=[[(1,), (77,), (1,)], []],
     )
 
     dashboard.obtener_notas_bajas_profesor(
         7, curso_id=4, asignacion_id=12, current_user=ADMIN
     )
 
-    assert (len(registro.consultas), len(registro.conexiones)) == (5, 2)
+    assert (len(registro.consultas), len(registro.conexiones)) == (4, 2)
 
 
 def test_ningun_camino_del_dominio_depende_del_numero_de_estudiantes(espia):

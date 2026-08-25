@@ -80,10 +80,10 @@ def validar_filtro_rendimiento_profesor_controller(
 ):
     """Evalua las precondiciones DB de rendimiento en una sola conexion.
 
-    Conserva el orden y el SQL existentes. La lectura final mantiene su propia
+    Conserva el orden de las precondiciones. La lectura final mantiene su propia
     conexion para no alterar el limite observable del ``try/except`` de la
-    ruta. La asignacion academica se sigue resolviendo otra vez en esa lectura;
-    retirar esa duplicacion pertenece a otro hallazgo.
+    ruta, pero reutiliza el id academico resuelto aqui y evita repetir esa
+    consulta.
     """
     conn = get_connection()
     cursor = conn.cursor()
@@ -92,10 +92,10 @@ def validar_filtro_rendimiento_profesor_controller(
             cursor, profesor_id, curso_id
         )
         if curso is None:
-            return False, None
+            return False, None, None
 
         if asignacion_id is None:
-            return True, None
+            return True, None, None
 
         require_asignacion_access(
             asignacion_id,
@@ -109,7 +109,7 @@ def validar_filtro_rendimiento_profesor_controller(
         asignacion = dashboard_repository.buscar_asignacion_de_profesor_en_curso(
             cursor, asignacion_academica_id, profesor_id, curso_id
         )
-        return True, asignacion is not None
+        return True, asignacion is not None, asignacion_academica_id
     finally:
         cursor.close()
         conn.close()
@@ -132,10 +132,20 @@ def obtener_inasistencias_profesor_controller(profesor_id):
     ]
 
 
-def _obtener_notas_profesor(profesor_id, curso_id, asignacion_id=None, altas=False):
+def _obtener_notas_profesor(
+    profesor_id,
+    curso_id,
+    asignacion_id=None,
+    altas=False,
+    asignacion_academica_id=None,
+):
     with get_cursor() as cursor:
         if asignacion_id is not None:
-            asignacion_id = resolver_asignacion_academica_id_cursor(cursor, asignacion_id)
+            asignacion_id = (
+                asignacion_academica_id
+                if asignacion_academica_id is not None
+                else resolver_asignacion_academica_id_cursor(cursor, asignacion_id)
+            )
 
         resultados = dashboard_repository.leer_estudiantes_por_promedio(
             cursor, profesor_id, curso_id, asignacion_id, altas
@@ -154,12 +164,34 @@ def _obtener_notas_profesor(profesor_id, curso_id, asignacion_id=None, altas=Fal
     return items
 
 
-def obtener_notas_bajas_profesor_controller(profesor_id, curso_id, asignacion_id=None):
-    return _obtener_notas_profesor(profesor_id, curso_id=curso_id, asignacion_id=asignacion_id, altas=False)
+def obtener_notas_bajas_profesor_controller(
+    profesor_id,
+    curso_id,
+    asignacion_id=None,
+    asignacion_academica_id=None,
+):
+    return _obtener_notas_profesor(
+        profesor_id,
+        curso_id=curso_id,
+        asignacion_id=asignacion_id,
+        altas=False,
+        asignacion_academica_id=asignacion_academica_id,
+    )
 
 
-def obtener_notas_altas_profesor_controller(profesor_id, curso_id, asignacion_id=None):
-    return _obtener_notas_profesor(profesor_id, curso_id=curso_id, asignacion_id=asignacion_id, altas=True)
+def obtener_notas_altas_profesor_controller(
+    profesor_id,
+    curso_id,
+    asignacion_id=None,
+    asignacion_academica_id=None,
+):
+    return _obtener_notas_profesor(
+        profesor_id,
+        curso_id=curso_id,
+        asignacion_id=asignacion_id,
+        altas=True,
+        asignacion_academica_id=asignacion_academica_id,
+    )
 
 
 def obtener_ranking_rendimiento_controller(asignacion_id, periodo):

@@ -119,6 +119,21 @@ def test_notas_con_asignacion_resuelve_el_id_y_agrega_el_filtro(cursor_de):
     assert resueltos == [12]
 
 
+def test_notas_reutilizan_una_asignacion_academica_ya_resuelta(cursor_de):
+    cursor, _, resueltos = cursor_de(filas=[])
+
+    dashboard_controller.obtener_notas_bajas_profesor_controller(
+        9,
+        4,
+        asignacion_id=12,
+        asignacion_academica_id=77,
+    )
+
+    _, params = cursor.calls[0]
+    assert params == (9, 4, 77, 77)
+    assert resueltos == []
+
+
 def test_notas_bajas_marca_amarillo_cuando_el_promedio_no_baja_de_tres(cursor_de):
     cursor_de(filas=[("Ana Ríos", "Quinto A", "Matemáticas", 3.2)])
 

@@ -1,6 +1,6 @@
 -- Esquema base de un tenant. ARCHIVO GENERADO, no editar a mano.
 --
--- Extraido de tenant_colegio_1 el 2026-08-13 con
+-- Extraido de tenant_colegio_1 el 2026-08-25 con
 -- scripts/generar_esquema_base.py. Para rehacerlo, aplica antes la
 -- migracion nueva a ese schema y vuelve a ejecutar el script.
 --
@@ -11,7 +11,7 @@
 -- No usar apply_migration.py con este archivo: es para dar de alta un
 -- tenant nuevo, no para los existentes, que ya tienen estas tablas.
 --
--- MIGRACIONES INCORPORADAS (30):
+-- MIGRACIONES INCORPORADAS (31):
 --   20260429_pagos_tipo_pago_largo.sql
 --   20260429_plan_de_clases_reportes.sql
 --   20260509_branding_plantillas_impresion.sql
@@ -42,6 +42,7 @@
 --   20260722_plan_de_clases_integridad.sql
 --   20260722_plan_de_clases_notificaciones.sql
 --   20260722_plan_de_clases_revision.sql
+--   20260825_observaciones_claves_foraneas.sql
 -- FIN MIGRACIONES INCORPORADAS
 
 CREATE TABLE IF NOT EXISTS asignaciones (
@@ -543,6 +544,8 @@ ALTER TABLE notas ADD CONSTRAINT notas_asignacion_id_fkey FOREIGN KEY (asignacio
 ALTER TABLE notas ADD CONSTRAINT notas_estudiante_id_fkey FOREIGN KEY (estudiante_id) REFERENCES estudiantes(id);
 ALTER TABLE notas_detalle ADD CONSTRAINT notas_detalle_asignacion_id_fkey FOREIGN KEY (asignacion_id) REFERENCES asignaciones(id) ON DELETE CASCADE;
 ALTER TABLE notas_detalle ADD CONSTRAINT notas_detalle_estudiante_id_fkey FOREIGN KEY (estudiante_id) REFERENCES estudiantes(id);
+ALTER TABLE observaciones ADD CONSTRAINT observaciones_asignacion_id_fkey FOREIGN KEY (asignacion_id) REFERENCES asignaciones(id) ON DELETE CASCADE;
+ALTER TABLE observaciones ADD CONSTRAINT observaciones_estudiante_id_fkey FOREIGN KEY (estudiante_id) REFERENCES estudiantes(id);
 ALTER TABLE pagos ADD CONSTRAINT pagos_estudiante_id_fkey FOREIGN KEY (estudiante_id) REFERENCES estudiantes(id);
 ALTER TABLE pagos ADD CONSTRAINT pagos_venta_id_fkey FOREIGN KEY (venta_id) REFERENCES ventas(id);
 ALTER TABLE pagos_aplicaciones ADD CONSTRAINT pagos_aplicaciones_estudiante_id_fkey FOREIGN KEY (estudiante_id) REFERENCES estudiantes(id);

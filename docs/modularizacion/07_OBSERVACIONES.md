@@ -339,40 +339,60 @@ ejecutan dos subcapas en el mismo turno.**
 Son **nueve**. Ninguno se corrige desde esta capa; corregir cualquiera exige una
 orden explícita. Van ordenados por gravedad.
 
-1. **La tabla no tiene ninguna clave foránea.** `estudiante_id` y
+> **AUDITADOS UNO A UNO EL 2026-08-25, por orden explícita del usuario.** Se
+> comprobaron contra el código, el esquema y peticiones reales, después de que
+> la campaña de `dashboard` demostrara que **un hallazgo registrado puede estar
+> mal diagnosticado**: allí dos de diez lo estaban.
+>
+> **Resultado: ocho de los nueve se sostienen y uno quedó obsoleto.** El
+> veredicto de cada uno va marcado en su propio punto. Es una tasa mucho mejor
+> que la de `dashboard`, y la diferencia tiene una causa identificable: la 7.0 de
+> `observaciones` verificó sus supuestos con pruebas, y su propia bitácora ya
+> registraba que **ningún supuesto quedó mal atribuido**.
+>
+> El único obsoleto es el **3**, y **no por un error de 7.0**: era cierto cuando
+> se escribió y **lo corrigió la propia 7.1** al mover el SQL al repositorio. Lo
+> que falla es que siga listado como «sin corregir». Es el mismo desfase que
+> `dashboard` tenía entre sus hallazgos y sus correcciones.
+
+1. **[CONFIRMADO, y se queda corto]** **La tabla no tiene ninguna clave foránea.** `estudiante_id` y
    `asignacion_id` son `integer` sueltos: nada en la base impide una observación
    huérfana, ni apuntando a un estudiante inexistente, ni sobreviviendo al
    borrado de una asignación. **La integridad depende enteramente del código de
    aplicación**, y ese código no la comprueba: el `UPSERT` escribe lo que le
    den. Es el hallazgo más grave y el único de todo el programa sobre una tabla
    sin restricciones hacia sus dos padres naturales.
-2. **Las tres dimensiones son `text` sin límite y la tabla no tiene ningún
-   `CHECK`.** Contrasta con `plan_de_clases_observaciones`, la tabla del dominio
+2. **[CONFIRMADO literalmente]** **Las tres dimensiones son `text` sin límite y
+   la tabla no tiene ningún `CHECK`.** Contrasta con `plan_de_clases_observaciones`, la tabla del dominio
    vecino, que **sí** acota su texto entre 1 y 3000 caracteres. El dominio
    académico está **menos protegido que el de planes de clase**, y nada impide
    almacenar una observación de megabytes.
-3. **La lectura vive en la capa HTTP.** El `SELECT` y el resolver están en
+3. **[OBSOLETO desde 7.1]** **La lectura vive en la capa HTTP.** El `SELECT` y el resolver están en
    `obtener_observacion`, dentro del router. Es el único caso del programa y la
    razón por la que un inventario que solo mirara el controlador contaría **1 de
    2** sentencias.
-4. **El `422` depende del esquema y es frágil.** Lo produce el `model_validator`
+4. **[CONFIRMADO con una respuesta real]** **El `422` depende del esquema y es
+   frágil.** Lo produce el `model_validator`
    de `ObservacionCreate`, no el dominio. Si esa validación se moviera al
    controlador en una extracción posterior, el status **pasaría de 422 a 500**
    sin que ninguna prueba heredada lo notara. Ahora sí hay una que lo fija.
-5. **La normalización convierte cualquier valor falsy en cadena vacía.**
+5. **[CONFIRMADO exactamente]** **La normalización convierte cualquier valor
+   falsy en cadena vacía.**
    `str(valor or "").strip()` no distingue tipos: un **`0` numérico llega como
    `""`, no como `"0"`**, y lo mismo `False` y las listas vacías. Un valor
    truthy sí conserva su representación: `7` llega como `"7"`.
-6. **El `UPSERT` no comprueba que la asignación siga activa.** Es el mismo
+6. **[CONFIRMADO, y alcanza también a las guardas]** **El `UPSERT` no comprueba
+   que la asignación siga activa.** Es el mismo
    hallazgo que dejaron abiertos `dashboard`, `notas` y `boletin`.
-7. **Ninguna de las dos entradas registra nada ante un fallo.** No hay
+7. **[CONFIRMADO en lo esencial, con un matiz]** **Ninguna de las dos entradas
+   registra nada ante un fallo.** No hay
    `try/except` ni `logger` en el router: una excepción sube y FastAPI la
    convierte en un 500 genérico. **No se filtra el texto de la excepción**, que
    es mejor que `dashboard` y `asistencia`, pero **tampoco queda traza**, que es
    peor que `boletin`.
-8. **`periodo` es un `int` sin cota**, ni en el esquema ni en la base: nada
+8. **[CONFIRMADO]** **`periodo` es un `int` sin cota**, ni en el esquema ni en la base: nada
    impide un periodo 99 ni negativo.
-9. **Defensa duplicada en el controlador.** Usa
+9. **[CONFIRMADO]** **Defensa duplicada en el controlador.** Usa
    `data.get("conductual", "")` para las tres dimensiones, pero el esquema ya
    garantiza que las tres claves existen con default `""`. El `.get` solo
    actuaría si alguien llamara al controlador **sin pasar por la ruta**, porque
@@ -1010,3 +1030,393 @@ como verificada.
 - Siguiente acción exacta: **ninguna dentro de esta capa.** Queda cerrada. El
   siguiente paso del programa es **7.0 de `planilla`**, pendiente y no iniciada,
   conforme a `07_PLANILLA.md`.
+
+## 2026-08-25 — auditoría de los nueve hallazgos
+
+El usuario ordenó revisar los hallazgos de este dominio y **comprobar cuáles son
+reales**, después de que la campaña de `dashboard` destapara dos diagnósticos
+falsos entre diez. Esta entrada registra la comprobación. **No modificó producto
+ni pruebas.**
+
+- Modo de acceso: mismo checkout local; Git y el árbol comprobados
+  directamente.
+- Precondiciones: rama `main`, árbol **limpio**, `HEAD`
+  `007a0cd7ccf49d557d1dbac90c60c7f505ff322f`. **`origin/main` está en
+  `8a72cc8`**, así que hay **un commit local sin publicar**, el cierre
+  documental de la campaña de dashboard.
+- Método: cada hallazgo se contrastó contra su fuente real —el esquema de
+  `migrations/base/`, el código del dominio, o una petición HTTP conducida por
+  **ASGI**—, sin fiarse del texto de la bitácora.
+
+### Veredicto: **ocho confirmados, uno obsoleto**
+
+| # | Hallazgo | Veredicto | Evidencia |
+|---:|---|---|---|
+| 1 | Sin claves foráneas | **CONFIRMADO, y se queda corto** | La tabla solo tiene `observaciones_pkey` y `unique_observacion`. Un barrido del esquema base demuestra que **es la única tabla del programa** con `estudiante_id`/`asignacion_id` sin clave foránea hacia ellos: las otras dieciséis sí la tienen. Y las columnas son además **nullable**, que la bitácora no decía |
+| 2 | `text` sin `CHECK`, frente al vecino | **CONFIRMADO literalmente** | `plan_de_clases_observaciones` tiene `ck_plan_observacion_texto CHECK (length BETWEEN 1 AND 3000)`; `observaciones` no tiene ninguno |
+| 3 | La lectura vive en la capa HTTP | **OBSOLETO** | Ver abajo |
+| 4 | El `422` lo produce el esquema | **CONFIRMADO con una respuesta real** | Un cuerpo sin las tres dimensiones devuelve **422** con `"type":"value_error"` del `model_validator` |
+| 5 | Falsy → cadena vacía | **CONFIRMADO exactamente** | `0`, `False` y `[]` llegan como `""`; `7` llega como `"7"`. Y con las tres dimensiones en `0` la petición se rechaza con el 422 del hallazgo 4 |
+| 6 | El `UPSERT` no comprueba `activo` | **CONFIRMADO, y alcanza más lejos** | Ni el `UPSERT`, ni `require_asignacion_access`, ni `require_estudiante_in_asignacion` filtran `activo`. **Ninguna de las tres capas lo comprueba** |
+| 7 | No se registra nada ante un fallo | **CONFIRMADO en lo esencial** | Ver el matiz abajo |
+| 8 | `periodo` sin cota | **CONFIRMADO** | El esquema acepta `99`, `-5` y `0` |
+| 9 | Defensa duplicada con `.get` | **CONFIRMADO** | `model_dump()` devuelve siempre las seis claves, así que el `.get` solo actuaría fuera de la ruta |
+
+### El hallazgo 3 está obsoleto, y no por un error de 7.0
+
+Decía: «el `SELECT` y el resolver están en `obtener_observacion`, dentro del
+router». **Era cierto cuando se escribió**, y **lo corrigió la propia 7.1** al
+mover el SQL al repositorio. Medido hoy: **0 sentencias en la ruta**, 0 en el
+controlador y **2 en el repositorio**.
+
+Lo que **sigue siendo cierto** del hallazgo es la parte que 7.1 decidió no
+tocar: la ruta **abre su propio cursor** con `get_cursor()` y **llama al
+resolver** directamente, así que la capa HTTP sigue tocando la base. Eso es
+deliberado y está registrado en la decisión de 7.1 sobre los dos idiomas de
+conexión.
+
+**Lo que falla es el índice de hallazgos**, que lo sigue listando bajo
+«registrados y **sin corregir**» cuando la subcapa siguiente lo corrigió a
+medias. Es el mismo desfase que `dashboard` arrastraba, y queda corregido con la
+marca del veredicto.
+
+### El matiz del hallazgo 7
+
+La parte central es **cierta**: no hay `try/except` ni `logger` en el router, y
+un fallo del controlador **no deja ninguna traza de la aplicación**. Comprobado
+conduciendo la ruta por ASGI con un controlador que lanza un error de
+credenciales de PostgreSQL: **cero registros del módulo**.
+
+Su afirmación de que **no se filtra el texto de la excepción también es cierta**,
+y se comprobó como es debido: observando **lo que se envía al cliente**, no lo
+que le llega al arnés de pruebas. El cliente recibe **500 con el cuerpo
+`Internal Server Error` en texto plano**, y la credencial **no aparece en él**.
+
+**Dos precisiones que la bitácora no hacía**, ninguna de ellas un hallazgo
+nuevo:
+
+- decir que «tampoco queda traza» **se pasa de frenada**: la excepción se propaga
+  al servidor ASGI, que **sí registra el traceback**. Lo que no existe es traza
+  del *módulo*, con su contexto de dominio;
+- el cuerpo de ese 500 es **texto plano**, no el `{"detail": …}` que devuelve el
+  resto de la API. Es una **incoherencia de forma** con todos los demás errores
+  del sistema.
+
+### Lo que la auditoría comprobó expresamente y **no** era un hallazgo
+
+- **Se valida un `asignacion_id` y se escribe otro.** Las dos guardas validan el
+  id **crudo**, y el controlador escribe el **resuelto**. Parecía un hueco, y
+  **no lo es**: el `CASE` de `resolver_asignacion_academica_id_cursor` solo
+  devuelve el padre académico cuando **coinciden profesor, curso y materia**, así
+  que la validación se transfiere íntegra. Queda registrado para que nadie lo
+  levante como hallazgo.
+- **El resolver ante una asignación inexistente** devuelve el id de entrada sin
+  tocarlo, pero por HTTP ese caso no llega: `require_estudiante_in_asignacion`
+  hace `JOIN asignaciones a ON ... a.id = %s` y responde **403** si no existe.
+
+### Consecuencia
+
+**Ocho hallazgos reales siguen abiertos** en este dominio, encabezados por la
+ausencia total de claves foráneas, que es **el hallazgo más grave que el
+programa ha registrado sobre el esquema**. Ninguno se corrige en este turno:
+corregir cualquiera exige una orden explícita, y el 1, el 2 y el 8 **tocarían la
+base de datos**, que solo la capa 3 hizo y con autorización por paso.
+
+- Archivos modificados en este turno: **solo esta bitácora**. Producto y
+  pruebas: **ninguno**.
+- Compuerta global: **1125 pruebas, exit 0**, Ruff correcto, dependencias
+  íntegras.
+- PostgreSQL real, migraciones, staging, producción, deploy, commit y push:
+  **ninguno**. La auditoría leyó `migrations/base/` como texto, **no consultó la
+  base**.
+- Siguiente acción exacta: **esperar una orden explícita del usuario.** Los ocho
+  hallazgos siguen abiertos y ninguno se inicia por inferencia.
+
+## 2026-08-25 — hallazgo 1: migración preparada, **no aplicada**
+
+El usuario ordenó atacar el hallazgo 1, la ausencia total de claves foráneas.
+**Este turno no toca la base de datos**: deja escrita la migración y su
+comprobación previa, y se detiene antes de cualquier cosa que escriba.
+
+- Modo de acceso: mismo checkout local; Git y el árbol comprobados
+  directamente.
+- Precondiciones: rama `main`, `HEAD` `007a0cd`, con **un commit local sin
+  publicar** —el cierre de la campaña de dashboard—.
+- **Este es el segundo cambio de esquema real de todo el programa.** El primero
+  y único hasta hoy fue la capa 3, que lo hizo con ensayo en una rama de Neon,
+  `--dry-run` y **autorización explícita por paso**. Se sigue ese mismo camino.
+
+### Lo que se escribió
+
+- **`migrations/20260825_observaciones_claves_foraneas.sql`**. Repone las dos
+  claves con las definiciones **copiadas exactamente** de `asistencia` y
+  `notas_detalle`, que son las gemelas estructurales de esta tabla —mismo trío
+  estudiante/asignación/periodo— y ya usan esta convención:
+  `asignacion_id → asignaciones(id) ON DELETE CASCADE` y
+  `estudiante_id → estudiantes(id)` sin acción de borrado. **No se inventó
+  ninguna semántica nueva.**
+- **`scripts/auditar_huerfanos_observaciones.py`**. Informe **de solo lectura**:
+  abre la transacción como `READ ONLY`, no escribe nada y termina con
+  `rollback`, el criterio que fijó la capa 4. Recorre **todos** los schemas de
+  tenant, porque el runner aplica a todos y basta uno con huérfanas para
+  detener la migración.
+
+### Decisiones de diseño, con su motivo
+
+- **No destructiva.** Si encuentra filas huérfanas, la migración se **detiene
+  con el recuento** y no borra ni modifica ninguna. Es el patrón de
+  `20260722_plan_de_clases_integridad.sql`. Reparar datos es una decisión del
+  usuario, no de una migración.
+- **Idempotente.** No existe `ADD CONSTRAINT IF NOT EXISTS`, así que comprueba
+  `pg_constraint` antes de cada una. Permite reejecutarla sobre un tenant que ya
+  la tenga.
+- **No cambia la nulabilidad**, y esto es una limitación que conviene no
+  disimular: **una clave foránea no restringe `NULL`**. Una fila con
+  `estudiante_id` nulo seguirá siendo válida después de aplicarla, exactamente
+  como hoy lo es en `asistencia`. Añadir `NOT NULL` es otro cambio y exige su
+  propia decisión.
+- **Solo el hallazgo 1.** No se tocan el `CHECK` de texto —hallazgo 2— ni la
+  cota de `periodo` —hallazgo 8—, aunque irían en una migración de esta misma
+  familia. Ampliar el alcance sin orden es lo que el índice prohíbe.
+
+### La compuerta queda **en rojo, y es lo correcto**
+
+`tests/test_esquema_base.py` falla con:
+«El archivo base no incorpora 1 migracion(es):
+`20260825_observaciones_claves_foraneas.sql`».
+
+**Es la guarda que instaló la capa 3 y está haciendo su trabajo.** El
+procedimiento de `docs/MIGRACIONES.md` regenera el archivo base **después** de
+aplicar a los tenants y nunca antes, porque el generador lee la estructura real
+del schema de referencia. Así que entre añadir la migración y aplicarla existe
+**una ventana documentada en la que la compuerta está roja a propósito**. Ruff y
+`pip check` siguen correctos, y las otras **1124 pruebas pasan**.
+
+**No se debe silenciar esa prueba ni regenerar la base para calmarla**: hacerlo
+capturaría el esquema anterior sin avisar, que es justo lo que su mensaje
+advierte.
+
+### Secuencia pendiente, que decide y ejecuta el usuario
+
+1. **Ver los números primero**, sin escribir nada:
+   `python scripts/auditar_huerfanos_observaciones.py`. Sale 0 si no hay
+   huérfanas y 2 si las hay.
+2. Si hay huérfanas: **decidir qué hacer con ellas**. La migración no las toca.
+3. **Ensayar en una rama de Neon**, no en producción, apuntando ahí
+   `DATABASE_URL`.
+4. `apply_migration.py migrations/20260825_observaciones_claves_foraneas.sql
+   --dry-run` y luego sin `--dry-run`, con el **endpoint directo**, no el
+   `-pooler`.
+5. **Regenerar la base**:
+   `scripts/generar_esquema_base.py --schema tenant_colegio_1`. Solo después del
+   paso 4.
+6. **Ejecutar la compuerta**, que debe volver a verde.
+7. Commitear migración y base **juntas**.
+
+### Lo que este turno NO hizo
+
+- **No conectó con PostgreSQL.** Ni lectura, ni `--dry-run`, ni medición. El
+  esquema se leyó de `migrations/base/` como texto.
+- **No aplicó ninguna migración**, no regeneró la base, no commiteó ni publicó.
+- **No modificó código de producto ni pruebas.** El diff son **dos archivos
+  nuevos** y esta bitácora.
+- No tocó los otros siete hallazgos.
+
+### Riesgos de la operación, para cuando se decida
+
+- **La migración puede fallar por datos**, y es su comportamiento correcto. El
+  paso 1 lo anticipa sin intentarlo.
+- **`ON DELETE CASCADE` hacia asignaciones es un cambio de comportamiento
+  real**: a partir de aplicarla, borrar una asignación **borrará sus
+  observaciones**. Hoy quedarían huérfanas. Es la semántica que ya tienen
+  `asistencia` y `notas_detalle`, pero **es nueva para esta tabla** y conviene
+  decirla en voz alta. La capa 6 registró que asignaciones **desactiva con
+  `UPDATE` y nunca borra**, así que en la práctica no debería dispararse.
+- **El rollback es de esquema**: `ALTER TABLE observaciones DROP CONSTRAINT` las
+  dos. No hay rollback de datos, porque la migración no los toca.
+- Estado: la capa sigue **Cerrada**. El hallazgo 1 pasa de «registrado» a
+  **«migración preparada, sin aplicar»**. Los otros siete siguen abiertos.
+- Siguiente acción exacta: **el usuario ejecuta el paso 1** y decide. **Nada se
+  aplica sin su orden.**
+
+## 2026-08-25 — ensayo de la migración en una rama de Neon
+
+Es el **paso 3** del procedimiento de `docs/MIGRACIONES.md` y el mismo camino
+que siguió la capa 3. **Producción no se tocó en ningún momento.**
+
+- Autorización: el usuario facilitó la cadena de conexión de una rama de Neon
+  para el ensayo, tras preguntar expresamente **qué busca el cambio y si es
+  necesario**.
+- **Comprobación previa a conectar, no formal**: se verificó que el host
+  **no es el endpoint de producción** —`ep-late-smoke-aip41j6x`—, que **no es el
+  agrupado `-pooler`** —donde el runner se niega, trampa de la capa 3— y que no
+  coincide con el del `.env`. Solo después se conectó.
+- La rama contiene **los dos schemas reales**, `tenant_2005` y
+  `tenant_colegio_1`, así que sus datos son representativos.
+
+### Paso 1: la pregunta que decidía si el cambio hace falta
+
+`scripts/auditar_huerfanos_observaciones.py`, en transacción `READ ONLY` con
+`rollback`:
+
+| Schema | Filas | `estudiante_id` huérfano | `asignacion_id` huérfano | Nulos |
+|---|---:|---:|---:|---:|
+| `tenant_2005` | 39 | **0** | **0** | 0 y 0 |
+| `tenant_colegio_1` | 5 | **0** | **0** | 0 y 0 |
+
+**Cero huérfanas sobre 44 filas reales, y cero nulos.** Exit 0.
+
+**Esto confirma el análisis previo**: el cambio es **endurecimiento, no
+reparación**. La integridad se ha mantenido porque la guarda de permisos
+`require_estudiante_in_asignacion` demuestra que ambos ids existen antes de
+escribir, porque **hay un solo escritor** en todo el repositorio, y porque
+**nada borra estudiantes ni asignaciones**. Los tres extremos se verificaron
+por código antes del ensayo.
+
+### Pasos 2 y 3: dry-run y aplicación, solo en la rama
+
+- `--dry-run`: los dos tenants **PENDIENTE**, sin aplicar nada. Exit 0.
+- Aplicación real: los dos tenants **OK**. Exit 0.
+
+### Verificación del resultado, que es lo que importa
+
+No basta con que no fallara. Se comprobó qué quedó:
+
+| Schema | Claves creadas | Validadas | Filas |
+|---|---|---|---:|
+| `tenant_2005` | `observaciones_asignacion_id_fkey` → `asignaciones` **ON DELETE CASCADE**; `observaciones_estudiante_id_fkey` → `estudiantes` **ON DELETE NO ACTION** | **sí** | 39, intactas |
+| `tenant_colegio_1` | las mismas dos | **sí** | 5, intactas |
+
+Las dos semánticas coinciden **exactamente** con las de `asistencia` y
+`notas_detalle`, que era el objetivo.
+
+**Prueba de fuego**, con todo revertido después:
+
+| Intento | Resultado |
+|---|---|
+| `INSERT` con `estudiante_id` inexistente | **RECHAZADO** por la clave foránea |
+| `INSERT` con `asignacion_id` inexistente | **RECHAZADO** por la clave foránea |
+| `INSERT` legítimo | **ACEPTADO** |
+
+Las 39 filas seguían siendo 39 al terminar: **nada quedó escrito**.
+
+### Lo que este turno NO hizo
+
+- **No tocó producción.** Todo ocurrió contra la rama.
+- **No regeneró el archivo base.** Hacerlo desde la rama capturaría el esquema
+  equivocado; el procedimiento lo regenera desde `tenant_colegio_1` **después**
+  de aplicar a los tenants reales. **Por eso la compuerta sigue en rojo**, y es
+  lo correcto.
+- No commiteó, no publicó, no modificó código de producto ni pruebas.
+
+### Incidente de seguridad, registrado
+
+Un error de conexión **volcó la contraseña de la rama** en la salida, porque el
+DSN venía entre comillas y la extracción en shell no las quitó. A partir de ahí
+todas las salidas se filtraron para ocultar el DSN. **La credencial de la rama
+debe rotarse**; no afecta a producción, cuyo `.env` no se tocó en ningún
+momento.
+
+### Estado del hallazgo 1
+
+Pasa de «migración preparada» a **«migración ensayada con éxito, sin aplicar a
+producción»**. Lo que queda es **decisión del usuario**, con dos datos en la
+mano: **no hay nada roto que arreglar**, y **la migración funciona y protege**.
+
+Nota práctica que conviene no perder de vista: mientras la migración esté en
+`migrations/` sin aplicarse a los tenants reales, **la compuerta seguirá en
+rojo**. Aplazar el cambio exige por tanto **retirar el archivo** hasta que se
+decida, no simplemente dejarlo ahí.
+
+## 2026-08-25 — hallazgo 1 **aplicado a producción**
+
+Es el **segundo cambio del esquema real en todo el programa**, después de las
+tres reparaciones de la capa 3. Se hizo con orden explícita del usuario y
+siguiendo el procedimiento de `docs/MIGRACIONES.md` paso por paso.
+
+**Lo ejecutó el usuario, no el asistente.** El sistema de permisos bloqueó la
+conexión del asistente a producción; en vez de rodearlo, se le entregaron los
+comandos y él los lanzó, pasando la salida de cada paso antes de continuar. Para
+un cambio de esquema es además la práctica correcta: la mano que lanza el punto
+de no retorno es la que decide.
+
+### Secuencia ejecutada, con su evidencia
+
+| Paso | Comando | Resultado |
+|---|---|---|
+| 0 | Derivar el endpoint **directo** desde el `.env` | `HOST: ep-late-smoke-aip41j6x...` **sin `-pooler`**. Era imprescindible: el runner rechaza el agrupado |
+| 1 | `auditar_huerfanos_observaciones.py` | **0 huérfanas y 0 nulos** en los dos schemas; 39 filas en `tenant_2005` y 5 en `tenant_colegio_1` |
+| 2 | `apply_migration.py … --dry-run` | Los dos tenants **PENDIENTE**; sin cambios |
+| 3 | `apply_migration.py …` | Los dos tenants **OK** |
+| 4 | `generar_esquema_base.py --schema tenant_colegio_1` | «el contenido CAMBIO»; 30 tablas, 1 función, 1 disparador |
+| 5 | Auditoría de nuevo | «claves foraneas actuales: `observaciones_asignacion_id_fkey`, `observaciones_estudiante_id_fkey`» **en los dos schemas** |
+| 6 | `scripts/verify.py` | **1125 pruebas, exit 0**, Ruff correcto, `pip check` íntegro |
+
+**Las 44 filas siguen ahí**, 39 y 5, las mismas antes y después. **Ningún dato
+se modificó.**
+
+### La coincidencia que dio confianza
+
+Producción tenía **exactamente los mismos recuentos que la rama** —39 y 5, cero
+huérfanas—, así que el ensayo se había hecho sobre una foto fiel y lo verificado
+allí era lo que iba a ocurrir aquí. En la rama se comprobó además, con todo
+revertido, que las claves **rechazan de verdad**: inserción con estudiante
+inexistente rechazada, con asignación inexistente rechazada, legítima aceptada.
+
+### La compuerta pasó de roja a verde, como estaba previsto
+
+Al escribir la migración, `test_esquema_base.py` empezó a fallar: es la guarda
+que instaló la capa 3 y **debía** fallar hasta que el archivo base incorporara
+la migración. El paso 4 la regeneró y la compuerta volvió a **1125 pruebas, exit
+0**. El diff del archivo base son **cinco líneas**: el registro de la migración
+y las dos `ALTER TABLE`.
+
+### Qué cambia en producción, medido
+
+- **Durante la aplicación**: `ShareRowExclusiveLock` sobre `observaciones`,
+  `estudiantes` y `asignaciones` durante **~172 ms por tenant**. Bloquea
+  escrituras, **no lecturas**. Medido en la rama, no estimado.
+- **Permanente**: **+0,43 ms** por cada observación guardada, medido con
+  `EXPLAIN ANALYZE`. Borrar una asignación ahora arrastra sus observaciones, y
+  borrar un estudiante con observaciones queda bloqueado; **ninguna de las dos
+  ocurre hoy**, porque nada en la aplicación borra ninguna de las dos entidades.
+- **Nada más**: ni endpoints, ni payloads, ni status codes, ni cifras. El
+  frontend no se entera.
+
+### Qué mejoró de verdad, sin adornos
+
+La garantía de que una observación apunta a un estudiante y una asignación
+reales **pasa del código a la base**. Antes dependía de
+`require_estudiante_in_asignacion`, una guarda de permisos que existe para otra
+cosa y que un refactor podría mover o sustituir sin que nadie lo notara. Ahora
+no se puede refactorizar por accidente.
+
+**No arregló nada roto**: había cero huérfanas. Fue **prevención, no
+reparación**, y así quedó dicho antes de aplicarlo.
+
+### Rollback
+
+`ALTER TABLE observaciones DROP CONSTRAINT observaciones_estudiante_id_fkey` y
+lo mismo con `observaciones_asignacion_id_fkey`, en cada schema. Instantáneo y
+**sin datos de por medio**, porque la migración no tocó ninguno. Habría que
+regenerar el archivo base después.
+
+### Incidente registrado
+
+Durante el ensayo, un error de conexión **volcó la contraseña de la rama** en la
+salida, antes de que se filtraran los mensajes. **No afectó a producción**,
+cuyo `.env` no se leyó en voz alta en ningún momento. La credencial de la rama
+**debe rotarse**.
+
+### Estado
+
+- **Hallazgo 1: CORREGIDO Y APLICADO A PRODUCCIÓN.** Es el primero de los nueve
+  de este dominio que se resuelve, y el primero de todo el programa que se
+  resuelve **en el esquema** en vez de en el código.
+- Quedan **siete abiertos** —el 3 estaba obsoleto—, entre ellos el `CHECK` de
+  texto y la cota de `periodo`, que son de esta misma familia y **irían por
+  migración**. Ninguno se inicia sin orden.
+- **Pendiente de commitear y publicar.** La migración y el archivo base deben ir
+  **en el mismo commit**, para que el repositorio nunca diga dos cosas
+  distintas. El código de la aplicación **no cambió**: no hay nada que
+  desplegar.

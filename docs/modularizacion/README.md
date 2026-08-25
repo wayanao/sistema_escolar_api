@@ -1,6 +1,6 @@
 # Guía maestra de evolución segura del backend
 
-Última revisión: 2026-08-24.
+Última revisión: 2026-08-25.
 
 ## Propósito
 
@@ -41,7 +41,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 4 | Reportes financieros | Dominio modular, N+1 eliminado y consultas medidas | **Cerrada**; N+1 de 5N a 15 constantes, medido en producción | [04_REPORTES_FINANCIEROS.md](./04_REPORTES_FINANCIEROS.md) |
 | 5 | Pagos y tipos de pago | Dominio financiero modularizado y protegido | **Cerrada**; SQL inline de 23 a 3, sin tocar la base | [05_PAGOS_TIPOS_PAGO.md](./05_PAGOS_TIPOS_PAGO.md) |
 | 6 | Asignaciones y estudiantes | Dominios grandes separados con contratos estables | **Cerrada**; SQL inline de 52 a 1; lock de concurrencia corregido y publicado en `721f382`; verificación PostgreSQL real pendiente | [06_ASIGNACIONES_ESTUDIANTES.md](./06_ASIGNACIONES_ESTUDIANTES.md) |
-| 7 | Resto de dominios — **`dashboard` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `dashboard` el 2026-08-19; publicada y verificada a mano | [07_DASHBOARD.md](./07_DASHBOARD.md) |
+| 7 | Resto de dominios — **`dashboard` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `dashboard` el 2026-08-19; permiso por asignación activa corregido localmente el 2026-08-25, staging pendiente | [07_DASHBOARD.md](./07_DASHBOARD.md) |
 | 7 | Resto de dominios — **`notas` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `notas` el 2026-08-19; verificada a mano. **Publicada el 2026-08-20**, después de escribirse su bitácora | [07_NOTAS.md](./07_NOTAS.md) |
 | 7 | Resto de dominios — **`ventas` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `ventas` el 2026-08-20; verificada a mano. **Publicada el 2026-08-20**, después de escribirse su bitácora | [07_VENTAS.md](./07_VENTAS.md) |
 | 7 | Resto de dominios — **`asistencia` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `asistencia` el 2026-08-21; verificada a mano y publicada. N+1 de permisos corregido y publicado en `bbf3bfb`; staging de la corrección pendiente | [07_ASISTENCIA.md](./07_ASISTENCIA.md) |
@@ -63,8 +63,9 @@ añade `FOR NO KEY UPDATE` a las dos precondiciones existentes de profesor y
 curso, conserva **12/10 consultas** en alta/edición y serializa los cruces sin
 migración ni cambios de frontend. La compuerta local terminó con **1116
 pruebas**. El reflog local de `origin/main` registra los pushes de esas
-correcciones en `9a90462`, `bbf3bfb` y `721f382`; `HEAD` y esa referencia
-coinciden en `721f382`. Esto no demuestra despliegue ni CI: staging, la prueba
+correcciones en `9a90462`, `bbf3bfb` y `721f382`; después se publicó la
+consolidación exclusivamente documental `1ab8912`, y `HEAD` y esa referencia
+coincidían allí antes de la corrección local de dashboard. Esto no demuestra despliegue ni CI: staging, la prueba
 con dos conexiones PostgreSQL reales aplicable al lock, despliegue y evidencia
 posterior de GitHub Actions siguen pendientes y bajo control del usuario. Las
 menciones cronológicas anteriores que
@@ -81,6 +82,19 @@ conserva cinco tokens. El modelo formal continúa en `R=0`; si el `H` real fuera
 configuración. Una futura ampliación exige demostrar la cota, separar `H` de una
 reserva formal `R`, confirmar procesos/réplicas y medir carga en staging; no es
 una corrección pendiente para mantener el estado seguro actual.
+
+El 2026-08-25 se corrigió localmente, con orden explícita y sin reabrir la capa,
+el primer hallazgo de `dashboard`: las dos precondiciones de rendimiento exigen
+ahora `asignaciones.activo = TRUE`. El cambio añade dos predicados, conserva
+parámetros, consultas, conexiones, tenant, ownership y los mensajes 403, y no
+requiere cambios de frontend. Las pruebas relacionadas terminaron con **88
+passed** y la compuerta global con **1116 passed**, Ruff correcto y dependencias
+íntegras. La primera ejecución global dentro del sandbox fue inválida por 30
+errores de setup al acceder al temporal de pytest; la repetición con acceso
+válido fue la evidencia aceptada. No hubo PostgreSQL, migración, staging,
+producción, deploy, commit ni push. Quedan **nueve hallazgos de dashboard**;
+staging, verificación manual, publicación y CI de esta corrección siguen
+pendientes.
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
 cierre y el usuario ordene continuar, se crea su sucesora desde
@@ -937,9 +951,9 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   otro despliegue.
 - Capa 7 **cerrada para `dashboard`** el 2026-08-19. Compuerta de cierre: **exit 0
   con 756 pruebas**, Ruff correcto y `pip check` íntegro. La suite pasó de 714 al
-  activar la capa a 756. Cerrarla **no cancela los diez hallazgos de 7.0**, que
-  siguen vivos, empezando por el `activo` ausente de las dos precondiciones de
-  permiso: un profesor con la asignación desactivada conserva el acceso.
+  activar la capa a 756. Cerrarla no canceló los diez hallazgos originales. El
+  primero —el `activo` ausente de las dos precondiciones— quedó corregido
+  localmente el 2026-08-25 con orden explícita; **nueve siguen abiertos**.
 - Capa 7 **activada para el dominio `notas`** el 2026-08-19 por orden explícita
   del usuario, **y solo ese dominio**. Commit base:
   `eee8aec8725fc0bdd4a98fd2fd29cb88502c56e1`, el `HEAD` limpio vigente en `main`
@@ -2370,16 +2384,17 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   `response_model`. Conserva el inventario de **7.0**, ya **cerrada**: sus 7
   entradas HTTP con sus cuatro modelos de permiso, la línea base de consultas y
   **conexiones** por camino, los **siete supuestos heredados resueltos** —seis
-  confirmados y uno refutado— y los **diez hallazgos sin corregir**, entre ellos
-  el `activo` ausente de las precondiciones de permiso y las dos fórmulas de
-  promedio. Registra también el cierre de **7.1**, la extracción a
+  confirmados y uno refutado— y los **diez hallazgos originalmente registrados**.
+  El primero, el `activo` ausente de las precondiciones de permiso, quedó
+  corregido localmente el 2026-08-25; las dos fórmulas de promedio y otros ocho
+  siguen abiertas. Registra también el cierre de **7.1**, la extracción a
   `dashboard_repository` con su comparador AST de **16 de 16** literales, las
   dos guardias que fallaron como señal esperada y la decisión sobre dónde viven
   las precondiciones de permiso. Deja abierto el **punto de decisión** que
   cerró la capa sin abrir una 7.2, el cierre con su rollback, su staging, su
   verificación manual y su estado de publicación, y los **riesgos que deja
-  abiertos**. Fue la fuente de continuidad **hasta que se activó `notas`**; sus
-  diez hallazgos siguen vivos y **no se corrigen desde la capa activa**.
+  abiertos**. Fue la fuente de continuidad **hasta que se activó `notas`**; hoy
+  conserva **nueve hallazgos abiertos** y la capa continúa cerrada.
 - [06_ASIGNACIONES_ESTUDIANTES.md](./06_ASIGNACIONES_ESTUDIANTES.md): **bitácora
   cerrada** de la capa 6 y fuente de continuidad **hasta que se activó la capa
   7**. Registra el commit base

@@ -178,11 +178,12 @@ Lo que sigue es un resumen para orientarse; **el estado vivo está en
 - Siguiente paso del programa: **otro dominio de la capa 7**, en espera y sin
   elegir. No se activa sin orden explícita, y una instrucción genérica de
   continuar no la autoriza.
-- **Cerrar la capa no canceló sus diez hallazgos.** Siguen vivos, y el primero
-  toca permisos: las dos precondiciones de `dashboard` no filtran por `activo`,
-  así que un profesor con la asignación desactivada conserva el acceso al
-  rendimiento de ese curso. Está en la lista de trabajo fuera de alcance, más
-  abajo.
+- Cerrar la capa no canceló sus diez hallazgos originales. El primero, que
+  tocaba permisos porque las dos precondiciones de `dashboard` no filtraban por
+  `activo`, quedó **corregido localmente el 2026-08-25 con orden explícita**.
+  Las consultas exigen ahora `activo = TRUE`, la compuerta terminó con 1116
+  pruebas y **nueve hallazgos siguen abiertos**. Staging, verificación manual,
+  publicación y CI de esta corrección permanecen pendientes.
 - La capa 6 cerró el 2026-08-17 modularizando asignaciones y estudiantes en cinco
   subcapas, cada dominio por separado: `estudiante_controller.py` pasó de **519 a
   381 líneas** y de 11 sentencias SQL inline a **0**; `asignacion_controller.py`
@@ -350,11 +351,11 @@ Lo que sigue es un resumen para orientarse; **el estado vivo está en
     quedaron mezclados. Contar `b'\r\n'` sobre los bytes del archivo es la
     comprobación fiable; el aviso de `git diff --check` sobre LF/CRLF es de
     `core.autocrlf` y **no** es un error de whitespace.
-20. **Una consulta que deliberadamente no filtra no debe vivir junto a las que
-    sí filtran.** Las dos precondiciones de permiso de `dashboard` no filtran por
-    `activo` —hallazgo abierto— y por eso **no** se llevaron a
-    `asignaciones_repository`, donde sus vecinas sí filtran: alguien las
-    «arreglaría» por vecindad. La proximidad en el código es una insinuación.
+20. **Una excepción deliberada debe quedar aislada y documentada hasta que se
+    autorice cambiarla.** Las dos precondiciones de permiso de `dashboard` se
+    mantuvieron en `dashboard_repository`, separadas de las consultas activas de
+    `asignaciones_repository`. El 2026-08-25 la orden explícita permitió añadir
+    `activo = TRUE` sin mover recursos ni ampliar el cambio a otro dominio.
 
 ## Trabajo registrado fuera del alcance de cualquier capa activa
 
@@ -363,16 +364,15 @@ esto entra en ella por inferencia: requiere una orden explícita.
 
 ### Lo que dejó abierto la capa 7 en `dashboard`
 
-Diez hallazgos, todos **registrados y sin corregir**. Cerrar la capa **no los
-cancela**.
+7.0 registró diez hallazgos. El primero quedó corregido localmente el
+2026-08-25; **nueve siguen abiertos**. Cerrar la capa no los cancela.
 
-- **Las dos precondiciones de permiso ignoran `activo`.** `profesor_tiene_curso_controller`
-  y `profesor_tiene_asignacion_en_curso_controller` consultan `asignaciones` sin
-  `activo = TRUE`, así que **un profesor cuya asignación fue desactivada conserva
-  el acceso** al rendimiento de ese curso. La consulta de cumpleaños del mismo
-  controlador **sí** filtra. Es el hallazgo más importante porque **toca
-  permisos**: corregirlo cambia quién ve qué. Una guardia de prueba falla si
-  alguien lo hace sin registrarlo.
+- ~~**Las dos precondiciones de permiso ignoraban `activo`.**~~ **Corregido
+  localmente el 2026-08-25**: `profesor_tiene_curso_controller` y
+  `profesor_tiene_asignacion_en_curso_controller` exigen ahora
+  `activo = TRUE`, conservando parámetros, conteos y mensajes 403. La guardia
+  negativa se sustituyó por una positiva. No se amplió el cambio a la consulta
+  agregada, rankings ni UX del frontend.
 - **Dos definiciones distintas de «promedio» en el mismo panel**: notas altas y
   bajas promedian **los promedios por clase**; los rankings promedian **las notas
   planas**. Con 4,0 en una clase de dos notas y 2,0 en otra de seis, la primera

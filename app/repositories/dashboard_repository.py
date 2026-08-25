@@ -21,11 +21,9 @@ modulo y los valores viajan siempre parametrizados, asi que hoy no es
 inyectable. Ninguna extraccion futura debe abrir esa construccion a entrada del
 cliente.
 
-Sobre las dos precondiciones de permiso del final: **no filtran por `activo`, y
-se conservan asi**. Es un hallazgo abierto de 7.0, no un descuido de esta
-subcapa, y corregirlo cambiaria quien puede ver que. Por eso viven aqui y no en
-`asignaciones_repository`, donde sus vecinas si filtran y alguien podria
-"arreglarlas" sin darse cuenta.
+Las dos precondiciones de permiso del final exigen `activo = TRUE`. Una
+asignacion desactivada conserva su historial, pero ya no sirve como prueba de
+acceso al rendimiento del curso.
 """
 
 
@@ -270,16 +268,13 @@ def leer_ranking_mejor_rendimiento(cursor, asignacion_id, periodo):
 
 
 def buscar_curso_de_profesor(cursor, profesor_id, curso_id):
-    """Fila testigo si ese profesor tiene alguna asignacion en ese curso.
-
-    **No filtra por `activo`**: una asignacion desactivada sigue dando acceso.
-    Es el primer hallazgo de 7.0 y se conserva tal cual.
-    """
+    """Fila testigo si ese profesor tiene una asignacion activa en ese curso."""
     cursor.execute(
             """
             SELECT 1
             FROM asignaciones
             WHERE profesor_id = %s AND curso_id = %s
+              AND activo = TRUE
             LIMIT 1
             """,
             (profesor_id, curso_id),
@@ -288,16 +283,17 @@ def buscar_curso_de_profesor(cursor, profesor_id, curso_id):
 
 
 def buscar_asignacion_de_profesor_en_curso(cursor, asignacion_id, profesor_id, curso_id):
-    """Fila testigo si esa asignacion es de ese profesor y ese curso.
+    """Fila testigo si la asignacion activa es de ese profesor y ese curso.
 
     Recibe el id **ya resuelto** a asignacion academica: quien resuelve es el
-    controlador. **Tampoco filtra por `activo`.**
+    controlador.
     """
     cursor.execute(
             """
             SELECT 1
             FROM asignaciones
             WHERE id = %s AND profesor_id = %s AND curso_id = %s
+              AND activo = TRUE
             LIMIT 1
             """,
             (asignacion_id, profesor_id, curso_id),

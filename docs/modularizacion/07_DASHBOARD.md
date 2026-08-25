@@ -1,12 +1,16 @@
 # Capa 7: dashboard
 
-Última revisión: 2026-08-19.
+Última revisión: 2026-08-25.
 
 ## Control
 
 - Estado: **Cerrada** el 2026-08-19, con sus dos subcapas **7.0 y 7.1**
   completas y la **verificación manual ejecutada por el usuario con resultado
   correcto**. Activada el 2026-08-17.
+- Corrección puntual posterior al cierre: el 2026-08-25 el usuario autorizó
+  corregir únicamente el primer hallazgo de 7.0. Las dos precondiciones de
+  rendimiento exigen ahora `asignaciones.activo = TRUE`; la capa permanece
+  **Cerrada**, sin subcapa activa, y quedan **nueve hallazgos abiertos**.
 - Commit base: `123637ee80895023ecece9c32df526ef4eddd1e5`.
 - Rama acordada: `main`.
 - Primera subcapa pendiente: **ninguna definida**. Las subcapas **7.0 y 7.1**
@@ -325,21 +329,24 @@ Lectura del resultado, sin optimizar todavía:
 Los siete criterios se cumplieron. El diff de 7.0 contiene **un solo archivo
 nuevo** y **ningún archivo rastreado modificado**, igual que los de 5.0 y 6.0.
 
-## Hallazgos de 7.0, registrados y sin corregir
+## Hallazgos de 7.0 y estado posterior
 
-Ninguno se corrige por inferencia: son hallazgos del inventario, no defectos de
-la subcapa. Corregir cualquiera exige una decisión explícita del usuario.
+7.0 registró **diez** sin corregir ninguno. La corrección puntual autorizada el
+2026-08-25 resolvió el primero; **nueve siguen abiertos**. El texto conserva la
+línea base histórica y añade el estado vigente.
 
-- **Las dos precondiciones de permiso ignoran el estado `activo`.** Es el
-  hallazgo más importante de 7.0 porque **toca permisos**.
+- **CORREGIDO LOCALMENTE EL 2026-08-25 — las dos precondiciones de permiso
+  ignoraban el estado `activo`.** Era el hallazgo más importante de 7.0 porque
+  **toca permisos**.
   `profesor_tiene_curso_controller` y
-  `profesor_tiene_asignacion_en_curso_controller` consultan `asignaciones` sin
+  `profesor_tiene_asignacion_en_curso_controller` consultaban `asignaciones` sin
   `activo = TRUE`, así que **un profesor cuya asignación fue desactivada
-  conserva el acceso** al rendimiento de ese curso. La incoherencia es interna:
+  conservaba el acceso** al rendimiento de ese curso. La incoherencia era interna:
   la consulta de cumpleaños **del mismo controlador** sí exige `a.activo = TRUE`,
   y la capa 6 dejó registrado que desactivar es precisamente como este sistema
-  «borra». Corregirlo cambia quién puede ver qué, así que no se toca sin orden.
-  Una guardia de prueba falla si alguien lo hace sin registrarlo.
+  «borra». **Estado vigente:** las dos consultas testigo conservan sus
+  parámetros y añaden `AND activo = TRUE`; si no existe una asignación activa,
+  las rutas conservan sus respuestas 403 ya caracterizadas.
 - **Hasta cuatro conexiones por petición, en serie.** El camino de notas con
   asignación abre cuatro conexiones sucesivas: una por cada precondición y una
   para la consulta. **No hay anidamiento** —cada una se cierra antes de que se
@@ -482,9 +489,10 @@ Consecuencias registradas, ninguna de ellas una deuda oculta:
 - **`response_model` y los errores de dominio no se añaden.** No quedan como
   trabajo pendiente de esta capa: quedan registrados como trabajo disponible que
   exigiría una orden explícita, igual que el resto de hallazgos abiertos.
-- Los **diez hallazgos de 7.0 siguen vivos y sin corregir**, incluido el primero,
-  que las dos precondiciones de permiso ignoran `activo`. Cerrar la capa **no los
-  resuelve ni los cancela**.
+- **Al cerrarse el 2026-08-17**, los diez hallazgos de 7.0 seguían vivos y sin
+  corregir, incluido el primero, que las dos precondiciones de permiso ignoraban
+  `activo`. El 2026-08-25 una orden posterior resolvió ese primero; nueve siguen
+  abiertos.
 
 ## Staging, rollback y verificación manual de la capa 7
 
@@ -641,7 +649,8 @@ pruebas**, Ruff correcto y `pip check` íntegro.
   clases usan `storage`.
 - No cambió rutas, payloads, status codes, permisos, tenant, ownership,
   transacciones, timeouts, dependencias ni configuración.
-- **No corrigió ninguno de los diez hallazgos** de 7.0. Siguen vivos.
+- Durante 7.0 y 7.1 **no corrigió ninguno de los diez hallazgos**. La corrección
+  puntual del 2026-08-25 resolvió el primero; **nueve siguen vivos**.
 - **No necesitó autorizar ni un solo cambio de texto SQL**, como la capa 6.
 
 ### Estado de publicación
@@ -657,10 +666,9 @@ el estado de su momento y **se conservan intactas**: eran ciertas entonces.
 
 ### Riesgos que la capa deja abiertos
 
-- **Las dos precondiciones de permiso ignoran `activo`**: un profesor con la
-  asignación desactivada conserva el acceso al rendimiento de ese curso. Es el
-  riesgo más directo que deja esta capa, y **toca permisos**, así que corregirlo
-  exige una decisión explícita.
+- ~~**Las dos precondiciones de permiso ignoran `activo`.**~~ **Corregido
+  localmente el 2026-08-25**: ambas exigen ahora `activo = TRUE`, sin cambiar
+  parámetros, conteos de consultas/conexiones ni mensajes 403.
 - Las **siete entradas** devuelven 400 con el texto de la excepción, sin
   registrar nada.
 - **Dos definiciones distintas de promedio** en el mismo panel, y una tercera en
@@ -668,7 +676,7 @@ el estado de su momento y **se conservan intactas**: eran ciertas entonces.
 - Hasta **cuatro conexiones por petición** en el camino más caro, con la
   asignación académica resuelta dos veces. Pertenece a la auditoría de capacidad
   de la capa 2.
-- El resto de los diez hallazgos de 7.0, más `response_model` sin añadir.
+- Los **nueve hallazgos restantes** de 7.0, más `response_model` sin añadir.
 - Heredados: calibración de `DB_STATEMENT_TIMEOUT_MS` de la capa 1, ausencia de
   evidencia de GitHub Actions desde la capa 0, la credencial privilegiada de la
   capa 4 sin rotar, los hallazgos abiertos de las capas 5 y 6 —incluida la clave
@@ -1065,13 +1073,95 @@ Con la verificación manual ejecutada, la capa queda cerrada.
 - Siguiente acción exacta: esperar una orden explícita del usuario. Una
   instrucción genérica de continuar no autoriza activar otro dominio.
 
+## 2026-08-25 — corrección puntual posterior al cierre: asignaciones activas en permisos
+
+- Modo de acceso: mismo checkout local en
+  `C:\Users\David\Documents\sistema_escolar_api`; Git y commits locales
+  validados directamente. El frontend se revisó en solo lectura en su checkout
+  local separado.
+- Autorización: después de revisar los diez hallazgos, el usuario eligió
+  `dashboard` y respondió «sí» a la pregunta explícita de corregir únicamente
+  el hallazgo de las precondiciones que ignoraban `activo`. La autorización no
+  reactiva la capa ni abre otra subcapa.
+- Precondiciones antes de modificar: rama acordada `main`; árbol limpio
+  confirmado con `git status --porcelain=v1 --branch`, que mostró solo
+  `## main...origin/main`; `HEAD`
+  `1ab891208b1bcd3f4f6249ff40457ed3b1e82834`, coincidente con la referencia
+  local `origin/main`; y base de continuidad
+  `2ec924a3308581b746a61fa24a44f71433034dbc` comprobada como ancestro.
+- Continuidad: los once commits posteriores al base quedaron revisados por el
+  rango `2ec924a..HEAD`. Los cinco de `super_admin`, las dos correcciones de
+  caracterización, las tres correcciones puntuales del 2026-08-24 y la
+  consolidación documental final corresponden a los archivos y ejecuciones
+  registrados en sus bitácoras; no apareció divergencia sin explicar.
+- Hallazgo confirmado: `buscar_curso_de_profesor` y
+  `buscar_asignacion_de_profesor_en_curso` aceptaban filas de `asignaciones`
+  desactivadas. Afectaba únicamente a
+  `GET /dashboard/notas-bajas/{profesor_id}` y
+  `GET /dashboard/notas-altas/{profesor_id}`.
+- Caracterización antes del cambio: las dos suites propias terminaron con
+  **71 passed**. La guardia se invirtió primero para exigir el filtro y produjo
+  la señal esperada contra la línea base: **1 failed, 41 deselected**, por la
+  ausencia exacta de `AND activo = TRUE`.
+- Producto modificado: únicamente
+  `app/repositories/dashboard_repository.py`. Se añadió `AND activo = TRUE` a
+  las dos consultas testigo y se actualizaron sus docstrings. No cambiaron
+  firmas, parámetros, orden, `LIMIT`, recursos ni llamadores.
+- Prueba modificada: `tests/test_dashboard_caracterizacion.py`. La antigua
+  guardia negativa exige ahora el filtro en ambas consultas y conserva la
+  secuencia exacta de parámetros `(7, 4)`, `(12,)`, `(77, 7, 4)`.
+- Contrato conservado: sin curso continúa el 422; un curso sin asignación activa
+  conserva el 403 «No tienes permisos para consultar este curso»; y una
+  asignación que no supera la pertenencia conserva el 403 «La asignación no
+  pertenece al curso seleccionado». Las asignaciones activas conservan el
+  camino de éxito. Tenant, ownership, payloads y respuestas no cambian.
+- Coste conservado: no se añadió ninguna consulta ni conexión. Los caminos
+  fijados siguen en 2 consultas/2 conexiones sin asignación, 6/4 con asignación
+  como profesor y 5/3 como admin.
+- Frontend: no requiere cambio. Sus selectores consumen `/mis-clases`, eliminan
+  una selección persistida que ya no aparezca y, ante un 403 obsoleto, vacían
+  el rendimiento y muestran el mensaje genérico existente. Un tratamiento UX
+  específico para 403/404 sería otro alcance.
+- Verificación: la prueba focal quedó en **1 passed**; dashboard, rutas y
+  permisos terminaron con **88 passed**; Ruff específico informó
+  **All checks passed**. La primera compuerta global dentro del sandbox fue
+  inválida: 30 errores de setup por `PermissionError` sobre el directorio
+  temporal de pytest, con 1086 pruebas ya pasadas, Ruff y `pip check`
+  correctos. La repetición autorizada con acceso válido terminó en **1116
+  passed**, 5 warnings heredados, Ruff correcto, `pip check` íntegro y exit 0.
+- Revisión de alcance y whitespace: `git diff --check` terminó en exit 0; los
+  avisos fueron únicamente de normalización futura LF/CRLF. El diff contiene
+  un archivo de producto, una prueba y tres documentos de continuidad, todos
+  pertenecientes a esta corrección.
+- Riesgo residual, no ampliado: las precondiciones y la lectura final siguen en
+  conexiones separadas, por lo que existe una ventana TOCTOU. Además, la
+  consulta agregada sin `asignacion_id` no filtra por `asi.activo` y puede
+  incluir historial de otra asignación inactiva si el profesor conserva una
+  asignación activa en el curso. Los rankings usan otra guardia. Corregir
+  cualquiera de esos comportamientos requiere una orden distinta.
+- PostgreSQL real, migraciones, producción, staging, deploy, commit y push:
+  **ninguno**. No se atribuye GitHub Actions ni despliegue de esta corrección.
+- Staging propuesto: con un profesor del tenant de prueba, comprobar notas
+  altas/bajas para un curso activo; desactivar su única asignación y verificar
+  ambos 403; reactivarla y verificar de nuevo el payload exitoso. Repetir con
+  filtro de asignación y confirmar aislamiento entre tenants.
+- Rollback: retirar exclusivamente los dos predicados, restaurar la guardia de
+  caracterización y revertir esta documentación. No hay rollback de datos.
+- Estado: la capa continúa **Cerrada**. El primero de los diez hallazgos queda
+  corregido localmente; **nueve siguen abiertos**. La verificación manual y
+  staging de esta corrección quedan pendientes.
+- Siguiente acción exacta: el usuario revisa el diff y decide cuándo ejecutar
+  staging/publicar. No iniciar otro hallazgo de dashboard ni otra capa.
+
 ## Entrega al próximo chat
 
-- Capa activa: **7, dashboard**, y solo ese dominio. Activada el 2026-08-17.
+- Capa activa: **Ninguna**. `dashboard` continúa cerrado; la corrección puntual
+  del 2026-08-25 no lo reactivó.
 - Última subcapa terminada: **7.1**, cerrada el 2026-08-17. Con ella la
   frontera de persistencia del dominio quedó cerrada.
-- **Capa cerrada** el 2026-08-19. La verificación manual la ejecutó el usuario
-  ese día, en local, completa y con resultado **correcto**. No quedan bloqueos.
+- **Capa cerrada** el 2026-08-19. La verificación manual original fue correcta.
+  Para la corrección puntual del 2026-08-25 siguen pendientes staging y
+  verificación manual.
 - Primera subcapa pendiente: **ninguna.** El usuario decidió **cerrar la capa
   aquí**, sin abrir 7.2: `response_model` y los errores de dominio **no se
   añaden** y no quedan como deuda de esta capa, sino como trabajo que exigiría
@@ -1110,10 +1200,9 @@ Con la verificación manual ejecutada, la capa queda cerrada.
 - Lo que hay que recordar antes de tocar nada:
   1. **Un solo dominio.** La capa 7 es «uno a la vez»; los demás necesitan su
      propia bitácora y su propia orden.
-  2. **No corregir los diez hallazgos de 7.0**, y menos el primero: las dos
-     precondiciones de permiso ignoran `activo`, así que un profesor con la
-     asignación desactivada conserva el acceso. **Cambiarlo es cambiar
-     permisos.**
+  2. El primero de los diez hallazgos quedó corregido con orden explícita: las
+     dos precondiciones exigen `activo = TRUE`. **Los nueve restantes siguen
+     abiertos** y no se corrigen por inferencia.
   3. **No cambiar el ciclo de vida de las conexiones.** Cuatro funciones siguen
      con `get_connection()` y `try/finally`; convertirlas es trabajo de la capa
      1 y no está autorizado aquí.
@@ -1121,12 +1210,8 @@ Con la verificación manual ejecutada, la capa queda cerrada.
      centro del punto de decisión abierto.
   5. **En un panel, la cifra es el contrato.** Este dominio usa **dos** fórmulas
      de promedio distintas, y el sistema una tercera en estudiantes.
-  6. **Las dos precondiciones viven en `dashboard_repository` a propósito**, no
-     en `asignaciones_repository`, para que nadie «arregle» su falta de `activo`
-     por vecindad. La decisión y su evidencia están en Decisiones.
-- Siguiente acción exacta: **esperar una orden explícita del usuario**. La capa 7
-  sigue teniendo dominios en espera —`notas`, `boletin`, `asistencia`,
-  `observaciones`, `planilla`, `planeador_anual`, `plan_de_clases`, `ventas`,
-  `branding`— y **ninguno se activa sin orden**. Una instrucción genérica de
-  continuar no la autoriza. `PROMPT_CONTINUACION.md` conserva una autorización
-  preparada que exige rellenar el nombre del dominio antes de pegarla.
+  6. Las dos precondiciones permanecen en `dashboard_repository` y ahora
+     filtran `activo`; no se movieron recursos ni se amplió el cambio a
+     `asignaciones_repository`.
+- Siguiente acción exacta: el usuario revisa este diff y decide cuándo ejecutar
+  staging/publicar. **No iniciar otro hallazgo ni activar otra capa.**

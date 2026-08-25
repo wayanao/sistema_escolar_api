@@ -410,20 +410,15 @@ def test_pertenencia_resuelve_la_asignacion_academica_antes_de_comprobar(espia):
     assert registro.parametros[1] == (77, 7, 4)
 
 
-def test_las_precondiciones_de_permiso_ignoran_el_estado_activo(espia):
-    """Guardia de un hallazgo de 7.0, registrado y sin corregir.
-
-    Ninguna de las dos filtra por activo, asi que una asignacion desactivada
-    sigue dando acceso al rendimiento de ese curso. La consulta de cumpleanos si
-    filtra. Corregirlo cambia permisos y exige decision explicita del usuario:
-    si alguien lo hace, esta prueba falla y hay que registrarlo, no arreglarla.
-    """
+def test_las_precondiciones_de_permiso_exigen_asignacion_activa(espia):
+    """Una asignacion desactivada no sirve como prueba de acceso al rendimiento."""
     registro = espia(unicos=[(77,), (1,)])
     dashboard_controller.profesor_tiene_curso_controller(7, 4)
     dashboard_controller.profesor_tiene_asignacion_en_curso_controller(7, 4, 12)
 
-    assert "activo" not in registro.textos[0].lower()
-    assert "activo" not in registro.textos[2].lower()
+    assert "AND activo = TRUE" in registro.textos[0]
+    assert "AND activo = TRUE" in registro.textos[2]
+    assert registro.parametros == [(7, 4), (12,), (77, 7, 4)]
 
 
 # --------------------------------------------------------------------------

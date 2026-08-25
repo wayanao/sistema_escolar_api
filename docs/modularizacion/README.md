@@ -122,6 +122,26 @@ registrarlo sin retirar nada**, como la capa 6 hizo con su código muerto
 duplicado; retirarlo exigiría una orden explícita. Hallazgos de dashboard
 abiertos: **ocho** —siete heredados de 7.0 más el undécimo—.
 
+**El hallazgo del promedio, refutado el 2026-08-25 antes de corregirlo.** Al ir
+a atacarlo se comprobó que **el diagnóstico de 7.0 está equivocado en su parte
+central**, y que corregirlo según ese texto habría sido una **regresión**. Los
+rankings filtran **una sola asignatura**, y en ese ámbito promedio de promedios
+y promedio plano son **matemáticamente idénticos**, porque el `AVG` exterior
+recorre un único grupo y `promedio_clase` no se trunca antes; el **2,50** del
+ejemplo **no lo calcula ninguna consulta**, porque exige cruzar asignaturas con
+promedio plano y eso no existe; y el promedio de promedios **coincide con el del
+boletín** que 7.0 de `notas` registró, así que es el criterio correcto para un
+agregado multi-asignatura. **En su lugar se demostraron dos divergencias
+reales**: `ROUND(…, 1)` en el expediente frente a `TRUNC(…, 2)` en el dashboard
+**para el mismo ámbito** —cuatro ejemplos en los que el estudiante sale
+**aprobado en una pantalla y en rojo en la otra**—, y que notas altas y bajas
+**no filtran por `periodo`** mientras los rankings sí. **Decisión del usuario:
+dejar las dos registradas y sin corregir**, la primera porque cruza a
+`estudiantes`, un dominio ya migrado, y porque elegir el redondeo exige antes
+**una decisión académica, no técnica**. Ninguna se marca como resuelta. El
+recuento pasa a **nueve** hallazgos abiertos: seis heredados intactos, las dos
+divergencias nuevas y el undécimo. **No se modificó producto ni pruebas.**
+
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
 cierre y el usuario ordene continuar, se crea su sucesora desde
 `PLANTILLA_CAPA.md`, se registra el commit base vigente y se actualiza esta

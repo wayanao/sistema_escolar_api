@@ -339,8 +339,14 @@ autorizadas el 2026-08-25 resolvieron los tres primeros; **siete siguen
 abiertos**. El texto conserva la línea base histórica y añade el estado vigente.
 
 **Hay además un hallazgo undécimo, que no venía de 7.0: lo introdujeron las
-propias correcciones.** Está al final de la lista, marcado como tal. El total
-abierto es por tanto **ocho**: los siete heredados más ese.
+propias correcciones.** Está al final de la lista, marcado como tal.
+
+**Y el 2026-08-25 uno de los siete heredados —las dos definiciones de
+promedio— quedó refutado en su parte central** al ir a corregirlo, y **sustituido
+por dos divergencias que sí están demostradas**. El recuento vigente de
+hallazgos abiertos es por tanto **nueve**: **seis** heredados de 7.0 que siguen
+intactos, las **dos** divergencias que sustituyen al refutado, y el
+**undécimo**.
 
 - **CORREGIDO Y PUBLICADO EN `9f19089` EL 2026-08-25 — las dos precondiciones de permiso
   ignoraban el estado `activo`.** Era el hallazgo más importante de 7.0 porque
@@ -376,6 +382,73 @@ abierto es por tanto **ocho**: los siete heredados más ese.
   mismo estudiante aparece aprobado en un panel y en rojo en el otro. Y la capa
   6 ya registró una **tercera** en estudiantes, `ROUND(..., 1)`. Ninguna es un
   error; son contratos distintos que hoy nadie declara.
+
+  > **REVISADO EL 2026-08-25: el párrafo anterior está equivocado en su parte
+  > central y se conserva porque es lo que 7.0 registró.** Al ir a corregirlo se
+  > comprobó que **las dos fórmulas nunca se aplican al mismo ámbito**, así que
+  > no se contradicen:
+  >
+  > - los rankings filtran `n.asignacion_id = %s`, es decir **una sola
+  >   asignatura a la vez**. Dentro de una sola asignatura, promedio de
+  >   promedios y promedio plano son **matemáticamente idénticos**, porque el
+  >   `AVG` exterior recorre un único grupo y `promedio_clase` **no se trunca**
+  >   antes de entrar en él. Comprobado con tres juegos de notas: 3 y 3, 3 y 3,
+  >   3,47 y 3,47;
+  > - la divergencia 3,00 frente a 2,50 **exige dos asignaturas o más**, y en
+  >   ese caso **la aplicación nunca calcula el 2,50**: no existe ninguna
+  >   consulta que promedie notas planas cruzando asignaturas. Con el ejemplo
+  >   del párrafo, los rankings mostrarían **4,00** y **2,00**, cada uno en su
+  >   asignatura, nunca 2,50;
+  > - que un estudiante salga aprobado en notas altas y en rojo en un ranking
+  >   **sí ocurre**, pero porque los dos paneles **miden cosas distintas** —el
+  >   conjunto de sus asignaturas frente a una asignatura concreta—, no por la
+  >   fórmula. Eso es esperable, no un defecto.
+  >
+  > Además, el promedio de promedios **es el criterio correcto** para el
+  > agregado multi-asignatura y **coincide con el del boletín**, que 7.0 de
+  > `notas` registró como «el promedio de los promedios». Cambiarlo a plano
+  > sería una **regresión**: haría que una asignatura con más notas pesara más
+  > que otra con menos.
+  >
+  > **Lo que sí quedó demostrado son otras dos divergencias**, y son las que
+  > importan; ver los dos puntos siguientes.
+
+- **Divergencia real 1: `TRUNC(…, 2)` frente a `ROUND(…, 1)` para la misma
+  cifra.** El expediente del estudiante calcula el promedio por materia con
+  `ROUND(AVG(n.nota), 1)` en `estudiantes_repository.leer_promedios_por_materia`
+  y el dashboard con `TRUNC(…, 2)`. **Aquí el ámbito sí es el mismo** —un
+  estudiante en una materia—, así que las dos cifras son directamente
+  comparables y **discrepan**. Cuatro ejemplos comprobados, todos con el corte
+  en 3,0: notas 2,9/3,0/3,0 dan **3,0** en el expediente y **2,96** en el
+  dashboard; 2,95/2,95 dan **3,0** y **2,95**; 3,0/2,9 dan **3,0** y **2,95**;
+  2,5/3,4 dan **3,0** y **2,95**. En los cuatro casos el estudiante aparece
+  **aprobado en el expediente y en rojo en el dashboard**. Es el efecto que el
+  párrafo original describía, pero por el **redondeo**, no por el promedio de
+  promedios. Corregirlo **cruza a `estudiantes`, un dominio ya migrado**, y
+  exige decidir cuál de las dos es el contrato.
+
+  **DECISIÓN DEL USUARIO EL 2026-08-25: dejar las dos como están**, registrando
+  la divergencia sin corregirla. Se le presentaron las cuatro salidas —adoptar
+  `TRUNC(…, 2)`, adoptar `ROUND(…, 1)`, consultar antes la regla académica real
+  del colegio, o no tocar nada— y eligió no tocar nada. **Queda vigente que la
+  misma nota se vea aprobada en el expediente y en rojo en el dashboard.** Es el
+  mismo criterio que la capa 6 aplicó a su código muerto y que el hallazgo 11
+  acaba de recibir: se registra, no se corrige. Cambiarlo exigiría una orden
+  explícita, y además **una decisión previa sobre cuál es la regla académica**,
+  que no es técnica.
+
+- **Divergencia real 2: notas altas y bajas no filtran por `periodo` y los
+  rankings sí.** `leer_estudiantes_por_promedio` **no tiene filtro de periodo**,
+  así que mezcla todo el año; `leer_ranking_bajo_rendimiento` y su gemela
+  filtran `n.periodo = %s`. En el mismo panel conviven una cifra anual y una
+  cifra por periodo sin que nada lo indique. Es la misma familia que el hallazgo
+  de `periodo` que 7.0 de `notas` registró en su dominio.
+
+  **DECISIÓN DEL USUARIO EL 2026-08-25: dejarlo registrado, sin corregir.**
+  Añadir el filtro cambiaría la cifra que el panel muestra hoy —pasaría de anual
+  a por periodo— y obligaría a decidir **qué periodo por defecto** y si la ruta
+  lo acepta como parámetro. Es una decisión propia, separada de la del redondeo,
+  y no se toma por inferencia.
 - **Las siete entradas absorben `Exception` y responden 400 con `str(e)`.** Un
   fallo de infraestructura se presenta como error del cliente **y el texto de la
   excepción viaja en el `detail`**, así que un error de PostgreSQL puede llegar
@@ -726,9 +799,12 @@ el estado de su momento y **se conservan intactas**: eran ciertas entonces.
 - ~~La asignación académica se resolvía **dos veces**.~~ **Corregido localmente
   el 2026-08-25**: la lectura reutiliza la resolución de la validación; profesor
   y admin ahorran una consulta.
-- Los **siete hallazgos restantes** de 7.0, más el **undécimo que introdujeron
-  las propias correcciones** —las dos precondiciones huérfanas—, más
-  `response_model` sin añadir. **Ocho abiertos en total.**
+- Los **seis hallazgos heredados** de 7.0 que siguen intactos, las **dos
+  divergencias** que sustituyeron al del promedio tras refutarlo —el redondeo
+  `ROUND(…, 1)` frente a `TRUNC(…, 2)` y el `periodo` ausente—, y el **undécimo
+  que introdujeron las propias correcciones**, más `response_model` sin añadir.
+  **Nueve abiertos en total**, y el usuario decidió el 2026-08-25 **no corregir
+  las dos divergencias nuevas**.
 - Heredados: calibración de `DB_STATEMENT_TIMEOUT_MS` de la capa 1, ausencia de
   evidencia de GitHub Actions desde la capa 0, la credencial privilegiada de la
   capa 4 sin rotar, los hallazgos abiertos de las capas 5 y 6 —incluida la clave
@@ -1345,8 +1421,9 @@ Con la verificación manual ejecutada, la capa queda cerrada.
   valor ya validado.
 - Estado: la capa continúa **Cerrada**. Tres de los diez hallazgos originales
   están corregidos y **siete siguen abiertos**, a los que se suma el undécimo
-  que las correcciones introdujeron: **ocho en total**. Staging, verificación
-  manual,
+  que las correcciones introdujeron: **ocho en total** en esa fecha. *(El
+  recuento cambió a **nueve** ese mismo día al refutarse el del promedio y
+  sustituirse por dos.)* Staging, verificación manual,
   publicación y CI de esta corrección quedan pendientes.
 - Siguiente acción exacta: el usuario revisa el diff y decide cuándo ejecutar
   staging/publicar. El siguiente hallazgo son las dos definiciones distintas de
@@ -1394,6 +1471,76 @@ Con la verificación manual ejecutada, la capa queda cerrada.
 - Siguiente acción exacta: el usuario commitea y decide cuándo publicar. **No
   retirar las dos funciones huérfanas ni iniciar el hallazgo del promedio sin
   una orden explícita.**
+
+## 2026-08-25 — el hallazgo del promedio, revisado antes de corregirlo
+
+- Modo de acceso: mismo checkout local; Git y el árbol comprobados
+  directamente.
+- Autorización: el usuario ordenó continuar tras identificarse expresamente
+  este hallazgo como el siguiente. La orden cubre **solo** las dos definiciones
+  de promedio.
+- Precondiciones: rama `main`, árbol **limpio**, `HEAD` y `origin/main`
+  coincidentes en `6130ce245d4ac6def4736da58251addd68d4e9ad`, que contiene la
+  corrección del hallazgo 3 y el registro del 11.
+- **No se modificó producto ni pruebas.** La revisión previa demostró que el
+  hallazgo, tal como 7.0 lo redactó, **está equivocado en su parte central**, y
+  corregirlo según ese texto habría sido una **regresión**.
+- **Evidencia de la refutación**, obtenida leyendo las cuatro consultas y
+  calculando ambas fórmulas:
+  - los rankings filtran **una sola asignatura**, y en ese ámbito promedio de
+    promedios y promedio plano son **idénticos**, porque el `AVG` exterior
+    recorre un único grupo y `promedio_clase` no se trunca antes. Verificado con
+    tres juegos de notas;
+  - el 2,50 del ejemplo **no lo calcula ninguna consulta de la aplicación**:
+    exige cruzar asignaturas con promedio plano, y eso no existe. Con ese mismo
+    ejemplo los rankings darían 4,00 y 2,00;
+  - el promedio de promedios **coincide con el del boletín**, registrado por
+    7.0 de `notas`, y es el criterio correcto para un agregado
+    multi-asignatura.
+- **Dos divergencias reales encontradas en su lugar**, ambas añadidas a la lista
+  de hallazgos:
+  1. **`ROUND(…, 1)` en el expediente frente a `TRUNC(…, 2)` en el dashboard**,
+     para **el mismo ámbito** —un estudiante en una materia—. Cuatro ejemplos
+     comprobados en los que el estudiante sale **aprobado en el expediente y en
+     rojo en el dashboard**: 2,9/3,0/3,0 → 3,0 frente a 2,96; 2,95/2,95 → 3,0
+     frente a 2,95; 3,0/2,9 → 3,0 frente a 2,95; 2,5/3,4 → 3,0 frente a 2,95.
+     **Es el efecto que el hallazgo original describía, pero por el redondeo.**
+  2. **Notas altas y bajas no filtran por `periodo`; los rankings sí.** El
+     mismo panel mezcla una cifra anual con una cifra por periodo.
+- **Ninguna de las dos se corrige en este turno.** La primera **cruza a
+  `estudiantes`, un dominio ya migrado**, y las dos cambian **la cifra que ve el
+  usuario**, así que exigen una decisión explícita sobre cuál es el contrato.
+  No se decide por inferencia.
+- Archivos modificados: **solo esta bitácora**. Producto y pruebas: **ninguno**.
+- Compuerta global: **1121 pruebas, exit 0**, Ruff correcto y dependencias
+  íntegras, sin cambios respecto al commit publicado.
+- PostgreSQL real, migraciones, staging, producción, deploy, commit y push:
+  **ninguno**.
+- **Decisiones del usuario en este mismo turno, tras presentarle las salidas de
+  cada una:**
+  - sobre el **redondeo**, con cuatro salidas ofrecidas —adoptar `TRUNC(…, 2)`,
+    adoptar `ROUND(…, 1)`, consultar antes la regla académica del colegio, o no
+    tocar nada—: **dejar las dos como están**, registrando la divergencia. Queda
+    vigente que la misma nota se vea aprobada en el expediente y en rojo en el
+    dashboard;
+  - sobre el **`periodo` ausente**, con dos salidas: **dejarlo registrado**, sin
+    añadir el filtro.
+- **Ninguna de las dos se marca como corregida ni como resuelta.** Conservan su
+  riesgo íntegro. Es el mismo criterio que la capa 6 aplicó a su código muerto y
+  que el hallazgo 11 recibió horas antes: **se registra, no se corrige**.
+- **`estudiantes_repository` no se tocó**, que era la condición para no ampliar
+  el alcance a un dominio ya migrado.
+- Estado: la capa continúa **Cerrada**. El hallazgo del promedio queda
+  **refutado en su parte central y sustituido por dos divergencias reales**, las
+  dos **abiertas y registradas por decisión explícita**. Recuento vigente:
+  **nueve** hallazgos abiertos.
+- Siguiente acción exacta: **esperar una orden explícita del usuario.** No queda
+  ningún hallazgo en curso. Los que siguen —las siete entradas que absorben
+  `Exception` y devuelven `str(e)` al cliente, la doble validación de `dias`, la
+  pareja de literales gemelos, las f-strings en SQL y el `periodo: int = 1`
+  inalcanzable— **no se inician sin orden**, y ninguna de las dos divergencias
+  recién registradas se corrige sin una decisión previa sobre cuál es la regla
+  académica.
 
 ## Entrega al próximo chat
 

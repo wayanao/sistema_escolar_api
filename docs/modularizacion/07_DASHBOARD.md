@@ -7,10 +7,12 @@
 - Estado: **Cerrada** el 2026-08-19, con sus dos subcapas **7.0 y 7.1**
   completas y la **verificación manual ejecutada por el usuario con resultado
   correcto**. Activada el 2026-08-17.
-- Corrección puntual posterior al cierre: el 2026-08-25 el usuario autorizó
-  corregir únicamente el primer hallazgo de 7.0. Las dos precondiciones de
-  rendimiento exigen ahora `asignaciones.activo = TRUE`; la capa permanece
-  **Cerrada**, sin subcapa activa, y quedan **nueve hallazgos abiertos**.
+- Correcciones puntuales posteriores al cierre: el 2026-08-25 el usuario
+  autorizó primero exigir `asignaciones.activo = TRUE` en las dos
+  precondiciones de rendimiento y después reducir las conexiones seriales de
+  ese flujo. La primera quedó publicada en `9f19089`; la segunda permanece
+  local. La capa sigue **Cerrada**, sin subcapa activa, y quedan **ocho
+  hallazgos abiertos**.
 - Commit base: `123637ee80895023ecece9c32df526ef4eddd1e5`.
 - Rama acordada: `main`.
 - Primera subcapa pendiente: **ninguna definida**. Las subcapas **7.0 y 7.1**
@@ -331,11 +333,11 @@ nuevo** y **ningún archivo rastreado modificado**, igual que los de 5.0 y 6.0.
 
 ## Hallazgos de 7.0 y estado posterior
 
-7.0 registró **diez** sin corregir ninguno. La corrección puntual autorizada el
-2026-08-25 resolvió el primero; **nueve siguen abiertos**. El texto conserva la
-línea base histórica y añade el estado vigente.
+7.0 registró **diez** sin corregir ninguno. Las dos correcciones puntuales
+autorizadas el 2026-08-25 resolvieron los dos primeros; **ocho siguen abiertos**.
+El texto conserva la línea base histórica y añade el estado vigente.
 
-- **CORREGIDO LOCALMENTE EL 2026-08-25 — las dos precondiciones de permiso
+- **CORREGIDO Y PUBLICADO EN `9f19089` EL 2026-08-25 — las dos precondiciones de permiso
   ignoraban el estado `activo`.** Era el hallazgo más importante de 7.0 porque
   **toca permisos**.
   `profesor_tiene_curso_controller` y
@@ -347,13 +349,14 @@ línea base histórica y añade el estado vigente.
   «borra». **Estado vigente:** las dos consultas testigo conservan sus
   parámetros y añaden `AND activo = TRUE`; si no existe una asignación activa,
   las rutas conservan sus respuestas 403 ya caracterizadas.
-- **Hasta cuatro conexiones por petición, en serie.** El camino de notas con
-  asignación abre cuatro conexiones sucesivas: una por cada precondición y una
-  para la consulta. **No hay anidamiento** —cada una se cierra antes de que se
-  abra la siguiente—, así que **no contradice**
-  `MAX_DB_CONNECTIONS_PER_THREADPOOL_WORKER = 2`; pero es **la evidencia real
-  que a esa constante le faltaba** desde el 2026-08-17, y pertenece a la
-  auditoría de capacidad de la capa 2. Se registra, no se actúa.
+- **CORREGIDO LOCALMENTE EL 2026-08-25 — hasta cuatro conexiones por petición,
+  en serie.** El camino de notas con asignación abría cuatro conexiones
+  sucesivas: una por cada precondición y una para la consulta. **No había
+  anidamiento**, por lo que no contradecía
+  `MAX_DB_CONNECTIONS_PER_THREADPOOL_WORKER = 2`. **Estado vigente:** las tres
+  precondiciones comparten una conexión y la lectura final conserva otra; el
+  máximo baja de **4 a 2** sin cambiar las **6 consultas** del profesor ni las
+  **5 del admin**.
 - **La asignación académica se resuelve dos veces** en ese mismo camino, con el
   mismo `asignacion_id`: una en la precondición de pertenencia y otra dentro del
   controlador, cada una en su propia conexión.
@@ -650,7 +653,8 @@ pruebas**, Ruff correcto y `pip check` íntegro.
 - No cambió rutas, payloads, status codes, permisos, tenant, ownership,
   transacciones, timeouts, dependencias ni configuración.
 - Durante 7.0 y 7.1 **no corrigió ninguno de los diez hallazgos**. La corrección
-  puntual del 2026-08-25 resolvió el primero; **nueve siguen vivos**.
+  puntual del 2026-08-25 resolvió después los dos primeros; **ocho siguen
+  vivos**.
 - **No necesitó autorizar ni un solo cambio de texto SQL**, como la capa 6.
 
 ### Estado de publicación
@@ -667,16 +671,18 @@ el estado de su momento y **se conservan intactas**: eran ciertas entonces.
 ### Riesgos que la capa deja abiertos
 
 - ~~**Las dos precondiciones de permiso ignoran `activo`.**~~ **Corregido
-  localmente el 2026-08-25**: ambas exigen ahora `activo = TRUE`, sin cambiar
-  parámetros, conteos de consultas/conexiones ni mensajes 403.
+  y publicado en `9f19089` el 2026-08-25**: ambas exigen ahora `activo = TRUE`,
+  sin cambiar parámetros, conteos de consultas/conexiones ni mensajes 403.
 - Las **siete entradas** devuelven 400 con el texto de la excepción, sin
   registrar nada.
 - **Dos definiciones distintas de promedio** en el mismo panel, y una tercera en
   estudiantes.
-- Hasta **cuatro conexiones por petición** en el camino más caro, con la
-  asignación académica resuelta dos veces. Pertenece a la auditoría de capacidad
-  de la capa 2.
-- Los **nueve hallazgos restantes** de 7.0, más `response_model` sin añadir.
+- ~~Hasta **cuatro conexiones por petición** en el camino más caro.~~
+  **Corregido localmente el 2026-08-25**: el máximo es ahora **dos**, sin
+  alterar consultas, parámetros ni límites de error.
+- La asignación académica se sigue resolviendo **dos veces**. Es el siguiente
+  hallazgo independiente y no se corrigió para conservar el SQL observable.
+- Los **ocho hallazgos restantes** de 7.0, más `response_model` sin añadir.
 - Heredados: calibración de `DB_STATEMENT_TIMEOUT_MS` de la capa 1, ausencia de
   evidencia de GitHub Actions desde la capa 0, la credencial privilegiada de la
   capa 4 sin rotar, los hallazgos abiertos de las capas 5 y 6 —incluida la clave
@@ -1153,15 +1159,92 @@ Con la verificación manual ejecutada, la capa queda cerrada.
 - Siguiente acción exacta: el usuario revisa el diff y decide cuándo ejecutar
   staging/publicar. No iniciar otro hallazgo de dashboard ni otra capa.
 
+## 2026-08-25 — corrección puntual posterior al cierre: conexiones seriales
+
+- Modo de acceso: mismo checkout local del backend; Git y los commits locales
+  se validaron directamente. No se usó GitHub para inferir el estado local.
+- Autorización: después de identificar expresamente el siguiente hallazgo y
+  preguntar si debía corregirse continuando localmente con las verificaciones
+  anteriores pendientes, el usuario respondió «continua». La autorización se
+  limita al máximo de cuatro conexiones seriales; no incluye el siguiente
+  hallazgo, la resolución académica duplicada.
+- Precondiciones: rama `main`, árbol limpio confirmado por `git status`, `HEAD`
+  y la referencia local `origin/main` coincidentes en
+  `9f1908938514094486aa25f205e5f40c1990ee84`. Ese commit contiene exactamente
+  la corrección anterior de `activo` y sus cinco archivos documentados. El
+  commit base `123637ee80895023ecece9c32df526ef4eddd1e5` sigue siendo ancestro;
+  la auditoría de continuidad anterior cubría hasta `1ab8912` y el único commit
+  añadido después, `9f19089`, queda explicado aquí y en la entrada precedente.
+  Que coincida con `origin/main` demuestra publicación, no CI ni despliegue.
+- Caracterización antes de producto: las suites relacionadas partieron de
+  **95 passed**. Se cambiaron primero solo las dos expectativas de conexiones:
+  la señal contra el código anterior fue la esperada, **2 failed y 40
+  deselected**, porque mostraba 6/4 y 5/3 en vez de 6/2 y 5/2.
+- Producto modificado:
+  `app/controllers/dashboard_controller.py` consolida las tres precondiciones
+  DB en una conexión;
+  `app/core/permissions.py` permite que `require_asignacion_access` reciba un
+  cursor prestado sin abrirlo ni cerrarlo; y `app/routes/dashboard.py` conserva
+  los mismos 422/403 interpretando el resultado consolidado.
+- Consultas conservadas: profesor con asignación, **6 consultas y 2
+  conexiones**; admin con asignación, **5 y 2**; profesor sin asignación, **2 y
+  2**. Las cuatro consultas de las precondiciones conservan orden y parámetros:
+  `(7, 4)`, `(12, 7)`, `(12,)`, `(77, 7, 4)`. La lectura final conserva su
+  conexión separada y vuelve a resolver la asignación, como antes.
+- Límites de error conservados: las precondiciones siguen fuera del
+  `try/except`, por lo que sus fallos de infraestructura continúan como 500; la
+  lectura final sigue dentro y conserva el 400 heredado. Permanecen idénticos
+  el 422 sin curso y los mensajes 403 de scope, curso, acceso a asignación y
+  pertenencia al curso.
+- Pruebas modificadas:
+  `tests/test_dashboard_caracterizacion.py` fija conteos, orden SQL, propiedad
+  del cursor y las dos resoluciones aún existentes;
+  `tests/test_dashboard_routes.py` fija delegación y límites de error; y
+  `tests/test_permissions.py` demuestra que un cursor prestado no abre ni cierra
+  recursos.
+- Verificación específica:
+  `pytest tests/test_dashboard_routes.py tests/test_dashboard_caracterizacion.py tests/test_dashboard_controlador.py tests/test_permissions.py`
+  terminó con **99 passed**. Ruff sobre los seis archivos de producto/prueba
+  informó **All checks passed**.
+- Compuerta global: la primera ejecución restringida fue inválida por los 30
+  errores de setup ya conocidos al acceder al temporal de pytest; alcanzó 1090
+  pruebas pasadas y dejó Ruff y `pip check` correctos. La repetición con acceso
+  válido terminó con **1120 passed**, 5 warnings heredados, Ruff correcto,
+  dependencias íntegras y exit 0.
+- Frontend: no se modificó ni necesita adaptación. Métodos, paths, query params,
+  payloads, status codes y mensajes permanecen iguales; el cambio solo reduce
+  checkouts internos del pool.
+- PostgreSQL real, migraciones, staging, producción, deploy, commit y push de
+  esta corrección: **ninguno**. Tampoco se atribuye evidencia de GitHub Actions.
+- Staging propuesto: ejecutar notas altas y bajas como profesor y admin, con y
+  sin `asignacion_id`; comprobar los mismos payloads y 422/403, y observar que
+  el camino con asignación no supera dos checkouts de conexión. Repetir una
+  denegación de curso y otra de asignación para comprobar el cierre de recursos.
+- Rollback: revertir la consolidación del controlador y la ruta, retirar el
+  cursor opcional del permiso compartido, restaurar las expectativas 6/4 y 5/3
+  y revertir esta documentación. No hay rollback de datos.
+- Riesgos residuales: la validación y la lectura final siguen en conexiones
+  distintas, por lo que permanece la ventana TOCTOU. La asignación académica
+  continúa resolviéndose dos veces y es el siguiente hallazgo; eliminar esa
+  consulta exige una orden propia. El cursor prestado es propiedad del llamador
+  y la prueba impide que el permiso lo cierre.
+- Estado: la capa continúa **Cerrada**. Dos de los diez hallazgos originales
+  están corregidos y **ocho siguen abiertos**. Staging, verificación manual,
+  publicación y CI de esta corrección quedan pendientes.
+- Siguiente acción exacta: el usuario revisa el diff y decide cuándo ejecutar
+  staging/publicar. El siguiente hallazgo es la resolución duplicada de la
+  asignación académica; **no iniciarlo sin otra orden explícita**.
+
 ## Entrega al próximo chat
 
-- Capa activa: **Ninguna**. `dashboard` continúa cerrado; la corrección puntual
-  del 2026-08-25 no lo reactivó.
+- Capa activa: **Ninguna**. `dashboard` continúa cerrado; las correcciones
+  puntuales del 2026-08-25 no lo reactivaron.
 - Última subcapa terminada: **7.1**, cerrada el 2026-08-17. Con ella la
   frontera de persistencia del dominio quedó cerrada.
 - **Capa cerrada** el 2026-08-19. La verificación manual original fue correcta.
-  Para la corrección puntual del 2026-08-25 siguen pendientes staging y
-  verificación manual.
+  Para las correcciones puntuales del 2026-08-25 siguen pendientes staging y
+  verificación manual. La primera está publicada en `9f19089`; la reducción de
+  conexiones permanece local.
 - Primera subcapa pendiente: **ninguna.** El usuario decidió **cerrar la capa
   aquí**, sin abrir 7.2: `response_model` y los errores de dominio **no se
   añaden** y no quedan como deuda de esta capa, sino como trabajo que exigiría
@@ -1186,12 +1269,13 @@ Con la verificación manual ejecutada, la capa queda cerrada.
   las dos que debían fallar.**
 - Lo que 7.0 dejó medido: **7 entradas HTTP**, todas `GET` y todas de **solo
   lectura**; **cero tablas escritas** y **cero transacciones propias**; **42
-  pruebas de caracterización** y los conteos de ocho caminos. El más caro cuesta
-  **6 consultas y 4 conexiones**. **No hay N+1.**
+  pruebas de caracterización** y los conteos de ocho caminos. La línea base más
+  cara era **6 consultas y 4 conexiones**; la corrección puntual conserva las 6
+  consultas y reduce el máximo a **2 conexiones**. **No hay N+1.**
 - **Lo que la activación creía y resultó falso**: que dashboard concentraba
   «varias consultas de promedios por estudiante». Cada panel se resuelve con
-  **una sola consulta agregada**. Lo caro son las **conexiones**, no las
-  consultas.
+  **una sola consulta agregada**. El coste identificado eran las conexiones
+  seriales, reducidas ahora de cuatro a dos.
 - Estado de la capa: **exclusivamente una refactorización hasta aquí**, como la 5
   y la 6. **No ha tocado la base de datos**, ni siquiera para leer: toda la
   caracterización se hizo con dobles. Su rollback es de código: revertir hasta
@@ -1200,18 +1284,19 @@ Con la verificación manual ejecutada, la capa queda cerrada.
 - Lo que hay que recordar antes de tocar nada:
   1. **Un solo dominio.** La capa 7 es «uno a la vez»; los demás necesitan su
      propia bitácora y su propia orden.
-  2. El primero de los diez hallazgos quedó corregido con orden explícita: las
-     dos precondiciones exigen `activo = TRUE`. **Los nueve restantes siguen
-     abiertos** y no se corrigen por inferencia.
-  3. **No cambiar el ciclo de vida de las conexiones.** Cuatro funciones siguen
-     con `get_connection()` y `try/finally`; convertirlas es trabajo de la capa
-     1 y no está autorizado aquí.
+  2. Los dos primeros hallazgos quedaron corregidos con órdenes explícitas: las
+     precondiciones exigen `activo = TRUE` y comparten una conexión. **Los ocho
+     restantes siguen abiertos** y no se corrigen por inferencia.
+  3. **No volver a cambiar el ciclo de vida por inferencia.** La validación
+     consolidada posee una conexión y la lectura final otra para conservar los
+     límites 500/400. Unificarlas exigiría otra decisión.
   4. **`response_model` filtra campos.** Es el riesgo propio de esta capa y el
      centro del punto de decisión abierto.
   5. **En un panel, la cifra es el contrato.** Este dominio usa **dos** fórmulas
      de promedio distintas, y el sistema una tercera en estudiantes.
-  6. Las dos precondiciones permanecen en `dashboard_repository` y ahora
-     filtran `activo`; no se movieron recursos ni se amplió el cambio a
-     `asignaciones_repository`.
+  6. Las dos consultas testigo permanecen en `dashboard_repository`, filtran
+     `activo` y se ejecutan con el cursor de la validación consolidada; no se
+     amplió el cambio a `asignaciones_repository`.
 - Siguiente acción exacta: el usuario revisa este diff y decide cuándo ejecutar
-  staging/publicar. **No iniciar otro hallazgo ni activar otra capa.**
+  staging/publicar. El siguiente hallazgo es la resolución académica duplicada;
+  **no iniciarlo ni activar otra capa sin una orden explícita**.

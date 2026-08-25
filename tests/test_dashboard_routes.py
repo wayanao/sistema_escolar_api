@@ -247,7 +247,7 @@ def test_asignacion_access_errors_stay_outside_controller_error_translation(
 def test_performance_filter_requires_course_before_db_checks(monkeypatch):
     monkeypatch.setattr(
         dashboard,
-        "profesor_tiene_curso_controller",
+        "validar_filtro_rendimiento_profesor_controller",
         lambda *_a: pytest.fail("no debe consultar sin curso"),
     )
 
@@ -259,11 +259,10 @@ def test_performance_filter_requires_course_before_db_checks(monkeypatch):
 
 
 def test_performance_filter_rejects_course_outside_profesor_scope(monkeypatch):
-    monkeypatch.setattr(dashboard, "profesor_tiene_curso_controller", lambda *_a: False)
     monkeypatch.setattr(
         dashboard,
-        "require_asignacion_access",
-        lambda *_a, **_k: pytest.fail("no debe validar asignación si el curso falla"),
+        "validar_filtro_rendimiento_profesor_controller",
+        lambda *_a: (False, None),
     )
 
     with pytest.raises(HTTPException) as exc:
@@ -274,32 +273,26 @@ def test_performance_filter_rejects_course_outside_profesor_scope(monkeypatch):
 
 
 def test_performance_filter_accepts_course_without_assignment(monkeypatch):
-    monkeypatch.setattr(dashboard, "profesor_tiene_curso_controller", lambda *_a: True)
     monkeypatch.setattr(
         dashboard,
-        "require_asignacion_access",
-        lambda *_a, **_k: pytest.fail("no debe validar una asignación ausente"),
-    )
-    monkeypatch.setattr(
-        dashboard,
-        "profesor_tiene_asignacion_en_curso_controller",
-        lambda *_a: pytest.fail("no debe comprobar pertenencia sin asignación"),
+        "validar_filtro_rendimiento_profesor_controller",
+        lambda *_a: (True, None),
     )
 
     dashboard.validar_filtro_rendimiento_profesor(7, 4, None, PROFESOR)
 
 
 def test_performance_filter_preserves_assignment_access_error(monkeypatch):
-    monkeypatch.setattr(dashboard, "profesor_tiene_curso_controller", lambda *_a: True)
+    def deny(*_args):
+        raise HTTPException(
+            status_code=403,
+            detail="No tienes permisos para consultar esta asignación",
+        )
 
-    def deny(_asignacion_id, _current_user, detail):
-        raise HTTPException(status_code=403, detail=detail)
-
-    monkeypatch.setattr(dashboard, "require_asignacion_access", deny)
     monkeypatch.setattr(
         dashboard,
-        "profesor_tiene_asignacion_en_curso_controller",
-        lambda *_a: pytest.fail("no debe comprobar pertenencia tras denegar acceso"),
+        "validar_filtro_rendimiento_profesor_controller",
+        deny,
     )
 
     with pytest.raises(HTTPException) as exc:
@@ -309,13 +302,42 @@ def test_performance_filter_preserves_assignment_access_error(monkeypatch):
     assert exc.value.detail == "No tienes permisos para consultar esta asignación"
 
 
-def test_performance_filter_rejects_assignment_from_another_course(monkeypatch):
-    monkeypatch.setattr(dashboard, "profesor_tiene_curso_controller", lambda *_a: True)
-    monkeypatch.setattr(dashboard, "require_asignacion_access", lambda *_a, **_k: None)
+@pytest.mark.parametrize(
+    ("route", "controller_name"),
+    [
+        (dashboard.obtener_notas_bajas_profesor, "obtener_notas_bajas_profesor_controller"),
+        (dashboard.obtener_notas_altas_profesor, "obtener_notas_altas_profesor_controller"),
+    ],
+)
+def test_performance_filter_infrastructure_errors_stay_outside_controller_translation(
+    monkeypatch,
+    route,
+    controller_name,
+):
+    def fail_filter(*_args):
+        raise RuntimeError("fallo-infraestructura")
+
+    monkeypatch.setattr(dashboard, "require_profesor_scope", lambda *_a, **_k: None)
     monkeypatch.setattr(
         dashboard,
-        "profesor_tiene_asignacion_en_curso_controller",
-        lambda *_a: False,
+        "validar_filtro_rendimiento_profesor_controller",
+        fail_filter,
+    )
+    monkeypatch.setattr(
+        dashboard,
+        controller_name,
+        lambda *_a, **_k: pytest.fail("el controller final no debe ejecutarse"),
+    )
+
+    with pytest.raises(RuntimeError, match="fallo-infraestructura"):
+        route(7, curso_id=4, asignacion_id=12, current_user=PROFESOR)
+
+
+def test_performance_filter_rejects_assignment_from_another_course(monkeypatch):
+    monkeypatch.setattr(
+        dashboard,
+        "validar_filtro_rendimiento_profesor_controller",
+        lambda *_a: (True, False),
     )
 
     with pytest.raises(HTTPException) as exc:
@@ -325,36 +347,20 @@ def test_performance_filter_rejects_assignment_from_another_course(monkeypatch):
     assert exc.value.detail == "La asignación no pertenece al curso seleccionado"
 
 
-def test_performance_filter_passes_exact_scope_to_assignment_checks(monkeypatch):
+def test_performance_filter_passes_exact_scope_to_consolidated_check(monkeypatch):
     calls = []
     monkeypatch.setattr(
         dashboard,
-        "profesor_tiene_curso_controller",
-        lambda profesor_id, curso_id: calls.append(("curso", profesor_id, curso_id)) or True,
-    )
-    monkeypatch.setattr(
-        dashboard,
-        "require_asignacion_access",
-        lambda asignacion_id, current_user, detail: calls.append(
-            ("acceso", asignacion_id, current_user, detail)
-        ),
-    )
-    monkeypatch.setattr(
-        dashboard,
-        "profesor_tiene_asignacion_en_curso_controller",
-        lambda profesor_id, curso_id, asignacion_id: calls.append(
-            ("pertenencia", profesor_id, curso_id, asignacion_id)
+        "validar_filtro_rendimiento_profesor_controller",
+        lambda profesor_id, curso_id, asignacion_id, current_user: calls.append(
+            (profesor_id, curso_id, asignacion_id, current_user)
         )
-        or True,
+        or (True, True),
     )
 
     dashboard.validar_filtro_rendimiento_profesor(7, 4, 12, PROFESOR)
 
-    assert calls == [
-        ("curso", 7, 4),
-        ("acceso", 12, PROFESOR, "No tienes permisos para consultar esta asignación"),
-        ("pertenencia", 7, 4, 12),
-    ]
+    assert calls == [(7, 4, 12, PROFESOR)]
 
 
 def test_dashboard_router_preserves_paths_methods_and_dependencies():

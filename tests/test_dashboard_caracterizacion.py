@@ -110,11 +110,13 @@ class ConexionFalsa:
 
 @pytest.fixture
 def espia(monkeypatch):
-    def instalar(filas=(), unicos=(), fallo=None):
+    def instalar(filas=(), unicos=(), fallo=None, unicos_por_conexion=None):
         registro = Registro()
+        secuencias = iter(unicos_por_conexion) if unicos_por_conexion is not None else None
 
         def fake_get_connection():
-            conexion = ConexionFalsa(registro, filas, unicos, fallo)
+            unicos_de_esta_conexion = next(secuencias) if secuencias is not None else unicos
+            conexion = ConexionFalsa(registro, filas, unicos_de_esta_conexion, fallo)
             registro.conexiones.append(conexion)
             return conexion
 
@@ -421,6 +423,23 @@ def test_las_precondiciones_de_permiso_exigen_asignacion_activa(espia):
     assert registro.parametros == [(7, 4), (12,), (77, 7, 4)]
 
 
+def test_las_precondiciones_comparten_conexion_y_conservan_orden_sql(espia):
+    registro = espia(unicos=[(1,), (1,), (77,), (1,)])
+
+    resultado = dashboard_controller.validar_filtro_rendimiento_profesor_controller(
+        7,
+        4,
+        12,
+        PROFESOR,
+    )
+
+    assert resultado == (True, True)
+    assert len(registro.conexiones) == 1
+    assert registro.parametros == [(7, 4), (12, 7), (12,), (77, 7, 4)]
+    assert registro.conexiones[0].cerrada is True
+    assert registro.conexiones[0].cursor_creado.cerrado is True
+
+
 # --------------------------------------------------------------------------
 # Bloque 4: conteo de consultas y de conexiones por camino
 # --------------------------------------------------------------------------
@@ -487,32 +506,38 @@ def test_notas_sin_asignacion_cuestan_dos_consultas_y_dos_conexiones(espia):
     assert (len(registro.consultas), len(registro.conexiones)) == (2, 2)
 
 
-def test_notas_con_asignacion_de_un_profesor_cuestan_seis_consultas_y_cuatro_conexiones(espia):
-    """El camino mas caro del dominio, y el que mas conexiones consume.
+def test_notas_con_asignacion_de_un_profesor_cuestan_seis_consultas_y_dos_conexiones(espia):
+    """Las precondiciones comparten conexion sin cambiar sus cuatro consultas.
 
-    Son cuatro conexiones en serie, no anidadas: cada una se cierra antes de que
-    se abra la siguiente. Y la asignacion academica se resuelve dos veces, una
-    en la precondicion y otra en el controlador.
+    La lectura final conserva una segunda conexion y la asignacion academica se
+    sigue resolviendo dos veces. Esa duplicacion es otro hallazgo, no parte de
+    esta correccion.
     """
-    registro = espia(filas=[], unicos=[(77,), (1,)])
+    registro = espia(
+        filas=[],
+        unicos_por_conexion=[[(1,), (1,), (77,), (1,)], [(77,)]],
+    )
 
     dashboard.obtener_notas_bajas_profesor(
         7, curso_id=4, asignacion_id=12, current_user=PROFESOR
     )
 
-    assert (len(registro.consultas), len(registro.conexiones)) == (6, 4)
+    assert (len(registro.consultas), len(registro.conexiones)) == (6, 2)
     resoluciones = [texto for texto in registro.textos if "asignacion_academica_id" in texto]
     assert len(resoluciones) == 2
 
 
 def test_notas_con_asignacion_de_un_admin_ahorran_la_comprobacion_de_acceso(espia):
-    registro = espia(filas=[], unicos=[(77,), (1,)])
+    registro = espia(
+        filas=[],
+        unicos_por_conexion=[[(1,), (77,), (1,)], [(77,)]],
+    )
 
     dashboard.obtener_notas_bajas_profesor(
         7, curso_id=4, asignacion_id=12, current_user=ADMIN
     )
 
-    assert (len(registro.consultas), len(registro.conexiones)) == (5, 3)
+    assert (len(registro.consultas), len(registro.conexiones)) == (5, 2)
 
 
 def test_ningun_camino_del_dominio_depende_del_numero_de_estudiantes(espia):

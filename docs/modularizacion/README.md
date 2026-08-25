@@ -41,7 +41,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 4 | Reportes financieros | Dominio modular, N+1 eliminado y consultas medidas | **Cerrada**; N+1 de 5N a 15 constantes, medido en producción | [04_REPORTES_FINANCIEROS.md](./04_REPORTES_FINANCIEROS.md) |
 | 5 | Pagos y tipos de pago | Dominio financiero modularizado y protegido | **Cerrada**; SQL inline de 23 a 3, sin tocar la base | [05_PAGOS_TIPOS_PAGO.md](./05_PAGOS_TIPOS_PAGO.md) |
 | 6 | Asignaciones y estudiantes | Dominios grandes separados con contratos estables | **Cerrada**; SQL inline de 52 a 1; lock de concurrencia corregido y publicado en `721f382`; verificación PostgreSQL real pendiente | [06_ASIGNACIONES_ESTUDIANTES.md](./06_ASIGNACIONES_ESTUDIANTES.md) |
-| 7 | Resto de dominios — **`dashboard` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `dashboard` el 2026-08-19; permiso por asignación activa corregido localmente el 2026-08-25, staging pendiente | [07_DASHBOARD.md](./07_DASHBOARD.md) |
+| 7 | Resto de dominios — **`dashboard` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `dashboard` el 2026-08-19; permiso activo publicado en `9f19089` y conexiones seriales reducidas localmente el 2026-08-25; staging pendiente | [07_DASHBOARD.md](./07_DASHBOARD.md) |
 | 7 | Resto de dominios — **`notas` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `notas` el 2026-08-19; verificada a mano. **Publicada el 2026-08-20**, después de escribirse su bitácora | [07_NOTAS.md](./07_NOTAS.md) |
 | 7 | Resto de dominios — **`ventas` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `ventas` el 2026-08-20; verificada a mano. **Publicada el 2026-08-20**, después de escribirse su bitácora | [07_VENTAS.md](./07_VENTAS.md) |
 | 7 | Resto de dominios — **`asistencia` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `asistencia` el 2026-08-21; verificada a mano y publicada. N+1 de permisos corregido y publicado en `bbf3bfb`; staging de la corrección pendiente | [07_ASISTENCIA.md](./07_ASISTENCIA.md) |
@@ -64,8 +64,8 @@ curso, conserva **12/10 consultas** en alta/edición y serializa los cruces sin
 migración ni cambios de frontend. La compuerta local terminó con **1116
 pruebas**. El reflog local de `origin/main` registra los pushes de esas
 correcciones en `9a90462`, `bbf3bfb` y `721f382`; después se publicó la
-consolidación exclusivamente documental `1ab8912`, y `HEAD` y esa referencia
-coincidían allí antes de la corrección local de dashboard. Esto no demuestra despliegue ni CI: staging, la prueba
+consolidación exclusivamente documental `1ab8912` y la primera corrección de
+dashboard en `9f19089`. Esto no demuestra despliegue ni CI: staging, la prueba
 con dos conexiones PostgreSQL reales aplicable al lock, despliegue y evidencia
 posterior de GitHub Actions siguen pendientes y bajo control del usuario. Las
 menciones cronológicas anteriores que
@@ -83,18 +83,23 @@ configuración. Una futura ampliación exige demostrar la cota, separar `H` de u
 reserva formal `R`, confirmar procesos/réplicas y medir carga en staging; no es
 una corrección pendiente para mantener el estado seguro actual.
 
-El 2026-08-25 se corrigió localmente, con orden explícita y sin reabrir la capa,
-el primer hallazgo de `dashboard`: las dos precondiciones de rendimiento exigen
-ahora `asignaciones.activo = TRUE`. El cambio añade dos predicados, conserva
-parámetros, consultas, conexiones, tenant, ownership y los mensajes 403, y no
-requiere cambios de frontend. Las pruebas relacionadas terminaron con **88
-passed** y la compuerta global con **1116 passed**, Ruff correcto y dependencias
-íntegras. La primera ejecución global dentro del sandbox fue inválida por 30
-errores de setup al acceder al temporal de pytest; la repetición con acceso
+El 2026-08-25 se corrigieron, con órdenes explícitas y sin reabrir la capa, los
+dos primeros hallazgos de `dashboard`. Las dos precondiciones de rendimiento
+exigen ahora `asignaciones.activo = TRUE`; esa corrección se publicó en
+`9f19089`, aunque staging, verificación manual, despliegue comprobado y CI
+siguen pendientes. Después, las tres precondiciones DB pasaron a compartir una
+conexión: el camino con asignación bajó de **4 a 2 conexiones** como profesor y
+de **3 a 2** como admin, conservando respectivamente **6 y 5 consultas**, sus
+parámetros, orden, mensajes, tenant y ownership. La lectura final mantiene su
+segunda conexión para preservar el límite observable 500/400, y la resolución
+académica duplicada sigue abierta. Las pruebas relacionadas terminaron con
+**99 passed** y la compuerta global con **1120 passed**, Ruff correcto y
+dependencias íntegras. La primera ejecución global restringida fue inválida por
+30 errores de setup al acceder al temporal de pytest; la repetición con acceso
 válido fue la evidencia aceptada. No hubo PostgreSQL, migración, staging,
-producción, deploy, commit ni push. Quedan **nueve hallazgos de dashboard**;
-staging, verificación manual, publicación y CI de esta corrección siguen
-pendientes.
+producción, deploy, commit ni push de la segunda corrección. Quedan **ocho
+hallazgos de dashboard**; staging, verificación manual, publicación y CI de la
+reducción de conexiones siguen pendientes.
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
 cierre y el usuario ordene continuar, se crea su sucesora desde
@@ -2386,15 +2391,17 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   **conexiones** por camino, los **siete supuestos heredados resueltos** —seis
   confirmados y uno refutado— y los **diez hallazgos originalmente registrados**.
   El primero, el `activo` ausente de las precondiciones de permiso, quedó
-  corregido localmente el 2026-08-25; las dos fórmulas de promedio y otros ocho
-  siguen abiertas. Registra también el cierre de **7.1**, la extracción a
+  corregido y publicado en `9f19089`; el segundo, las cuatro conexiones
+  seriales, quedó reducido localmente a dos sin cambiar sus consultas. La
+  resolución académica duplicada, las dos fórmulas de promedio y otros seis
+  siguen abiertos. Registra también el cierre de **7.1**, la extracción a
   `dashboard_repository` con su comparador AST de **16 de 16** literales, las
   dos guardias que fallaron como señal esperada y la decisión sobre dónde viven
   las precondiciones de permiso. Deja abierto el **punto de decisión** que
   cerró la capa sin abrir una 7.2, el cierre con su rollback, su staging, su
   verificación manual y su estado de publicación, y los **riesgos que deja
   abiertos**. Fue la fuente de continuidad **hasta que se activó `notas`**; hoy
-  conserva **nueve hallazgos abiertos** y la capa continúa cerrada.
+  conserva **ocho hallazgos abiertos** y la capa continúa cerrada.
 - [06_ASIGNACIONES_ESTUDIANTES.md](./06_ASIGNACIONES_ESTUDIANTES.md): **bitácora
   cerrada** de la capa 6 y fuente de continuidad **hasta que se activó la capa
   7**. Registra el commit base

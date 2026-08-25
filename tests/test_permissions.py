@@ -120,6 +120,23 @@ def test_require_asignacion_access_allows_owner_profesor(monkeypatch):
     assert connection.closed is True
 
 
+def test_require_asignacion_access_reuses_borrowed_cursor(monkeypatch):
+    def fail_get_connection():
+        raise AssertionError("Un cursor prestado no debe abrir otra conexión")
+
+    monkeypatch.setattr(permissions, "get_connection", fail_get_connection)
+    cursor = FakeCursor((1,))
+
+    permissions.require_asignacion_access(
+        11,
+        {"id": 7, "rol": "profesor", "tenant": "tenant_demo"},
+        cursor=cursor,
+    )
+
+    assert cursor.executed_params == (11, 7)
+    assert cursor.closed is False
+
+
 def test_require_asignacion_access_blocks_non_owner_profesor(monkeypatch):
     connection = FakeConnection(None)
     monkeypatch.setattr(permissions, "get_connection", lambda: connection)

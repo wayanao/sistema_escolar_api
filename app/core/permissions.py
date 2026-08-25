@@ -44,24 +44,39 @@ def require_profesor_scope(profesor_id: int, current_user: dict, detail: str = "
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
 
 
-def require_asignacion_access(asignacion_id: int, current_user: dict, detail: str = "No autorizado") -> None:
+def require_asignacion_access(
+    asignacion_id: int,
+    current_user: dict,
+    detail: str = "No autorizado",
+    *,
+    cursor=None,
+) -> None:
     if current_user.get("rol") == "admin":
         return
 
     if current_user.get("rol") != "profesor":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
 
-    conn = get_connection()
-    cursor = conn.cursor()
-    try:
+    if cursor is not None:
         cursor.execute(
             "SELECT 1 FROM asignaciones WHERE id = %s AND profesor_id = %s",
             (asignacion_id, current_user.get("id")),
         )
         if cursor.fetchone():
             return
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
+
+    conn = get_connection()
+    own_cursor = conn.cursor()
+    try:
+        own_cursor.execute(
+            "SELECT 1 FROM asignaciones WHERE id = %s AND profesor_id = %s",
+            (asignacion_id, current_user.get("id")),
+        )
+        if own_cursor.fetchone():
+            return
     finally:
-        cursor.close()
+        own_cursor.close()
         conn.close()
 
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)

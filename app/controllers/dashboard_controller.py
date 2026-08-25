@@ -1,4 +1,5 @@
 from app.database import get_connection, get_cursor
+from app.core.permissions import require_asignacion_access
 from app.repositories import dashboard_repository
 from app.services.asignacion_academica import resolver_asignacion_academica_id_cursor
 
@@ -66,6 +67,49 @@ def profesor_tiene_asignacion_en_curso_controller(profesor_id, curso_id, asignac
             cursor, asignacion_id, profesor_id, curso_id
         )
         return fila is not None
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def validar_filtro_rendimiento_profesor_controller(
+    profesor_id,
+    curso_id,
+    asignacion_id,
+    current_user,
+):
+    """Evalua las precondiciones DB de rendimiento en una sola conexion.
+
+    Conserva el orden y el SQL existentes. La lectura final mantiene su propia
+    conexion para no alterar el limite observable del ``try/except`` de la
+    ruta. La asignacion academica se sigue resolviendo otra vez en esa lectura;
+    retirar esa duplicacion pertenece a otro hallazgo.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        curso = dashboard_repository.buscar_curso_de_profesor(
+            cursor, profesor_id, curso_id
+        )
+        if curso is None:
+            return False, None
+
+        if asignacion_id is None:
+            return True, None
+
+        require_asignacion_access(
+            asignacion_id,
+            current_user,
+            detail="No tienes permisos para consultar esta asignación",
+            cursor=cursor,
+        )
+        asignacion_academica_id = resolver_asignacion_academica_id_cursor(
+            cursor, asignacion_id
+        )
+        asignacion = dashboard_repository.buscar_asignacion_de_profesor_en_curso(
+            cursor, asignacion_academica_id, profesor_id, curso_id
+        )
+        return True, asignacion is not None
     finally:
         cursor.close()
         conn.close()

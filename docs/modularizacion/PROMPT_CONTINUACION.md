@@ -171,19 +171,18 @@ Lo que sigue es un resumen para orientarse; **el estado vivo está en
   una sola autorización de cambio de texto SQL.
 - **Un supuesto heredado resultó falso**: `dashboard` no concentraba «varias
   consultas de promedios por estudiante». Cada panel se resuelve con **una sola
-  consulta agregada** y **no hay N+1**. Lo caro son las **conexiones**: el camino
-  de notas con asignación abre **cuatro en serie** y resuelve la asignación
-  académica **dos veces**. Es la evidencia real que le faltaba a la constante de
-  capacidad de la capa 2, registrada **sin actuar**.
-- Siguiente paso del programa: **otro dominio de la capa 7**, en espera y sin
-  elegir. No se activa sin orden explícita, y una instrucción genérica de
-  continuar no la autoriza.
-- Cerrar la capa no canceló sus diez hallazgos originales. El primero, que
-  tocaba permisos porque las dos precondiciones de `dashboard` no filtraban por
-  `activo`, quedó **corregido localmente el 2026-08-25 con orden explícita**.
-  Las consultas exigen ahora `activo = TRUE`, la compuerta terminó con 1116
-  pruebas y **nueve hallazgos siguen abiertos**. Staging, verificación manual,
-  publicación y CI de esta corrección permanecen pendientes.
+  consulta agregada** y **no hay N+1**. La línea base más cara abría **cuatro
+  conexiones en serie**; una corrección puntual las redujo a **dos** sin cambiar
+  sus seis consultas. La asignación académica aún se resuelve **dos veces**.
+- No hay capa activa. Las correcciones puntuales de `dashboard` no la
+  reactivaron ni autorizan otro dominio. Una instrucción genérica de continuar
+  tampoco activa la siguiente capa.
+- Cerrar la capa no canceló sus diez hallazgos originales. Los dos primeros
+  quedaron corregidos el 2026-08-25 con órdenes explícitas: las precondiciones
+  exigen `activo = TRUE` —publicado en `9f19089`— y comparten una conexión —aún
+  local—. La compuerta más reciente terminó con **1120 pruebas** y **ocho
+  hallazgos siguen abiertos**. Staging y verificación manual de ambas, y
+  publicación/CI de la segunda, permanecen pendientes.
 - La capa 6 cerró el 2026-08-17 modularizando asignaciones y estudiantes en cinco
   subcapas, cada dominio por separado: `estudiante_controller.py` pasó de **519 a
   381 líneas** y de 11 sentencias SQL inline a **0**; `asignacion_controller.py`
@@ -364,15 +363,22 @@ esto entra en ella por inferencia: requiere una orden explícita.
 
 ### Lo que dejó abierto la capa 7 en `dashboard`
 
-7.0 registró diez hallazgos. El primero quedó corregido localmente el
-2026-08-25; **nueve siguen abiertos**. Cerrar la capa no los cancela.
+7.0 registró diez hallazgos. Los dos primeros quedaron corregidos el
+2026-08-25; **ocho siguen abiertos**. Cerrar la capa no los cancela.
 
 - ~~**Las dos precondiciones de permiso ignoraban `activo`.**~~ **Corregido
-  localmente el 2026-08-25**: `profesor_tiene_curso_controller` y
+  y publicado en `9f19089` el 2026-08-25**: `profesor_tiene_curso_controller` y
   `profesor_tiene_asignacion_en_curso_controller` exigen ahora
   `activo = TRUE`, conservando parámetros, conteos y mensajes 403. La guardia
   negativa se sustituyó por una positiva. No se amplió el cambio a la consulta
   agregada, rankings ni UX del frontend.
+- ~~**Hasta cuatro conexiones por petición**, en serie y sin anidar, en el
+  camino de notas con asignación.~~ **Corregido localmente el 2026-08-25**: las
+  tres precondiciones comparten una conexión y la lectura final conserva otra;
+  el máximo baja a **dos** y se mantienen 6/5 consultas para profesor/admin.
+- **La asignación académica se resuelve dos veces** en ese camino. Se conservó
+  a propósito porque eliminarla no era necesario para reducir conexiones y
+  cambiaría el SQL observable. Es el siguiente hallazgo independiente.
 - **Dos definiciones distintas de «promedio» en el mismo panel**: notas altas y
   bajas promedian **los promedios por clase**; los rankings promedian **las notas
   planas**. Con 4,0 en una clase de dos notas y 2,0 en otra de seis, la primera
@@ -381,10 +387,6 @@ esto entra en ella por inferencia: requiere una orden explícita.
   `str(e)`** en el `detail`, sin registrar nada: un error de PostgreSQL puede
   llegar al navegador. Misma familia que el hallazgo de `tipos_pagos_controller`,
   pero aquí además **se devuelve el mensaje interno**.
-- **Hasta cuatro conexiones por petición**, en serie y sin anidar, en el camino
-  de notas con asignación, que además **resuelve la asignación académica dos
-  veces**. La auditoría acotada de capacidad del 2026-08-24 no detectó `H>1` en
-  este coste secuencial, pero no convirtió `H=1` en cota operativa demostrada.
 - **El filtro de rendimiento consulta la base desde la capa de rutas** y **fuera**
   del `try/except`, así que un fallo de infraestructura ahí sale como **500** y
   no como el 400 del resto del endpoint.

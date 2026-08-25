@@ -9,8 +9,7 @@ from app.controllers.dashboard_controller import (
     obtener_notas_bajas_profesor_controller,
     obtener_ranking_mejor_rendimiento_controller,
     obtener_ranking_rendimiento_controller,
-    profesor_tiene_asignacion_en_curso_controller,
-    profesor_tiene_curso_controller,
+    validar_filtro_rendimiento_profesor_controller,
 )
 
 router = APIRouter(tags=['Dashboard'], dependencies=[Depends(get_current_user)])
@@ -25,18 +24,19 @@ def validar_filtro_rendimiento_profesor(
     if curso_id is None:
         raise HTTPException(status_code=422, detail="Debes seleccionar un curso para consultar rendimiento")
 
-    if not profesor_tiene_curso_controller(profesor_id, curso_id):
+    tiene_curso, tiene_asignacion = validar_filtro_rendimiento_profesor_controller(
+        profesor_id,
+        curso_id,
+        asignacion_id,
+        current_user,
+    )
+    if not tiene_curso:
         raise HTTPException(status_code=403, detail="No tienes permisos para consultar este curso")
 
     if asignacion_id is None:
         return
 
-    require_asignacion_access(
-        asignacion_id,
-        current_user,
-        detail="No tienes permisos para consultar esta asignación",
-    )
-    if not profesor_tiene_asignacion_en_curso_controller(profesor_id, curso_id, asignacion_id):
+    if not tiene_asignacion:
         raise HTTPException(status_code=403, detail="La asignación no pertenece al curso seleccionado")
 
 

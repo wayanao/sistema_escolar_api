@@ -530,6 +530,24 @@ divergencias y el undécimo—, con **cinco** de los diez originales resueltos.
   dos rankings. Al estar en el path nunca puede faltar, así que el defecto es
   inalcanzable.
 
+### Los cuatro heredados que quedan **no son defectos**, revisado el 2026-08-25
+
+Al cerrar la campaña se revisaron uno a uno, y **ninguno de los cuatro es un
+defecto**: son notas. Se dejan intactos **por decisión explícita del usuario**,
+y corregirlos sería una **corrección oportunista** sobre código ya desplegado,
+que el índice maestro prohíbe.
+
+| Hallazgo | Por qué no es un defecto |
+|---|---|
+| Doble validación de `dias` | El recorte silencioso del controlador es **inalcanzable por HTTP**: `Query(ge=0, le=31)` rechaza antes. Corregirlo **no cambiaría nada observable**, y una prueba ya fija el comportamiento tal cual |
+| Pareja de literales SQL gemelos | Cosmético. La capa 6 dejó **tres parejas iguales** sin unificar por este mismo criterio; hacerlo aquí rompería esa consistencia salvo que se cambie a propósito. Una prueba fija que uno se obtiene del otro con dos sustituciones |
+| f-strings en SQL | El propio hallazgo dice **«hoy no inyectables»**: lo interpolado son literales del código y los valores siempre van parametrizados. **No hay nada que corregir**; es una **guarda para el futuro**, y su valor está justamente en seguir escrita |
+| `periodo: int = 1` | Defecto **inalcanzable**: al ser parámetro de path nunca puede faltar |
+
+**Consecuencia para quien siga:** que estos cuatro sigan en la lista **no es
+deuda pendiente**. Si alguien los ataca sin una orden nueva, estará cambiando
+código desplegado sin beneficio observable.
+
 ### Hallazgo 11, **introducido por las propias correcciones** el 2026-08-25
 
 - **`profesor_tiene_curso_controller` y
@@ -1775,3 +1793,106 @@ Con la verificación manual ejecutada, la capa queda cerrada.
 - Siguiente acción exacta: el usuario revisa este diff y decide cuándo ejecutar
   staging/publicar. El siguiente hallazgo es la resolución académica duplicada;
   **no iniciarlo ni activar otra capa sin una orden explícita**.
+
+## 2026-08-25 — cierre de la campaña de correcciones puntuales de dashboard
+
+Con la quinta corrección publicada, el usuario ordenó **cerrar la campaña**. Esta
+entrada la da por terminada; no la reabre ninguna instrucción genérica.
+
+- Modo de acceso: mismo checkout local; Git y el árbol comprobados
+  directamente.
+- Autorización: orden explícita del usuario, elegida entre cuatro salidas
+  —atacar las guardas de permiso, cerrar la campaña, unificar los literales
+  gemelos o activar otro dominio—. Eligió **cerrar**.
+- Precondiciones: rama `main`, árbol **limpio**, `HEAD`
+  `8a72cc8de7d48d6749f55e90d23c48d2cd4625fe`.
+- **Estado de publicación comprobado contra el remoto real**, no supuesto:
+  `git ls-remote origin main` devuelve el mismo `8a72cc8`, así que **las cinco
+  correcciones están publicadas y desplegadas**: `9f19089`, `1f1ffc9`,
+  `6130ce2`, `bb46761` y `8a72cc8`. **Producción corre este código.** El
+  rollback de cualquiera exigiría otro push y otro despliegue.
+
+### Lo que la campaña consiguió
+
+**Cinco de los diez hallazgos de 7.0, corregidos y desplegados**, en este orden:
+
+| # | Hallazgo | Commit |
+|---:|---|---|
+| 1 | Las precondiciones de permiso ignoraban `activo` | `9f19089` |
+| 2 | Hasta cuatro conexiones en serie por petición | `1f1ffc9` |
+| 3 | La asignación académica se resolvía dos veces | `6130ce2` |
+| 4 | Las siete entradas absorbían `Exception` y filtraban `str(e)` | `bb46761` |
+| 5 | La validación consultaba la base fuera del `try` | `8a72cc8` |
+
+El primero **tocaba permisos** y era el más importante. El cuarto era el más
+serio de los de infraestructura: **un error de PostgreSQL podía llegar al
+navegador**.
+
+### Lo que queda, y por qué no es deuda
+
+- **Cuatro heredados que no son defectos**: la doble validación de `dias`, la
+  pareja de literales gemelos, las f-strings no inyectables y el
+  `periodo: int = 1` inalcanzable. El detalle de por qué está arriba. **No se
+  corrigen**, y hacerlo sin una orden nueva sería una corrección oportunista
+  sobre código desplegado.
+- **Dos divergencias de cifra**, registradas y **sin corregir por decisión
+  explícita**: `ROUND(…, 1)` frente a `TRUNC(…, 2)`, que hace que la misma nota
+  se vea aprobada en el expediente y en rojo en el dashboard; y el `periodo`
+  ausente en notas altas y bajas. La primera exige antes **una decisión
+  académica, no técnica**, y cruza a `estudiantes`, un dominio ya migrado.
+- **Hallazgo 11**, el código muerto que introdujeron las propias correcciones,
+  **registrado sin retirar** por decisión explícita.
+- **`response_model`** sigue sin añadirse; no es deuda de esta capa.
+
+**Siete hallazgos abiertos en total**, ninguno de ellos un defecto sin decidir.
+
+### Lo que la campaña dejó fuera de alcance, medido
+
+Las guardas de permiso de `app/core/permissions.py` **abren su propia conexión
+fuera del `try`**, así que un fallo de infraestructura ahí **sigue escapando sin
+manejar**: es el mismo defecto que corrigió la quinta, pero en infraestructura
+compartida. Medido: `require_asignacion_access` **17 usos en 8 archivos de
+ruta**, `require_profesor_scope` **6 en 2**, `require_estudiante_access` **3 en
+1**. **26 usos en 9 archivos**, transversal a casi toda la API. **Corregirlo
+exigiría su propio alcance y su propia orden**, y no es trabajo de dashboard.
+
+### Lo que la campaña NO hizo
+
+- **No tocó la base de datos** en ninguna de las cinco correcciones.
+- **No ejecutó staging ni verificación manual** de ninguna. Se propuso el guion
+  de cada una en su entrada y **quedan pendientes**; el usuario decidió publicar
+  sin ellas.
+- **No se atribuye ningún run de GitHub Actions**: esa evidencia sigue sin
+  obtenerse desde la capa 0.
+- No reabrió la capa: **sigue Cerrada** desde el 2026-08-17. Estas fueron
+  correcciones puntuales posteriores al cierre, autorizadas una a una.
+
+### Lecciones que deja la campaña
+
+1. **Un hallazgo registrado puede estar mal diagnosticado.** El del promedio se
+   refutó al ir a corregirlo, y el de la validación fuera del `try` estaba
+   obsoleto **por partida doble**. Medir antes de corregir evitó dos regresiones.
+2. **Una corrección puede introducir un hallazgo nuevo.** El undécimo lo produjo
+   la segunda corrección, ya publicada, y solo se detectó al auditar la tercera.
+3. **`HTTPException` también es `Exception`.** Costó una regresión que la
+   caracterización atrapó en el acto, y es la razón de que la validación viviera
+   fuera del `try`.
+4. **El contrato observable se puede verificar contra el cliente.** Antes de
+   cambiar 400 por 500 se comprobó en el frontend desplegado que **ningún
+   consumidor lee `status` ni `detail`**. Es la primera vez en el programa que
+   una corrección se valida así, y convirtió una decisión de riesgo en un hecho.
+5. **Por ASGI se observan status codes de verdad.** Es la técnica de 7.0 de
+   `notas`, y en dos de estas correcciones fue la única evidencia que demostró
+   lo que realmente devolvía la API.
+
+- Archivos modificados en este turno: esta bitácora y
+  `docs/modularizacion/README.md`. **Código de producto y pruebas: ninguno.**
+- Compuerta global: **1125 pruebas, exit 0**, Ruff correcto y dependencias
+  íntegras.
+- PostgreSQL real, migraciones, staging, producción, deploy, commit y push:
+  **ninguno**.
+- Estado: **campaña de correcciones de dashboard cerrada.** La capa 7 para
+  `dashboard` sigue **Cerrada**. No hay capa activa ni hallazgo en curso.
+- Siguiente acción exacta: **esperar una orden explícita del usuario.** Una
+  instrucción genérica de continuar **no reabre esta campaña** ni autoriza
+  activar otro dominio.

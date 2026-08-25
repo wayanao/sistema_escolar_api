@@ -188,6 +188,30 @@ y 403 asignación ajena— siguen intactos. Compuerta: **1125 pruebas, exit 0**.
 corregirlo exigiría una orden propia. Recuento: **cinco** de los diez hallazgos
 originales corregidos y **siete abiertos**.
 
+**Campaña de correcciones de dashboard CERRADA el 2026-08-25**, por orden
+explícita del usuario y elegida entre cuatro salidas. **Las cinco correcciones
+están publicadas y desplegadas**, comprobado contra el remoto real con
+`git ls-remote`: `9f19089`, `1f1ffc9`, `6130ce2`, `bb46761` y `8a72cc8`.
+Resolvieron los cinco hallazgos de más peso —el `activo` ausente en los
+permisos, las cuatro conexiones en serie, la resolución académica duplicada, la
+`Exception` absorbida que filtraba `str(e)` al navegador y la validación fuera
+del `try`—. **Los cuatro hallazgos heredados que quedan no son defectos sino
+notas**, y así quedó razonado uno a uno: el recorte de `dias` es **inalcanzable
+por HTTP**, los literales gemelos son cosméticos y la capa 6 dejó tres parejas
+iguales, las f-strings **no son inyectables** y su valor está en seguir escritas
+como guarda, y el `periodo: int = 1` es un defecto inalcanzable. Corregirlos
+sería una **corrección oportunista sobre código desplegado**, que este índice
+prohíbe. Siguen abiertos y **registrados sin corregir por decisión explícita**
+las dos divergencias de cifra y el hallazgo 11. **Queda fuera de alcance y
+medido** que las guardas de permiso de `app/core/permissions.py` abren conexión
+fuera del `try` —**26 usos en 9 archivos de ruta**, transversal a casi toda la
+API—, que exigiría su propio alcance y su propia orden. **Staging, verificación
+manual y CI de las cinco correcciones siguen pendientes**: se publicaron sin
+ellas. Cinco lecciones quedan registradas en la bitácora, entre ellas que **un
+hallazgo puede estar mal diagnosticado** —dos lo estaban—, que **una corrección
+puede introducir un hallazgo nuevo** —el undécimo—, y que el contrato observable
+**se puede verificar contra el repositorio del frontend** antes de cambiarlo.
+
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
 cierre y el usuario ordene continuar, se crea su sucesora desde
 `PLANTILLA_CAPA.md`, se registra el commit base vigente y se actualiza esta

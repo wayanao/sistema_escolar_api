@@ -134,9 +134,15 @@ Estado de este modo al 2026-08-27:
 
 - **`dashboard`**: campaña **cerrada**. Cinco hallazgos corregidos y publicados;
   los cuatro que quedan **no son defectos sino notas**, y así está razonado.
-- **`observaciones`**: hallazgo 1 corregido **en producción** —claves foráneas—,
-  y los hallazgos 6 y 7 corregidos en local. Quedan **tres menores** y **dos
-  aparcados** por decisión explícita del usuario.
+- **`observaciones`**: campaña **cerrada** el 2026-08-27. Tres hallazgos
+  corregidos y publicados —el 1 **en producción**, por migración; el 7 y el 6 en
+  código—, uno obsoleto, dos aparcados y tres clasificados como notas con su
+  razonamiento. **No queda trabajo pendiente del dominio.**
+
+**Al 2026-08-27 no queda ninguna campaña de hallazgos abierta.** Las dos que
+existieron están cerradas. Cualquier trabajo nuevo —otro dominio, el código
+compartido de permisos, el `maxLength` del frontend o la capa siguiente— exige
+una **orden explícita** que lo nombre.
 
 ## Uso desde otro chat o LLM
 

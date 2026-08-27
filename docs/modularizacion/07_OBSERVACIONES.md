@@ -339,6 +339,13 @@ ejecutan dos subcapas en el mismo turno.**
 Son **nueve**. Ninguno se corrige desde esta capa; corregir cualquiera exige una
 orden explícita. Van ordenados por gravedad.
 
+> **EL TÍTULO DE ESTA SECCIÓN QUEDÓ DESFASADO Y SE CONSERVA TAL CUAL.** La
+> campaña de corrección se **cerró el 2026-08-27**: tres están corregidos y
+> publicados, uno es obsoleto, dos quedaron aparcados y tres se clasificaron
+> como notas. El veredicto vigente de cada uno va en su propia etiqueta, y el
+> razonamiento completo en el apartado de cierre, al final de este documento.
+> **Ninguno queda como trabajo pendiente.**
+
 > **AUDITADOS UNO A UNO EL 2026-08-25, por orden explícita del usuario.** Se
 > comprobaron contra el código, el esquema y peticiones reales, después de que
 > la campaña de `dashboard` demostrara que **un hallazgo registrado puede estar
@@ -355,14 +362,14 @@ orden explícita. Van ordenados por gravedad.
 > que falla es que siga listado como «sin corregir». Es el mismo desfase que
 > `dashboard` tenía entre sus hallazgos y sus correcciones.
 
-1. **[CONFIRMADO, y se queda corto]** **La tabla no tiene ninguna clave foránea.** `estudiante_id` y
+1. **[CONFIRMADO, y se queda corto; CORREGIDO EN PRODUCCIÓN EL 2026-08-25 en `7d08293`]** **La tabla no tiene ninguna clave foránea.** `estudiante_id` y
    `asignacion_id` son `integer` sueltos: nada en la base impide una observación
    huérfana, ni apuntando a un estudiante inexistente, ni sobreviviendo al
    borrado de una asignación. **La integridad depende enteramente del código de
    aplicación**, y ese código no la comprueba: el `UPSERT` escribe lo que le
    den. Es el hallazgo más grave y el único de todo el programa sobre una tabla
    sin restricciones hacia sus dos padres naturales.
-2. **[CONFIRMADO literalmente]** **Las tres dimensiones son `text` sin límite y
+2. **[CONFIRMADO literalmente; ENCUADRE RECTIFICADO Y APARCADO EL 2026-08-27]** **Las tres dimensiones son `text` sin límite y
    la tabla no tiene ningún `CHECK`.** Contrasta con `plan_de_clases_observaciones`, la tabla del dominio
    vecino, que **sí** acota su texto entre 1 y 3000 caracteres. El dominio
    académico está **menos protegido que el de planes de clase**, y nada impide
@@ -371,28 +378,28 @@ orden explícita. Van ordenados por gravedad.
    `obtener_observacion`, dentro del router. Es el único caso del programa y la
    razón por la que un inventario que solo mirara el controlador contaría **1 de
    2** sentencias.
-4. **[CONFIRMADO con una respuesta real]** **El `422` depende del esquema y es
+4. **[CONFIRMADO con una respuesta real; CLASIFICADO COMO NOTA EL 2026-08-27: la prueba que lo acompaña ya cierra el riesgo que describe]** **El `422` depende del esquema y es
    frágil.** Lo produce el `model_validator`
    de `ObservacionCreate`, no el dominio. Si esa validación se moviera al
    controlador en una extracción posterior, el status **pasaría de 422 a 500**
    sin que ninguna prueba heredada lo notara. Ahora sí hay una que lo fija.
-5. **[CONFIRMADO exactamente]** **La normalización convierte cualquier valor
+5. **[CONFIRMADO exactamente; CLASIFICADO COMO NOTA EL 2026-08-27: inalcanzable desde el frontend desplegado, medido]** **La normalización convierte cualquier valor
    falsy en cadena vacía.**
    `str(valor or "").strip()` no distingue tipos: un **`0` numérico llega como
    `""`, no como `"0"`**, y lo mismo `False` y las listas vacías. Un valor
    truthy sí conserva su representación: `7` llega como `"7"`.
-6. **[CORREGIDO LOCALMENTE EL 2026-08-27]** **El `UPSERT` no comprobaba
+6. **[CORREGIDO Y PUBLICADO EL 2026-08-27 en `3439e2f`]** **El `UPSERT` no comprobaba
    que la asignación siguiera activa.** Es el mismo
    hallazgo que dejaron abiertos `dashboard`, `notas` y `boletin`.
-7. **[CORREGIDO LOCALMENTE EL 2026-08-27]** **Ninguna de las dos entradas
+7. **[CORREGIDO Y PUBLICADO EL 2026-08-27 en `289fdd8`]** **Ninguna de las dos entradas
    registraba nada ante un fallo.** No hay
    `try/except` ni `logger` en el router: una excepción sube y FastAPI la
    convierte en un 500 genérico. **No se filtra el texto de la excepción**, que
    es mejor que `dashboard` y `asistencia`, pero **tampoco queda traza**, que es
    peor que `boletin`.
-8. **[CONFIRMADO]** **`periodo` es un `int` sin cota**, ni en el esquema ni en la base: nada
+8. **[CONFIRMADO; ENCUADRE RECTIFICADO Y APARCADO EL 2026-08-27]** **`periodo` es un `int` sin cota**, ni en el esquema ni en la base: nada
    impide un periodo 99 ni negativo.
-9. **[CONFIRMADO]** **Defensa duplicada en el controlador.** Usa
+9. **[CONFIRMADO; CLASIFICADO COMO NOTA EL 2026-08-27: cosmético, el `.get` nunca actúa]** **Defensa duplicada en el controlador.** Usa
    `data.get("conductual", "")` para las tres dimensiones, pero el esquema ya
    garantiza que las tres claves existen con default `""`. El `.get` solo
    actuaría si alguien llamara al controlador **sin pasar por la ruta**, porque
@@ -1658,3 +1665,135 @@ manejador genérico**, y que la lectura no queda bloqueada.
 - **Queda registrado fuera de alcance**: las guardas de `app/core/permissions.py`
   siguen sin filtrar `activo` para los otros dominios.
 - Rollback: retirar la comprobación, la clase de error y su traducción a 403.
+
+## 2026-08-27 — campaña de corrección de hallazgos de `observaciones` CERRADA
+
+- **Autorización**: orden explícita del usuario, «cierra este observaciones».
+- Árbol limpio, rama `main`, HEAD `ea2345e204d5703f150b9c862913ee948fd26187`.
+- Este turno **no modificó producto, pruebas ni base de datos**: es documental.
+
+Se cierra igual que se cerró la de `dashboard` el 2026-08-25: los hallazgos con
+peso están corregidos, y los que quedan se razonan uno a uno para dejar escrito
+**por qué no se corrigen**, en vez de dejarlos como deuda sin veredicto.
+
+### Corrección del estado de publicación que esta bitácora registraba
+
+Los apartados de cierre del hallazgo 7 y del hallazgo 6 dicen «corregido, **sin
+publicar**». **Ese dato quedó desfasado y no se borra**: se escribió antes del
+push. Comprobado contra el remoto real con `git ls-remote origin main`, que
+devuelve `ea2345e204d5703f150b9c862913ee948fd26187`, **el mismo commit que el
+HEAD local**. Los tres commits de esta campaña están publicados:
+
+| Commit | Hallazgo |
+|---|---|
+| `7d08293` | 1 — claves foráneas, ya registrado como aplicado a producción |
+| `289fdd8` | 7 — registro del fallo y constante de error |
+| `3439e2f` | 6 — no escribir contra una asignación de baja |
+
+Como en este repositorio el push a `main` despliega, los tres están además
+**desplegados**. **Staging, verificación manual y CI de los hallazgos 6 y 7
+siguen pendientes**: se publicaron sin ellos, exactamente igual que las cinco
+correcciones de `dashboard`.
+
+### Recuento final de los nueve hallazgos de 7.0
+
+- **Tres corregidos y publicados**: el **1**, el **7** y el **6**.
+- **Uno obsoleto**: el **3**, que corrigió la propia 7.1 al mover el SQL al
+  repositorio.
+- **Dos aparcados con su encuadre rectificado**: el **2** y el **8**. Son
+  ciertos, pero la anomalía la crearía corregirlos solo aquí, y elegir el número
+  es una **decisión académica del colegio, no técnica**.
+- **Tres revisados en este cierre y clasificados como notas**: el **4**, el
+  **5** y el **9**.
+
+**Cero hallazgos quedan como trabajo pendiente dentro de este dominio.**
+
+### Los tres restantes son notas, no defectos, y así queda razonado
+
+**Hallazgo 4 — el `422` frágil.** El hecho es cierto, pero **ya no describe un
+riesgo abierto: describe una guardia que existe**. La prueba
+`test_las_tres_dimensiones_vacias_producen_un_error_de_validacion` no se limita a
+comprobar el mensaje: exige por aserción que `model_validator` **siga** en
+`app/schemas/observacion.py` y que el texto **no** aparezca en
+`app/routes/observaciones.py`. Si alguien moviera esa validación al controlador
+—el escenario exacto que el hallazgo teme—, la prueba falla en el acto. El
+hallazgo se cierra a sí mismo. **No hay nada que corregir.**
+
+**Hallazgo 5 — el `0` que se normaliza a cadena vacía.** Medido ejecutando el
+esquema, no inferido del código:
+
+| Valor recibido | Se guarda como |
+|---|---|
+| `"0"` — cadena, lo que manda un `<textarea>` | `'0'`, correcto |
+| `0` — número JSON | `''` |
+| `7` — número JSON | `'7'` |
+| `False`, lista vacía | `''` |
+
+El único caso que pierde el dato exige mandar un **número**, y **la interfaz
+desplegada no puede producirlo**: en `useObservacionEstudiante.js` el estado
+nace como `useState("")`, el valor viene de un `<textarea>` —que siempre
+entrega cadenas— y `utils/estudiantesObservador/observaciones.js` le aplica
+`.trim()`, un método que solo existe en cadenas. Se comprobó además que, si ese
+`0` fuera la única dimensión con contenido, el `model_validator` **rechaza la
+petición con 422** antes de escribir nada. **Inalcanzable desde el frontend**,
+igual que el recorte de `dias` que `dashboard` dejó como nota.
+
+**Hallazgo 9 — la defensa duplicada.** Confirmado y **cosmético**. La ruta llama
+al controlador con `data.model_dump()`, y las tres dimensiones tienen
+`default=""` en el esquema, así que las tres claves existen siempre: el segundo
+argumento de `.get` **nunca llega a usarse**. Retirarlo cambiaría código
+**ya desplegado** sin cambiar ningún comportamiento observable, que es la
+corrección oportunista que el índice maestro prohíbe.
+
+### Lo que queda vivo, y que no pertenece a este dominio
+
+- **Fuera de alcance, medido y registrado**: las guardas
+  `require_asignacion_access` y `require_estudiante_in_asignacion` viven en
+  `app/core/permissions.py`, las usan **17 llamadas en 8 archivos de ruta**, y
+  **no filtran `activo`** para los demás dominios. `observaciones` se protegió
+  por dentro; `dashboard`, `notas` y `boletin` siguen con el hueco abierto.
+  Cerrarlo en el código compartido exige **su propio alcance y su propia orden**.
+- **Trabajo barato disponible en el frontend**, y no en este repositorio: poner
+  `maxLength` en los tres `<textarea>` de `FormularioObservacionEstudiante.jsx`,
+  que hoy no tienen ninguno. No toca la base ni el backend. Exigiría su propia
+  orden.
+- **Verificaciones pendientes**: staging, verificación manual y CI de los
+  hallazgos 6 y 7.
+
+### Verificación de este cierre
+
+| Comprobación | Resultado |
+|---|---|
+| `.\venv\Scripts\python.exe scripts\verify.py` | **1129 pruebas, exit 0**; Ruff `All checks passed!`; `pip check` sin problemas |
+| `git ls-remote origin main` | `ea2345e…`, idéntico al HEAD local |
+| `git diff --check` | sin resultados |
+| Alcance del diff | **solo documentación** |
+
+### Lecciones que deja esta campaña
+
+1. **Un hallazgo puede ser cierto y aun así no ser un defecto.** De los nueve,
+   solo tres merecían corrección. Los otros seis se repartieron entre uno que ya
+   estaba resuelto, dos mal encuadrados y tres notas. Registrar el veredicto vale
+   tanto como corregir.
+2. **El encuadre engaña más que el dato.** Los hallazgos 2 y 8 afirmaban hechos
+   verdaderos y llegaban a una conclusión falsa, porque comparaban este dominio
+   con un vecino elegido en su mejor punto en vez de con el esquema completo.
+   Medir el conjunto —34 columnas de texto, **1** acotada— desmontó los dos.
+3. **El contrato observable se verifica contra el frontend.** Se usó tres veces:
+   para redactar los mensajes de error sabiendo que se muestran en pantalla, para
+   descartar el hallazgo 5 por inalcanzable y para localizar los `<textarea>` sin
+   límite. La técnica nació en `dashboard` y aquí ya es rutina.
+4. **Un hallazgo de esquema se corrige por migración con ensayo previo.** El 1
+   pasó por comprobación de solo lectura, rama de Neon, `--dry-run` y aplicación.
+   Es el único de esta campaña que tocó la base real.
+5. **El orden entre correcciones importa.** El hallazgo 6 se hizo **después** del
+   7 a propósito: sin manejador de errores, su rechazo legítimo habría salido
+   como un 500.
+
+### Estado
+
+- **Campaña cerrada.** La capa 7 de `observaciones` sigue **cerrada** desde el
+  2026-08-21; esto no la reabrió ni la sustituye.
+- **No hay capa activa** y esta bitácora **no enumera trabajo pendiente propio**.
+- Siguiente acción exacta: **esperar orden explícita del usuario**. Nada se
+  inicia por inferencia.

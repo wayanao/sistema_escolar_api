@@ -1,6 +1,6 @@
 # Guía maestra de evolución segura del backend
 
-Última revisión: 2026-08-25.
+Última revisión: 2026-08-27.
 
 ## Propósito
 
@@ -46,7 +46,7 @@ funcional ni una corrección oportunista ajena a la capa activa.
 | 7 | Resto de dominios — **`ventas` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `ventas` el 2026-08-20; verificada a mano. **Publicada el 2026-08-20**, después de escribirse su bitácora | [07_VENTAS.md](./07_VENTAS.md) |
 | 7 | Resto de dominios — **`asistencia` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `asistencia` el 2026-08-21; verificada a mano y publicada. N+1 de permisos corregido y publicado en `bbf3bfb`; staging de la corrección pendiente | [07_ASISTENCIA.md](./07_ASISTENCIA.md) |
 | 7 | Resto de dominios — **`boletin` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `boletin` el 2026-08-21; verificada a mano y **sin publicar**. Ver la advertencia de desfase más abajo | [07_BOLETIN.md](./07_BOLETIN.md) |
-| 7 | Resto de dominios — **`observaciones` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `observaciones` el 2026-08-21; verificada a mano. **Publicada el 2026-08-21**, después de escribirse su bitácora | [07_OBSERVACIONES.md](./07_OBSERVACIONES.md) |
+| 7 | Resto de dominios — **`observaciones` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `observaciones` el 2026-08-21; verificada a mano y publicada. **Campaña de hallazgos cerrada el 2026-08-27**: tres corregidos y publicados —uno de ellos en producción—, dos aparcados, tres notas y uno obsoleto | [07_OBSERVACIONES.md](./07_OBSERVACIONES.md) |
 | 7 | Resto de dominios — **`planilla` migrado** | Migración individual con contratos y pruebas | **Cerrada** para `planilla` el 2026-08-21; verificación manual correcta y sin publicación comprobada | [07_PLANILLA.md](./07_PLANILLA.md) |
 | 7 | Resto de dominios — **`planeador_anual` migrado** | Migración individual con contratos y pruebas | **Cerrada** el 2026-08-22; 7.2 No aplica, verificación manual global reportada y sin entorno especificado | [07_PLANEADOR_ANUAL.md](./07_PLANEADOR_ANUAL.md) |
 | 7 | Resto de dominios — **`plan_de_clases` migrado** | Migración individual con contratos y pruebas | **Cerrada** el 2026-08-22; 7.2/7.3 No aplica, verificación manual global con reserva y sin publicación comprobada | [07_PLAN_DE_CLASES.md](./07_PLAN_DE_CLASES.md) |
@@ -211,6 +211,33 @@ ellas. Cinco lecciones quedan registradas en la bitácora, entre ellas que **un
 hallazgo puede estar mal diagnosticado** —dos lo estaban—, que **una corrección
 puede introducir un hallazgo nuevo** —el undécimo—, y que el contrato observable
 **se puede verificar contra el repositorio del frontend** antes de cambiarlo.
+
+**Campaña de correcciones de `observaciones` CERRADA el 2026-08-27**, por orden
+explícita del usuario. Es la segunda campaña de este tipo, después de la de
+`dashboard`, y se cierra con el mismo criterio: se corrige lo que pesa y se
+razona por escrito lo que no se corrige. De sus **nueve** hallazgos, **tres
+quedaron corregidos y publicados** —las claves foráneas ausentes, aplicadas **a
+producción** por migración con ensayo previo en una rama de Neon; el fallo que no
+dejaba ninguna traza; y el `UPSERT` que escribía contra asignaciones dadas de
+baja—, **uno era obsoleto** porque lo había resuelto la propia 7.1, **dos
+quedaron aparcados** con su encuadre rectificado —la longitud del texto y la cota
+de `periodo`: son ciertos, pero acotar solo este dominio **crearía** la anomalía
+en vez de cerrarla, y el número a elegir es una **decisión académica del colegio,
+no técnica**— y **tres se clasificaron como notas**, razonadas una a una: el
+`422` frágil **lo cierra su propia prueba**, que falla si alguien mueve la
+validación; el `0` que se normaliza a cadena vacía es **inalcanzable desde el
+frontend desplegado**, medido ejecutando el esquema y comprobado contra los
+`<textarea>` reales; y el `.get` defensivo es cosmético, porque nunca llega a
+actuar. **Ninguno queda como trabajo pendiente del dominio.** Los tres commits
+—`7d08293`, `289fdd8` y `3439e2f`— están **publicados**, comprobado contra el
+remoto real con `git ls-remote`, y la bitácora corrigió su propio registro, que
+los daba por no publicados. **Staging, verificación manual y CI de los hallazgos
+6 y 7 siguen pendientes.** Queda **fuera de alcance y medido** que las guardas de
+`app/core/permissions.py` **no filtran `activo`** para los demás dominios —17
+llamadas en 8 archivos de ruta—: `observaciones` se protegió por dentro, y
+`dashboard`, `notas` y `boletin` conservan el hueco. Queda también disponible, y
+en el repositorio del frontend, poner `maxLength` en los tres `<textarea>` que
+hoy no tienen ninguno.
 
 No se crea por anticipado un documento por cada dominio. Cuando una capa se
 cierre y el usuario ordene continuar, se crea su sucesora desde
@@ -2223,8 +2250,9 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
 ## Archivos de continuidad
 
 - [07_SUPER_ADMIN.md](./07_SUPER_ADMIN.md): **bitácora cerrada** de la capa 7
-  para el dominio `super_admin` y **fuente de continuidad más reciente**. **Es
-  el documento que un chat nuevo debe leer después de este índice.** Registra
+  para el dominio `super_admin`. Fue la fuente de continuidad **hasta la campaña
+  de hallazgos de `dashboard`**; ese papel lo tiene hoy
+  [07_OBSERVACIONES.md](./07_OBSERVACIONES.md). Registra
   el commit base limpio `2ec924a3308581b746a61fa24a44f71433034dbc`, la rama
   acordada `main`, la orden explícita «sigue super admin» y la decisión de
   continuar localmente aceptando las verificaciones manuales de `profesores` y
@@ -2337,8 +2365,12 @@ dependencias, instrucciones de staging, rollback y verificación manual aplicabl
   correcta con **8 de 8 puntos** reportados y entorno no especificado. Los cinco
   dominios restantes siguen en espera.
 - [07_OBSERVACIONES.md](./07_OBSERVACIONES.md): **bitácora cerrada** de la capa
-  7 para el dominio `observaciones`. Fue la fuente de continuidad **hasta que
-  se activó `planilla`**. Registra el
+  7 para el dominio `observaciones` y **fuente de continuidad más reciente**.
+  **Es el documento que un chat nuevo debe leer después de este índice**, porque
+  contiene la última actividad del programa: la **campaña de corrección de
+  hallazgos cerrada el 2026-08-27**, con el veredicto razonado de los nueve
+  —tres corregidos y publicados, uno obsoleto, dos aparcados y tres notas—, sus
+  cinco lecciones y las verificaciones que deja pendientes. Registra el
   cierre de **7.1**, la extracción a `observaciones_repository` —**el
   undécimo**— con su comparador AST de **2 de 2 literales byte a byte**, la
   equivalencia **en ejecución** de los dos caminos y tres escenarios, y el rasgo

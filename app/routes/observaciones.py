@@ -4,7 +4,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.core.permissions import require_asignacion_access, require_estudiante_in_asignacion
 from app.database import get_cursor
 from app.dependencies import get_current_user
-from app.controllers.observacion_controller import guardar_observacion_controller
+from app.controllers.observacion_controller import (
+    AsignacionInactivaError,
+    guardar_observacion_controller,
+)
 from app.repositories import observaciones_repository
 from app.schemas.observacion import ObservacionCreate
 from app.services.asignacion_academica import resolver_asignacion_academica_id_cursor
@@ -19,6 +22,7 @@ logger = logging.getLogger(__name__)
 # mostraria un error de PostgreSQL en pantalla. Es exactamente el hallazgo que
 # `dashboard` tenia y que se corrigio el 2026-08-25.
 _ERROR_GUARDAR = "No se pudo guardar la observacion. Intenta de nuevo."
+_ERROR_INACTIVA = "Esta asignacion ya no esta activa, asi que no admite observaciones nuevas."
 _ERROR_CONSULTAR = "No se pudo consultar la observacion. Intenta de nuevo."
 
 router = APIRouter(tags=["Observaciones"], dependencies=[Depends(get_current_user)])
@@ -35,6 +39,8 @@ def guardar_observacion(data: ObservacionCreate, current_user: dict = Depends(ge
         return guardar_observacion_controller(data.model_dump())
     except HTTPException:
         raise
+    except AsignacionInactivaError:
+        raise HTTPException(status_code=403, detail=_ERROR_INACTIVA)
     except Exception:
         logger.exception(
             "Fallo al guardar la observacion del estudiante %s en la asignacion %s",

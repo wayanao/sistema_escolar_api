@@ -381,8 +381,8 @@ orden explícita. Van ordenados por gravedad.
    `str(valor or "").strip()` no distingue tipos: un **`0` numérico llega como
    `""`, no como `"0"`**, y lo mismo `False` y las listas vacías. Un valor
    truthy sí conserva su representación: `7` llega como `"7"`.
-6. **[CONFIRMADO, y alcanza también a las guardas]** **El `UPSERT` no comprueba
-   que la asignación siga activa.** Es el mismo
+6. **[CORREGIDO LOCALMENTE EL 2026-08-27]** **El `UPSERT` no comprobaba
+   que la asignación siguiera activa.** Es el mismo
    hallazgo que dejaron abiertos `dashboard`, `notas` y `boletin`.
 7. **[CORREGIDO LOCALMENTE EL 2026-08-27]** **Ninguna de las dos entradas
    registraba nada ante un fallo.** No hay
@@ -1584,3 +1584,77 @@ este último **a mejor**: ahora dice qué falló.
   encuadre rectificado.
 - Rollback: retirar el `try/except`, el logger y las constantes de la ruta, y
   restaurar la guardia anterior. Sin rollback de datos.
+
+## 2026-08-27 — hallazgo 6 corregido: no se escribe contra una asignación de baja
+
+- Autorización: orden explícita del usuario, que señaló este hallazgo por su
+  nombre. Se hizo **después** del 7 porque sin manejador de errores el rechazo
+  habría salido como 500.
+- **Verificado antes de corregir**, conforme a su instrucción: desactivar una
+  asignación **es su baja real**. `asignaciones_repository` lo deja escrito —«no
+  borra nunca: el historial académico cuelga de esta fila por seis claves
+  foráneas»—, así que `activo = FALSE` es el equivalente a borrarla. Escribir
+  observaciones nuevas ahí es escribir en una clase eliminada. **El hallazgo es
+  real.**
+
+### Decisión de alcance: se arregla dentro del dominio, no en el código compartido
+
+Las dos guardas que fallan el filtro, `require_asignacion_access` y
+`require_estudiante_in_asignacion`, viven en `app/core/permissions.py` y las
+usan **17 llamadas en 8 archivos de ruta**. Cambiarlas ahí arreglaría todos los
+dominios de golpe **y los afectaría a todos de golpe**, que es un trabajo con su
+propio alcance y su propia orden.
+
+Por eso la comprobación se añade **dentro de `observaciones`**, que es el dominio
+autorizado. El hueco sigue abierto para los demás y queda registrado.
+
+### Lo que cambió
+
+- `observaciones_repository.asignacion_esta_activa(cursor, asignacion_id)`,
+  función nueva.
+- `observacion_controller`: comprueba antes del `UPSERT` y lanza
+  `AsignacionInactivaError`, una clase propia.
+- `app/routes/observaciones.py`: traduce ese error a **403** con
+  `_ERROR_INACTIVA`, un mensaje redactado para el usuario final **porque el
+  frontend lo muestra**.
+
+**La clase de error propia está justificada**, a diferencia de la que se
+descartó en `dashboard`: aquí sí hay dos cosas que distinguir —un rechazo de
+permiso, que es 403, y un fallo de infraestructura, que es 500—. Sin ella el
+rechazo caería en el `except Exception` y saldría como error del servidor.
+
+### Decisión: solo se bloquea la escritura
+
+**La lectura no se toca.** Consultar una observación antigua de una asignación ya
+dada de baja es legítimo, y bloquearlo escondería historial. Hay una prueba que
+fija que la ruta de lectura no llama a la comprobación.
+
+### Coste, y qué guardias saltaron
+
+La escritura pasa de **2 consultas a 3** —resolver, comprobar `activo`,
+`UPSERT`—, todas sobre **el mismo cursor**: **no añade ninguna conexión**.
+
+Saltaron **seis** pruebas, todas previsibles y ninguna por rotura de
+comportamiento:
+
+- tres porque los dobles no devolvían fila para `activo` y el controlador, con
+  razón, rechazaba la escritura. Se actualizaron para declarar la asignación
+  activa, que es el camino normal;
+- dos por los conteos que 7.0 fijó por aserción: 2 sentencias en el repositorio
+  ahora son 3, y 2 consultas en la escritura ahora son 3;
+- una por indexar `cursor.calls[0]`, que ya no es el `UPSERT`. Se apuntaron al
+  último, que es más robusto.
+
+Se añadieron **tres pruebas**: que una asignación de baja hace fallar la
+escritura sin escribir ni confirmar, que el rechazo sale como **403 y antes del
+manejador genérico**, y que la lectura no queda bloqueada.
+
+### Estado
+
+- **Hallazgo 6: corregido, sin publicar.** No toca la base de datos.
+- Compuerta: **1129 pruebas, exit 0**.
+- Abiertos: **tres**, todos menores —el 422 frágil, el `0` que se normaliza a
+  cadena vacía y el `.get` defensivo—, más los dos aparcados.
+- **Queda registrado fuera de alcance**: las guardas de `app/core/permissions.py`
+  siguen sin filtrar `activo` para los otros dominios.
+- Rollback: retirar la comprobación, la clase de error y su traducción a 403.

@@ -74,6 +74,11 @@ class FakeCursor:
     def execute(self, query, params=None):
         self.calls.append((query, params))
 
+    def fetchone(self):
+        # La asignacion se declara activa: sin esto el controlador rechaza la
+        # escritura con `AsignacionInactivaError`, que es el hallazgo 6.
+        return (True,)
+
     def close(self):
         self.closed = True
 
@@ -116,7 +121,7 @@ def test_controller_guarda_dimensiones_no_diligenciadas_como_vacias(monkeypatch)
     })
 
     assert response == {"mensaje": "Observación guardada/actualizada"}
-    assert cursor.calls[0][1] == (1, 77, 2, "", "Avanza en lectura.", "")
+    assert cursor.calls[-1][1] == (1, 77, 2, "", "Avanza en lectura.", "")
     assert conn.committed is True
     assert conn.rolled_back is False
     assert cursor.closed is True

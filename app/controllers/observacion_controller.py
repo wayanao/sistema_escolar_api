@@ -3,12 +3,23 @@ from app.repositories import observaciones_repository
 from app.services.asignacion_academica import resolver_asignacion_academica_id_cursor
 
 
+class AsignacionInactivaError(Exception):
+    """La asignacion existe pero esta dada de baja.
+
+    Se distingue de un fallo de infraestructura porque la ruta la traduce a
+    **403**, no a 500. Es la razon de que exista esta clase: sin ella el rechazo
+    caeria en el `except Exception` y saldria como error del servidor.
+    """
+
 
 def guardar_observacion_controller(data):
     conn = get_connection()
     cursor = conn.cursor()
     try:
         asignacion_id = resolver_asignacion_academica_id_cursor(cursor, data["asignacion_id"])
+
+        if not observaciones_repository.asignacion_esta_activa(cursor, asignacion_id):
+            raise AsignacionInactivaError(asignacion_id)
 
         observaciones_repository.guardar_observacion(
             cursor,

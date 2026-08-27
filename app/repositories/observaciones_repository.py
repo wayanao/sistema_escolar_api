@@ -50,6 +50,26 @@ def leer_observacion(cursor, estudiante_id, asignacion_id, periodo):
     return cursor.fetchone()
 
 
+def asignacion_esta_activa(cursor, asignacion_id):
+    """`True` si la asignacion sigue activa.
+
+    Desactivar una asignacion es el equivalente a borrarla: el proyecto **nunca
+    borra** esa fila porque seis claves foraneas cuelgan de ella, asi que
+    `activo = FALSE` es la baja real. Escribir una observacion nueva contra una
+    asignacion dada de baja es el hallazgo 6 de 7.0.
+
+    **Solo se usa al escribir.** La lectura no la llama a proposito: consultar
+    una observacion antigua de una asignacion ya dada de baja es legitimo, y
+    bloquearlo escondería historial.
+    """
+    cursor.execute(
+        "SELECT activo FROM asignaciones WHERE id = %s",
+        (asignacion_id,),
+    )
+    fila = cursor.fetchone()
+    return bool(fila and fila[0])
+
+
 def guardar_observacion(cursor, estudiante_id, asignacion_id, periodo,
                         conductual, cognitivo, lenguaje):
     """Crea o actualiza la observacion del trio estudiante/asignacion/periodo.

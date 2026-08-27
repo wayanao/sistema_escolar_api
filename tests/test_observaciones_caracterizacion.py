@@ -37,7 +37,9 @@ RAIZ = Path(__file__).resolve().parents[1]
 # --------------------------------------------------------------------------
 
 class CursorFalso:
-    def __init__(self, fila=None, secuencia_fetchone=None):
+    def __init__(self, fila=(True,), secuencia_fetchone=None):
+        # Por defecto la asignacion esta ACTIVA: es el camino normal. Pasar
+        # `fila=None` simula una asignacion dada de baja.
         self.fila = fila
         self.secuencia_fetchone = list(secuencia_fetchone or [])
         self.calls = []
@@ -207,7 +209,7 @@ def test_las_dos_sentencias_viven_ahora_en_el_repositorio():
     """
     en_repositorio = _sql_del_modulo("app/repositories/observaciones_repository.py")
 
-    assert len(en_repositorio) == 2
+    assert len(en_repositorio) == 3
     assert _sql_del_modulo("app/routes/observaciones.py") == []
     assert _sql_del_modulo("app/controllers/observacion_controller.py") == []
     assert _sql_del_modulo("app/schemas/observacion.py") == []
@@ -326,8 +328,11 @@ def test_guardar_observacion_hace_un_upsert_sobre_una_sola_tabla(monkeypatch):
     assert resultado == {"mensaje": "Observación guardada/actualizada"}
 
     sentencias = [sql for sql, _ in cursor.calls]
-    assert len(sentencias) == 1
-    sql = sentencias[0]
+    # Dos: la comprobacion de `activo` que anadio la correccion del hallazgo 6,
+    # y el UPSERT. El resolver esta doblado en esta prueba y no emite consulta.
+    assert len(sentencias) == 2
+    assert "SELECT activo FROM asignaciones" in sentencias[0]
+    sql = sentencias[-1]
     assert "INSERT INTO observaciones" in sql
     assert "ON CONFLICT (estudiante_id, asignacion_id, periodo)" in sql
     assert "DO UPDATE SET" in sql
@@ -352,7 +357,7 @@ def test_guardar_observacion_escribe_el_asignacion_academica_id_resuelto(monkeyp
 
     observacion_controller.guardar_observacion_controller(_payload(asignacion_id=10))
 
-    _, params = cursor.calls[0]
+    _, params = cursor.calls[-1]
     assert params == (1, 77, 2, "Atento", "", "")
 
 
@@ -507,9 +512,10 @@ def test_las_dos_entradas_registran_el_fallo_y_devuelven_una_constante():
     # Nunca el texto de la excepcion: el frontend MUESTRA este campo al usuario.
     # Se comprueba que los dos unicos `detail=` sean las constantes; el
     # comentario del modulo menciona el otro caso para advertirlo.
-    assert fuente.count("detail=") == 2
+    assert fuente.count("detail=") == 3
     assert "detail=_ERROR_GUARDAR" in fuente
     assert "detail=_ERROR_CONSULTAR" in fuente
+    assert "detail=_ERROR_INACTIVA" in fuente
 
 
 def test_el_fallo_al_guardar_sale_como_500_sin_filtrar_el_texto_interno(caplog):
@@ -662,8 +668,10 @@ def test_linea_base_de_consultas_de_la_escritura(monkeypatch):
 
     observacion_controller.guardar_observacion_controller(_payload())
 
-    # Resolver + UPSERT, ambos sobre el mismo cursor.
-    assert len(cursor.calls) == 2
+    # Resolver + comprobacion de `activo` + UPSERT, los tres sobre el mismo
+    # cursor. Eran dos hasta el 2026-08-27: la comprobacion la anadio la
+    # correccion del hallazgo 6.
+    assert len(cursor.calls) == 3
 
 
 def test_linea_base_de_conexiones_por_entrada(monkeypatch):
@@ -717,3 +725,59 @@ def test_estudiantes_repository_lee_esta_tabla_y_su_contrato_debe_seguir_pasando
     lecturas = [s for s in sql if "FROM observaciones o" in s]
     assert len(lecturas) == 1
     assert "ORDER BY o.periodo DESC" in lecturas[0]
+
+
+def test_no_se_puede_escribir_contra_una_asignacion_dada_de_baja(monkeypatch):
+    """Hallazgo 6, corregido el 2026-08-27.
+
+    Desactivar una asignacion es su baja real: el proyecto nunca borra esa fila
+    porque el historial academico cuelga de ella. Escribir observaciones nuevas
+    ahi equivalia a escribir en una clase eliminada.
+    """
+    cursor = CursorFalso(fila=None)  # `activo` no devuelve fila: dada de baja
+    conn = ConexionFalsa(cursor)
+    monkeypatch.setattr(observacion_controller, "get_connection", lambda: conn)
+    monkeypatch.setattr(
+        observacion_controller,
+        "resolver_asignacion_academica_id_cursor",
+        lambda _c, _a: 77,
+    )
+
+    with pytest.raises(observacion_controller.AsignacionInactivaError):
+        observacion_controller.guardar_observacion_controller(_payload())
+
+    # No se escribio nada y la transaccion se revirtio.
+    sentencias = [sql for sql, _ in cursor.calls]
+    assert not any("INSERT INTO observaciones" in sql for sql in sentencias)
+    assert conn.commits == 0
+    assert conn.rollbacks == 1
+    assert conn.closed is True
+
+
+def test_la_asignacion_inactiva_sale_como_403_y_no_como_500():
+    """El rechazo es un permiso, no un fallo del servidor.
+
+    Sin la clase de error propia caeria en el `except Exception` y saldria como
+    500. Por eso el hallazgo 7 se corrigio antes que este.
+    """
+    fuente = (RAIZ / "app/routes/observaciones.py").read_text(encoding="utf-8")
+
+    assert "except AsignacionInactivaError:" in fuente
+    assert "status_code=403, detail=_ERROR_INACTIVA" in fuente
+
+    # Va ANTES del manejador generico, o nunca se alcanzaria.
+    assert fuente.index("except AsignacionInactivaError:") < fuente.index("except Exception:")
+
+
+def test_la_lectura_no_bloquea_las_asignaciones_dadas_de_baja():
+    """Decision deliberada: solo se bloquea la escritura.
+
+    Consultar una observacion antigua de una asignacion ya dada de baja es
+    legitimo; bloquearlo esconderia historial.
+    """
+    fuente = (RAIZ / "app/repositories/observaciones_repository.py").read_text(encoding="utf-8")
+    ruta = (RAIZ / "app/routes/observaciones.py").read_text(encoding="utf-8")
+
+    assert "def asignacion_esta_activa(" in fuente
+    # La ruta de lectura no la llama: solo la usa el controlador de escritura.
+    assert "asignacion_esta_activa" not in ruta

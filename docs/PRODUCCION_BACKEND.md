@@ -230,9 +230,76 @@ Scripts operativos:
 - `/super-admin` para crear colegios
 - `scripts/legacy/crear_cliente.py` y `scripts/legacy/setup_saas.py` solo como referencia historica
 
+## Monitoreo de disponibilidad
+
+Endpoint:
+
+- `GET /health`, publico y sin autenticacion.
+
+Respuestas:
+
+- `200` con `{"status": "ok", "database": "ok"}` cuando la API vive y
+  PostgreSQL responde.
+- `503` con `{"status": "degraded", "database": "error"}` cuando la base no
+  responde o el pool esta agotado.
+
+Que detecta:
+
+- servicio caido o deploy fallido;
+- PostgreSQL/Neon inaccesible;
+- `connection pool exhausted`, el incidente ya documentado mas arriba, porque
+  `ThreadedConnectionPool` lanza `PoolError` en vez de esperar;
+- credenciales de base rotadas o mal configuradas.
+
+Que no detecta:
+
+- lentitud sin fallo;
+- errores de un endpoint concreto;
+- datos incorrectos.
+
+### Aviso: no usarlo como Health Check Path de Render
+
+Render **reinicia el servicio** cuando su `Health Check Path` falla. Si ese
+chequeo consultara la base, un bache de Neon provocaria reinicios en cadena y
+agravaria la caida en vez de contenerla.
+
+Regla operativa:
+
+- `Health Check Path` de Render: **vacio**.
+- `/health`: solo para el monitor externo.
+
+### Configuracion del monitor externo
+
+Con UptimeRobot en plan gratuito:
+
+1. Crear un monitor tipo `HTTP(s)`.
+2. URL: `https://<dominio-del-backend>/health`.
+3. Intervalo: 5 minutos, el minimo del plan gratuito.
+4. Activar el aviso **despues de 2 fallos consecutivos**, no del primero. Evita
+   alertas por un bache momentaneo de la base.
+5. Destino del aviso: correo y, si se quiere, Telegram.
+
+El limite de la ruta es `60/minute` por IP, asi que un intervalo de 5 minutos
+queda muy por debajo. Bajar el intervalo por debajo de 1 segundo si haria que
+el propio monitor reciba `429`.
+
+### Comprobacion manual
+
+```bash
+curl -i https://<dominio-del-backend>/health
+```
+
+Se espera `HTTP/1.1 200 OK` y el cuerpo con `"database": "ok"`. Si devuelve
+`503`, revisar los logs del servidor: el detalle del fallo se registra alli con
+`logger.exception` bajo el logger `app.core.health`, y no viaja en la respuesta
+porque el mensaje de `psycopg2` revela DSN y nombres internos.
+
 ## Checklist post-deploy
 
 - Abrir backend y confirmar que no hay errores de arranque.
+- Probar `GET /health` sin token y confirmar `200` con `"database": "ok"`.
+- Confirmar que el `Health Check Path` de Render sigue vacio.
+- Confirmar que el monitor externo apunta a `/health` y esta activo.
 - Probar `POST /login` desde el dominio real del frontend.
 - Revisar en navegador que la cookie `token` queda `HttpOnly`, con `Secure`
   segun entorno y `SameSite` esperado.
@@ -258,6 +325,9 @@ Scripts operativos:
 - No se observo configuracion Alembic activa.
 - La preparacion de produccion depende de ejecutar migraciones, indices y verificacion de tenants.
 - El pool puede agotarse si alguna ruta abre conexion y no la cierra.
+- El rate limit global `100/minute` de `app/main.py` es inerte: `slowapi`
+  requiere `SlowAPIMiddleware` para aplicar `default_limits` y la app no lo
+  monta. Solo `POST /login` y `GET /health` estan limitados de verdad.
 - Cookies cross-site mal configuradas pueden cerrar sesion en movil aunque en
   PC parezca funcionar.
 

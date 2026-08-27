@@ -1,6 +1,6 @@
 # Arquitectura Backend
 
-Ultima revision documental: 2026-07-15.
+Ultima revision documental: 2026-08-27.
 
 ## Stack actual
 
@@ -38,6 +38,7 @@ Ultima revision documental: 2026-07-15.
 - `app/db/session.py`: pool y obtencion de conexiones.
 - `app/core/permissions.py`: permisos reutilizables por profesor, asignacion, estudiante y plan de clases.
 - `app/core/logging.py`: configuracion de logging.
+- `app/core/health.py`: chequeo de salud contra `public` para monitoreo externo.
 - `app/core/tenant_status.py`: calculo de estado efectivo del tenant por suscripcion, mora y bloqueo.
 - `app/core/super_admin.py`: dependencia de autenticacion para plataforma SaaS en `public`.
 - `app/routes/`: routers HTTP.
@@ -81,6 +82,7 @@ La carpeta `app/repositories/README.md` indica que los repositorios deben recibi
 
 `main.py` incluye routers de:
 
+- health (primero: es infraestructura, no un dominio)
 - estudiantes
 - cuentas
 - pagos
@@ -144,10 +146,15 @@ CORS permite:
 - `http://127.0.0.1:5173` solo si `ALLOW_DEV_CORS_ORIGINS=true`
 - `http://localhost:5173` solo si `ALLOW_DEV_CORS_ORIGINS=true`
 
-Rate limit global:
+Rate limit declarado como global:
 
 - `100/minute`
 
-Login:
+Riesgo documentado: ese limite global **no se aplica**. `slowapi` solo hace
+efectivo `default_limits` cuando la app monta `SlowAPIMiddleware`, y `main.py`
+no lo monta. Hoy solo quedan limitados los endpoints con decorador propio.
 
-- `5/minute`
+Limites realmente vigentes:
+
+- `POST /login`: `5/minute`
+- `GET /health`: `60/minute`

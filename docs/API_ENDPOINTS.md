@@ -1,6 +1,6 @@
 # API Endpoints
 
-Ultima revision documental: 2026-07-15.
+Ultima revision documental: 2026-08-27.
 
 ## Routers
 
@@ -16,6 +16,39 @@ Prefijos definidos en router:
 - `nomina`: incluido en `main.py` con prefix `/api/nomina`
 
 Los demas routers usan paths completos en cada decorator.
+
+## Health
+
+- `GET /health`
+
+Notas:
+
+- Publico, sin autenticacion: un monitor externo no puede iniciar sesion. Es la
+  unica ruta abierta ademas de `login`.
+- `200` cuando la API vive y PostgreSQL responde:
+
+```json
+{
+  "status": "ok",
+  "database": "ok"
+}
+```
+
+- `503` cuando la base no responde o el pool esta agotado:
+
+```json
+{
+  "status": "degraded",
+  "database": "error"
+}
+```
+
+- El chequeo fija el tenant en `public` y ejecuta `SELECT 1`. No lee ningun
+  schema de colegio.
+- La respuesta no expone version, host ni detalle del error; ese detalle va al
+  log del servidor.
+- Limite de `60/minute` por IP, declarado en el decorador de la ruta.
+- No debe usarse como `Health Check Path` de Render: ver `PRODUCCION_BACKEND.md`.
 
 ## Auth
 

@@ -1,10 +1,67 @@
 # Cambios Backend
 
-Ultima revision documental: 2026-07-25.
+Ultima revision documental: 2026-08-27.
 
 ## Proposito
 
 Bitacora de cambios documentales y tecnicos observables del backend.
+
+## 2026-08-27 - Endpoint de salud para monitoreo externo
+
+- Se agregó `GET /health`, público y sin autenticación, porque un monitor
+  externo no puede iniciar sesión. Es la única ruta abierta además de `login`.
+- Responde `200` con `{"status": "ok", "database": "ok"}` cuando la API vive y
+  PostgreSQL contesta, y `503` con `{"status": "degraded", "database": "error"}`
+  cuando la base falla. Un monitor alerta ante cualquier código distinto de
+  `200`, así que el aviso no necesita configuración adicional.
+- El chequeo abre una conexión del pool, fija el tenant en `public` y ejecuta
+  `SELECT 1`. No toca ningún schema de colegio ni cuenta filas.
+- Cubre de una vez los dos fallos que dejan el sistema inservible aunque el
+  proceso siga vivo: base inaccesible y pool agotado. `ThreadedConnectionPool`
+  lanza `PoolError` en vez de esperar, así que `connection pool exhausted` —el
+  incidente ya documentado en producción— llega al chequeo como excepción y
+  activa la alerta.
+- La respuesta no incluye versión, host ni detalle del error. El mensaje de
+  `psycopg2` revela DSN y nombres internos, así que va solo al log del servidor
+  con `logger.exception`.
+- La ruta lleva límite explícito de `60/minute`. Es necesario porque el
+  `default_limits=["100/minute"]` del limitador de `app/main.py` **no se está
+  aplicando**: `slowapi` lo exige a través de `SlowAPIMiddleware`, que la app no
+  monta, de modo que hoy solo quedan limitados los endpoints decorados. Ver el
+  riesgo registrado más abajo.
+- Archivos nuevos: `app/core/health.py` con el chequeo y `app/routes/health.py`
+  con la ruta. El router se registra primero en `app/main.py` por ser
+  infraestructura y no un dominio del colegio.
+- No se agregaron columnas, tablas ni migraciones. No se modificó ningún
+  endpoint existente.
+
+Aviso operativo:
+
+- **No usar `/health` como `Health Check Path` de Render.** Render reinicia el
+  servicio cuando ese chequeo falla, así que un bache de la base provocaría
+  reinicios en cadena y agravaría la caída. La ruta es para el monitor externo;
+  el chequeo de la plataforma debe quedar vacío.
+
+Riesgo detectado y no corregido:
+
+- `default_limits=["100/minute"]` en `app/main.py` es inerte por falta de
+  `SlowAPIMiddleware`. Hoy solo `POST /login` (`5/minute`) y `GET /health`
+  (`60/minute`) están limitados de verdad; el resto de la API no tiene límite.
+  No se corrigió aquí porque cambia el comportamiento observable de 139
+  endpoints y excede el alcance de este cambio.
+
+Verificación:
+
+- 12 pruebas nuevas en `tests/test_health.py`, correctas. Cubren los dos status
+  codes, el pool agotado, la ausencia de dependencias de autenticación, que el
+  detalle del error no llegue al cuerpo pero sí al log, que la conexión vuelva
+  al pool aunque la consulta falle y que el `ContextVar` del tenant quede
+  restaurado.
+- Compuerta global `python scripts/verify.py`: **1141 pruebas correctas**, Ruff
+  correcto y `pip check` correcto, exit 0.
+- `git diff --check` correcto.
+- Sin PostgreSQL real: como el resto de la suite, la capa de datos va con
+  dobles. La verificación contra la base queda para el despliegue.
 
 ## 2026-08-03 - Reporte académico parcial desde la planilla vigente
 

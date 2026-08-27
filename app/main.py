@@ -39,6 +39,7 @@ from app.routes import (
     dashboard,
     egresos,
     estudiantes,
+    health,
     inventario,
     materias,
     nomina,
@@ -199,6 +200,8 @@ async def tenant_middleware(request: Request, call_next):
         tenant_schema_var.reset(tenant_token)
 
 # 🔗 Rutas
+# Salud primero: es infraestructura, no un dominio del colegio.
+app.include_router(health.router)
 app.include_router(estudiantes.router)
 app.include_router(cuentas.router)
 app.include_router(pagos.router)

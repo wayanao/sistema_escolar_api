@@ -515,6 +515,32 @@ su perfil de riesgo es el de la capa 5. Aun así la capa **no tocó la base de
 datos**, ni siquiera para leer, así que su rollback es de código —por el método
 empleado, no por la naturaleza del dominio—.
 
+**Cambio fuera del programa, 2026-08-27: endpoint de salud.** Con orden
+explícita del usuario se agregó `GET /health` para monitoreo externo. **No es
+una subcapa y no reabre ninguna capa cerrada**: el programa prohíbe agregar
+funciones dentro de una capa, así que este trabajo queda registrado aquí solo
+para que un asistente posterior no lo lea como divergencia sin explicar al
+comparar `HEAD` contra el commit base. Su documentación viva está en
+`docs/CAMBIOS_BACKEND.md`, `docs/API_ENDPOINTS.md`,
+`docs/ARQUITECTURA_BACKEND.md` y `docs/PRODUCCION_BACKEND.md`, no en una
+bitácora de capa.
+
+Alcance real: tres archivos nuevos —`app/core/health.py`, `app/routes/health.py`
+y `tests/test_health.py`— y tres líneas en `app/main.py` para importar y
+registrar el router. **No se modificó ningún endpoint existente**, ni permisos,
+ni SQL, ni tenant, ni migraciones. Compuerta global con el árbol tal cual:
+**1141 pruebas correctas**, Ruff correcto, `pip check` correcto y
+`git diff --check` limpio. Sin PostgreSQL real, sin commit, sin push y sin
+despliegue: la verificación contra la base y el alta del monitor externo quedan
+bajo control del usuario.
+
+La revisión que originó el cambio dejó además **un hallazgo registrado y no
+corregido**: `default_limits=["100/minute"]` en `app/main.py` es inerte porque
+`slowapi` solo lo aplica con `SlowAPIMiddleware`, que la app no monta. Hoy solo
+`POST /login` y `GET /health` están limitados de verdad. Corregirlo cambiaría el
+comportamiento observable de los 139 endpoints, así que exige una orden
+explícita y su propio alcance.
+
 ## Paquete mínimo de contexto para un chat nuevo
 
 Un chat nuevo debe leer completamente y en este orden:

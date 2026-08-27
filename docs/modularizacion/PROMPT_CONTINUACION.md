@@ -102,6 +102,42 @@ Para transferir el trabajo entre LLM:
   un push autorizado y evidencia del run.
 ```
 
+## Si el usuario dice «continúa con los hallazgos de un dominio»
+
+Hay un modo de trabajo que **no es una capa** y que este prompt debe reconocer,
+porque desde el 2026-08-25 es el que más se usa: **corregir de uno en uno los
+hallazgos que una capa ya cerrada dejó registrados**.
+
+Cuando el usuario nombre un dominio y pida seguir con sus hallazgos:
+
+1. **No actives ninguna capa.** La capa de ese dominio está cerrada y sigue
+   cerrada. Estas son correcciones puntuales posteriores al cierre.
+2. Lee el índice maestro y **la bitácora de ese dominio**, que es donde está la
+   lista de hallazgos con el veredicto de cada uno.
+3. **Verifica que el hallazgo sea real antes de corregirlo.** Es la regla más
+   importante de este modo y nació de dos casos concretos: en `dashboard`, dos
+   de diez hallazgos estaban **mal diagnosticados** y corregir uno tal como
+   estaba escrito habría sido una regresión; en `observaciones`, dos eran ciertos
+   pero **mal encuadrados** —presentaban como defecto del dominio algo que era la
+   norma de todo el esquema—. Mide antes de tocar.
+4. **Un hallazgo por turno**, con su autorización. Una instrucción genérica de
+   continuar cubre **el hallazgo que se acaba de nombrar**, no la lista entera.
+5. Marca en la bitácora el veredicto de cada uno —confirmado, obsoleto, mal
+   encuadrado, corregido— y **no borres el texto original**: se conserva y se
+   añade la revisión debajo.
+6. **Los hallazgos que tocan el esquema van por migración**, con el
+   procedimiento de `docs/MIGRACIONES.md`: comprobación previa de solo lectura,
+   ensayo en una rama de Neon, `--dry-run`, aplicación y regeneración de la base.
+   Nunca directamente contra producción.
+
+Estado de este modo al 2026-08-27:
+
+- **`dashboard`**: campaña **cerrada**. Cinco hallazgos corregidos y publicados;
+  los cuatro que quedan **no son defectos sino notas**, y así está razonado.
+- **`observaciones`**: hallazgo 1 corregido **en producción** —claves foráneas—,
+  y los hallazgos 6 y 7 corregidos en local. Quedan **tres menores** y **dos
+  aparcados** por decisión explícita del usuario.
+
 ## Uso desde otro chat o LLM
 
 1. Abrir un chat nuevo con acceso a la carpeta `sistema_escolar_api`.

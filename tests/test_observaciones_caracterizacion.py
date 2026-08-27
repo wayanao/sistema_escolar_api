@@ -486,18 +486,116 @@ def test_las_dos_entradas_comparten_un_unico_modelo_de_permiso():
     assert "get_current_active_admin" not in fuente
 
 
-def test_ninguna_de_las_dos_entradas_envuelve_el_fallo_en_un_try():
-    """Contraste con `boletin`, que mapeaba todo a 500 con mensaje fijo.
+def test_las_dos_entradas_registran_el_fallo_y_devuelven_una_constante():
+    """Sustituye a la guardia de linea base, que exigia lo contrario.
 
-    Aqui no hay `try/except` en la capa HTTP: una excepcion sube y FastAPI la
-    convierte en un 500 generico. **No se filtra el texto de la excepcion**,
-    pero tampoco se registra nada.
+    Antes no habia `try/except` ni `logger`: la excepcion suba y el servidor ASGI
+    devolvia un `Internal Server Error` en **texto plano**, sin el
+    `{"detail": ...}` del resto de la API y **sin dejar ninguna traza** de la
+    aplicacion. El hallazgo 7 de 7.0.
     """
     fuente = (RAIZ / "app/routes/observaciones.py").read_text(encoding="utf-8")
 
-    assert "try:" not in fuente
-    assert "HTTPException" not in fuente
-    assert "logger" not in fuente
+    assert fuente.count("except Exception:") == 2
+    assert fuente.count("logger.exception(") == 2
+    assert fuente.count("status_code=500") == 2
+
+    # Las guardas de permiso siguen FUERA del `try`, y ademas se deja pasar
+    # cualquier HTTPException: sin eso, un 403 se convertiria en 500.
+    assert fuente.count("except HTTPException:") == 2
+
+    # Nunca el texto de la excepcion: el frontend MUESTRA este campo al usuario.
+    # Se comprueba que los dos unicos `detail=` sean las constantes; el
+    # comentario del modulo menciona el otro caso para advertirlo.
+    assert fuente.count("detail=") == 2
+    assert "detail=_ERROR_GUARDAR" in fuente
+    assert "detail=_ERROR_CONSULTAR" in fuente
+
+
+def test_el_fallo_al_guardar_sale_como_500_sin_filtrar_el_texto_interno(caplog):
+    """Verificado por ASGI, con una respuesta HTTP real.
+
+    Es la unica tecnica que observa un status code de verdad, y aqui importa
+    doblemente: `Observaciones.jsx` muestra el campo `detail` **literalmente al
+    usuario**, asi que si alli viajara `str(e)` un error de PostgreSQL acabaria
+    en pantalla.
+    """
+    import asyncio
+    import json
+    import logging
+
+    from fastapi import FastAPI
+
+    from app.dependencies import get_current_user
+    from app.routes import observaciones as ruta
+
+    app = FastAPI()
+    app.include_router(ruta.router)
+    for r in app.router.routes:
+        if getattr(r, "dependencies", None):
+            r.dependencies = []
+    app.dependency_overrides[get_current_user] = lambda: {"id": 7, "rol": "admin"}
+
+    secreto = "FATAL: password authentication failed for user admin"
+
+    def revienta(*_a, **_k):
+        raise RuntimeError(secreto)
+
+    original_guardar = ruta.guardar_observacion_controller
+    original_asig = ruta.require_asignacion_access
+    original_est = ruta.require_estudiante_in_asignacion
+    ruta.guardar_observacion_controller = revienta
+    ruta.require_asignacion_access = lambda *_a, **_k: None
+    ruta.require_estudiante_in_asignacion = lambda *_a, **_k: None
+
+    try:
+        cuerpo = json.dumps(
+            {"estudiante_id": 1, "asignacion_id": 2, "periodo": 1, "conductual": "x"}
+        ).encode()
+        mensajes = []
+
+        async def receive():
+            return {"type": "http.request", "body": cuerpo}
+
+        async def send(m):
+            mensajes.append(m)
+
+        with caplog.at_level(logging.ERROR, logger=ruta.__name__):
+            asyncio.run(
+                app(
+                    {
+                        "type": "http", "asgi": {"version": "3.0"},
+                        "http_version": "1.1", "method": "POST",
+                        "path": "/observaciones", "raw_path": b"/observaciones",
+                        "query_string": b"", "root_path": "", "scheme": "http",
+                        "headers": [(b"content-type", b"application/json")],
+                        "client": ("t", 1), "server": ("t", 80),
+                    },
+                    receive,
+                    send,
+                )
+            )
+    finally:
+        ruta.guardar_observacion_controller = original_guardar
+        ruta.require_asignacion_access = original_asig
+        ruta.require_estudiante_in_asignacion = original_est
+
+    estado = [m for m in mensajes if m["type"] == "http.response.start"]
+    salida = b"".join(
+        m.get("body", b"") for m in mensajes if m["type"] == "http.response.body"
+    ).decode()
+
+    assert estado and estado[0]["status"] == 500
+    assert json.loads(salida) == {"detail": ruta._ERROR_GUARDAR}
+
+    # El texto interno no llega al cliente...
+    assert secreto not in salida
+    assert "password" not in salida
+
+    # ...pero si queda registrado, con su traceback.
+    assert caplog.records, "el fallo debe registrarse"
+    assert caplog.records[-1].exc_info is not None
+    assert secreto in caplog.text
 
 
 def test_los_guards_se_evaluan_antes_de_abrir_el_cursor_en_la_lectura():

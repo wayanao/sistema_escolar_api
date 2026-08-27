@@ -384,8 +384,8 @@ orden explícita. Van ordenados por gravedad.
 6. **[CONFIRMADO, y alcanza también a las guardas]** **El `UPSERT` no comprueba
    que la asignación siga activa.** Es el mismo
    hallazgo que dejaron abiertos `dashboard`, `notas` y `boletin`.
-7. **[CONFIRMADO en lo esencial, con un matiz]** **Ninguna de las dos entradas
-   registra nada ante un fallo.** No hay
+7. **[CORREGIDO LOCALMENTE EL 2026-08-27]** **Ninguna de las dos entradas
+   registraba nada ante un fallo.** No hay
    `try/except` ni `logger` en el router: una excepción sube y FastAPI la
    convierte en un 500 genérico. **No se filtra el texto de la excepción**, que
    es mejor que `dashboard` y `asistencia`, pero **tampoco queda traza**, que es
@@ -1420,3 +1420,167 @@ cuyo `.env` no se leyó en voz alta en ningún momento. La credencial de la rama
   **en el mismo commit**, para que el repositorio nunca diga dos cosas
   distintas. El código de la aplicación **no cambió**: no hay nada que
   desplegar.
+
+## 2026-08-27 — hallazgos 2 y 8, verificados antes de tocar nada
+
+El usuario ordenó continuar con los dos hallazgos de la familia del 1 —los que
+irían por migración— y **comprobar bien si son reales**. La comprobación
+concluye que **los hechos son ciertos pero el encuadre de los dos es
+engañoso**, y que **no procede aplicar nada**. Este turno no modificó producto,
+pruebas ni base de datos.
+
+### Lo que dicen y lo que se midió
+
+Los dos afirman un hecho verdadero: `observaciones` no acota la longitud de sus
+tres textos ni el rango de `periodo`. Eso se confirmó en la auditoría del
+2026-08-25 y sigue siendo cierto.
+
+Lo que **no** se había comprobado es si eso convierte a este dominio en
+deficiente. Se midió sobre el esquema completo:
+
+| Medida | Resultado |
+|---|---:|
+| Columnas `text` en todo el esquema | **34** |
+| De ellas, con acotación de longitud | **1** |
+| Columnas `periodo integer` | **7** |
+| De ellas, con `CHECK` de rango | **1** |
+
+**`observaciones` no es la excepción: es la norma.** La única columna de texto
+acotada de toda la base es `plan_de_clases_observaciones.observacion`, y el
+único `periodo` acotado es el de `planeador_anual`.
+
+### Por qué el encuadre del hallazgo 2 es engañoso
+
+Dice que «el dominio académico está **menos protegido** que el de planes de
+clase». La comparación es cierta en el punto que elige y **falsa en conjunto**:
+`plan_de_clases` tiene **ocho columnas `text` y ninguna acotada**. El dominio
+que se presenta como mejor protegido tiene, él solo, **más columnas de texto sin
+acotar que `observaciones`**. Lo que existe es **una** columna acotada en todo
+el sistema, no un dominio vecino más riguroso.
+
+### Por qué el encuadre del hallazgo 8 es engañoso
+
+`observaciones` comparte su `periodo` sin cota con **`asistencia`, `notas`,
+`notas_detalle`, `boletin_cabecera` y `plan_de_clases`**. Son seis tablas
+iguales y **una** distinta. Acotar solo esta no cerraría una brecha: crearía una
+séptima variante.
+
+### El riesgo sí es real, y alcanza al frontend
+
+Ninguno de los dos es inofensivo, y esto también se comprobó:
+
+- **Los tres campos son `<textarea>` sin `maxLength`** en
+  `FormularioObservacionEstudiante.jsx`. No hay límite en el navegador, ni en el
+  esquema Pydantic, ni en la base: **una observación de megabytes es
+  almacenable hoy** sin salir de la interfaz.
+- El contraste es exacto y elocuente: `DetallePlaneacionAdmin.jsx` **sí** pone
+  `maxLength={3000}`, que es justo el límite de su `CHECK`. Ese dominio está
+  protegido en las dos capas; este, en ninguna.
+- **`periodo` sale de `localStorage`.** `obtenerPeriodoProfesor` lee
+  `periodo_profesor_<id>` o `periodo` **sin validar el rango**, y el componente
+  solo hace `parseInt(...) || 1`, que descarta lo no numérico pero **acepta 99 o
+  -5**. Es editable desde el navegador.
+
+### Conclusión: no se aplica nada
+
+**La diferencia con el hallazgo 1 es la que decide.** Aquel era real *y*
+específico: `observaciones` era **la única de diecisiete tablas** sin claves
+foráneas hacia sus dos padres, y reponerlas cerró una anomalía. Estos dos son
+reales *pero no específicos*: la anomalía sería **crearla**.
+
+Aplicar un `CHECK` solo aquí tendría además un coste que el hallazgo 1 no tuvo:
+**hay que elegir un número** —¿3000 caracteres? ¿1 a 4 periodos?— y ese número
+es una **regla académica del colegio, no una decisión técnica**. Es el mismo
+motivo por el que el usuario dejó registrada y sin corregir la divergencia de
+redondeo de `dashboard`.
+
+**Los dos quedan abiertos y sin corregir**, con su encuadre rectificado. Lo que
+sí queda como trabajo disponible, y es **barato y sin riesgo**, es poner
+`maxLength` en los tres `<textarea>` del frontend, que no toca la base ni el
+backend. Exigiría su propia orden.
+
+- Archivos modificados en este turno: **solo esta bitácora**. Producto, pruebas
+  y base de datos: **ninguno**.
+- Compuerta: **1125 pruebas, exit 0**.
+- Siguiente acción exacta: **esperar orden explícita**. Ni estos dos hallazgos ni
+  los otros cinco se inician por inferencia.
+
+## 2026-08-27 — hallazgo 7 corregido: se registra el fallo y se devuelve una constante
+
+- Autorización: el usuario ordenó continuar. Se eligió **este** hallazgo y no el
+  6 —el `activo`— por una razón que la comprobación destapó: **están
+  enlazados**. Añadir la comprobación de `activo` sin manejador haría que el
+  rechazo saliera como **500**, así que el registro va primero.
+- Precondiciones: rama `main`, árbol limpio, `HEAD` `7d08293`, publicado.
+
+### El dato que cambió el diseño
+
+**El frontend muestra el campo `detail` literalmente al usuario.**
+`Observaciones.jsx` hace
+`typeof resultado.detalle === "string" ? resultado.detalle : "Revisa la conexión…"`.
+
+Hoy el usuario ve el mensaje genérico **por accidente**: como no hay manejador,
+el cuerpo del 500 es texto plano y `detail` queda `undefined`. Es decir, la
+propiedad que 7.0 celebró —«no se filtra el texto de la excepción»— **no venía
+de una decisión sino de una ausencia**.
+
+La consecuencia es seria y queda registrada como advertencia: **si alguien
+«corrigiera» este hallazgo copiando el patrón viejo de `dashboard`
+—`HTTPException(400, str(e))`— un error de PostgreSQL aparecería en un aviso en
+pantalla**. Por eso el `detail` son **constantes** y hay una prueba que lo fija.
+
+### Lo que cambió
+
+`app/routes/observaciones.py`, y **solo ese archivo de producto**:
+
+- `logging`, un `logger` de módulo y **dos constantes**, `_ERROR_GUARDAR` y
+  `_ERROR_CONSULTAR`, redactadas para que sean legibles por el usuario final,
+  porque **se muestran**.
+- Las dos entradas envuelven su trabajo en `try`, registran con
+  `logger.exception` —que conserva el traceback e identifica estudiante,
+  asignación y periodo— y responden **500** con la constante.
+- **`except HTTPException: raise` delante del genérico** en las dos. Aquí el
+  controlador no lanza ninguna, pero se pone igual: es la lección que costó una
+  regresión en `dashboard`, donde un 403 lanzado desde dentro acabó convertido
+  en 500.
+- **Las dos guardas de permiso siguen fuera del `try`**, por el mismo motivo.
+
+### Qué cambia para el cliente
+
+| | Antes | Ahora |
+|---|---|---|
+| Status | 500 | **500**, igual |
+| Cuerpo | `Internal Server Error`, texto plano | `{"detail": …}`, como el resto de la API |
+| Traza de la aplicación | **ninguna** | `logger.exception` con traceback |
+| Lo que ve el usuario | «Revisa la conexión e intenta nuevamente» | «No se pudo guardar la observacion. Intenta de nuevo.» |
+
+**El status code no cambia**, que es la diferencia con la corrección equivalente
+de `dashboard`. Lo que cambia es la forma del cuerpo y el mensaje visible, y
+este último **a mejor**: ahora dice qué falló.
+
+### Verificación
+
+- La guardia de línea base `test_ninguna_de_las_dos_entradas_envuelve_el_fallo_en_un_try`
+  exigía **lo contrario** —que no hubiera `try`, `HTTPException` ni `logger`— y
+  **falló al corregir**, que era la señal esperada. **Fue el único fallo**: las
+  demás pruebas del dominio no cambiaron de expectativa.
+- Se sustituyó por dos: una estructural y otra **por ASGI con una respuesta HTTP
+  real**, que comprueba status **500**, cuerpo exactamente
+  `{"detail": _ERROR_GUARDAR}`, que la credencial de PostgreSQL **no aparece en
+  la respuesta**, y que **sí queda en el log con su `exc_info`**.
+- **Dos aserciones propias se escribieron mal y se corrigieron**, ninguna de
+  producto: una buscaba `str(e)` en el archivo y la disparaba el propio
+  comentario que advierte de ello; otra rompió la sintaxis al escapar mal un
+  salto de línea en una expresión regular. Se sustituyeron por comprobaciones
+  directas sobre los dos `detail=`.
+- Compuerta: **1126 pruebas, exit 0**, Ruff correcto, dependencias íntegras.
+
+### Estado
+
+- **Hallazgo 7: corregido, sin publicar.** No toca la base de datos: es código.
+- **Hallazgo 6 desbloqueado.** Ahora que existe manejador, la comprobación de
+  `activo` puede rechazar con un status razonable en vez de un 500.
+- Abiertos: **cuatro** —el 4, el 5, el 6 y el 9—, más los dos aparcados con su
+  encuadre rectificado.
+- Rollback: retirar el `try/except`, el logger y las constantes de la ruta, y
+  restaurar la guardia anterior. Sin rollback de datos.

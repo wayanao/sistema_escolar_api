@@ -1,6 +1,10 @@
+from app.core.nivel_academico import resolver_tipo_evaluacion
 from app.database import get_cursor
 from app.repositories import planilla_repository
-from app.services.asignacion_academica import resolver_asignacion_academica_id_cursor
+from app.services.asignacion_academica import (
+    resolver_asignacion_academica_id_cursor,
+    resolver_nivel_curso_cursor,
+)
 from app.services.planilla_service import validar_estudiante_asignacion
 
 
@@ -13,7 +17,10 @@ def registrar_nota_planilla_controller(data):
 
     with get_cursor(commit=True) as cursor:
         asignacion_id = resolver_asignacion_academica_id_cursor(cursor, data.asignacion_id)
-        tipo_evaluacion = getattr(data, "tipo_evaluacion", "numerica") or "numerica"
+        nivel_curso = resolver_nivel_curso_cursor(cursor, asignacion_id)
+        tipo_evaluacion = resolver_tipo_evaluacion(
+            nivel_curso, getattr(data, "tipo_evaluacion", None)
+        )
         nota = data.nota if tipo_evaluacion == "numerica" else None
         valoracion = getattr(data, "valoracion", None) if tipo_evaluacion == "desarrollo" else None
 

@@ -36,3 +36,27 @@ def resolver_asignacion_academica_id(asignacion_id):
         cursor.close()
         conn.close()
 
+
+def resolver_nivel_curso_cursor(cursor, asignacion_id):
+    """Nivel academico (preescolar/primaria) del curso de una asignacion.
+
+    Devuelve None si la asignacion no existe o si su curso no tiene nivel
+    definido: un curso sin nivel no fuerza ninguna regla, igual que el
+    comportamiento anterior a la funcionalidad de nivel academico.
+    """
+    cursor.execute(
+        """
+        SELECT c.nivel
+        FROM asignaciones a
+        JOIN cursos c ON c.id = a.curso_id
+        WHERE a.id = %s
+        """,
+        (asignacion_id,),
+    )
+    row = cursor.fetchone()
+    if not row:
+        return None
+    if isinstance(row, dict):
+        return next(iter(row.values()))
+    return row[0]
+

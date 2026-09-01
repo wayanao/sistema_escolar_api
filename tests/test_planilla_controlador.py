@@ -37,10 +37,11 @@ class CursorFalso:
 
 
 def _instalador(modulo, monkeypatch):
-    def instalar(fila=None, filas=(), asignacion_resuelta=77):
+    def instalar(fila=None, filas=(), asignacion_resuelta=77, nivel_curso=None):
         cursor = CursorFalso(fila=fila, filas=filas)
         commits = []
         resueltos = []
+        niveles_consultados = []
 
         @contextmanager
         def fake_get_cursor(commit=False, cursor_factory=None):
@@ -51,11 +52,19 @@ def _instalador(modulo, monkeypatch):
             resueltos.append(asignacion_id)
             return asignacion_resuelta
 
+        def fake_resolver_nivel(_cursor, asignacion_id):
+            niveles_consultados.append(asignacion_id)
+            return nivel_curso
+
         monkeypatch.setattr(modulo, "get_cursor", fake_get_cursor)
         monkeypatch.setattr(
             modulo, "resolver_asignacion_academica_id_cursor", fake_resolver
         )
-        return cursor, commits, resueltos
+        if hasattr(modulo, "resolver_nivel_curso_cursor"):
+            monkeypatch.setattr(
+                modulo, "resolver_nivel_curso_cursor", fake_resolver_nivel
+            )
+        return cursor, commits, resueltos, niveles_consultados
 
     return instalar
 
@@ -85,7 +94,7 @@ DATOS = SimpleNamespace(
 
 
 def test_registrar_nota_borra_y_reinserta_en_la_misma_transaccion(cursor_planilla):
-    cursor, commits, resueltos = cursor_planilla(fila=(901,))
+    cursor, commits, resueltos, _ = cursor_planilla(fila=(901,))
 
     respuesta = planilla_controller.registrar_nota_planilla_controller(DATOS)
 
@@ -104,7 +113,7 @@ def test_registrar_nota_borra_y_reinserta_en_la_misma_transaccion(cursor_planill
 
 
 def test_registrar_nota_de_desarrollo_guarda_valoracion_y_no_nota(cursor_planilla):
-    cursor, _, _ = cursor_planilla(fila=(902,))
+    cursor, _, _, _ = cursor_planilla(fila=(902,))
     datos = SimpleNamespace(
         estudiante_id=11, asignacion_id=12, periodo=1, nota=4.5,
         descripcion="Ensayo", tipo_evaluacion="desarrollo", valoracion="Alto",
@@ -118,8 +127,65 @@ def test_registrar_nota_de_desarrollo_guarda_valoracion_y_no_nota(cursor_planill
     assert params[6] == "Alto"
 
 
+def test_registrar_nota_en_curso_preescolar_fuerza_desarrollo_aunque_pidan_numerica(
+    cursor_planilla,
+):
+    """El nivel del curso manda sobre lo que pida el cliente.
+
+    Antes de esta funcionalidad, tipo_evaluacion venia siempre de data. Ahora
+    un curso preescolar guarda "desarrollo" aunque el cliente mande
+    "numerica" -un frontend desactualizado, un bug, o una llamada directa al
+    servidor no pueden colarse.
+    """
+    cursor, _, resueltos, niveles = cursor_planilla(fila=(903,), nivel_curso="preescolar")
+    datos = SimpleNamespace(
+        estudiante_id=11, asignacion_id=12, periodo=1, nota=4.5,
+        descripcion="Parcial 1", tipo_evaluacion="numerica", valoracion=None,
+    )
+
+    planilla_controller.registrar_nota_planilla_controller(datos)
+
+    _, params = cursor.calls[1]
+    assert params[3] is None  # nota numerica descartada
+    assert params[5] == "desarrollo"
+    # El nivel se consulta sobre la asignacion academica YA resuelta (77),
+    # no sobre la asignacion original que llego en el payload (12).
+    assert niveles == [77]
+    assert resueltos == [12]
+
+
+def test_registrar_nota_en_curso_primaria_respeta_lo_solicitado(cursor_planilla):
+    """Primaria no fuerza nada: se conserva el comportamiento actual."""
+    cursor, _, _, niveles = cursor_planilla(fila=(904,), nivel_curso="primaria")
+    datos = SimpleNamespace(
+        estudiante_id=11, asignacion_id=12, periodo=1, nota=None,
+        descripcion="Ensayo", tipo_evaluacion="desarrollo", valoracion="Alto",
+    )
+
+    planilla_controller.registrar_nota_planilla_controller(datos)
+
+    _, params = cursor.calls[1]
+    assert params[5] == "desarrollo"
+    assert params[6] == "Alto"
+    assert niveles == [77]
+
+
+def test_registrar_nota_sin_nivel_definido_mantiene_comportamiento_actual(
+    cursor_planilla,
+):
+    """Un curso sin `nivel` (NULL) no fuerza nada: es el estado de todos los
+    cursos existentes antes de esta funcionalidad."""
+    cursor, _, _, niveles = cursor_planilla(fila=(905,), nivel_curso=None)
+
+    planilla_controller.registrar_nota_planilla_controller(DATOS)
+
+    _, params = cursor.calls[1]
+    assert params[5] == "numerica"
+    assert niveles == [77]
+
+
 def test_registrar_nota_rechaza_estudiante_ajeno_sin_pedir_conexion(cursor_planilla, monkeypatch):
-    cursor, commits, _ = cursor_planilla()
+    cursor, commits, _, _ = cursor_planilla()
     monkeypatch.setattr(
         planilla_controller, "validar_estudiante_asignacion", lambda _e, _a: False
     )
@@ -132,7 +198,7 @@ def test_registrar_nota_rechaza_estudiante_ajeno_sin_pedir_conexion(cursor_plani
 
 
 def test_eliminar_tipo_borra_la_columna_del_periodo(cursor_planilla):
-    cursor, commits, resueltos = cursor_planilla()
+    cursor, commits, resueltos, _ = cursor_planilla()
 
     respuesta = planilla_controller.eliminar_tipo_controller(12, "Parcial 1", periodo=3)
 
@@ -146,7 +212,7 @@ def test_eliminar_tipo_borra_la_columna_del_periodo(cursor_planilla):
 
 
 def test_eliminar_tipo_usa_periodo_uno_por_defecto(cursor_planilla):
-    cursor, _, _ = cursor_planilla()
+    cursor, _, _, _ = cursor_planilla()
 
     planilla_controller.eliminar_tipo_controller(12, "Parcial 1")
 
@@ -159,7 +225,7 @@ def test_excel_agrupa_notas_por_estudiante_y_calcula_promedio(cursor_excel):
         (11, "Ana", "Ríos", "Matemáticas", "Parcial 1", 4.0, "numerica", None),
         (11, "Ana", "Ríos", "Matemáticas", "Parcial 2", 3.0, "numerica", None),
     ]
-    cursor, commits, resueltos = cursor_excel(filas=filas)
+    cursor, commits, resueltos, _ = cursor_excel(filas=filas)
 
     resultado = planilla_excel_controller.planilla_excel_controller(12, periodo=2)
 

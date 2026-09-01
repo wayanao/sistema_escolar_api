@@ -2,7 +2,9 @@
 
 ## Control
 
-- Estado: **Propuesta, pendiente de aprobación. Nada implementado.**
+- Estado: **Fase 1 en curso.** Pasos 1 (columna + validación) y 3 (validación
+  en planilla) implementados y verificados localmente. Pendiente: aplicar la
+  migración real (paso 1b) y el paso 5 (asistencia por jornada).
 - Tipo: Función nueva de producto. No es una capa del programa de
   modularización de `docs/modularizacion/` y no debe confundirse con una.
 - Repos afectados: este repo (`sistema_escolar_api`) y `frontend-react`. Ver
@@ -170,18 +172,66 @@ No se toca la tabla `asistencia` ni su lógica (`asistencia_controller.py`,
 
 ## Plan de fases (backend)
 
-1. Migración: columna `nivel` en `cursos`; actualizar el esquema base
-   documentado.
-2. `REGLAS_POR_NIVEL` centralizada, en un módulo propio (a decidir la
-   ubicación exacta, ej. `app/core/`).
-3. `planilla_controller` valida/fuerza `tipo_evaluacion` según el nivel del
-   curso de la asignación.
+1. ~~Migración: columna `nivel` en `cursos`.~~ **Hecho.**
+   `migrations/20260901_cursos_nivel_academico.sql`: `ADD COLUMN IF NOT
+   EXISTS nivel VARCHAR(20)`, restricción `chk_cursos_nivel` que solo admite
+   `NULL`, `preescolar` o `primaria`, e índice `idx_cursos_nivel`.
+   **Pendiente, requiere al usuario**: aplicar esta migración al schema de
+   referencia (`tenant_colegio_1`) con `apply_migration.py` y luego
+   regenerar `migrations/base/20260813_esquema_base_tenant.sql` con
+   `scripts/generar_esquema_base.py --schema tenant_colegio_1`. No se hizo
+   aquí porque requiere acceso a la base de datos real, fuera del alcance de
+   este asistente sin autorización explícita adicional. Hasta que se haga,
+   `scripts/verify.py` falla exactamente en
+   `tests/test_esquema_base.py::test_la_base_incorpora_todas_las_migraciones_de_tenant`,
+   con el mensaje que indica este mismo paso — es la señal esperada, no un
+   error del código.
+2. ~~`REGLAS_POR_NIVEL` centralizada.~~ **Hecho.** Vive en
+   `app/core/nivel_academico.py`, junto con `tipo_evaluacion_forzado(nivel)`
+   y `resolver_tipo_evaluacion(nivel, tipo_evaluacion_solicitado)`, ambas
+   funciones puras sin base de datos. Pruebas en
+   `tests/test_nivel_academico.py`.
+3. ~~`planilla_controller` valida/fuerza `tipo_evaluacion`.~~ **Hecho.**
+   Se agregó `resolver_nivel_curso_cursor(cursor, asignacion_id)` en
+   `app/services/asignacion_academica.py` (junto a
+   `resolver_asignacion_academica_id_cursor`, mismo patrón de firma) y se
+   usa en `registrar_nota_planilla_controller` antes de construir el
+   payload. **Costo medido**: agrega una consulta SQL de solo lectura
+   dentro de la misma conexión/transacción ya abierta -no abre una conexión
+   nueva-. El costo por petición de `POST /planilla/nota` sube de 4 a 5
+   consultas (admin) y de 5 a 6 (profesor); las conexiones no cambian (2 y 3
+   respectivamente). Documentado y verificado en
+   `tests/test_planilla_caracterizacion.py`.
 4. Confirmar si `boletin_controller`/`boletin_repository` necesitan la misma
-   validación (ver pendiente arriba).
+   validación. **Sin empezar.**
 5. Documentar la convención de "asignación de jornada" para que el
    administrador la cree desde la pantalla de Asignaciones ya existente.
+   **Sin empezar.**
 6. Pruebas de caracterización antes de cada cambio + `scripts/verify.py`.
-7. Aplicar la migración a los tenants con `apply_migration.py`.
+   **En curso**, ver detalle de verificación abajo.
+7. Aplicar la migración a los tenants con `apply_migration.py`. **Sin
+   empezar**, requiere autorización explícita y acceso real cuando el
+   usuario decida desplegar.
+
+### Verificación de los pasos 1 (código), 2 y 3
+
+- Archivos nuevos: `app/core/nivel_academico.py`,
+  `migrations/20260901_cursos_nivel_academico.sql`,
+  `tests/test_nivel_academico.py`, `tests/test_asignacion_academica.py`.
+- Archivos modificados: `app/services/asignacion_academica.py` (nueva
+  función `resolver_nivel_curso_cursor`), `app/controllers/planilla_controller.py`
+  (usa las dos funciones nuevas), `tests/test_planilla_controlador.py` (3
+  pruebas nuevas: preescolar fuerza desarrollo, primaria respeta lo
+  solicitado, curso sin nivel mantiene el comportamiento anterior),
+  `tests/test_planilla_caracterizacion.py` (conteo de consultas actualizado
+  de 4/5 a 5/6, con el motivo documentado en el propio test).
+- `scripts/verify.py`: **1153 pruebas pasaron** (subió de 1140; +13 nuevas),
+  Ruff correcto, `pip check` correcto. **1 prueba falla**, la esperada del
+  paso 1b (`test_la_base_incorpora_todas_las_migraciones_de_tenant`).
+- `git diff --check`: exit 0. El diff pertenece exclusivamente a esta
+  funcionalidad; no se tocó ningún otro dominio.
+- Nada de esto se commiteó ni se hizo push. Ningún acceso a producción ni a
+  ningún tenant real.
 
 ## Preguntas abiertas (decisión del usuario antes de implementar)
 
@@ -194,9 +244,22 @@ No se toca la tabla `asistencia` ni su lógica (`asistencia_controller.py`,
 
 ## Entrega para el siguiente chat
 
-- Última fase terminada: ninguna. Esto es una propuesta, no hay código
-  escrito.
-- Siguiente acción exacta: esperar aprobación del usuario y respuesta a las
-  preguntas abiertas; luego iniciar la Fase 1 (backend), paso 1, con
-  verificación antes de seguir al paso 2.
-- No hay commit base todavía porque no se ha tocado código de producto.
+- Última acción terminada: pasos 1 (código de la migración), 2 y 3 de la
+  Fase 1, verificados localmente (ver arriba). Nada commiteado ni publicado.
+- Archivos pendientes de commit (el usuario decide cuándo):
+  `app/core/nivel_academico.py`,
+  `migrations/20260901_cursos_nivel_academico.sql`,
+  `tests/test_nivel_academico.py`, `tests/test_asignacion_academica.py`,
+  y los cambios en `app/services/asignacion_academica.py`,
+  `app/controllers/planilla_controller.py`,
+  `tests/test_planilla_controlador.py`,
+  `tests/test_planilla_caracterizacion.py`.
+- Riesgo abierto conocido: `scripts/verify.py` falla 1 de 1154 pruebas hasta
+  que se aplique la migración al schema de referencia y se regenere el
+  esquema base (paso 1b). No lo marques como cumplido sin hacerlo.
+- Siguiente acción exacta: el usuario decide entre (a) continuar con el
+  paso 4 (revisar boletín) y el paso 5 (asistencia por jornada) antes de
+  tocar la base de datos real, o (b) aplicar primero la migración real al
+  schema de referencia para cerrar el paso 1b. Ninguna de las dos requiere
+  esperar a la otra.
+- Las 3 preguntas abiertas siguen sin respuesta del usuario.

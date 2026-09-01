@@ -426,16 +426,20 @@ def test_el_esquema_permite_periodo_nulo_textos_vacios_y_tipo_desconocido():
 # ---------------------------------------------------------------------------
 
 
-def test_post_como_admin_cuesta_cuatro_consultas_y_dos_conexiones(
+def test_post_como_admin_cuesta_cinco_consultas_y_dos_conexiones(
     instrumentado,
 ):
-    registro = instrumentado(filas=[(11,), (77,), (901,)])
+    """La funcionalidad de nivel academico agrega una consulta de solo lectura
+    dentro de la MISMA conexion/transaccion ya abierta -no abre una conexion
+    nueva- para saber si el curso es preescolar o primaria. El conteo sube de
+    cuatro a cinco; las conexiones no cambian."""
+    registro = instrumentado(filas=[(11,), (77,), (None,), (901,)])
 
     respuesta = ruta_planilla.registrar_nota(DATOS, ADMIN)
 
     assert registro.cursores == [False, True]
     assert registro.conexiones_permiso == 0
-    assert len(registro.consultas) == 4
+    assert len(registro.consultas) == 5
     assert len(registro.cursores) + registro.conexiones_permiso == 2
     assert respuesta == {
         "mensaje": "Nota registrada correctamente",
@@ -443,16 +447,16 @@ def test_post_como_admin_cuesta_cuatro_consultas_y_dos_conexiones(
     }
 
 
-def test_post_como_profesor_cuesta_cinco_consultas_y_tres_conexiones(
+def test_post_como_profesor_cuesta_seis_consultas_y_tres_conexiones(
     instrumentado,
 ):
-    registro = instrumentado(filas=[(11,), (77,), (901,)])
+    registro = instrumentado(filas=[(11,), (77,), (None,), (901,)])
 
     ruta_planilla.registrar_nota(DATOS, PROFESOR)
 
     assert registro.cursores == [False, True]
     assert registro.conexiones_permiso == 1
-    assert len(registro.consultas) == 4
+    assert len(registro.consultas) == 5
     assert len(registro.consultas_permiso) == 1
     assert len(registro.cursores) + registro.conexiones_permiso == 3
 

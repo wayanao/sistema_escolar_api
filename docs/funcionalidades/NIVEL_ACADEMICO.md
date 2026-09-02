@@ -2,10 +2,12 @@
 
 ## Control
 
-- Estado: **Fase 1 en curso.** Pasos 1 (columna + validación), 2, 3
-  (planilla) y 4 (boletín) implementados y verificados localmente.
-  Pendiente: aplicar la migración real (paso 1b) y el paso 5 (asistencia por
-  jornada).
+- Estado: **Código de la Fase 1 completo.** Pasos 1 a 5 implementados y
+  verificados localmente. Único pendiente: el paso 1b, aplicar la migración
+  al schema de referencia y regenerar el esquema base — requiere acceso a
+  la base de datos real y la presencia/autorización del usuario en el
+  momento; no bloquea el resto ni la Fase 2 (frontend) en su desarrollo,
+  solo su despliegue final a producción.
 - Tipo: Función nueva de producto. No es una capa del programa de
   modularización de `docs/modularizacion/` y no debe confundirse con una.
 - Repos afectados: este repo (`sistema_escolar_api`) y `frontend-react`. Ver
@@ -214,9 +216,22 @@ No se toca la tabla `asistencia` ni su lógica (`asistencia_controller.py`,
    dentro del bucle que arma cada detalle (no solo en la cabecera), porque
    un curso preescolar debe forzar "desarrollo" en cada nota del boletín, no
    solo en la primera.
-5. Documentar la convención de "asignación de jornada" para que el
-   administrador la cree desde la pantalla de Asignaciones ya existente.
-   **Sin empezar.**
+5. ~~Documentar la convención de "asignación de jornada".~~ **Hecho.** No
+   requiere tabla ni columna nueva. Se reserva el nombre de materia exacto
+   `"ASISTENCIA DIARIA"` (constante `NOMBRE_MATERIA_ASISTENCIA_JORNADA` en
+   `app/core/nivel_academico.py`, junto a `es_asignacion_de_jornada(nombre)`
+   para reconocerlo). Se confirmó leyendo `app/controllers/materia_controller.py`
+   que el backend **ya normaliza** todo nombre de materia a mayúsculas,
+   espacio simple y sin espacios en los extremos al crearla — por eso la
+   constante ya está en esa forma canónica y una comparación exacta contra
+   el nombre que devuelve la API es confiable, sin duplicar esa
+   normalización. El administrador crea la asignación de jornada exactamente
+   igual que cualquier otra (curso preescolar + materia "Asistencia diaria"
+   + la maestra titular + horario que cubra el bloque institucional
+   completo), desde la pantalla de Asignaciones ya existente. Sin cambios en
+   `asistencia_controller.py`, `asistencia_repository.py` ni la tabla
+   `asistencia`, tal como se verificó y acordó antes de empezar esta
+   funcionalidad.
 6. Pruebas de caracterización antes de cada cambio + `scripts/verify.py`.
    **En curso**, ver detalle de verificación abajo.
 7. Aplicar la migración a los tenants con `apply_migration.py`. **Sin
@@ -239,9 +254,13 @@ No se toca la tabla `asistencia` ni su lógica (`asistencia_controller.py`,
   primaria respeta lo solicitado; los 5 tests existentes que guardan un
   boletín ahora doblan también el resolver de nivel, igual que ya doblaban
   el de asignación académica).
-- `scripts/verify.py`: **1155 pruebas pasaron** (subió de 1140; +15 nuevas),
+- `scripts/verify.py`: **1159 pruebas pasaron** (subió de 1140; +19 nuevas),
   Ruff correcto, `pip check` correcto. **1 prueba falla**, la esperada del
   paso 1b (`test_la_base_incorpora_todas_las_migraciones_de_tenant`).
+- Paso 5 agregó además `app/core/nivel_academico.py::NOMBRE_MATERIA_ASISTENCIA_JORNADA`
+  y `es_asignacion_de_jornada`, con sus pruebas en `tests/test_nivel_academico.py`.
+  Sin cambios en `app/controllers/asistencia_controller.py`,
+  `app/repositories/asistencia_repository.py` ni en la tabla `asistencia`.
 - `git diff --check`: exit 0. El diff pertenece exclusivamente a esta
   funcionalidad; no se tocó ningún otro dominio.
 - Nada de esto se commiteó ni se hizo push. Ningún acceso a producción ni a
@@ -258,9 +277,8 @@ No se toca la tabla `asistencia` ni su lógica (`asistencia_controller.py`,
 
 ## Entrega para el siguiente chat
 
-- Última acción terminada: pasos 1 (código de la migración), 2, 3 (planilla)
-  y 4 (boletín) de la Fase 1, verificados localmente (ver arriba). Nada
-  commiteado ni publicado.
+- Última acción terminada: **todo el código de la Fase 1** (pasos 1 a 5),
+  verificado localmente (ver arriba). Nada commiteado ni publicado.
 - Archivos pendientes de commit (el usuario decide cuándo):
   `app/core/nivel_academico.py`,
   `migrations/20260901_cursos_nivel_academico.sql`,
@@ -271,12 +289,15 @@ No se toca la tabla `asistencia` ni su lógica (`asistencia_controller.py`,
   `tests/test_planilla_controlador.py`,
   `tests/test_planilla_caracterizacion.py`,
   `tests/test_boletin_caracterizacion.py`.
-- Riesgo abierto conocido: `scripts/verify.py` falla 1 de 1156 pruebas hasta
+- Riesgo abierto conocido: `scripts/verify.py` falla 1 de 1160 pruebas hasta
   que se aplique la migración al schema de referencia y se regenere el
   esquema base (paso 1b). No lo marques como cumplido sin hacerlo.
-- Siguiente acción exacta: solo queda el paso 5 (documentar la convención de
-  "asignación de jornada" para asistencia) para cerrar el código de la
-  Fase 1. El paso 1b (migración real) sigue pendiente y requiere al usuario
-  o su autorización explícita con acceso a la base real; no depende del
-  paso 5 ni viceversa.
-- Las 3 preguntas abiertas siguen sin respuesta del usuario.
+- Siguiente acción exacta: (a) el usuario aplica/autoriza la migración real
+  al schema de referencia (paso 1b) cuando le convenga, y (b) iniciar la
+  Fase 2 (frontend), que ya puede empezar sin esperar al paso 1b — solo
+  necesita que la columna `nivel` exista en la base de datos con la que se
+  pruebe, no que todos los tenants la tengan.
+- Las 3 preguntas abiertas siguen sin respuesta del usuario. La de la
+  asignación "Jornada" en el boletín cobra más relevancia ahora que existe
+  `es_asignacion_de_jornada`: se podría usar para excluirla del cálculo de
+  `definitiva`, pero no se aplicó a propósito hasta tener esa respuesta.

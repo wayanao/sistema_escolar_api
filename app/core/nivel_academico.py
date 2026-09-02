@@ -37,3 +37,35 @@ def resolver_tipo_evaluacion(nivel, tipo_evaluacion_solicitado):
     if forzado:
         return forzado
     return tipo_evaluacion_solicitado or "numerica"
+
+
+# ---------------------------------------------------------------------------
+# Asistencia por jornada (preescolar)
+# ---------------------------------------------------------------------------
+
+NOMBRE_MATERIA_ASISTENCIA_JORNADA = "ASISTENCIA DIARIA"
+"""Nombre reservado de la materia usada para tomar asistencia por jornada
+completa en un curso de preescolar, en vez de una vez por cada materia real.
+
+No es una tabla ni una columna nueva: es una convencion sobre el modelo de
+asignaciones que ya existe. El administrador crea, para cada curso de
+preescolar, una asignacion con este nombre de materia y la maestra titular
+como profesora, con un horario que cubra el bloque institucional completo
+(Mañana 06:30-12:30 o Tarde 12:30-18:30, segun la jornada del curso) -
+exactamente igual que cualquier otra asignacion, desde la pantalla de
+Asignaciones ya existente. Esa asignacion se usa despues como cualquier otra
+para POST /asistencia, su historial y "mis clases"; no requiere ningun
+endpoint ni tabla nuevos.
+
+El backend normaliza todo nombre de materia a mayusculas, espacio simple y
+sin espacios en los extremos al crearla (ver
+app/controllers/materia_controller.py), asi que este valor ya esta en esa
+forma canonica: una comparacion exacta contra el nombre que devuelve la API
+es confiable sin duplicar esa normalizacion aqui.
+"""
+
+
+def es_asignacion_de_jornada(nombre_materia):
+    """True si el nombre de materia es el reservado para asistencia por
+    jornada completa (ver NOMBRE_MATERIA_ASISTENCIA_JORNADA)."""
+    return (nombre_materia or "").strip().upper() == NOMBRE_MATERIA_ASISTENCIA_JORNADA

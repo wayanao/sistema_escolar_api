@@ -1,4 +1,7 @@
-from app.core.nivel_academico import resolver_tipo_evaluacion
+from app.core.nivel_academico import (
+    NOMBRE_MATERIA_ASISTENCIA_JORNADA,
+    resolver_tipo_evaluacion,
+)
 from app.database import get_connection
 from app.repositories import boletin_repository
 from app.services.asignacion_academica import (
@@ -150,7 +153,7 @@ def obtener_boletin_admin_controller(estudiante_id: int, periodo: int):
         cur = conn.cursor(cursor_factory=RealDictCursor)
 
         materias_res = boletin_repository.leer_materias_del_estudiante(
-            cur, estudiante_id, periodo
+            cur, estudiante_id, periodo, NOMBRE_MATERIA_ASISTENCIA_JORNADA
         )
 
         asignacion_ids = [row['asignacion_id'] for row in materias_res]
@@ -251,7 +254,9 @@ def obtener_reporte_parcial_admin_controller(estudiante_id: int, periodo: int):
         if not est_info:
             return None
 
-        filas = boletin_repository.leer_planilla_vigente(cur, estudiante_id, periodo)
+        filas = boletin_repository.leer_planilla_vigente(
+            cur, estudiante_id, periodo, NOMBRE_MATERIA_ASISTENCIA_JORNADA
+        )
 
         materias = {}
         notas_numericas = {}

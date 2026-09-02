@@ -137,13 +137,18 @@ def leer_boletines_guardados_de_estudiantes(cursor, asignacion_id, periodo, estu
 # Lectura: boletin de administracion
 # --------------------------------------------------------------------------
 
-def leer_materias_del_estudiante(cursor, estudiante_id, periodo):
+def leer_materias_del_estudiante(cursor, estudiante_id, periodo, nombre_materia_excluida):
     """Materias del curso con su definitiva.
 
     `COALESCE(NULLIF(bc.definitiva, 0), ...)` trata una definitiva guardada como
     **0** como si fuera ausente y la sustituye por el promedio calculado: es el
     hallazgo 4 de 7.0 y se conserva. El promedio se calcula **en SQL**, con
     `AVG`, a diferencia del reporte parcial.
+
+    `nombre_materia_excluida` deja fuera la asignacion de jornada de
+    preescolar (nivel academico): esa asignacion existe para tomar
+    asistencia una vez al dia, no es una materia real y no debe aparecer en
+    el boletin. Ver app.core.nivel_academico.NOMBRE_MATERIA_ASISTENCIA_JORNADA.
     """
     cursor.execute('''
             WITH asignaciones_academicas AS (
@@ -183,8 +188,9 @@ def leer_materias_del_estudiante(cursor, estudiante_id, periodo):
                   AND nd.nota > 0
             ) nd_prom ON TRUE
             WHERE e.id = %s
+              AND m.nombre <> %s
             ORDER BY asig.orden_boletin, m.nombre
-        ''', (periodo, periodo, estudiante_id))
+        ''', (periodo, periodo, estudiante_id, nombre_materia_excluida))
     return cursor.fetchall()
 
 
@@ -283,9 +289,13 @@ def leer_datos_basicos_del_estudiante(cursor, estudiante_id):
     return cursor.fetchone()
 
 
-def leer_planilla_vigente(cursor, estudiante_id, periodo):
+def leer_planilla_vigente(cursor, estudiante_id, periodo, nombre_materia_excluida):
     """Planilla vigente del estudiante: materias y notas sin pasar por el
-    boletin guardado. Es la fotografia que sostiene el reporte parcial."""
+    boletin guardado. Es la fotografia que sostiene el reporte parcial.
+
+    `nombre_materia_excluida`: ver el mismo parametro en
+    `leer_materias_del_estudiante`.
+    """
     cursor.execute('''
             WITH asignaciones_academicas AS (
                 SELECT DISTINCT ON (COALESCE(a.asignacion_academica_id, a.id))
@@ -322,6 +332,7 @@ def leer_planilla_vigente(cursor, estudiante_id, periodo):
                 AND nd.asignacion_id = asig.id
                 AND nd.periodo = %s
             WHERE e.id = %s
+              AND m.nombre <> %s
             ORDER BY asig.orden_boletin, m.nombre, nd.id
-        ''', (periodo, estudiante_id))
+        ''', (periodo, estudiante_id, nombre_materia_excluida))
     return cursor.fetchall()

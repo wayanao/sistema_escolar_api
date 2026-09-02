@@ -19,6 +19,7 @@ from fastapi import HTTPException
 
 from app.controllers import boletin_controller
 from app.core import permissions
+from app.core.nivel_academico import NOMBRE_MATERIA_ASISTENCIA_JORNADA
 from app.routes import boletines, notas
 
 RAIZ = Path(__file__).resolve().parents[1]
@@ -394,6 +395,43 @@ def test_guardar_boletin_en_curso_primaria_respeta_lo_solicitado(monkeypatch):
 
     _, params_detalle = cursor.calls[2]
     assert params_detalle[3] == "numerica"
+
+
+def test_boletin_de_admin_excluye_la_asignacion_de_jornada(monkeypatch):
+    """La asignacion de jornada (nivel academico, preescolar) no es una
+    materia real: no debe aparecer en el boletin oficial del estudiante."""
+    cursor = CursorFalso(
+        una_fila={
+            "estudiante_nombre": "Sara", "estudiante_apellido": "López",
+            "curso_nombre": "Transición A", "puesto": 1, "total": 20,
+        },
+        secuencia_fetchall=[[], []],
+    )
+    conn = ConexionFalsa(cursor)
+    monkeypatch.setattr(boletin_controller, "get_connection", lambda: conn)
+
+    boletin_controller.obtener_boletin_admin_controller(8, 2)
+
+    _, params_materias = cursor.calls[0]
+    assert params_materias[-1] == NOMBRE_MATERIA_ASISTENCIA_JORNADA
+
+
+def test_reporte_parcial_excluye_la_asignacion_de_jornada(monkeypatch):
+    """Mismo criterio que el boletin oficial, para el reporte parcial."""
+    cursor = CursorFalso(
+        una_fila={
+            "estudiante_nombre": "Sara", "estudiante_apellido": "López",
+            "curso_nombre": "Transición A",
+        },
+        filas=[],
+    )
+    conn = ConexionFalsa(cursor)
+    monkeypatch.setattr(boletin_controller, "get_connection", lambda: conn)
+
+    boletin_controller.obtener_reporte_parcial_admin_controller(8, 2)
+
+    _, params_planilla = cursor.calls[1]
+    assert params_planilla[-1] == NOMBRE_MATERIA_ASISTENCIA_JORNADA
 
 
 def test_guardar_boletin_sin_detalles_borra_y_no_inserta_ninguno(monkeypatch):

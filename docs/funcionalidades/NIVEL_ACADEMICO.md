@@ -2,12 +2,12 @@
 
 ## Control
 
-- Estado: **Código de la Fase 1 completo.** Pasos 1 a 5 implementados y
-  verificados localmente. Único pendiente: el paso 1b, aplicar la migración
-  al schema de referencia y regenerar el esquema base — requiere acceso a
-  la base de datos real y la presencia/autorización del usuario en el
-  momento; no bloquea el resto ni la Fase 2 (frontend) en su desarrollo,
-  solo su despliegue final a producción.
+- Estado: **Código de la Fase 1 completo**, incluida la exclusión de la
+  asignación de jornada en el boletín (decisión del usuario). Pendientes,
+  ninguno bloquea el inicio de la Fase 2: el paso 1b (aplicar la migración
+  al schema de referencia y regenerar el esquema base) y aplicar la
+  migración a todos los tenants reales antes de publicar este código —
+  ambos se harán juntos, al final, cuando el usuario lo decida.
 - Tipo: Función nueva de producto. No es una capa del programa de
   modularización de `docs/modularizacion/` y no debe confundirse con una.
 - Repos afectados: este repo (`sistema_escolar_api`) y `frontend-react`. Ver
@@ -168,10 +168,33 @@ No se toca la tabla `asistencia` ni su lógica (`asistencia_controller.py`,
 
 | Riesgo | Mitigación |
 |---|---|
-| Regla solo en pantalla, sin respaldo en el servidor | Validación obligatoria en `planilla_controller` antes de guardar. |
+| Regla solo en pantalla, sin respaldo en el servidor | Validación obligatoria en `planilla_controller` y `boletin_controller` antes de guardar. |
 | Repetir la condición por nivel en varios archivos | `REGLAS_POR_NIVEL` centralizada. |
 | Curso que cambia de nivel a mitad de año con historial mixto | La regla nueva aplica solo hacia adelante; nada histórico se recalcula. |
 | Migración multi-tenant | Se aplica con el runner ya probado (`apply_migration.py`), igual que las 31 anteriores. |
+| **Orden de despliegue** (crítico, ver abajo) | La migración debe estar aplicada a todos los tenants **antes** de publicar este código en producción, nunca después. |
+
+### Orden de despliegue obligatorio, sin excepción
+
+Este código (`planilla_controller.py`, `boletin_controller.py`) ejecuta
+`SELECT c.nivel FROM ... JOIN cursos c ...` en cada guardado de nota o
+boletín. Si se publica en producción **antes** de que la columna `nivel`
+exista en un tenant, ese `SELECT` falla con un error de PostgreSQL
+("columna no existe") y **ese colegio deja de poder guardar notas y
+boletines**, en todos sus cursos, no solo en preescolar.
+
+Por eso el orden de publicación no es negociable:
+
+1. Aplicar `migrations/20260901_cursos_nivel_academico.sql` a **todos los
+   tenants activos** con `apply_migration.py` (no solo al schema de
+   referencia del paso 1b, que es aparte y sirve para los tenants nuevos).
+2. Solo después, hacer `git push origin main` de este código. Recordar que
+   en este repositorio un push a `main` **despliega producción
+   automáticamente**.
+
+Nunca al revés. Este repositorio no tiene hoy una prueba automática que
+bloquee ese error de orden; queda como responsabilidad de checklist manual
+antes de publicar.
 
 ## Plan de fases (backend)
 
@@ -254,26 +277,42 @@ No se toca la tabla `asistencia` ni su lógica (`asistencia_controller.py`,
   primaria respeta lo solicitado; los 5 tests existentes que guardan un
   boletín ahora doblan también el resolver de nivel, igual que ya doblaban
   el de asignación académica).
-- `scripts/verify.py`: **1159 pruebas pasaron** (subió de 1140; +19 nuevas),
+- `scripts/verify.py`: **1161 pruebas pasaron** (subió de 1140; +21 nuevas),
   Ruff correcto, `pip check` correcto. **1 prueba falla**, la esperada del
   paso 1b (`test_la_base_incorpora_todas_las_migraciones_de_tenant`).
 - Paso 5 agregó además `app/core/nivel_academico.py::NOMBRE_MATERIA_ASISTENCIA_JORNADA`
   y `es_asignacion_de_jornada`, con sus pruebas en `tests/test_nivel_academico.py`.
   Sin cambios en `app/controllers/asistencia_controller.py`,
   `app/repositories/asistencia_repository.py` ni en la tabla `asistencia`.
+- Decisión del usuario sobre la pregunta abierta del boletín: la asignación
+  de jornada se **excluye** del boletín (oficial y reporte parcial), por
+  ahora. Implementado en `app/repositories/boletin_repository.py`
+  (`leer_materias_del_estudiante` y `leer_planilla_vigente`, nuevo parámetro
+  `nombre_materia_excluida`) y `app/controllers/boletin_controller.py`, con
+  2 pruebas nuevas en `tests/test_boletin_caracterizacion.py`.
 - `git diff --check`: exit 0. El diff pertenece exclusivamente a esta
   funcionalidad; no se tocó ningún otro dominio.
 - Nada de esto se commiteó ni se hizo push. Ningún acceso a producción ni a
   ningún tenant real.
 
-## Preguntas abiertas (decisión del usuario antes de implementar)
+## Preguntas abiertas
 
-- ¿La asignación "Jornada" debe aparecer en el boletín como una materia más,
-  o debe excluirse de ahí?
+- ~~¿La asignación "Jornada" debe aparecer en el boletín como una materia
+  más, o debe excluirse de ahí?~~ **Respondida: se excluye, por ahora.** El
+  usuario decidió que no debe verse como materia; podría reconsiderarse más
+  adelante. Implementado: `leer_materias_del_estudiante` y
+  `leer_planilla_vigente` (`app/repositories/boletin_repository.py`) reciben
+  ahora un parámetro `nombre_materia_excluida`, y
+  `boletin_controller.py` les pasa siempre
+  `NOMBRE_MATERIA_ASISTENCIA_JORNADA`. Cubre tanto el boletín oficial
+  (`obtener_boletin_admin_controller`) como el reporte parcial
+  (`obtener_reporte_parcial_admin_controller`). Verificado con 2 pruebas
+  nuevas en `tests/test_boletin_caracterizacion.py`.
 - ¿El nivel lo define siempre el administrador manualmente, o se quiere
-  alguna sugerencia automática a partir del nombre del curso?
+  alguna sugerencia automática a partir del nombre del curso? **Sigue sin
+  respuesta.**
 - ¿Se empieza con un colegio piloto antes de dejarlo disponible a todos los
-  tenants?
+  tenants? **Sigue sin respuesta.**
 
 ## Entrega para el siguiente chat
 
@@ -286,18 +325,24 @@ No se toca la tabla `asistencia` ni su lógica (`asistencia_controller.py`,
   y los cambios en `app/services/asignacion_academica.py`,
   `app/controllers/planilla_controller.py`,
   `app/controllers/boletin_controller.py`,
+  `app/repositories/boletin_repository.py`,
   `tests/test_planilla_controlador.py`,
   `tests/test_planilla_caracterizacion.py`,
   `tests/test_boletin_caracterizacion.py`.
-- Riesgo abierto conocido: `scripts/verify.py` falla 1 de 1160 pruebas hasta
+- Riesgo abierto conocido: `scripts/verify.py` falla 1 de 1162 pruebas hasta
   que se aplique la migración al schema de referencia y se regenere el
   esquema base (paso 1b). No lo marques como cumplido sin hacerlo.
-- Siguiente acción exacta: (a) el usuario aplica/autoriza la migración real
-  al schema de referencia (paso 1b) cuando le convenga, y (b) iniciar la
-  Fase 2 (frontend), que ya puede empezar sin esperar al paso 1b — solo
-  necesita que la columna `nivel` exista en la base de datos con la que se
-  pruebe, no que todos los tenants la tengan.
-- Las 3 preguntas abiertas siguen sin respuesta del usuario. La de la
-  asignación "Jornada" en el boletín cobra más relevancia ahora que existe
-  `es_asignacion_de_jornada`: se podría usar para excluirla del cálculo de
-  `definitiva`, pero no se aplicó a propósito hasta tener esa respuesta.
+- **Orden de despliegue acordado con el usuario**: la migración se aplicará
+  a todos los tenants **al final**, cuando el código de backend y frontend
+  esté terminado y probado — no antes. Pero el orden relativo entre migrar
+  y publicar sigue siendo estricto: migrar todos los tenants **antes** de
+  hacer `git push origin main` de este código (ver "Orden de despliegue
+  obligatorio" arriba). Ese push aún no ha ocurrido ni debe ocurrir sin
+  haber migrado primero.
+- Siguiente acción exacta: iniciar la Fase 2 (frontend) — puede arrancar ya,
+  sin esperar el paso 1b, porque se prueba contra una base de desarrollo
+  donde sí se puede tener la columna. El paso 1b y el despliegue final se
+  coordinan cuando todo (backend + frontend) esté listo.
+- Quedan 2 preguntas abiertas sin respuesta (ver arriba): sugerencia
+  automática de nivel por nombre de curso, y colegio piloto vs. todos los
+  tenants. Ninguna bloquea la Fase 2.

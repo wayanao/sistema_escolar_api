@@ -625,7 +625,11 @@ def leer_asignaciones_paginado(cursor, where_sql, params):
 
 
 def leer_clases_con_horario_de_profesor(cursor, profesor_id):
-    """Clases del profesor con su horario, curso, jornada y materia.
+    """Clases del profesor con su horario, curso, jornada, materia y nivel.
+
+    `c.nivel` (funcionalidad de nivel academico) se agrega al final del
+    SELECT para no alterar los indices de columna que ya consumen `Asistencia`
+    y `Planilla` en el frontend.
 
     Extraida en 6.5 desde `app/routes/asignaciones.py`, donde era **el unico SQL
     de dominio que vivia en la capa HTTP** de todo el programa. La ruta conserva
@@ -654,7 +658,8 @@ def leer_clases_con_horario_de_profesor(cursor, profesor_id):
                 c.jornada,
                 a.dia,
                 a.hora_inicio,
-                a.hora_fin
+                a.hora_fin,
+                c.nivel
 
             FROM asignaciones a
             JOIN materias m ON a.materia_id = m.id

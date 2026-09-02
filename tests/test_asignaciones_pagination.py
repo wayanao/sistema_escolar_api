@@ -20,7 +20,7 @@ class FakeCursor:
 
 def test_mis_clases_incluye_jornada_del_curso(monkeypatch):
     cursor = FakeCursor([
-        (11, 12, "Matemáticas", "Sexto A", 4, "Tarde", "Lunes", "13:00", "14:00"),
+        (11, 12, "Matemáticas", "Sexto A", 4, "Tarde", "Lunes", "13:00", "14:00", None),
     ])
 
     @contextmanager
@@ -45,8 +45,32 @@ def test_mis_clases_incluye_jornada_del_curso(monkeypatch):
         "dia": "Lunes",
         "hora_inicio": "13:00",
         "hora_fin": "14:00",
+        "nivel": None,
     }]
     assert "c.jornada" in cursor.queries[0][0]
+
+
+def test_mis_clases_incluye_el_nivel_del_curso(monkeypatch):
+    """Funcionalidad de nivel academico: el frontend necesita saber si el
+    curso de cada clase es preescolar o primaria."""
+    cursor = FakeCursor([
+        (21, 22, "Matemáticas", "Transición A", 9, "Mañana", "Lunes", "07:00", "08:00", "preescolar"),
+    ])
+
+    @contextmanager
+    def fake_get_cursor(commit=False, cursor_factory=None):
+        yield cursor
+
+    monkeypatch.setattr(asignaciones, "get_cursor", fake_get_cursor)
+    monkeypatch.setattr(asignaciones, "require_profesor_scope", lambda *args, **kwargs: None)
+
+    response = asignaciones.obtener_clases_profesor(
+        profesor_id=3,
+        current_user={"id": 3, "rol": "profesor"},
+    )
+
+    assert response[0]["nivel"] == "preescolar"
+    assert "c.nivel" in cursor.queries[0][0]
 
 
 def test_asignaciones_lista_keeps_legacy_list_response(monkeypatch):

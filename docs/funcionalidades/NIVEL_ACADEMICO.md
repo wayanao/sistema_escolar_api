@@ -2,12 +2,15 @@
 
 ## Control
 
-- Estado: **Código de la Fase 1 completo**, incluida la exclusión de la
-  asignación de jornada en el boletín (decisión del usuario). Pendientes,
-  ninguno bloquea el inicio de la Fase 2: el paso 1b (aplicar la migración
-  al schema de referencia y regenerar el esquema base) y aplicar la
-  migración a todos los tenants reales antes de publicar este código —
-  ambos se harán juntos, al final, cuando el usuario lo decida.
+- Estado: **Completo y migrado.** La migración `20260901_cursos_nivel_academico.sql`
+  se aplicó el 2026-09-02 a los 2 tenants operativos
+  (`tenant_colegio_1` y `tenant_2005`), con `OK` en ambos. El archivo base
+  se regeneró en el mismo momento. `scripts/verify.py` corre **1171
+  pruebas, exit 0** en pytest, Ruff y `pip check` — sin ninguna falla
+  pendiente. Solo falta el commit (lo hace el usuario) y decidir cuándo
+  hacer `git push origin main` (ver más abajo, el orden de despliegue ya no
+  aplica retroactivamente porque los tenants ya tienen la columna, pero
+  sigue siendo la regla para futuras migraciones de esta funcionalidad).
 - Tipo: Función nueva de producto. No es una capa del programa de
   modularización de `docs/modularizacion/` y no debe confundirse con una.
 - Repos afectados: este repo (`sistema_escolar_api`) y `frontend-react`. Ver
@@ -151,9 +154,27 @@ No se toca la tabla `asistencia` ni su lógica (`asistencia_controller.py`,
 
 | Endpoint | Cambio |
 |---|---|
-| `POST /cursos`, `PUT /cursos/:id` | Acepta y devuelve `nivel` (opcional; si no llega, queda `NULL`). |
+| `POST /cursos`, `PUT /cursos/:id` | **Hecho.** Acepta y devuelve `nivel` (opcional; si no llega, queda `NULL`). Ver detalle abajo. |
 | `POST /notas` (planilla) | Deja de confiar ciegamente en `tipo_evaluacion` del cliente: lo valida/fuerza según el nivel del curso de la asignación. |
 | `POST /asistencia` | Sin cambio de contrato. |
+
+### `POST /cursos` y `PUT /cursos/:id`: hueco cerrado
+
+Al empezar la Fase 2 (frontend) se descubrió que este cambio, aunque estaba
+en el plan desde el inicio, **nunca se implementó** durante los pasos 1-5:
+`app/controllers/curso_controller.py` no leía, guardaba ni devolvía `nivel`
+en ningún punto (creación, actualización, listado simple, listado paginado,
+cambio de estado). Sin esto, el frontend no habría tenido nada real que
+consumir.
+
+Corregido: `app/schemas/curso.py` agrega `nivel: Optional[NivelCurso] = None`
+(`NivelCurso = Literal["preescolar", "primaria"]` — un valor fuera de esos
+dos, salvo ausente, es rechazado por Pydantic con 422, igual que ya hace
+`EstadoCurso`). `curso_controller.py` lo lee y guarda en creación y
+actualización, y lo devuelve en las cuatro funciones de lectura/escritura
+que arman la respuesta (`_formatear_curso`, listado, listado paginado y
+cambio de estado). 8 pruebas nuevas en `tests/test_curso_controlador.py`,
+que no tenía cobertura previa en absoluto.
 
 ## Invariantes
 
@@ -202,16 +223,14 @@ antes de publicar.
    `migrations/20260901_cursos_nivel_academico.sql`: `ADD COLUMN IF NOT
    EXISTS nivel VARCHAR(20)`, restricción `chk_cursos_nivel` que solo admite
    `NULL`, `preescolar` o `primaria`, e índice `idx_cursos_nivel`.
-   **Pendiente, requiere al usuario**: aplicar esta migración al schema de
-   referencia (`tenant_colegio_1`) con `apply_migration.py` y luego
-   regenerar `migrations/base/20260813_esquema_base_tenant.sql` con
-   `scripts/generar_esquema_base.py --schema tenant_colegio_1`. No se hizo
-   aquí porque requiere acceso a la base de datos real, fuera del alcance de
-   este asistente sin autorización explícita adicional. Hasta que se haga,
-   `scripts/verify.py` falla exactamente en
-   `tests/test_esquema_base.py::test_la_base_incorpora_todas_las_migraciones_de_tenant`,
-   con el mensaje que indica este mismo paso — es la señal esperada, no un
-   error del código.
+   **Aplicada el 2026-09-02** a los 2 tenants operativos
+   (`tenant_colegio_1`, `tenant_2005`) por el usuario, con `apply_migration.py`
+   apuntando al endpoint directo de Neon (el runner se niega sobre el
+   agrupado `-pooler` desde la capa 3.4d del programa de migraciones — no es
+   nuevo de esta funcionalidad). `migrations/base/20260813_esquema_base_tenant.sql`
+   regenerado con `scripts/generar_esquema_base.py --schema tenant_colegio_1`
+   en el mismo momento; ahora declara 32 migraciones incorporadas e incluye
+   `nivel`, su `CHECK` y su índice.
 2. ~~`REGLAS_POR_NIVEL` centralizada.~~ **Hecho.** Vive en
    `app/core/nivel_academico.py`, junto con `tipo_evaluacion_forzado(nivel)`
    y `resolver_tipo_evaluacion(nivel, tipo_evaluacion_solicitado)`, ambas
@@ -255,13 +274,12 @@ antes de publicar.
    `asistencia_controller.py`, `asistencia_repository.py` ni la tabla
    `asistencia`, tal como se verificó y acordó antes de empezar esta
    funcionalidad.
-6. Pruebas de caracterización antes de cada cambio + `scripts/verify.py`.
-   **En curso**, ver detalle de verificación abajo.
-7. Aplicar la migración a los tenants con `apply_migration.py`. **Sin
-   empezar**, requiere autorización explícita y acceso real cuando el
-   usuario decida desplegar.
+6. ~~Pruebas de caracterización antes de cada cambio + `scripts/verify.py`.~~
+   **Hecho**, ver detalle de verificación abajo.
+7. ~~Aplicar la migración a los tenants con `apply_migration.py`.~~
+   **Hecho el 2026-09-02**, ver paso 1.
 
-### Verificación de los pasos 1 (código), 2, 3 y 4
+### Verificación final (todos los pasos, incluida la migración real)
 
 - Archivos nuevos: `app/core/nivel_academico.py`,
   `migrations/20260901_cursos_nivel_academico.sql`,
@@ -277,9 +295,11 @@ antes de publicar.
   primaria respeta lo solicitado; los 5 tests existentes que guardan un
   boletín ahora doblan también el resolver de nivel, igual que ya doblaban
   el de asignación académica).
-- `scripts/verify.py`: **1161 pruebas pasaron** (subió de 1140; +21 nuevas),
-  Ruff correcto, `pip check` correcto. **1 prueba falla**, la esperada del
-  paso 1b (`test_la_base_incorpora_todas_las_migraciones_de_tenant`).
+- `scripts/verify.py`: **1171 pruebas pasaron, exit 0** (subió de 1140;
+  +31 nuevas), Ruff correcto, `pip check` correcto. **Cero fallas** —tras
+  aplicar la migración real y regenerar el esquema base, la última prueba
+  pendiente (`test_la_base_incorpora_todas_las_migraciones_de_tenant`) ya
+  pasa.
 - Paso 5 agregó además `app/core/nivel_academico.py::NOMBRE_MATERIA_ASISTENCIA_JORNADA`
   y `es_asignacion_de_jornada`, con sus pruebas en `tests/test_nivel_academico.py`.
   Sin cambios en `app/controllers/asistencia_controller.py`,
@@ -292,8 +312,10 @@ antes de publicar.
   2 pruebas nuevas en `tests/test_boletin_caracterizacion.py`.
 - `git diff --check`: exit 0. El diff pertenece exclusivamente a esta
   funcionalidad; no se tocó ningún otro dominio.
-- Nada de esto se commiteó ni se hizo push. Ningún acceso a producción ni a
-  ningún tenant real.
+- La migración real y la regeneración del esquema base sí se ejecutaron
+  contra los 2 tenants operativos, por el usuario, siguiendo el
+  procedimiento documentado en `docs/MIGRACIONES.md`. El código de la
+  aplicación (controllers, schemas, tests) sigue sin commitear ni publicar.
 
 ## Preguntas abiertas
 
@@ -316,33 +338,34 @@ antes de publicar.
 
 ## Entrega para el siguiente chat
 
-- Última acción terminada: **todo el código de la Fase 1** (pasos 1 a 5),
-  verificado localmente (ver arriba). Nada commiteado ni publicado.
+- Última acción terminada: **todo el código de la Fase 1 (pasos 1 a 7)**,
+  incluida la migración real aplicada a los 2 tenants operativos y el
+  esquema base regenerado. `scripts/verify.py` en verde total (1171
+  pruebas, exit 0). Nada commiteado ni publicado todavía.
 - Archivos pendientes de commit (el usuario decide cuándo):
   `app/core/nivel_academico.py`,
   `migrations/20260901_cursos_nivel_academico.sql`,
+  `migrations/base/20260813_esquema_base_tenant.sql` (regenerado),
   `tests/test_nivel_academico.py`, `tests/test_asignacion_academica.py`,
+  `tests/test_curso_controlador.py`,
   y los cambios en `app/services/asignacion_academica.py`,
   `app/controllers/planilla_controller.py`,
   `app/controllers/boletin_controller.py`,
   `app/repositories/boletin_repository.py`,
+  `app/controllers/curso_controller.py`, `app/schemas/curso.py`,
+  `app/routes/asignaciones.py`,
   `tests/test_planilla_controlador.py`,
   `tests/test_planilla_caracterizacion.py`,
-  `tests/test_boletin_caracterizacion.py`.
-- Riesgo abierto conocido: `scripts/verify.py` falla 1 de 1162 pruebas hasta
-  que se aplique la migración al schema de referencia y se regenere el
-  esquema base (paso 1b). No lo marques como cumplido sin hacerlo.
-- **Orden de despliegue acordado con el usuario**: la migración se aplicará
-  a todos los tenants **al final**, cuando el código de backend y frontend
-  esté terminado y probado — no antes. Pero el orden relativo entre migrar
-  y publicar sigue siendo estricto: migrar todos los tenants **antes** de
-  hacer `git push origin main` de este código (ver "Orden de despliegue
-  obligatorio" arriba). Ese push aún no ha ocurrido ni debe ocurrir sin
-  haber migrado primero.
-- Siguiente acción exacta: iniciar la Fase 2 (frontend) — puede arrancar ya,
-  sin esperar el paso 1b, porque se prueba contra una base de desarrollo
-  donde sí se puede tener la columna. El paso 1b y el despliegue final se
-  coordinan cuando todo (backend + frontend) esté listo.
+  `tests/test_boletin_caracterizacion.py`,
+  `tests/test_asignaciones_pagination.py`.
+- Sin riesgos abiertos conocidos. La migración ya se aplicó a los 2 tenants
+  operativos y el esquema base ya está regenerado; el orden de despliegue
+  documentado (migrar antes de publicar) ya se cumplió para esta
+  funcionalidad.
+- Siguiente acción exacta: el usuario hace el commit de todo el trabajo
+  (backend y frontend) cuando decida, y luego el push a `main` — que en
+  este repositorio despliega producción automáticamente. Ya no hay ningún
+  paso de base de datos pendiente antes de ese push.
 - Quedan 2 preguntas abiertas sin respuesta (ver arriba): sugerencia
   automática de nivel por nombre de curso, y colegio piloto vs. todos los
-  tenants. Ninguna bloquea la Fase 2.
+  tenants. Ninguna bloquea el despliegue.

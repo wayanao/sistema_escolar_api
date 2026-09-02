@@ -186,7 +186,8 @@ def obtener_clases_profesor(
             "jornada": c[5],
             "dia": c[6],
             "hora_inicio": c[7],
-            "hora_fin": c[8]
+            "hora_fin": c[8],
+            "nivel": c[9] if len(c) > 9 else None
         })
 
     return resultado

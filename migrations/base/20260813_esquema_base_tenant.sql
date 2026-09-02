@@ -1,6 +1,6 @@
 -- Esquema base de un tenant. ARCHIVO GENERADO, no editar a mano.
 --
--- Extraido de tenant_colegio_1 el 2026-08-25 con
+-- Extraido de tenant_colegio_1 el 2026-09-02 con
 -- scripts/generar_esquema_base.py. Para rehacerlo, aplica antes la
 -- migracion nueva a ese schema y vuelve a ejecutar el script.
 --
@@ -11,7 +11,7 @@
 -- No usar apply_migration.py con este archivo: es para dar de alta un
 -- tenant nuevo, no para los existentes, que ya tienen estas tablas.
 --
--- MIGRACIONES INCORPORADAS (31):
+-- MIGRACIONES INCORPORADAS (32):
 --   20260429_pagos_tipo_pago_largo.sql
 --   20260429_plan_de_clases_reportes.sql
 --   20260509_branding_plantillas_impresion.sql
@@ -43,6 +43,7 @@
 --   20260722_plan_de_clases_notificaciones.sql
 --   20260722_plan_de_clases_revision.sql
 --   20260825_observaciones_claves_foraneas.sql
+--   20260901_cursos_nivel_academico.sql
 -- FIN MIGRACIONES INCORPORADAS
 
 CREATE TABLE IF NOT EXISTS asignaciones (
@@ -96,6 +97,8 @@ CREATE TABLE IF NOT EXISTS cursos (
     descripcion text,
     jornada character varying(20) DEFAULT 'Mañana'::character varying,
     estado character varying(30),
+    nivel character varying(20),
+    CONSTRAINT chk_cursos_nivel CHECK (((nivel IS NULL) OR ((nivel)::text = ANY ((ARRAY['preescolar'::character varying, 'primaria'::character varying])::text[])))),
     CONSTRAINT cursos_pkey PRIMARY KEY (id)
 );
 
@@ -487,6 +490,7 @@ CREATE INDEX IF NOT EXISTS tenant_colegio_1_idx_asistencia_asignacion_periodo ON
 CREATE INDEX IF NOT EXISTS tenant_colegio_1_idx_asistencia_estudiante_fecha ON asistencia USING btree (estudiante_id, fecha);
 CREATE INDEX IF NOT EXISTS tenant_colegio_1_idx_boletin_cabecera_lookup ON boletin_cabecera USING btree (estudiante_id, asignacion_id, periodo);
 CREATE INDEX IF NOT EXISTS idx_cursos_estado ON cursos USING btree (estado);
+CREATE INDEX IF NOT EXISTS idx_cursos_nivel ON cursos USING btree (nivel);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_cursos_nombre_jornada_unico ON cursos USING btree (upper(regexp_replace(TRIM(BOTH FROM nombre), '[[:space:]]+'::text, ' '::text, 'g'::text)), lower(COALESCE(NULLIF(TRIM(BOTH FROM jornada), ''::text), 'Mañana'::text))) WHERE (NULLIF(TRIM(BOTH FROM COALESCE(nombre, ''::character varying)), ''::text) IS NOT NULL);
 CREATE INDEX IF NOT EXISTS idx_egresos_origen ON egresos USING btree (origen);
 CREATE INDEX IF NOT EXISTS tenant_colegio_1_idx_estudiantes_curso_id ON estudiantes USING btree (curso_id);

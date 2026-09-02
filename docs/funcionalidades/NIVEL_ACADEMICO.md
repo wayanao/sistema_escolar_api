@@ -2,9 +2,10 @@
 
 ## Control
 
-- Estado: **Fase 1 en curso.** Pasos 1 (columna + validación) y 3 (validación
-  en planilla) implementados y verificados localmente. Pendiente: aplicar la
-  migración real (paso 1b) y el paso 5 (asistencia por jornada).
+- Estado: **Fase 1 en curso.** Pasos 1 (columna + validación), 2, 3
+  (planilla) y 4 (boletín) implementados y verificados localmente.
+  Pendiente: aplicar la migración real (paso 1b) y el paso 5 (asistencia por
+  jornada).
 - Tipo: Función nueva de producto. No es una capa del programa de
   modularización de `docs/modularizacion/` y no debe confundirse con una.
 - Repos afectados: este repo (`sistema_escolar_api`) y `frontend-react`. Ver
@@ -202,8 +203,17 @@ No se toca la tabla `asistencia` ni su lógica (`asistencia_controller.py`,
    consultas (admin) y de 5 a 6 (profesor); las conexiones no cambian (2 y 3
    respectivamente). Documentado y verificado en
    `tests/test_planilla_caracterizacion.py`.
-4. Confirmar si `boletin_controller`/`boletin_repository` necesitan la misma
-   validación. **Sin empezar.**
+4. ~~Confirmar si `boletin_controller`/`boletin_repository` necesitan la
+   misma validación.~~ **Hecho, y la respuesta fue sí.** Se confirmó
+   leyendo el código: `guardar_boletin_controller` tenía su propia ruta de
+   escritura hacia `boletin_detalles.tipo_evaluacion`, **independiente** de
+   `notas_detalle`/planilla, sin ninguna validación de nivel — la misma
+   vulnerabilidad que planilla, y más grave porque cada detalle del lote
+   podía traer su propio `tipo_evaluacion` suelto. Se aplicó el mismo patrón:
+   `resolver_nivel_curso_cursor` + `resolver_tipo_evaluacion`, ahora también
+   dentro del bucle que arma cada detalle (no solo en la cabecera), porque
+   un curso preescolar debe forzar "desarrollo" en cada nota del boletín, no
+   solo en la primera.
 5. Documentar la convención de "asignación de jornada" para que el
    administrador la cree desde la pantalla de Asignaciones ya existente.
    **Sin empezar.**
@@ -213,19 +223,23 @@ No se toca la tabla `asistencia` ni su lógica (`asistencia_controller.py`,
    empezar**, requiere autorización explícita y acceso real cuando el
    usuario decida desplegar.
 
-### Verificación de los pasos 1 (código), 2 y 3
+### Verificación de los pasos 1 (código), 2, 3 y 4
 
 - Archivos nuevos: `app/core/nivel_academico.py`,
   `migrations/20260901_cursos_nivel_academico.sql`,
   `tests/test_nivel_academico.py`, `tests/test_asignacion_academica.py`.
 - Archivos modificados: `app/services/asignacion_academica.py` (nueva
   función `resolver_nivel_curso_cursor`), `app/controllers/planilla_controller.py`
-  (usa las dos funciones nuevas), `tests/test_planilla_controlador.py` (3
-  pruebas nuevas: preescolar fuerza desarrollo, primaria respeta lo
-  solicitado, curso sin nivel mantiene el comportamiento anterior),
-  `tests/test_planilla_caracterizacion.py` (conteo de consultas actualizado
-  de 4/5 a 5/6, con el motivo documentado en el propio test).
-- `scripts/verify.py`: **1153 pruebas pasaron** (subió de 1140; +13 nuevas),
+  y `app/controllers/boletin_controller.py` (ambos usan las dos funciones
+  nuevas), `tests/test_planilla_controlador.py` (3 pruebas nuevas: preescolar
+  fuerza desarrollo, primaria respeta lo solicitado, curso sin nivel
+  mantiene el comportamiento anterior), `tests/test_planilla_caracterizacion.py`
+  (conteo de consultas actualizado de 4/5 a 5/6), `tests/test_boletin_caracterizacion.py`
+  (2 pruebas nuevas: preescolar fuerza desarrollo en cada detalle del lote,
+  primaria respeta lo solicitado; los 5 tests existentes que guardan un
+  boletín ahora doblan también el resolver de nivel, igual que ya doblaban
+  el de asignación académica).
+- `scripts/verify.py`: **1155 pruebas pasaron** (subió de 1140; +15 nuevas),
   Ruff correcto, `pip check` correcto. **1 prueba falla**, la esperada del
   paso 1b (`test_la_base_incorpora_todas_las_migraciones_de_tenant`).
 - `git diff --check`: exit 0. El diff pertenece exclusivamente a esta
@@ -244,22 +258,25 @@ No se toca la tabla `asistencia` ni su lógica (`asistencia_controller.py`,
 
 ## Entrega para el siguiente chat
 
-- Última acción terminada: pasos 1 (código de la migración), 2 y 3 de la
-  Fase 1, verificados localmente (ver arriba). Nada commiteado ni publicado.
+- Última acción terminada: pasos 1 (código de la migración), 2, 3 (planilla)
+  y 4 (boletín) de la Fase 1, verificados localmente (ver arriba). Nada
+  commiteado ni publicado.
 - Archivos pendientes de commit (el usuario decide cuándo):
   `app/core/nivel_academico.py`,
   `migrations/20260901_cursos_nivel_academico.sql`,
   `tests/test_nivel_academico.py`, `tests/test_asignacion_academica.py`,
   y los cambios en `app/services/asignacion_academica.py`,
   `app/controllers/planilla_controller.py`,
+  `app/controllers/boletin_controller.py`,
   `tests/test_planilla_controlador.py`,
-  `tests/test_planilla_caracterizacion.py`.
-- Riesgo abierto conocido: `scripts/verify.py` falla 1 de 1154 pruebas hasta
+  `tests/test_planilla_caracterizacion.py`,
+  `tests/test_boletin_caracterizacion.py`.
+- Riesgo abierto conocido: `scripts/verify.py` falla 1 de 1156 pruebas hasta
   que se aplique la migración al schema de referencia y se regenere el
   esquema base (paso 1b). No lo marques como cumplido sin hacerlo.
-- Siguiente acción exacta: el usuario decide entre (a) continuar con el
-  paso 4 (revisar boletín) y el paso 5 (asistencia por jornada) antes de
-  tocar la base de datos real, o (b) aplicar primero la migración real al
-  schema de referencia para cerrar el paso 1b. Ninguna de las dos requiere
-  esperar a la otra.
+- Siguiente acción exacta: solo queda el paso 5 (documentar la convención de
+  "asignación de jornada" para asistencia) para cerrar el código de la
+  Fase 1. El paso 1b (migración real) sigue pendiente y requiere al usuario
+  o su autorización explícita con acceso a la base real; no depende del
+  paso 5 ni viceversa.
 - Las 3 preguntas abiertas siguen sin respuesta del usuario.

@@ -262,6 +262,11 @@ def test_guardar_boletin_escribe_dos_tablas_con_reemplazo_parcial(monkeypatch):
         "resolver_asignacion_academica_id_cursor",
         lambda _cursor, asignacion_id: 55,
     )
+    monkeypatch.setattr(
+        boletin_controller,
+        "resolver_nivel_curso_cursor",
+        lambda _cursor, _asignacion_id: None,
+    )
 
     datos = _BoletinFalso(detalles=[_DetalleFalso(), _DetalleFalso(nota=3.0)])
     resultado = boletin_controller.guardar_boletin_controller(datos)
@@ -291,6 +296,11 @@ def test_guardar_boletin_escribe_el_asignacion_academica_id_resuelto(monkeypatch
         "resolver_asignacion_academica_id_cursor",
         lambda _cursor, asignacion_id: 55,
     )
+    monkeypatch.setattr(
+        boletin_controller,
+        "resolver_nivel_curso_cursor",
+        lambda _cursor, _asignacion_id: None,
+    )
 
     boletin_controller.guardar_boletin_controller(_BoletinFalso(asignacion_id=44))
 
@@ -312,6 +322,11 @@ def test_guardar_boletin_revierte_y_propaga_el_error(monkeypatch):
         "resolver_asignacion_academica_id_cursor",
         lambda _cursor, asignacion_id: 55,
     )
+    monkeypatch.setattr(
+        boletin_controller,
+        "resolver_nivel_curso_cursor",
+        lambda _cursor, _asignacion_id: None,
+    )
 
     with pytest.raises(RuntimeError):
         boletin_controller.guardar_boletin_controller(_BoletinFalso())
@@ -320,6 +335,65 @@ def test_guardar_boletin_revierte_y_propaga_el_error(monkeypatch):
     assert conn.commits == 0
     assert cursor.closed is True
     assert conn.closed is True
+
+
+def test_guardar_boletin_en_curso_preescolar_fuerza_desarrollo_en_todos_los_detalles(
+    monkeypatch,
+):
+    """El nivel del curso manda sobre lo que pida cada detalle del boletin.
+
+    Antes de la funcionalidad de nivel academico, cada detalle podia llevar su
+    propio tipo_evaluacion sin ninguna relacion con el curso real. Un curso
+    preescolar guarda "desarrollo" en todos sus detalles, aunque el cliente
+    pida "numerica" en alguno.
+    """
+    cursor = CursorFalso(secuencia_fetchone=[(77,)])
+    conn = ConexionFalsa(cursor)
+    monkeypatch.setattr(boletin_controller, "get_connection", lambda: conn)
+    monkeypatch.setattr(
+        boletin_controller,
+        "resolver_asignacion_academica_id_cursor",
+        lambda _cursor, asignacion_id: 55,
+    )
+    monkeypatch.setattr(
+        boletin_controller,
+        "resolver_nivel_curso_cursor",
+        lambda _cursor, _asignacion_id: "preescolar",
+    )
+
+    detalles = [
+        _DetalleFalso(tipo_evaluacion="numerica"),
+        _DetalleFalso(tipo_evaluacion="desarrollo", valoracion="Alto"),
+    ]
+    boletin_controller.guardar_boletin_controller(_BoletinFalso(detalles=detalles))
+
+    _, params_detalle1 = cursor.calls[2]
+    _, params_detalle2 = cursor.calls[3]
+    assert params_detalle1[3] == "desarrollo"
+    assert params_detalle2[3] == "desarrollo"
+
+
+def test_guardar_boletin_en_curso_primaria_respeta_lo_solicitado(monkeypatch):
+    """Primaria no fuerza nada: se conserva el comportamiento actual."""
+    cursor = CursorFalso(secuencia_fetchone=[(77,)])
+    conn = ConexionFalsa(cursor)
+    monkeypatch.setattr(boletin_controller, "get_connection", lambda: conn)
+    monkeypatch.setattr(
+        boletin_controller,
+        "resolver_asignacion_academica_id_cursor",
+        lambda _cursor, asignacion_id: 55,
+    )
+    monkeypatch.setattr(
+        boletin_controller,
+        "resolver_nivel_curso_cursor",
+        lambda _cursor, _asignacion_id: "primaria",
+    )
+
+    detalles = [_DetalleFalso(tipo_evaluacion="numerica")]
+    boletin_controller.guardar_boletin_controller(_BoletinFalso(detalles=detalles))
+
+    _, params_detalle = cursor.calls[2]
+    assert params_detalle[3] == "numerica"
 
 
 def test_guardar_boletin_sin_detalles_borra_y_no_inserta_ninguno(monkeypatch):
@@ -331,6 +405,11 @@ def test_guardar_boletin_sin_detalles_borra_y_no_inserta_ninguno(monkeypatch):
         boletin_controller,
         "resolver_asignacion_academica_id_cursor",
         lambda _cursor, asignacion_id: 55,
+    )
+    monkeypatch.setattr(
+        boletin_controller,
+        "resolver_nivel_curso_cursor",
+        lambda _cursor, _asignacion_id: None,
     )
 
     boletin_controller.guardar_boletin_controller(_BoletinFalso(detalles=[]))
@@ -535,6 +614,11 @@ def test_linea_base_de_consultas_de_referencia_para_profesor(monkeypatch):
         "resolver_asignacion_academica_id_cursor",
         lambda _cursor, asignacion_id: 55,
     )
+    monkeypatch.setattr(
+        boletin_controller,
+        "resolver_nivel_curso_cursor",
+        lambda _cursor, _asignacion_id: None,
+    )
 
     resultado = boletin_controller.obtener_boletin_para_profesor_controller(44, 2)
 
@@ -554,12 +638,18 @@ def test_guardar_boletin_cuesta_tres_consultas_mas_una_por_detalle(monkeypatch):
         "resolver_asignacion_academica_id_cursor",
         lambda _cursor, asignacion_id: 55,
     )
+    monkeypatch.setattr(
+        boletin_controller,
+        "resolver_nivel_curso_cursor",
+        lambda _cursor, _asignacion_id: None,
+    )
 
     detalles = [_DetalleFalso() for _ in range(5)]
     boletin_controller.guardar_boletin_controller(_BoletinFalso(detalles=detalles))
 
-    # 2 fijas dentro del controlador + 1 INSERT por detalle. El resolver esta
-    # doblado, asi que no suma aqui; en produccion son 3 + N.
+    # 2 fijas dentro del controlador + 1 INSERT por detalle. Los dos resolvers
+    # (asignacion academica y nivel del curso) estan doblados, asi que no
+    # suman aqui; en produccion, con el nivel academico, son 4 + N.
     assert len(cursor.calls) == 2 + len(detalles)
 
 
@@ -591,6 +681,11 @@ def test_cada_controlador_abre_exactamente_una_conexion(monkeypatch):
         boletin_controller,
         "resolver_asignacion_academica_id_cursor",
         lambda _cursor, asignacion_id: 55,
+    )
+    monkeypatch.setattr(
+        boletin_controller,
+        "resolver_nivel_curso_cursor",
+        lambda _cursor, _asignacion_id: None,
     )
 
     boletin_controller.obtener_reporte_parcial_admin_controller(8, 2)

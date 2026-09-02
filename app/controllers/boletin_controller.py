@@ -1,6 +1,10 @@
+from app.core.nivel_academico import resolver_tipo_evaluacion
 from app.database import get_connection
 from app.repositories import boletin_repository
-from app.services.asignacion_academica import resolver_asignacion_academica_id_cursor
+from app.services.asignacion_academica import (
+    resolver_asignacion_academica_id_cursor,
+    resolver_nivel_curso_cursor,
+)
 from psycopg2.extras import RealDictCursor
 
 def guardar_boletin_controller(data):
@@ -8,7 +12,10 @@ def guardar_boletin_controller(data):
     cursor = conn.cursor()
     try:
         asignacion_id = resolver_asignacion_academica_id_cursor(cursor, data.asignacion_id)
-        tipo_evaluacion = getattr(data, "tipo_evaluacion", "numerica") or "numerica"
+        nivel_curso = resolver_nivel_curso_cursor(cursor, asignacion_id)
+        tipo_evaluacion = resolver_tipo_evaluacion(
+            nivel_curso, getattr(data, "tipo_evaluacion", None)
+        )
         boletin_id = boletin_repository.guardar_cabecera(
             cursor, data.estudiante_id, asignacion_id, data.periodo, data.definitiva
         )
@@ -16,12 +23,16 @@ def guardar_boletin_controller(data):
         boletin_repository.borrar_detalles_de_boletin(cursor, boletin_id)
 
         for det in data.detalles:
+            tipo_evaluacion_detalle = resolver_tipo_evaluacion(
+                nivel_curso,
+                getattr(det, "tipo_evaluacion", tipo_evaluacion) or tipo_evaluacion,
+            )
             boletin_repository.insertar_detalle(
                 cursor,
                 boletin_id,
                 det.nota,
                 det.observacion,
-                getattr(det, "tipo_evaluacion", tipo_evaluacion) or tipo_evaluacion,
+                tipo_evaluacion_detalle,
                 getattr(det, "valoracion", None),
             )
 

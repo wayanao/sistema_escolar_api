@@ -202,6 +202,18 @@ def buscar_materia_activa(cursor, materia_id):
     return cursor.fetchone()
 
 
+def leer_nombre_materia(cursor, materia_id):
+    """Nombre de una materia por id, o None si no existe.
+
+    Usado para reconocer la asignacion reservada de jornada (nivel
+    academico) antes de validar cruces de horario. Ver
+    app.core.nivel_academico.es_asignacion_de_jornada.
+    """
+    cursor.execute("SELECT nombre FROM materias WHERE id = %s", (materia_id,))
+    row = cursor.fetchone()
+    return row[0] if row else None
+
+
 def leer_jornada_curso(cursor, curso_id):
     """Jornada declarada del curso, o `None` si el curso no existe.
 

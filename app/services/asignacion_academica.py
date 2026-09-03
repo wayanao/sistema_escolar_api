@@ -60,3 +60,31 @@ def resolver_nivel_curso_cursor(cursor, asignacion_id):
         return next(iter(row.values()))
     return row[0]
 
+
+def resolver_nivel_y_materia_cursor(cursor, asignacion_id):
+    """Nivel academico del curso y nombre de materia de una asignacion, en
+    una sola consulta.
+
+    Usado para decidir si una asignacion de un curso preescolar es la
+    reservada para asistencia por jornada (ver
+    app.core.nivel_academico.es_asignacion_de_jornada) sin pagar dos
+    consultas separadas. Devuelve (None, None) si la asignacion no existe.
+    """
+    cursor.execute(
+        """
+        SELECT c.nivel, m.nombre
+        FROM asignaciones a
+        JOIN cursos c ON c.id = a.curso_id
+        JOIN materias m ON m.id = a.materia_id
+        WHERE a.id = %s
+        """,
+        (asignacion_id,),
+    )
+    row = cursor.fetchone()
+    if not row:
+        return None, None
+    if isinstance(row, dict):
+        valores = list(row.values())
+        return valores[0], valores[1]
+    return row[0], row[1]
+

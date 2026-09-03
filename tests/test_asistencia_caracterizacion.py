@@ -367,7 +367,7 @@ def test_el_dominio_usa_dos_idiomas_de_conexion():
 
 
 def test_la_escritura_es_duena_de_su_ciclo_de_vida(instrumentado):
-    registro = instrumentado([(ASIGNACION_RESUELTA,)])
+    registro = instrumentado([(ASIGNACION_RESUELTA,), (None, "Matemáticas")])
 
     asistencia_controller.guardar_asistencia_controller([_registro()])
 
@@ -379,7 +379,7 @@ def test_la_escritura_es_duena_de_su_ciclo_de_vida(instrumentado):
 
 
 def test_la_escritura_revierte_y_cierra_ante_un_fallo(instrumentado):
-    registro = instrumentado([(ASIGNACION_RESUELTA,)])
+    registro = instrumentado([(ASIGNACION_RESUELTA,), (None, "Matemáticas")])
 
     def explota(query, params=None):
         raise RuntimeError("fallo de infraestructura")
@@ -389,7 +389,9 @@ def test_la_escritura_revierte_y_cierra_ante_un_fallo(instrumentado):
 
     def execute(query, params=None):
         llamadas["n"] += 1
-        if llamadas["n"] == 3:
+        # Llamada 1: resolver asignacion. 2: resolver nivel/materia. 3: DELETE.
+        # 4: primer INSERT, donde se hace fallar la escritura.
+        if llamadas["n"] == 4:
             explota(query, params)
         original(query, params)
 
@@ -409,17 +411,21 @@ def test_la_escritura_revierte_y_cierra_ante_un_fallo(instrumentado):
 
 
 def test_guardar_cuesta_una_conexion_y_dos_consultas_mas_una_por_estudiante(instrumentado):
-    registro = instrumentado([(ASIGNACION_RESUELTA,)])
+    """La funcionalidad de nivel academico agrega una consulta de solo
+    lectura (nivel + materia de la asignacion) dentro de la MISMA
+    conexion/transaccion ya abierta -no abre una conexion nueva-. El conteo
+    fijo sube de dos a tres; el costo por estudiante no cambia."""
+    registro = instrumentado([(ASIGNACION_RESUELTA,), (None, "Matemáticas")])
 
     asistencia_controller.guardar_asistencia_controller(
         [_registro(estudiante_id=1), _registro(estudiante_id=2), _registro(estudiante_id=3)]
     )
 
     assert registro.conexiones == 1
-    assert len(registro.cursor.calls) == 5
+    assert len(registro.cursor.calls) == 6
 
     tipos = [s.strip().split()[0].upper() for s in registro.cursor.sql]
-    assert tipos == ["SELECT", "DELETE", "INSERT", "INSERT", "INSERT"]
+    assert tipos == ["SELECT", "SELECT", "DELETE", "INSERT", "INSERT", "INSERT"]
 
 
 def test_historial_cuesta_una_conexion_y_dos_consultas(instrumentado):
@@ -435,7 +441,7 @@ def test_historial_cuesta_una_conexion_y_dos_consultas(instrumentado):
 
 
 def test_los_dos_caminos_resuelven_la_asignacion_academica(instrumentado):
-    registro = instrumentado([(ASIGNACION_RESUELTA,)])
+    registro = instrumentado([(ASIGNACION_RESUELTA,), (None, "Matemáticas")])
     asistencia_controller.guardar_asistencia_controller([_registro(asignacion_id=10)])
     assert registro.cursor.calls[0][1] == (10,)
     assert registro.cursor.calls[1][1][0] == ASIGNACION_RESUELTA
@@ -452,13 +458,15 @@ def test_los_dos_caminos_resuelven_la_asignacion_academica(instrumentado):
 
 
 def test_el_borrado_solo_alcanza_a_los_estudiantes_del_lote(instrumentado):
-    registro = instrumentado([(ASIGNACION_RESUELTA,)])
+    registro = instrumentado([(ASIGNACION_RESUELTA,), (None, "Matemáticas")])
 
     asistencia_controller.guardar_asistencia_controller(
         [_registro(estudiante_id=4), _registro(estudiante_id=9)]
     )
 
-    _sql, params = registro.cursor.calls[1]
+    # calls[0] resuelve la asignacion academica, calls[1] el nivel/materia
+    # (funcionalidad de nivel academico), calls[2] es el DELETE.
+    _sql, params = registro.cursor.calls[2]
     assert params == (ASIGNACION_RESUELTA, date(2026, 7, 15), 2, [4, 9])
 
 
@@ -482,13 +490,14 @@ def test_la_escritura_no_valida_el_estado(instrumentado):
     El Literal del esquema solo protege el camino HTTP. Quien llame al
     controlador directamente puede escribir cualquier cadena.
     """
-    registro = instrumentado([(ASIGNACION_RESUELTA,)])
+    registro = instrumentado([(ASIGNACION_RESUELTA,), (None, "Matemáticas")])
 
     asistencia_controller.guardar_asistencia_controller(
         [SimpleNamespace(estudiante_id=1, asignacion_id=10, fecha=date(2026, 7, 15), periodo=2, estado="EXCUSA")]
     )
 
-    _sql, params = registro.cursor.calls[2]
+    # calls[3] es el primer (y unico) INSERT: 0=asignacion, 1=nivel/materia, 2=DELETE.
+    _sql, params = registro.cursor.calls[3]
     assert params[3] == "EXCUSA"
 
 
@@ -528,7 +537,7 @@ def test_la_escritura_admin_mantiene_dos_conexiones_sin_importar_el_lote(
     from app.routes import asistencia as ruta
 
     registro = ruta_instrumentada(
-        [(ASIGNACION_RESUELTA,)],
+        [(ASIGNACION_RESUELTA,), (None, "Matemáticas")],
         respuestas_permisos=[(cantidad,)],
     )
     lote = [_registro(estudiante_id=i) for i in range(1, cantidad + 1)]
@@ -540,6 +549,28 @@ def test_la_escritura_admin_mantiene_dos_conexiones_sin_importar_el_lote(
     assert registro.conexiones_permisos + registro.conexiones == 2
 
 
+def test_el_rechazo_por_nivel_no_abre_una_conexion_extra(ruta_instrumentada):
+    """Funcionalidad de nivel academico: si el curso es preescolar y la
+    asignacion no es la reservada de jornada, se rechaza sin escribir, con
+    el mismo perfil de una conexion que el camino que si escribe."""
+    from app.routes import asistencia as ruta
+
+    registro = ruta_instrumentada(
+        [(ASIGNACION_RESUELTA,), ("preescolar", "Matemáticas")],
+        respuestas_permisos=[(1,)],
+    )
+
+    respuesta = ruta.guardar_asistencia([_registro()], current_user=ADMIN)
+
+    assert respuesta == {
+        "error": 'Este curso es de preescolar. Usa la asignación "Asistencia diaria" '
+        "para registrar asistencia."
+    }
+    assert registro.conexiones == 1
+    assert len(registro.cursor.calls) == 2
+    assert registro.conexion().committed is False
+
+
 @pytest.mark.parametrize("cantidad", [1, 5, 30])
 def test_la_escritura_profesor_mantiene_tres_conexiones_sin_importar_el_lote(
     ruta_instrumentada,
@@ -548,7 +579,7 @@ def test_la_escritura_profesor_mantiene_tres_conexiones_sin_importar_el_lote(
     from app.routes import asistencia as ruta
 
     registro = ruta_instrumentada(
-        [(ASIGNACION_RESUELTA,)],
+        [(ASIGNACION_RESUELTA,), (None, "Matemáticas")],
         respuestas_permisos=[(1,), (cantidad,)],
     )
     lote = [_registro(estudiante_id=i) for i in range(1, cantidad + 1)]
@@ -790,12 +821,28 @@ def app_http(monkeypatch):
 
 def test_http_guardar_responde_200_con_el_mensaje_fijo(app_http):
     app, instalar, _estado = app_http
-    instalar([(ASIGNACION_RESUELTA,)])
+    instalar([(ASIGNACION_RESUELTA,), (None, "Matemáticas")])
 
     estado, cuerpo = _peticion_asgi(app, "POST", "/asistencia", CUERPO_LOTE)
 
     assert estado == 200
     assert cuerpo == {"mensaje": "Asistencia guardada"}
+
+
+def test_http_guardar_en_preescolar_con_materia_normal_responde_200_con_error(app_http):
+    """Funcionalidad de nivel academico: el rechazo es un 200 logico con
+    error en el cuerpo, igual que el resto de reglas de dominio de este
+    programa (ver planilla, boletin)."""
+    app, instalar, _estado = app_http
+    instalar([(ASIGNACION_RESUELTA,), ("preescolar", "Matemáticas")])
+
+    estado, cuerpo = _peticion_asgi(app, "POST", "/asistencia", CUERPO_LOTE)
+
+    assert estado == 200
+    assert cuerpo == {
+        "error": 'Este curso es de preescolar. Usa la asignación "Asistencia diaria" '
+        "para registrar asistencia."
+    }
 
 
 def test_http_un_lote_vacio_responde_422(app_http):

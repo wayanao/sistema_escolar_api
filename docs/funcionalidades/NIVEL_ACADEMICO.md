@@ -2,15 +2,18 @@
 
 ## Control
 
-- Estado: **Completo y migrado.** La migración `20260901_cursos_nivel_academico.sql`
-  se aplicó el 2026-09-02 a los 2 tenants operativos
-  (`tenant_colegio_1` y `tenant_2005`), con `OK` en ambos. El archivo base
-  se regeneró en el mismo momento. `scripts/verify.py` corre **1171
-  pruebas, exit 0** en pytest, Ruff y `pip check` — sin ninguna falla
-  pendiente. Solo falta el commit (lo hace el usuario) y decidir cuándo
-  hacer `git push origin main` (ver más abajo, el orden de despliegue ya no
-  aplica retroactivamente porque los tenants ya tienen la columna, pero
-  sigue siendo la regla para futuras migraciones de esta funcionalidad).
+- Estado: **Completo y migrado**, con dos extensiones pedidas por el usuario
+  después del cierre inicial: validar la asistencia en el servidor (ver
+  "Extensión: validar la asignación de jornada") y, tras un reporte real del
+  usuario, **exceptuar la asignación de jornada de la validación general de
+  cruce de horario** (ver "Extensión: excepción al cruce de horario" más
+  abajo — esta corrige un error de análisis del propio asistente, no solo
+  agrega una función). La migración `20260901_cursos_nivel_academico.sql` se
+  aplicó el 2026-09-02 a los 2 tenants operativos (`tenant_colegio_1` y
+  `tenant_2005`), con `OK` en ambos. El archivo base se regeneró en el mismo
+  momento. `scripts/verify.py` corre **1185 pruebas, exit 0** en pytest,
+  Ruff y `pip check` — sin ninguna falla pendiente. Solo falta el commit (lo
+  hace el usuario) y decidir cuándo hacer `git push origin main`.
 - Tipo: Función nueva de producto. No es una capa del programa de
   modularización de `docs/modularizacion/` y no debe confundirse con una.
 - Repos afectados: este repo (`sistema_escolar_api`) y `frontend-react`. Ver
@@ -270,14 +273,131 @@ antes de publicar.
    normalización. El administrador crea la asignación de jornada exactamente
    igual que cualquier otra (curso preescolar + materia "Asistencia diaria"
    + la maestra titular + horario que cubra el bloque institucional
-   completo), desde la pantalla de Asignaciones ya existente. Sin cambios en
-   `asistencia_controller.py`, `asistencia_repository.py` ni la tabla
-   `asistencia`, tal como se verificó y acordó antes de empezar esta
-   funcionalidad.
+   completo), desde la pantalla de Asignaciones ya existente. En su momento
+   se decidió **sin cambios** en `asistencia_controller.py`,
+   `asistencia_repository.py` ni la tabla `asistencia` — ver la sección
+   "Extensión: validar la asignación de jornada" más abajo, que sí los
+   agregó después, a pedido explícito del usuario.
 6. ~~Pruebas de caracterización antes de cada cambio + `scripts/verify.py`.~~
    **Hecho**, ver detalle de verificación abajo.
 7. ~~Aplicar la migración a los tenants con `apply_migration.py`.~~
    **Hecho el 2026-09-02**, ver paso 1.
+
+## Extensión: validar la asignación de jornada (posterior al cierre inicial)
+
+Después de cerrar la Fase 1 y aplicar la migración, el usuario preguntó:
+"¿si elijo otra materia en preescolar, igual me deja tomar asistencia otra
+vez?" La respuesta honesta era **sí**: el diseño original solo creaba la
+convención de nombre reservado, sin impedir que se tomara asistencia bajo
+cualquier otra asignación del mismo curso. Se le presentó la disyuntiva
+(dejarlo como costumbre vs. bloquear con un mensaje) y **eligió bloquear**.
+
+### Diseño
+
+- `app/services/asignacion_academica.py`: nueva función
+  `resolver_nivel_y_materia_cursor(cursor, asignacion_id)`, que trae en una
+  sola consulta el nivel del curso y el nombre de la materia (join a
+  `cursos` y a `materias`), para no pagar dos consultas separadas.
+- `app/core/nivel_academico.py`: `asistencia_por_jornada_requerida(nivel)`
+  (deriva de `REGLAS_POR_NIVEL`) y `asistencia_rechazada_por_nivel(nivel,
+  nombre_materia)`, que combina ambas reglas en una sola función pura:
+  solo rechaza cuando el nivel exige jornada **y** la materia no es la
+  reservada. Primaria y niveles sin definir nunca rechazan nada.
+  `MENSAJE_ASISTENCIA_REQUIERE_JORNADA` es el texto exacto que ve la
+  maestra.
+- `app/controllers/asistencia_controller.py`: `guardar_asistencia_controller`
+  resuelve nivel y materia justo después de resolver la asignación
+  académica, y si `asistencia_rechazada_por_nivel` es verdadero, devuelve
+  `{"error": ...}` **antes** de tocar `borrar_asistencia_del_lote` o
+  `insertar_asistencia` — no se escribe nada. Es un 200 lógico con error en
+  el cuerpo, igual que el resto de reglas de dominio de este programa
+  (planilla, boletín), no una `HTTPException`.
+- **Costo medido**: una consulta de solo lectura más por guardado de
+  asistencia, dentro de la misma conexión ya abierta. El perfil de
+  conexiones (2 para admin, 3 para profesor) no cambia.
+
+### Verificación de la extensión
+
+- Archivos modificados: los tres de arriba.
+- Pruebas nuevas: 3 en `tests/test_asistencia_validaciones.py` (rechaza
+  materia normal en preescolar, acepta la asignación de jornada, no rechaza
+  nada en primaria), 3 en `tests/test_asistencia_caracterizacion.py`
+  (conteo de consultas actualizado de 2/5 a 3/6, perfil de conexiones sin
+  cambio en el rechazo, contrato HTTP 200 con error), 2 en
+  `tests/test_asignacion_academica.py`, 5 en `tests/test_nivel_academico.py`.
+  Los índices de consulta (`cursor.calls[N]`) de varias pruebas existentes
+  de `test_asistencia_caracterizacion.py` se recalcularon para la nueva
+  consulta intermedia.
+- `scripts/verify.py`: **1183 pruebas, exit 0** (subió de 1171; +12
+  nuevas), Ruff y `pip check` correctos.
+- `git diff --check`: exit 0.
+- Frontend también actualizado: ver
+  `frontend-react/docs/funcionalidades/NIVEL_ACADEMICO.md`, sección
+  equivalente — la pantalla de Asistencia ahora distingue este `{"error"}`
+  del éxito real y se lo muestra a la maestra en vez de festejar un
+  guardado que no ocurrió.
+
+## Extensión: excepción al cruce de horario (corrige un error del asistente)
+
+El usuario reportó, al intentar crear la asignación "Asistencia diaria" con
+el horario completo de la jornada, un error real del sistema: *"El profesor
+ya tiene una clase asignada en ese horario y ese día."* Esto contradecía lo
+que se había afirmado antes en esta conversación (que ningún mecanismo
+comparaba cruces de horario entre materias distintas del mismo profesor).
+
+**Era un error de análisis, no un cambio del sistema.** Existe una segunda
+función de validación, `verificar_cruce_horario` (y su gemela
+`verificar_cruce_horario_editar`), en `app/controllers/asignacion_controller.py`,
+que **no se había inspeccionado** al responder antes. A diferencia de
+`validar_horario_unico` (que solo bloquea una repetición exacta de
+profesor+curso+**materia**+día+horas), esta función sí compara **cualquier
+solapamiento real de rango horario**, sin importar la materia — y lo hace
+dos veces: una para el profesor, otra para el curso (salón):
+
+```python
+if h_inicio_db < hora_fin_nueva and h_fin_db > hora_inicio_nueva:
+    return True  # los dos rangos se solapan
+```
+
+Como "Asistencia diaria" está pensada para cubrir todo el bloque de la
+jornada (ej. 06:30-12:30), se solapa **por diseño** con las materias reales
+del mismo profesor y del mismo curso — la validación general la rechazaba
+correctamente según su propia lógica, pero esa lógica no debía aplicarle a
+esta asignación en particular.
+
+### Diseño
+
+Se presentaron dos caminos al usuario: (a) buscar manualmente un hueco
+horario libre para la asignación de jornada, sin tocar código; o (b) que el
+sistema reconozca la asignación reservada y no le aplique el cruce. **Eligió
+(b).**
+
+- `app/repositories/asignaciones_repository.py`: nueva función
+  `leer_nombre_materia(cursor, materia_id)`, una consulta puntual por id.
+- `app/controllers/asignacion_controller.py`: en `asignar_profesor_controller`
+  y en `editar_asignacion_controller`, justo antes de las dos llamadas a
+  `verificar_cruce_horario`/`verificar_cruce_horario_editar`, se resuelve el
+  nombre de la materia y, si `es_asignacion_de_jornada(nombre_materia)` es
+  verdadero, **ambas** verificaciones de cruce se omiten. Las demás
+  validaciones (rango institucional, coherencia con la jornada del curso)
+  **se conservan** — solo se exceptúa el cruce con otras asignaciones.
+
+### Verificación
+
+- Archivos modificados: los dos de arriba.
+- Pruebas nuevas: 2 en `tests/test_asignaciones_estudiantes_caracterizacion.py`
+  (crear y editar la asignación de jornada con solapamiento real, sin
+  rechazo). Pruebas existentes actualizadas: el conteo de consultas del
+  camino feliz de creación subió de 12 a 13 (una consulta más, de solo
+  lectura, dentro de la misma conexión), y los índices de varias pruebas de
+  cruce/edición se recalcularon para la nueva consulta intermedia.
+- `scripts/verify.py`: **1185 pruebas, exit 0** (subió de 1183; +2 nuevas),
+  Ruff y `pip check` correctos.
+- `git diff --check`: exit 0.
+- Nota para quien continúe: no se modificó `verificar_cruce_horario` en sí
+  ni su función gemela — ambas siguen protegiendo a todos los demás
+  dominios exactamente igual que antes. La excepción vive enteramente en el
+  punto donde se llaman, condicionada por nombre de materia reservado.
 
 ### Verificación final (todos los pasos, incluida la migración real)
 
@@ -295,8 +415,10 @@ antes de publicar.
   primaria respeta lo solicitado; los 5 tests existentes que guardan un
   boletín ahora doblan también el resolver de nivel, igual que ya doblaban
   el de asignación académica).
-- `scripts/verify.py`: **1171 pruebas pasaron, exit 0** (subió de 1140;
-  +31 nuevas), Ruff correcto, `pip check` correcto. **Cero fallas** —tras
+- `scripts/verify.py` en este punto del cierre inicial: **1171 pruebas,
+  exit 0** (subió de 1140; +31 nuevas); las dos extensiones posteriores
+  (asistencia y cruce de horario, documentadas arriba) lo llevaron a
+  **1185**. Ruff y `pip check` correctos en todo momento. **Cero fallas** —tras
   aplicar la migración real y regenerar el esquema base, la última prueba
   pendiente (`test_la_base_incorpora_todas_las_migraciones_de_tenant`) ya
   pasa.

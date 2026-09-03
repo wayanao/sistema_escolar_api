@@ -155,7 +155,11 @@ def _asignacion_edit(**overrides):
 # ---------------------------------------------------------------------------
 
 
-def test_asignar_profesor_camino_feliz_cuesta_doce_consultas(conexion_de):
+def test_asignar_profesor_camino_feliz_cuesta_trece_consultas(conexion_de):
+    """La funcionalidad de nivel academico agrega una consulta de solo
+    lectura (nombre de la materia) para reconocer la asignacion reservada de
+    jornada antes de validar cruces de horario. El conteo fijo sube de 12 a
+    13."""
     cursor, conn = conexion_de(
         asignacion_controller,
         una=[
@@ -167,6 +171,7 @@ def test_asignar_profesor_camino_feliz_cuesta_doce_consultas(conexion_de):
             None,          # obtener_asignacion_academica_id: primera del grupo
             (100,),        # obtener_orden_boletin_materia_curso
             ("Mañana",),   # validar_jornada_curso
+            ("Matemáticas",),  # leer_nombre_materia (nivel academico)
             (77,),         # INSERT ... RETURNING id
         ],
         todas=[[], []],    # cruce por profesor y por curso
@@ -175,7 +180,7 @@ def test_asignar_profesor_camino_feliz_cuesta_doce_consultas(conexion_de):
     respuesta = asignacion_controller.asignar_profesor_controller(_asignacion())
 
     assert respuesta == {"mensaje": "Asignación creada", "id": 77}
-    assert len(cursor.ejecutadas) == 12
+    assert len(cursor.ejecutadas) == 13
     assert "FOR NO KEY UPDATE" in cursor.sql[0].upper()
     assert "FROM profesor" in cursor.sql[0]
     assert "FOR NO KEY UPDATE" in cursor.sql[1].upper()
@@ -188,7 +193,7 @@ def test_asignar_profesor_camino_feliz_cuesta_doce_consultas(conexion_de):
 def test_asignar_profesor_primera_del_grupo_se_apunta_a_si_misma(conexion_de):
     cursor, _ = conexion_de(
         asignacion_controller,
-        una=[(1,), (1,), (1,), None, None, None, (100,), ("Mañana",), (77,)],
+        una=[(1,), (1,), (1,), None, None, None, (100,), ("Mañana",), ("Matemáticas",), (77,)],
         todas=[[], []],
     )
 
@@ -202,14 +207,14 @@ def test_asignar_profesor_primera_del_grupo_se_apunta_a_si_misma(conexion_de):
 def test_asignar_profesor_hereda_la_asignacion_academica_existente(conexion_de):
     cursor, _ = conexion_de(
         asignacion_controller,
-        una=[(1,), (1,), (1,), None, None, (5,), (100,), ("Mañana",), (77,)],
+        una=[(1,), (1,), (1,), None, None, (5,), (100,), ("Mañana",), ("Matemáticas",), (77,)],
         todas=[[], []],
     )
 
     asignacion_controller.asignar_profesor_controller(_asignacion())
 
     # Sin UPDATE de autorreferencia: hereda el 5 y ahorra una consulta.
-    assert len(cursor.ejecutadas) == 11
+    assert len(cursor.ejecutadas) == 12
     insert_sql, insert_params = cursor.ejecutadas[-1]
     assert "INSERT INTO asignaciones" in insert_sql
     assert insert_params[6] == 5
@@ -223,7 +228,7 @@ def test_asignar_profesor_traduce_unique_violation_a_duplicada(conexion_de):
 
     cursor, conn = conexion_de(
         asignacion_controller,
-        una=[(1,), (1,), (1,), None, None, None, (100,), ("Mañana",)],
+        una=[(1,), (1,), (1,), None, None, None, (100,), ("Mañana",), ("Matemáticas",)],
         todas=[[], []],
         fallar_si=fallar,
     )
@@ -267,7 +272,7 @@ def test_asignar_profesor_rechaza_horario_identico_repetido(conexion_de):
 def test_asignar_profesor_detecta_cruce_del_profesor(conexion_de):
     _, conn = conexion_de(
         asignacion_controller,
-        una=[(1,), (1,), (1,), None, None, None, (100,), ("Mañana",)],
+        una=[(1,), (1,), (1,), None, None, None, (100,), ("Mañana",), ("Matemáticas",)],
         todas=[[("08:30", "09:30")]],
     )
 
@@ -282,7 +287,7 @@ def test_asignar_profesor_detecta_cruce_del_profesor(conexion_de):
 def test_asignar_profesor_detecta_cruce_del_curso(conexion_de):
     _, conn = conexion_de(
         asignacion_controller,
-        una=[(1,), (1,), (1,), None, None, None, (100,), ("Mañana",)],
+        una=[(1,), (1,), (1,), None, None, None, (100,), ("Mañana",), ("Matemáticas",)],
         todas=[[], [("08:30", "09:30")]],
     )
 
@@ -292,6 +297,27 @@ def test_asignar_profesor_detecta_cruce_del_curso(conexion_de):
         "error": "Error: El curso (salón) ya tiene otra clase asignada en ese horario y ese día."
     }
     assert conn.commits == 0
+
+
+def test_asignar_la_asignacion_de_jornada_ignora_el_cruce_de_horario(conexion_de):
+    """Funcionalidad de nivel academico: 'Asistencia diaria' representa el
+    dia completo a proposito y se solapa con las materias reales del mismo
+    profesor y curso por diseno. No debe rechazarse por cruce."""
+    cursor, conn = conexion_de(
+        asignacion_controller,
+        una=[
+            (1,), (1,), (1,), None, None, None, (100,),
+            ("Mañana",),           # validar_jornada_curso
+            ("ASISTENCIA DIARIA",),  # leer_nombre_materia: la reservada
+            (77,),                 # INSERT ... RETURNING id
+        ],
+        # Ni fetchall se llama: los dos verificar_cruce_horario se omiten.
+    )
+
+    respuesta = asignacion_controller.asignar_profesor_controller(_asignacion())
+
+    assert respuesta == {"mensaje": "Asignación creada", "id": 77}
+    assert conn.commits == 1
 
 
 def test_asignar_profesor_respeta_la_jornada_del_curso(conexion_de):
@@ -404,6 +430,7 @@ def test_editar_permite_cambiar_solo_el_horario_con_historial(conexion_de):
             None,                # responsable
             None,                # horario unico
             ("Mañana",),         # jornada
+            ("Matemáticas",),    # leer_nombre_materia (nivel academico)
             (55,),               # UPDATE ... RETURNING id
         ],
         todas=[[], []],
@@ -415,7 +442,7 @@ def test_editar_permite_cambiar_solo_el_horario_con_historial(conexion_de):
 
     assert respuesta == {"mensaje": "Asignación actualizada"}
     assert conn.commits == 1
-    assert len(cursor.ejecutadas) == 10
+    assert len(cursor.ejecutadas) == 11
     assert "FOR NO KEY UPDATE" in cursor.sql[1].upper()
     assert "FROM profesor" in cursor.sql[1]
     assert "FOR NO KEY UPDATE" in cursor.sql[2].upper()
@@ -426,6 +453,30 @@ def test_editar_permite_cambiar_solo_el_horario_con_historial(conexion_de):
     assert "UPDATE asignaciones" in update_sql
     assert "AND activo = TRUE" in update_sql
     assert update_params[6] == 7  # conserva la asignacion academica actual
+
+
+def test_editar_la_asignacion_de_jornada_ignora_el_cruce_de_horario(conexion_de):
+    """Misma excepcion que al crear, aplicada a editar_asignacion_controller."""
+    cursor, conn = conexion_de(
+        asignacion_controller,
+        una=[
+            (9, 4, 3, True, 7),
+            (1,), (1,), (1,),
+            None,                    # responsable
+            None,                    # horario unico
+            ("Mañana",),             # jornada
+            ("ASISTENCIA DIARIA",),  # leer_nombre_materia: la reservada
+            (55,),                   # UPDATE ... RETURNING id
+        ],
+        # Ni fetchall se llama: los dos verificar_cruce_horario_editar se omiten.
+    )
+
+    respuesta = asignacion_controller.editar_asignacion_controller(
+        55, _asignacion_edit(hora_inicio="06:30", hora_fin="12:30")
+    )
+
+    assert respuesta == {"mensaje": "Asignación actualizada"}
+    assert conn.commits == 1
 
 
 def test_editar_rechaza_una_asignacion_inactiva(conexion_de):

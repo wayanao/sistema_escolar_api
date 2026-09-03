@@ -1,5 +1,6 @@
 from psycopg2 import IntegrityError, errorcodes
 
+from app.core.nivel_academico import es_asignacion_de_jornada
 from app.database import get_connection, get_cursor
 from app.repositories import asignaciones_repository
 
@@ -308,11 +309,17 @@ def asignar_profesor_controller(asignacion):
             if error_jornada:
                 return {"error": error_jornada}
 
-            if verificar_cruce_horario(cursor, "profesor_id", asignacion.profesor_id, asignacion.dia, asignacion.hora_inicio, asignacion.hora_fin):
-                return {"error": "Error: El profesor ya tiene una clase asignada en ese horario y ese día."}
+            # La asignacion reservada de jornada (nivel academico, asistencia
+            # diaria de preescolar) representa el dia completo a proposito:
+            # se solapa con las materias reales del mismo profesor y curso
+            # por diseno, no por error. No se le aplica el cruce de horario.
+            nombre_materia = asignaciones_repository.leer_nombre_materia(cursor, asignacion.materia_id)
+            if not es_asignacion_de_jornada(nombre_materia):
+                if verificar_cruce_horario(cursor, "profesor_id", asignacion.profesor_id, asignacion.dia, asignacion.hora_inicio, asignacion.hora_fin):
+                    return {"error": "Error: El profesor ya tiene una clase asignada en ese horario y ese día."}
 
-            if verificar_cruce_horario(cursor, "curso_id", asignacion.curso_id, asignacion.dia, asignacion.hora_inicio, asignacion.hora_fin):
-                return {"error": "Error: El curso (salón) ya tiene otra clase asignada en ese horario y ese día."}
+                if verificar_cruce_horario(cursor, "curso_id", asignacion.curso_id, asignacion.dia, asignacion.hora_inicio, asignacion.hora_fin):
+                    return {"error": "Error: El curso (salón) ya tiene otra clase asignada en ese horario y ese día."}
 
         try:
             asignaciones_repository.insertar_asignacion(cursor, (
@@ -570,11 +577,15 @@ def editar_asignacion_controller(asignacion_id, asignacion):
             if error_jornada:
                 return {"error": error_jornada}
 
-            if verificar_cruce_horario_editar(cursor, "profesor_id", asignacion.profesor_id, asignacion.dia, asignacion.hora_inicio, asignacion.hora_fin, asignacion_id):
-                return {"error": "Error: El profesor ya tiene una clase asignada en ese horario y ese día."}
+            # Ver el mismo comentario en asignar_profesor_controller: la
+            # asignacion reservada de jornada no se valida contra cruces.
+            nombre_materia = asignaciones_repository.leer_nombre_materia(cursor, asignacion.materia_id)
+            if not es_asignacion_de_jornada(nombre_materia):
+                if verificar_cruce_horario_editar(cursor, "profesor_id", asignacion.profesor_id, asignacion.dia, asignacion.hora_inicio, asignacion.hora_fin, asignacion_id):
+                    return {"error": "Error: El profesor ya tiene una clase asignada en ese horario y ese día."}
 
-            if verificar_cruce_horario_editar(cursor, "curso_id", asignacion.curso_id, asignacion.dia, asignacion.hora_inicio, asignacion.hora_fin, asignacion_id):
-                return {"error": "Error: El curso (salón) ya tiene otra clase asignada en ese horario y ese día."}
+                if verificar_cruce_horario_editar(cursor, "curso_id", asignacion.curso_id, asignacion.dia, asignacion.hora_inicio, asignacion.hora_fin, asignacion_id):
+                    return {"error": "Error: El curso (salón) ya tiene otra clase asignada en ese horario y ese día."}
 
         try:
             asignaciones_repository.actualizar_asignacion(cursor, (

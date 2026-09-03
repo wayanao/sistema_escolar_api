@@ -1,6 +1,9 @@
 """Reglas puras de nivel academico. Sin base de datos, sin React, sin DOM."""
 from app.core.nivel_academico import (
+    MENSAJE_ASISTENCIA_REQUIERE_JORNADA,
     NOMBRE_MATERIA_ASISTENCIA_JORNADA,
+    asistencia_por_jornada_requerida,
+    asistencia_rechazada_por_nivel,
     es_asignacion_de_jornada,
     resolver_tipo_evaluacion,
     tipo_evaluacion_forzado,
@@ -59,3 +62,30 @@ def test_no_reconoce_una_materia_distinta():
     assert es_asignacion_de_jornada("Matemáticas") is False
     assert es_asignacion_de_jornada(None) is False
     assert es_asignacion_de_jornada("") is False
+
+
+def test_solo_preescolar_exige_asistencia_por_jornada():
+    assert asistencia_por_jornada_requerida("preescolar") is True
+    assert asistencia_por_jornada_requerida("primaria") is False
+    assert asistencia_por_jornada_requerida(None) is False
+    assert asistencia_por_jornada_requerida("bachillerato") is False
+
+
+def test_rechaza_una_materia_normal_en_preescolar():
+    assert asistencia_rechazada_por_nivel("preescolar", "Matemáticas") is True
+    assert asistencia_rechazada_por_nivel("preescolar", "Lenguaje") is True
+
+
+def test_acepta_la_asignacion_de_jornada_en_preescolar():
+    assert asistencia_rechazada_por_nivel("preescolar", "Asistencia diaria") is False
+    assert asistencia_rechazada_por_nivel("preescolar", "ASISTENCIA DIARIA") is False
+
+
+def test_primaria_y_sin_nivel_nunca_rechazan_nada():
+    assert asistencia_rechazada_por_nivel("primaria", "Matemáticas") is False
+    assert asistencia_rechazada_por_nivel(None, "Matemáticas") is False
+
+
+def test_el_mensaje_de_rechazo_nombra_la_asignacion_reservada():
+    assert "Asistencia diaria" in MENSAJE_ASISTENCIA_REQUIERE_JORNADA
+    assert "preescolar" in MENSAJE_ASISTENCIA_REQUIERE_JORNADA

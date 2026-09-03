@@ -69,3 +69,30 @@ def es_asignacion_de_jornada(nombre_materia):
     """True si el nombre de materia es el reservado para asistencia por
     jornada completa (ver NOMBRE_MATERIA_ASISTENCIA_JORNADA)."""
     return (nombre_materia or "").strip().upper() == NOMBRE_MATERIA_ASISTENCIA_JORNADA
+
+
+def asistencia_por_jornada_requerida(nivel):
+    """True si el nivel exige que la asistencia se tome por una asignacion
+    reservada de jornada completa, en vez de por cada materia."""
+    reglas = REGLAS_POR_NIVEL.get(nivel)
+    return bool(reglas and reglas["asistencia_por_jornada"])
+
+
+MENSAJE_ASISTENCIA_REQUIERE_JORNADA = (
+    'Este curso es de preescolar. Usa la asignación "Asistencia diaria" '
+    "para registrar asistencia."
+)
+
+
+def asistencia_rechazada_por_nivel(nivel, nombre_materia):
+    """True si, segun el nivel del curso, esta asignacion NO es valida para
+    registrar asistencia -por ejemplo, una materia real (Matematicas,
+    Lenguaje...) en un curso preescolar, que exige la asignacion reservada
+    de jornada en su lugar.
+
+    Un curso sin nivel definido o de primaria nunca rechaza nada: es
+    exactamente el comportamiento anterior a esta funcionalidad.
+    """
+    if not asistencia_por_jornada_requerida(nivel):
+        return False
+    return not es_asignacion_de_jornada(nombre_materia)

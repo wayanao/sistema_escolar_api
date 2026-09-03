@@ -177,6 +177,11 @@ def test_controller_actualiza_solo_estudiantes_enviados(monkeypatch):
         "resolver_asignacion_academica_id_cursor",
         lambda _cursor, _asignacion_id: 77,
     )
+    monkeypatch.setattr(
+        asistencia_controller,
+        "resolver_nivel_y_materia_cursor",
+        lambda _cursor, _asignacion_id: (None, None),
+    )
 
     response = asistencia_controller.guardar_asistencia_controller(data)
 
@@ -200,6 +205,11 @@ def test_controller_hace_rollback_si_falla_actualizacion(monkeypatch):
         "resolver_asignacion_academica_id_cursor",
         lambda _cursor, _asignacion_id: 77,
     )
+    monkeypatch.setattr(
+        asistencia_controller,
+        "resolver_nivel_y_materia_cursor",
+        lambda _cursor, _asignacion_id: (None, None),
+    )
 
     with pytest.raises(RuntimeError, match="insert fallido"):
         asistencia_controller.guardar_asistencia_controller([crear_registro()])
@@ -208,3 +218,79 @@ def test_controller_hace_rollback_si_falla_actualizacion(monkeypatch):
     assert conn.rolled_back is True
     assert cursor.closed is True
     assert conn.closed is True
+
+
+def test_controller_rechaza_una_materia_normal_en_curso_preescolar(monkeypatch):
+    """Funcionalidad de nivel academico: en preescolar, la asistencia solo se
+    puede tomar por la asignacion reservada "Asistencia diaria", no por una
+    materia real. No debe borrar ni insertar nada."""
+    cursor = FakeCursor()
+    conn = FakeConnection(cursor)
+
+    monkeypatch.setattr(asistencia_controller, "get_connection", lambda: conn)
+    monkeypatch.setattr(
+        asistencia_controller,
+        "resolver_asignacion_academica_id_cursor",
+        lambda _cursor, _asignacion_id: 77,
+    )
+    monkeypatch.setattr(
+        asistencia_controller,
+        "resolver_nivel_y_materia_cursor",
+        lambda _cursor, _asignacion_id: ("preescolar", "Matemáticas"),
+    )
+
+    response = asistencia_controller.guardar_asistencia_controller([crear_registro()])
+
+    assert response == {
+        "error": 'Este curso es de preescolar. Usa la asignación "Asistencia diaria" '
+        "para registrar asistencia."
+    }
+    assert cursor.calls == []
+    assert conn.committed is False
+    assert conn.rolled_back is False
+    assert cursor.closed is True
+    assert conn.closed is True
+
+
+def test_controller_acepta_la_asignacion_de_jornada_en_curso_preescolar(monkeypatch):
+    cursor = FakeCursor()
+    conn = FakeConnection(cursor)
+
+    monkeypatch.setattr(asistencia_controller, "get_connection", lambda: conn)
+    monkeypatch.setattr(
+        asistencia_controller,
+        "resolver_asignacion_academica_id_cursor",
+        lambda _cursor, _asignacion_id: 77,
+    )
+    monkeypatch.setattr(
+        asistencia_controller,
+        "resolver_nivel_y_materia_cursor",
+        lambda _cursor, _asignacion_id: ("preescolar", "ASISTENCIA DIARIA"),
+    )
+
+    response = asistencia_controller.guardar_asistencia_controller([crear_registro()])
+
+    assert response == {"mensaje": "Asistencia guardada"}
+    assert conn.committed is True
+
+
+def test_controller_no_rechaza_una_materia_normal_en_curso_de_primaria(monkeypatch):
+    cursor = FakeCursor()
+    conn = FakeConnection(cursor)
+
+    monkeypatch.setattr(asistencia_controller, "get_connection", lambda: conn)
+    monkeypatch.setattr(
+        asistencia_controller,
+        "resolver_asignacion_academica_id_cursor",
+        lambda _cursor, _asignacion_id: 77,
+    )
+    monkeypatch.setattr(
+        asistencia_controller,
+        "resolver_nivel_y_materia_cursor",
+        lambda _cursor, _asignacion_id: ("primaria", "Matemáticas"),
+    )
+
+    response = asistencia_controller.guardar_asistencia_controller([crear_registro()])
+
+    assert response == {"mensaje": "Asistencia guardada"}
+    assert conn.committed is True

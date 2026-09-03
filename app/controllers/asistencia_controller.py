@@ -1,16 +1,28 @@
+from app.core.nivel_academico import (
+    MENSAJE_ASISTENCIA_REQUIERE_JORNADA,
+    asistencia_rechazada_por_nivel,
+)
 from app.database import get_connection, get_cursor
 from app.repositories.asistencia_repository import (
     borrar_asistencia_del_lote,
     insertar_asistencia,
     leer_historial_de_asignacion,
 )
-from app.services.asignacion_academica import resolver_asignacion_academica_id_cursor
+from app.services.asignacion_academica import (
+    resolver_asignacion_academica_id_cursor,
+    resolver_nivel_y_materia_cursor,
+)
 
 def guardar_asistencia_controller(data):
     conn = get_connection()
     cursor = conn.cursor()
     try:
         asignacion_id = resolver_asignacion_academica_id_cursor(cursor, data[0].asignacion_id)
+
+        nivel, nombre_materia = resolver_nivel_y_materia_cursor(cursor, asignacion_id)
+        if asistencia_rechazada_por_nivel(nivel, nombre_materia):
+            return {"error": MENSAJE_ASISTENCIA_REQUIERE_JORNADA}
+
         borrar_asistencia_del_lote(
             cursor,
             asignacion_id,

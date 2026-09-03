@@ -173,9 +173,12 @@ def test_health_registra_el_detalle_en_el_log(base_de_datos, caplog):
 
 
 def _ruta_health():
+    # Se inspecciona el router y no `app.routes`: desde FastAPI 0.137
+    # `include_router` es perezoso y `app.routes` ya no contiene las rutas
+    # incluidas, sino un envoltorio `_IncludedRouter` por router.
     rutas = [
         ruta
-        for ruta in app.routes
+        for ruta in rutas_health.router.routes
         if isinstance(ruta, APIRoute) and ruta.path == "/health"
     ]
     assert len(rutas) == 1, "se espera exactamente una ruta /health"

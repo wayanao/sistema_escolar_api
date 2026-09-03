@@ -210,3 +210,107 @@ def test_cambiar_password_actual_controller_rejects_weak_password():
         )
 
     assert exc.value.status_code == 422
+
+
+# --------------------------------------------------------------------------
+# Cache de columnas (app/dependencies.py)
+# --------------------------------------------------------------------------
+
+@pytest.fixture(autouse=True)
+def _cache_columnas_limpio():
+    """Cada prueba arranca sin cache.
+
+    El cache es estado de modulo: sin esto, una prueba que caliente una clave
+    haria pasar a otra que deberia fallar, y el orden de ejecucion decidiria el
+    resultado.
+    """
+    dependencies.limpiar_cache_columnas()
+    yield
+    dependencies.limpiar_cache_columnas()
+
+
+def _consultas_de_columnas(cursor):
+    return [q for q, _ in cursor.calls if "information_schema.columns" in q]
+
+
+def test_columnas_tabla_consulta_una_vez_y_luego_sirve_del_cache():
+    """La segunda llamada NO vuelve a tocar `information_schema`.
+
+    Es el punto de todo el cambio: esa consulta corria en cada peticion
+    autenticada de la API entera.
+    """
+    token = tenant_schema_var.set("tenant_demo")
+    try:
+        cursor = FakeCursor()
+        cursor.fetchall = lambda: [("id",), ("estado",)]
+
+        primera = dependencies._columnas_tabla(cursor, "profesor")
+        segunda = dependencies._columnas_tabla(cursor, "profesor")
+    finally:
+        tenant_schema_var.reset(token)
+
+    assert primera == {"id", "estado"}
+    assert segunda == primera
+    assert len(_consultas_de_columnas(cursor)) == 1
+
+
+def test_el_cache_no_se_comparte_entre_tenants():
+    """Dos colegios son dos schemas: uno puede ir retrasado de migraciones.
+
+    Si la clave no incluyera el tenant, el primero en pasar decidiria que
+    columnas cree tener el otro.
+    """
+    cursor = FakeCursor()
+
+    token = tenant_schema_var.set("tenant_colegio_1")
+    try:
+        cursor.fetchall = lambda: [("id",), ("estado",)]
+        uno = dependencies._columnas_tabla(cursor, "profesor")
+    finally:
+        tenant_schema_var.reset(token)
+
+    token = tenant_schema_var.set("tenant_colegio_2")
+    try:
+        cursor.fetchall = lambda: [("id",)]
+        dos = dependencies._columnas_tabla(cursor, "profesor")
+    finally:
+        tenant_schema_var.reset(token)
+
+    assert uno == {"id", "estado"}
+    assert dos == {"id"}
+    assert len(_consultas_de_columnas(cursor)) == 2
+
+
+def test_el_cache_no_se_comparte_entre_tablas():
+    """`profesor` y `usuarios` son las dos tablas que consulta el validador."""
+    token = tenant_schema_var.set("tenant_demo")
+    try:
+        cursor = FakeCursor()
+        cursor.fetchall = lambda: [("id",)]
+
+        dependencies._columnas_tabla(cursor, "profesor")
+        dependencies._columnas_tabla(cursor, "usuarios")
+    finally:
+        tenant_schema_var.reset(token)
+
+    assert len(_consultas_de_columnas(cursor)) == 2
+
+
+def test_una_tabla_sin_columnas_tambien_se_cachea():
+    """El resultado vacio es una respuesta, no un fallo.
+
+    Si se comprobara con `if cacheado:` en vez de `is not None`, un conjunto
+    vacio volveria a consultar en cada peticion: justo el caso de la tabla que
+    no existe en ese tenant, el mas caro de repetir.
+    """
+    token = tenant_schema_var.set("tenant_demo")
+    try:
+        cursor = FakeCursor()
+        cursor.fetchall = lambda: []
+
+        assert dependencies._columnas_tabla(cursor, "inexistente") == frozenset()
+        assert dependencies._columnas_tabla(cursor, "inexistente") == frozenset()
+    finally:
+        tenant_schema_var.reset(token)
+
+    assert len(_consultas_de_columnas(cursor)) == 1

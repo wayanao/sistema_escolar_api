@@ -16,11 +16,11 @@ Complementa, sin repetirlas, las **8 pruebas heredadas**:
 """
 
 import ast
-import inspect
 from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
+from fastapi import HTTPException
 from pydantic import ValidationError
 
 from app.controllers import observacion_controller
@@ -604,16 +604,104 @@ def test_el_fallo_al_guardar_sale_como_500_sin_filtrar_el_texto_interno(caplog):
     assert secreto in caplog.text
 
 
-def test_los_guards_se_evaluan_antes_de_abrir_el_cursor_en_la_lectura():
-    """Ya lo fijaba 1.4; aqui se fija ademas el ORDEN exacto en el codigo, para
-    que una extraccion no lo invierta sin que nadie lo note."""
-    fuente = inspect.getsource(observaciones.obtener_observacion)
+def test_los_guards_se_evaluan_antes_de_leer_la_observacion(monkeypatch):
+    """Sustituye a la guardia de orden textual, que exigia que los guards
+    fueran ANTES de `with get_cursor()`.
 
-    pos_asignacion = fuente.index("require_asignacion_access(")
-    pos_estudiante = fuente.index("require_estudiante_in_asignacion(")
-    pos_cursor = fuente.index("with get_cursor()")
+    Desde el 2026-09-03 los guards corren DENTRO de ese `with`, sobre el mismo
+    cursor: pedirle tres conexiones al pool para una sola lectura era el coste
+    que hacia que el observador del estudiante superara el timeout de 10 s del
+    frontend. Lo que aquella guardia protegia de verdad no era el orden de las
+    lineas sino dos cosas, y las dos se fijan ahora por COMPORTAMIENTO, que es
+    mas dificil de romper sin querer:
 
-    assert pos_asignacion < pos_estudiante < pos_cursor
+    - que ningun dato del dominio se lea antes de aprobar los permisos (aqui),
+    - que un 403 de un guard siga saliendo como 403 y no como 500
+      (`test_un_403_de_un_guard_no_se_convierte_en_500`).
+
+    Comprobar el orden del texto ya no serviria: las tres llamadas viven ahora
+    en el mismo bloque y su posicion relativa no dice nada del permiso.
+    """
+    orden = []
+    cursor = CursorFalso(secuencia_fetchone=[(77,), ("Atento", "Resuelve", "Claro")])
+
+    @contextmanager
+    def fake_get_cursor(commit=False, cursor_factory=None):
+        yield cursor
+
+    def espia(nombre):
+        def _guard(*_a, **_k):
+            orden.append(nombre)
+        return _guard
+
+    def leer_espiado(_cursor, *args):
+        orden.append("leer_observacion")
+        return ("Atento", "Resuelve", "Claro")
+
+    monkeypatch.setattr(observaciones, "get_cursor", fake_get_cursor)
+    monkeypatch.setattr(observaciones, "require_asignacion_access", espia("asignacion"))
+    monkeypatch.setattr(observaciones, "require_estudiante_in_asignacion", espia("estudiante"))
+    monkeypatch.setattr(
+        observaciones.observaciones_repository, "leer_observacion", leer_espiado
+    )
+
+    observaciones.obtener_observacion(1, 10, 2, {"id": 3, "rol": "profesor"})
+
+    assert orden == ["asignacion", "estudiante", "leer_observacion"]
+
+
+def test_la_lectura_pide_una_sola_conexion_al_pool(monkeypatch):
+    """El motivo del cambio, fijado por asercion: 1 conexion, no 3.
+
+    Antes cada guard abria la suya y la ruta una tercera. Cada apertura cuesta
+    ademas dos consultas de arranque (`SET search_path` y los timeouts) antes de
+    la util, asi que las tres aperturas eran el grueso del tiempo de la lectura.
+    """
+    aperturas = []
+
+    cursor = CursorFalso(secuencia_fetchone=[(1,), (1,), (77,), ("a", "b", "c")])
+
+    @contextmanager
+    def fake_get_cursor(commit=False, cursor_factory=None):
+        aperturas.append(commit)
+        yield cursor
+
+    contador_pool = ContadorDeConexiones()
+    monkeypatch.setattr(observaciones, "get_cursor", fake_get_cursor)
+    monkeypatch.setattr(permissions, "get_connection", contador_pool)
+
+    observaciones.obtener_observacion(1, 10, 2, {"id": 3, "rol": "profesor"})
+
+    assert aperturas == [False]
+    # Los guards NO abren la suya: reciben el cursor de la ruta.
+    assert contador_pool.abiertas == 0
+
+
+def test_un_403_de_un_guard_no_se_convierte_en_500(monkeypatch):
+    """La garantia que de verdad protegia la guardia de orden textual.
+
+    Los guards viven ahora dentro del `try`, y `HTTPException` tambien es
+    `Exception`: sin el `except HTTPException` que va primero, un permiso
+    denegado saldria como error del servidor. `Observaciones.jsx` muestra
+    `detail` al usuario, asi que la diferencia se ve en pantalla.
+    """
+    @contextmanager
+    def fake_get_cursor(commit=False, cursor_factory=None):
+        yield CursorFalso(fila=None)
+
+    monkeypatch.setattr(observaciones, "get_cursor", fake_get_cursor)
+
+    def denegar(*_a, **_k):
+        raise HTTPException(status_code=403, detail="No autorizado")
+
+    monkeypatch.setattr(observaciones, "require_asignacion_access", denegar)
+
+    with pytest.raises(HTTPException) as exc:
+        observaciones.obtener_observacion(1, 10, 2, {"id": 3, "rol": "profesor"})
+
+    assert exc.value.status_code == 403
+    assert exc.value.detail == "No autorizado"
+    assert exc.value.detail != observaciones._ERROR_CONSULTAR
 
 
 def test_la_lectura_devuelve_none_y_no_un_diccionario_vacio(monkeypatch):

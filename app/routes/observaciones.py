@@ -56,11 +56,27 @@ def obtener_observacion(
     periodo: int,
     current_user: dict = Depends(get_current_user),
 ):
-    require_asignacion_access(asignacion_id, current_user)
-    require_estudiante_in_asignacion(estudiante_id, asignacion_id)
-
+    # Los dos guards corren sobre el MISMO cursor que despues lee la
+    # observacion. Antes cada uno pedia su propia conexion al pool y la ruta una
+    # tercera: tres arranques de conexion, y cada arranque cuesta dos consultas
+    # extra -`SET search_path` y los timeouts- antes de la util. Como profesor la
+    # lectura pasa de 3 arranques y 10 consultas a 1 arranque y 6 consultas.
+    #
+    # Que ahora esten DENTRO del `try` no convierte sus 403 en 500: el primer
+    # `except` de abajo deja pasar toda HTTPException intacta, y va antes que el
+    # generico. Esa es la garantia que importa, y se comprueba sobre una
+    # respuesta HTTP real, no sobre el orden del texto.
+    #
+    # El matiz que esto SI cambia: lo que un guard lance que no sea
+    # HTTPException ya no sube crudo, sale como 500 con su constante. Los guards
+    # de verdad solo lanzan HTTPException, asi que en produccion no cambia nada;
+    # un fallo de base dentro de un guard ahora sale mejor formado que antes,
+    # con {"detail": ...} y su traza en el log.
     try:
         with get_cursor() as cursor:
+            require_asignacion_access(asignacion_id, current_user, cursor=cursor)
+            require_estudiante_in_asignacion(estudiante_id, asignacion_id, cursor=cursor)
+
             asignacion_id = resolver_asignacion_academica_id_cursor(cursor, asignacion_id)
 
             row = observaciones_repository.leer_observacion(

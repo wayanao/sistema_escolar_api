@@ -11,8 +11,42 @@ from app.globals import tenant_schema_var
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login", auto_error=False)
 
+# Cache de las columnas de una tabla, por (schema del tenant, tabla).
+#
+# `_columnas_tabla` se ejecutaba en CADA peticion autenticada de toda la API, y
+# consultar `information_schema.columns` es de las lecturas mas caras de
+# PostgreSQL: la vista se arma sobre `pg_attribute`, `pg_class` y `pg_namespace`,
+# y el coste crece con el numero de schemas. En una base multi-tenant -un schema
+# por colegio- eso es exactamente el peor caso.
+#
+# Lo que cachea es **metadata de esquema**, no datos: solo cambia cuando una
+# migracion anade o quita una columna. Cada despliegue reinicia el proceso y
+# vacia el cache, asi que una migracion desplegada de la forma habitual se
+# recoge sola. Si alguna vez se migra en caliente, sin reiniciar, hay que llamar
+# a `limpiar_cache_columnas()`.
+#
+# La clave incluye el tenant porque la consulta filtra por
+# `current_schemas(false)`: dos colegios pueden tener columnas distintas si uno
+# va retrasado de migraciones.
+#
+# Sin candado a proposito. Dos hilos que fallen el cache a la vez repiten la
+# consulta y escriben el mismo valor; asignar a un dict es atomico en CPython,
+# asi que la carrera es inofensiva y no justifica serializar el camino de
+# lectura, que es el caliente.
+_cache_columnas: dict[tuple[str, str], frozenset[str]] = {}
 
-def _columnas_tabla(cursor, tabla: str) -> set[str]:
+
+def limpiar_cache_columnas() -> None:
+    """Vacia el cache de columnas. Para pruebas y para migraciones en caliente."""
+    _cache_columnas.clear()
+
+
+def _columnas_tabla(cursor, tabla: str) -> frozenset[str]:
+    clave = (tenant_schema_var.get() or "", tabla)
+    cacheado = _cache_columnas.get(clave)
+    if cacheado is not None:
+        return cacheado
+
     cursor.execute(
         """
         SELECT column_name
@@ -22,7 +56,9 @@ def _columnas_tabla(cursor, tabla: str) -> set[str]:
         """,
         (tabla,),
     )
-    return {row[0] for row in cursor.fetchall()}
+    columnas = frozenset(row[0] for row in cursor.fetchall())
+    _cache_columnas[clave] = columnas
+    return columnas
 
 
 def _valor_activo(valor) -> bool:

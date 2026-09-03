@@ -82,23 +82,50 @@ def require_asignacion_access(
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
 
 
-def require_estudiante_in_asignacion(estudiante_id: int, asignacion_id: int) -> None:
-    conn = get_connection()
-    cursor = conn.cursor()
-    try:
-        cursor.execute(
-            """
-            SELECT 1
-            FROM estudiantes e
-            JOIN asignaciones a ON a.curso_id = e.curso_id
-            WHERE e.id = %s AND a.id = %s
-            """,
-            (estudiante_id, asignacion_id),
-        )
+_SQL_ESTUDIANTE_EN_ASIGNACION = """
+    SELECT 1
+    FROM estudiantes e
+    JOIN asignaciones a ON a.curso_id = e.curso_id
+    WHERE e.id = %s AND a.id = %s
+"""
+
+
+def require_estudiante_in_asignacion(
+    estudiante_id: int,
+    asignacion_id: int,
+    *,
+    cursor=None,
+) -> None:
+    """Comprueba que el estudiante pertenece al curso de la asignacion.
+
+    `cursor` es opcional y replica el que ya acepta `require_asignacion_access`:
+    quien ya tiene una conexion abierta presta su cursor y se ahorra pedir otra
+    al pool. Sin el, abre y cierra la suya, que es el comportamiento historico y
+    el que siguen usando los llamadores que no tienen cursor a mano.
+
+    Reutilizar el cursor **no relaja el permiso**: es la misma consulta con los
+    mismos parametros, y el 403 se lanza igual.
+    """
+    if cursor is not None:
+        cursor.execute(_SQL_ESTUDIANTE_EN_ASIGNACION, (estudiante_id, asignacion_id))
         if cursor.fetchone():
             return
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="El estudiante no pertenece a esta asignación",
+        )
+
+    conn = get_connection()
+    own_cursor = conn.cursor()
+    try:
+        own_cursor.execute(
+            _SQL_ESTUDIANTE_EN_ASIGNACION,
+            (estudiante_id, asignacion_id),
+        )
+        if own_cursor.fetchone():
+            return
     finally:
-        cursor.close()
+        own_cursor.close()
         conn.close()
 
     raise HTTPException(

@@ -2,14 +2,20 @@
 
 Era una de las dos unicas aperturas de conexion que vivian en la capa HTTP.
 
-Se fija que los guards de permiso se ejecutan ANTES de tocar la base, y que la
+Se fija que los guards de permiso se ejecutan ANTES de leer el dominio, y que la
 ruta devuelve None cuando no hay observacion guardada, en vez de un 404 o un
 diccionario vacio.
+
+Desde el 2026-09-03 los guards comparten el cursor de la ruta en vez de abrir
+cada uno el suyo, asi que si tocan la base antes de aprobar: lo que se fija es
+que ninguna consulta del DOMINIO se ejecute sin permiso, no que la base quede
+intacta.
 """
 
 from contextlib import contextmanager
 
 import pytest
+from fastapi import HTTPException
 
 from app.routes import observaciones
 
@@ -107,14 +113,30 @@ def test_obtener_observacion_valida_permisos_antes_de_consultar(entorno):
 
 
 def test_obtener_observacion_no_consulta_si_el_guard_rechaza(entorno, monkeypatch):
+    """Un guard que deniega corta antes de leer nada del dominio.
+
+    Cambio del 2026-09-03: el guard ahora corre DENTRO del `with get_cursor()`,
+    asi que el cursor si se abre antes de que deniegue. No cuesta una conexion
+    de mas -antes el propio guard abria la suya para consultar la asignacion,
+    asi que el pool ve una en los dos casos-, y a cambio la peticion aprobada,
+    que es el caso normal, pasa de 3 conexiones a 1.
+
+    Lo que se mantiene intacto y es lo que esta prueba cuida: **ninguna consulta
+    del dominio llega a ejecutarse**.
+
+    El doble lanza `HTTPException`, como los guards de verdad. Antes lanzaba
+    `PermissionError`, que ningun guard lanza: hoy eso saldria como 500 -queda
+    fijado en `test_un_403_de_un_guard_no_se_convierte_en_500`, que comprueba
+    que una `HTTPException` sigue saliendo con su propio status-.
+    """
     cursor, commits, _ = entorno(fila=None)
 
     def denegar(*_args, **_kwargs):
-        raise PermissionError("sin acceso a la asignacion")
+        raise HTTPException(status_code=403, detail="sin acceso a la asignacion")
 
     monkeypatch.setattr(observaciones, "require_asignacion_access", denegar)
 
-    with pytest.raises(PermissionError):
+    with pytest.raises(HTTPException) as exc:
         observaciones.obtener_observacion(
             estudiante_id=11,
             asignacion_id=12,
@@ -122,5 +144,6 @@ def test_obtener_observacion_no_consulta_si_el_guard_rechaza(entorno, monkeypatc
             current_user={"id": 3, "rol": "profesor"},
         )
 
+    assert exc.value.status_code == 403
     assert cursor.calls == []
-    assert commits == []
+    assert commits == [False]

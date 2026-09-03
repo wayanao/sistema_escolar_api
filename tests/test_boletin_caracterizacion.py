@@ -374,8 +374,11 @@ def test_guardar_boletin_en_curso_preescolar_fuerza_desarrollo_en_todos_los_deta
     assert params_detalle2[3] == "desarrollo"
 
 
-def test_guardar_boletin_en_curso_primaria_respeta_lo_solicitado(monkeypatch):
-    """Primaria no fuerza nada: se conserva el comportamiento actual."""
+def test_guardar_boletin_en_curso_primaria_fuerza_numerica_aunque_pidan_desarrollo(
+    monkeypatch,
+):
+    """Primaria fuerza numerica, igual que preescolar fuerza desarrollo:
+    ningun nivel definido es libre."""
     cursor = CursorFalso(secuencia_fetchone=[(77,)])
     conn = ConexionFalsa(cursor)
     monkeypatch.setattr(boletin_controller, "get_connection", lambda: conn)
@@ -390,7 +393,7 @@ def test_guardar_boletin_en_curso_primaria_respeta_lo_solicitado(monkeypatch):
         lambda _cursor, _asignacion_id: "primaria",
     )
 
-    detalles = [_DetalleFalso(tipo_evaluacion="numerica")]
+    detalles = [_DetalleFalso(tipo_evaluacion="desarrollo", valoracion="Alto")]
     boletin_controller.guardar_boletin_controller(_BoletinFalso(detalles=detalles))
 
     _, params_detalle = cursor.calls[2]

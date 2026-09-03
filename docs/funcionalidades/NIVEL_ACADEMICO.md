@@ -2,17 +2,20 @@
 
 ## Control
 
-- Estado: **Completo y migrado**, con dos extensiones pedidas por el usuario
+- Estado: **Completo y migrado**, con tres extensiones pedidas por el usuario
   después del cierre inicial: validar la asistencia en el servidor (ver
-  "Extensión: validar la asignación de jornada") y, tras un reporte real del
+  "Extensión: validar la asignación de jornada"); tras un reporte real del
   usuario, **exceptuar la asignación de jornada de la validación general de
-  cruce de horario** (ver "Extensión: excepción al cruce de horario" más
-  abajo — esta corrige un error de análisis del propio asistente, no solo
-  agrega una función). La migración `20260901_cursos_nivel_academico.sql` se
-  aplicó el 2026-09-02 a los 2 tenants operativos (`tenant_colegio_1` y
-  `tenant_2005`), con `OK` en ambos. El archivo base se regeneró en el mismo
-  momento. `scripts/verify.py` corre **1185 pruebas, exit 0** en pytest,
-  Ruff y `pip check` — sin ninguna falla pendiente. Solo falta el commit (lo
+  cruce de horario** (ver "Extensión: excepción al cruce de horario" — esta
+  corrige un error de análisis del propio asistente, no solo agrega una
+  función); y **primaria dejó de ser libre**: ahora fuerza "numérica" igual
+  que preescolar fuerza "desarrollo" (ver "Extensión: primaria también
+  fuerza su tipo de evaluación" más abajo). La migración
+  `20260901_cursos_nivel_academico.sql` se aplicó el 2026-09-02 a los 2
+  tenants operativos (`tenant_colegio_1` y `tenant_2005`), con `OK` en
+  ambos. El archivo base se regeneró en el mismo momento. `scripts/verify.py`
+  corre **1184 pruebas, exit 0** en pytest, Ruff y `pip check` — sin
+  ninguna falla pendiente. Solo falta el commit (lo
   hace el usuario) y decidir cuándo hacer `git push origin main`.
 - Tipo: Función nueva de producto. No es una capa del programa de
   modularización de `docs/modularizacion/` y no debe confundirse con una.
@@ -491,3 +494,50 @@ sistema reconozca la asignación reservada y no le aplique el cruce. **Eligió
 - Quedan 2 preguntas abiertas sin respuesta (ver arriba): sugerencia
   automática de nivel por nombre de curso, y colegio piloto vs. todos los
   tenants. Ninguna bloquea el despliegue.
+
+## Extensión: primaria también fuerza su tipo de evaluación
+
+El usuario probó Planilla en un curso de primaria y notó que el selector de
+tipo de evaluación seguía apareciendo (comportamiento original: primaria
+era "libre"). Pidió que primaria dejara de ser libre también, igual que
+preescolar.
+
+### Diseño
+
+Cambio mínimo gracias a que el diseño ya centralizaba la regla: en
+`REGLAS_POR_NIVEL` (`app/core/nivel_academico.py`), el
+`tipo_evaluacion_forzado` de `"primaria"` pasó de `None` a `"numerica"`.
+Ningún otro archivo de producto cambió — `resolver_tipo_evaluacion`,
+`planilla_controller.py` y `boletin_controller.py` ya consultaban esa tabla
+en vez de tener la regla escrita a mano, así que heredaron el nuevo
+comportamiento sin tocarlos.
+
+**Lo único que sigue siendo libre es un curso sin `nivel` definido**
+(`NULL`): ese caso no está en `REGLAS_POR_NIVEL`, así que
+`tipo_evaluacion_forzado` devuelve `None` y se conserva el comportamiento
+anterior a toda esta funcionalidad. Es una transición gradual: mientras un
+curso no se clasifique, no cambia nada; en cuanto se marca preescolar o
+primaria, su tipo de evaluación queda fijo.
+
+### Verificación
+
+- Archivo modificado: `app/core/nivel_academico.py` (una palabra: `None` →
+  `"numerica"`, más el docstring).
+- Pruebas actualizadas: `test_primaria_no_fuerza_nada` →
+  `test_primaria_fuerza_numerica`; `test_primaria_respeta_lo_solicitado` y
+  `test_primaria_sin_solicitud_cae_a_numerica` se fusionaron en
+  `test_primaria_ignora_lo_que_pida_el_cliente`, todas en
+  `tests/test_nivel_academico.py`. En `tests/test_planilla_controlador.py`
+  y `tests/test_boletin_caracterizacion.py`, las pruebas que antes se
+  llamaban "primaria respeta lo solicitado" ahora se llaman "primaria
+  fuerza numérica aunque pidan desarrollo" y verifican exactamente eso.
+- Las pruebas de asistencia (`asistencia_rechazada_por_nivel`,
+  `asistencia_por_jornada_requerida`) **no cambiaron**: esa regla sigue
+  aplicando solo a preescolar, es independiente del tipo de evaluación.
+- `scripts/verify.py`: **1184 pruebas, exit 0** (bajó de 1185 a 1184 por la
+  fusión de dos pruebas en una; el número de aserciones cubiertas no
+  disminuyó). Ruff y `pip check` correctos.
+- `git diff --check`: exit 0.
+- Frontend actualizado en paralelo: ver
+  `frontend-react/docs/funcionalidades/NIVEL_ACADEMICO.md`, sección
+  equivalente.

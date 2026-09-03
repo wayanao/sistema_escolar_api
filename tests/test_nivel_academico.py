@@ -14,8 +14,8 @@ def test_preescolar_fuerza_desarrollo():
     assert tipo_evaluacion_forzado("preescolar") == "desarrollo"
 
 
-def test_primaria_no_fuerza_nada():
-    assert tipo_evaluacion_forzado("primaria") is None
+def test_primaria_fuerza_numerica():
+    assert tipo_evaluacion_forzado("primaria") == "numerica"
 
 
 def test_nivel_desconocido_o_ausente_no_fuerza_nada():
@@ -29,12 +29,9 @@ def test_preescolar_ignora_lo_que_pida_el_cliente():
     assert resolver_tipo_evaluacion("preescolar", None) == "desarrollo"
 
 
-def test_primaria_respeta_lo_solicitado():
-    assert resolver_tipo_evaluacion("primaria", "desarrollo") == "desarrollo"
+def test_primaria_ignora_lo_que_pida_el_cliente():
+    assert resolver_tipo_evaluacion("primaria", "desarrollo") == "numerica"
     assert resolver_tipo_evaluacion("primaria", "numerica") == "numerica"
-
-
-def test_primaria_sin_solicitud_cae_a_numerica():
     assert resolver_tipo_evaluacion("primaria", None) == "numerica"
 
 

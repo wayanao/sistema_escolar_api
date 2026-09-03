@@ -3,8 +3,10 @@
 Centraliza que exige cada nivel para no repetir el condicional en cada
 controlador. Ver docs/funcionalidades/NIVEL_ACADEMICO.md.
 
-Un nivel ausente o desconocido (curso sin `nivel` definido) no fuerza nada:
-es exactamente el comportamiento anterior a esta funcionalidad.
+Un curso sin `nivel` definido no fuerza nada: es exactamente el
+comportamiento anterior a esta funcionalidad. Un curso con nivel definido
+-preescolar o primaria- siempre tiene su tipo de evaluacion fijo; ninguno
+de los dos es libre.
 """
 
 REGLAS_POR_NIVEL = {
@@ -13,14 +15,15 @@ REGLAS_POR_NIVEL = {
         "asistencia_por_jornada": True,
     },
     "primaria": {
-        "tipo_evaluacion_forzado": None,
+        "tipo_evaluacion_forzado": "numerica",
         "asistencia_por_jornada": False,
     },
 }
 
 
 def tipo_evaluacion_forzado(nivel):
-    """Tipo de evaluacion que un nivel exige, o None si el nivel es libre."""
+    """Tipo de evaluacion que un nivel exige, o None si el nivel no esta
+    definido (unico caso libre)."""
     reglas = REGLAS_POR_NIVEL.get(nivel)
     return reglas["tipo_evaluacion_forzado"] if reglas else None
 
@@ -28,10 +31,12 @@ def tipo_evaluacion_forzado(nivel):
 def resolver_tipo_evaluacion(nivel, tipo_evaluacion_solicitado):
     """Tipo de evaluacion que de verdad se guarda, segun el nivel del curso.
 
-    Si el nivel fuerza un tipo (hoy, preescolar -> "desarrollo"), ese gana
-    siempre, sin importar lo que pida el cliente. Si el nivel es libre o no
-    esta definido, se conserva lo solicitado, con "numerica" como respaldo
-    cuando no llega nada.
+    Un nivel definido siempre fuerza su tipo -preescolar "desarrollo",
+    primaria "numerica"-, sin importar lo que pida el cliente. Solo un curso
+    sin nivel definido es libre, con "numerica" como respaldo cuando no
+    llega nada: es el comportamiento anterior a esta funcionalidad,
+    preservado para no afectar a los cursos que todavia no se han
+    clasificado.
     """
     forzado = tipo_evaluacion_forzado(nivel)
     if forzado:

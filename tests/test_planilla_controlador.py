@@ -154,19 +154,24 @@ def test_registrar_nota_en_curso_preescolar_fuerza_desarrollo_aunque_pidan_numer
     assert resueltos == [12]
 
 
-def test_registrar_nota_en_curso_primaria_respeta_lo_solicitado(cursor_planilla):
-    """Primaria no fuerza nada: se conserva el comportamiento actual."""
+def test_registrar_nota_en_curso_primaria_fuerza_numerica_aunque_pidan_desarrollo(
+    cursor_planilla,
+):
+    """Primaria fuerza numerica, igual que preescolar fuerza desarrollo:
+    ningun nivel definido es libre. Solo un curso sin nivel sigue siendolo
+    (ver el siguiente test)."""
     cursor, _, _, niveles = cursor_planilla(fila=(904,), nivel_curso="primaria")
     datos = SimpleNamespace(
-        estudiante_id=11, asignacion_id=12, periodo=1, nota=None,
+        estudiante_id=11, asignacion_id=12, periodo=1, nota=4.5,
         descripcion="Ensayo", tipo_evaluacion="desarrollo", valoracion="Alto",
     )
 
     planilla_controller.registrar_nota_planilla_controller(datos)
 
     _, params = cursor.calls[1]
-    assert params[5] == "desarrollo"
-    assert params[6] == "Alto"
+    assert params[3] == 4.5  # nota numerica si se guarda
+    assert params[5] == "numerica"
+    assert params[6] is None  # valoracion descartada
     assert niveles == [77]
 
 

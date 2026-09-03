@@ -1,10 +1,156 @@
 # Cambios Backend
 
-Ultima revision documental: 2026-08-27.
+Ultima revision documental: 2026-09-03.
 
 ## Proposito
 
 Bitacora de cambios documentales y tecnicos observables del backend.
+
+## 2026-09-03 - Lectura de observaciones: una conexión en vez de tres, y caché de columnas
+
+Trabajo previo al arreglo del observador del estudiante. **No lo cierra**, y el
+apartado final explica por qué se registra igual.
+
+Origen: el observador mostraba «No pudimos recuperar la observación guardada» en
+el perfil de profesor. El mensaje viene del frontend, que aborta la petición a
+los **10 segundos** (`useObservacionEstudiante.js`), así que no indicaba un
+fallo del backend sino una respuesta que llegaba tarde.
+
+### Lo que se midió, antes de tocar nada
+
+Contra la base real (Neon, `us-east-1`) desde un backend local, y contra el
+endpoint autenticado real con un token acuñado para el caso reportado
+—`PARVULO`/`ARTÍSTICA`, asignación 131, 12 estudiantes, periodo 3—:
+
+| Medición | Resultado |
+|---|---|
+| Abrir una conexión nueva (TLS + auth) | **1329 ms** |
+| Una ida y vuelta cualquiera (`SELECT 1`) | **~180 ms** |
+| `information_schema.columns` | **178 ms** |
+| `GET /observaciones/...` una sola | **2,4 – 2,8 s** |
+| Las 12 del curso **en paralelo** | **14,4 – 20,3 s**, todas con `http=200` |
+| Las 12 **en una sola consulta** | **162 ms** |
+
+Tres conclusiones, todas con evidencia:
+
+1. **El endpoint no falla: llega tarde.** Las doce respuestas fueron `200`. El
+   frontend se rinde a los 10 s y muestra el aviso.
+2. **El coste no está en las consultas sino en su número.** Una lectura hacía
+   **17 idas y vueltas** y solo **2** leían datos del dominio. Las otras 15 son
+   validación de identidad y arranque de conexión. A ~180 ms cada una, el suelo
+   eran ~3 s por estudiante.
+3. **Ninguna consulta es lenta por sí misma.** `information_schema.columns`
+   tarda lo mismo que `SELECT 1`. Lo que pesa es la distancia a la base, no el
+   plan de ejecución.
+
+El reparto de las 17 idas y vueltas, por si vuelve a hacer falta:
+
+| Paso | Conexiones | Consultas |
+|---|---|---|
+| `ensure_tenant_allowed_for_app` | 1 | 3 |
+| `_validar_usuario_en_bd` | 1 | 4 |
+| `require_asignacion_access` | 1 | 3 |
+| `require_estudiante_in_asignacion` | 1 | 3 |
+| `get_cursor` + resolver + lectura | 1 | 4 |
+| **Total** | **5** | **17** |
+
+Cada apertura de conexión cuesta además dos consultas de arranque —`SET
+search_path` y `set_config` de los timeouts— antes de la útil.
+
+### Lo que cambió
+
+- **`app/dependencies.py`**: `_columnas_tabla` cachea el resultado por
+  `(schema del tenant, tabla)`. Se ejecutaba en **cada petición autenticada de
+  toda la API**. La clave incluye el tenant porque dos colegios pueden ir con
+  distinto nivel de migraciones; sin eso, el primero en pasar decidiría qué
+  columnas cree tener el otro. Ahorra **una ida y vuelta (~180 ms) por
+  petición**, no más: el comentario del módulo deja escrita la medición porque
+  su primera versión afirmaba que esa vista era «de las lecturas más caras de
+  PostgreSQL», que sonaba plausible y era **falso**. Se añade
+  `limpiar_cache_columnas()` para migraciones en caliente; un despliegue
+  reinicia el proceso y vacía el caché solo.
+- **`app/core/permissions.py`**: `require_estudiante_in_asignacion` acepta
+  `cursor=` opcional, replicando el que `require_asignacion_access` ya tenía.
+  Sin él conserva el comportamiento histórico, así que los demás llamadores
+  —`app/routes/boletines.py` y el `POST` de observaciones— no cambian.
+- **`app/routes/observaciones.py`**: el `GET` corre los dos guards sobre el
+  cursor que ya abre para leer. Pasa de **3 conexiones y 10 consultas a 1 y 6**.
+
+### Qué cambia para el cliente
+
+Nada observable. Mismos códigos de estado, mismo cuerpo, mismos mensajes. Lo
+único que cambia es cuántas conexiones pide el proceso al pool.
+
+Un matiz registrado: los guards ahora viven **dentro** del `try`, así que lo que
+lancen y no sea `HTTPException` sale como 500 con su constante en vez de subir
+crudo. Los guards reales solo lanzan `HTTPException` —y sigue saliendo con su
+propio status, hay prueba—, así que en producción no cambia nada; un fallo de
+base dentro de un guard ahora sale mejor formado, con `{"detail": ...}` y su
+traza en el log.
+
+Segundo matiz: si un guard deniega, el cursor **sí** se abre antes. No cuesta una
+conexión de más, porque antes el propio guard abría la suya para consultar.
+
+### Pruebas
+
+`1190 pasan`. Tres se reescribieron a propósito y conviene saber por qué:
+
+- `test_los_guards_se_evaluan_antes_de_abrir_el_cursor_en_la_lectura` fijaba el
+  **orden textual** del código. Ese alambre hizo su trabajo: obligó a verificar
+  qué protegía de verdad. No era el orden de las líneas sino dos garantías, y
+  las dos se fijan ahora **por comportamiento**: que nada del dominio se lee sin
+  permiso, y que **un 403 de un guard no se convierte en 500**. Comprobar el
+  orden del texto ya no serviría: las tres llamadas viven en el mismo bloque.
+- `test_obtener_observacion_no_consulta_si_el_guard_rechaza` usaba
+  `PermissionError` como doble. Ningún guard lanza eso; los reales lanzan
+  `HTTPException`. Se cambió al tipo real.
+- Se añaden cuatro pruebas del caché, verificadas con una mutación —desactivando
+  el caché a mano— para confirmar que fallan cuando deben y no pasan por vacías.
+
+### Lo que NO se arregló, y es lo importante
+
+**El aviso sigue saliendo.** Medido después del cambio: una lectura baja de
+~3,1 s a ~2,8 s, un 10%. Con 12 alumnos en paralelo sigue en **16-20 s**.
+
+La causa raíz no es el precio de cada petición sino **su cantidad**: el
+observador hace **una petición HTTP por estudiante**. Es un N+1 sobre HTTP, y no
+se corrige optimizando el 1.
+
+Peor aún, el sistema quedó **justo encima de la raya de los 10 s**, y de qué lado
+cae depende de la red en ese instante. Medido:
+
+| En paralelo | Tiempo | ¿Pasa el límite de 10 s? |
+|---|---|---|
+| 1 | 2,8 s | sí |
+| 2 | 8,1 – 9,7 s | sí, **por 0,3 s** |
+| 3 | 11,2 – 14,7 s | no |
+| 4 | 6,3 – 8,0 s | sí |
+| 6 | 10,3 – 12,4 s | no |
+| 12 | 16,2 – 20,1 s | no |
+
+Que **4 en paralelo salga más rápido que 2** es el dato que más importa de esa
+tabla: significa que manda la variación de la red, no la concurrencia. Un fallo
+intermitente se da por cerrado y vuelve.
+
+**No subir el timeout del frontend.** Cambiaría «sale un error» por «la página
+tarda 20 segundos», que es peor: el profesor no sabe si está rota.
+
+### Trabajo pendiente, no autorizado
+
+- **Endpoint por asignación y periodo** que devuelva el curso entero:
+  `GET /observaciones/{asignacion_id}/{periodo}`. Medido: **162 ms** la consulta.
+  De 12 peticiones a 1, de ~20 s a ~2 s, y deja de crecer con el número de
+  alumnos. No choca con la ruta actual: esa tiene tres segmentos, esta dos.
+  Exige cambio de frontend a la vez —subir la carga a `ObservacionesPage`— y su
+  propia orden. **Antes de diseñarlo hay que saber si el cambio previsto en
+  observaciones altera qué dimensiones existen**; hoy son tres columnas fijas.
+- **Sobrecoste de autenticación, que paga toda la API**: `ensure_tenant_allowed_for_app`
+  y `_validar_usuario_en_bd` gastan **6 idas y vueltas y 2 conexiones por
+  petición** solo en confirmar identidad. Es un defecto propio, ajeno a este
+  dominio, y tocar autenticación exige su propio alcance.
+- **`DB_POOL_MIN_CONNECTIONS` está en 1** y abrir una conexión cuesta 1329 ms,
+  así que la primera ráfaga paga ese peaje en cascada. Subirlo es una línea, pero
+  cambia el consumo de conexiones en Neon y merece decidirse aparte.
 
 ## 2026-08-27 - Endpoint de salud para monitoreo externo
 

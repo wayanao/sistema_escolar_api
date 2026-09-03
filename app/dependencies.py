@@ -13,11 +13,19 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login", auto_error=False)
 
 # Cache de las columnas de una tabla, por (schema del tenant, tabla).
 #
-# `_columnas_tabla` se ejecutaba en CADA peticion autenticada de toda la API, y
-# consultar `information_schema.columns` es de las lecturas mas caras de
-# PostgreSQL: la vista se arma sobre `pg_attribute`, `pg_class` y `pg_namespace`,
-# y el coste crece con el numero de schemas. En una base multi-tenant -un schema
-# por colegio- eso es exactamente el peor caso.
+# `_columnas_tabla` se ejecutaba en CADA peticion autenticada de toda la API.
+#
+# Medido contra la base real el 2026-09-03: la consulta tarda ~178 ms, que es
+# **lo mismo que cualquier otra**. No es cara por si misma; es cara porque la
+# base esta en otro continente -Neon, us-east-1- y cada ida y vuelta cuesta
+# ~180 ms se consulte lo que se consulte. Lo que ahorra el cache es por tanto
+# una ida y vuelta por peticion, ni mas ni menos.
+#
+# Se deja esta medicion escrita porque la primera version de este comentario
+# afirmaba que `information_schema` era "de las lecturas mas caras de
+# PostgreSQL". Sonaba plausible y era falso. El ahorro real es modesto y el
+# cache cuesta una busqueda en un dict: sigue mereciendo la pena, pero por el
+# motivo correcto.
 #
 # Lo que cachea es **metadata de esquema**, no datos: solo cambia cuando una
 # migracion anade o quita una columna. Cada despliegue reinicia el proceso y

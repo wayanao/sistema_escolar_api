@@ -1,6 +1,6 @@
 # Base profesional para escalar el Sistema Escolar API
 
-Ultima revision documental: 2026-06-13.
+Ultima revision documental: 2026-09-03.
 
 Este proyecto es una API web escolar multi-tenant construida con FastAPI y PostgreSQL. La prioridad de esta base es crecer sin romper las funcionalidades actuales: estudiantes, pagos, notas, asistencia, boletines, inventario, reportes, nomina y administracion por colegio.
 
@@ -63,6 +63,44 @@ Regla importante:
   transaccion.
 - Si Render muestra `connection pool exhausted`, revisar primero rutas
   recientes o muy concurridas que usen `get_connection()`.
+
+#### Coste real de una conexion, medido el 2026-09-03
+
+Los valores sugeridos arriba se escribieron sin medir. Contra la base real
+—Neon, `us-east-1`, desde un backend local— el coste es este:
+
+| Operacion | Tiempo |
+|---|---|
+| Abrir una conexion nueva (TLS + auth) | **1329 ms** |
+| Una ida y vuelta cualquiera (`SELECT 1`) | **~180 ms** |
+| Arranque de cada conexion (`SET search_path` + `set_config`) | **~390 ms** |
+
+Tres consecuencias practicas:
+
+- **`DB_POOL_MIN_CONNECTIONS=1` hace que la primera rafaga pague 1329 ms por
+  cada conexion que el pool tenga que crear.** Con varias peticiones simultaneas
+  tras un arranque en frio, ese peaje se acumula. Subirlo pre-calienta el pool,
+  pero cambia el consumo de conexiones contra Neon y conviene decidirlo mirando
+  el limite real del plan.
+- **Cada `get_connection()` cuesta dos consultas antes de la util.** Una ruta que
+  pida tres conexiones para atender una peticion gasta seis idas y vueltas
+  —mas de un segundo— solo en preparar sesiones. Prestar el cursor entre capas,
+  como hacen `require_asignacion_access` y `require_estudiante_in_asignacion` con
+  su parametro `cursor=`, evita ese gasto.
+- **Ninguna consulta es lenta por si misma; lo que pesa es la distancia.**
+  `information_schema.columns` tarda lo mismo que `SELECT 1`. Al optimizar,
+  contar **idas y vueltas** predice el tiempo mucho mejor que juzgar que consulta
+  parece cara.
+
+La regla que se deriva: **el numero de idas y vueltas por peticion es la metrica
+que importa**, no la complejidad del SQL. Un caso trabajado de punta a punta,
+con el reparto exacto de las 17 idas y vueltas que costaba leer una observacion,
+esta en `modularizacion/07_OBSERVACIONES.md`, entrada del 2026-09-03.
+
+Aviso sobre entornos: correr el backend en local **no** acerca la base. El
+frontend apunta a `localhost:8000`, pero `DATABASE_URL` sigue siendo Neon en otro
+continente. «Es local» no significa «es rapido», y medir contra `/health` no
+sirve para estimar un endpoint autenticado: hay que medir el endpoint real.
 
 ### Tenant mas seguro
 

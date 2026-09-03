@@ -1,6 +1,6 @@
 # Capa 7: observaciones
 
-Última revisión: 2026-08-21.
+Última revisión: 2026-09-03.
 
 ## Control
 
@@ -1797,3 +1797,184 @@ corrección oportunista que el índice maestro prohíbe.
 - **No hay capa activa** y esta bitácora **no enumera trabajo pendiente propio**.
 - Siguiente acción exacta: **esperar orden explícita del usuario**. Nada se
   inicia por inferencia.
+
+
+---
+
+## 2026-09-03 — rendimiento de la lectura: medido, corregido en parte, causa raíz identificada y **no** corregida
+
+Esto **no reabre la capa 7**, cerrada el 2026-08-21, ni la sustituye. Es una
+intervención de rendimiento nacida de un fallo reportado por el usuario, con su
+propia orden explícita.
+
+### El síntoma, y por qué el encuadre inicial era engañoso
+
+El usuario reportó que el observador del estudiante no cargaba las observaciones
+en «párvulo, artística, tercer periodo, perfil profesor», con el aviso «No
+pudimos recuperar la observación guardada».
+
+El encuadre sugería un fallo ligado al **nivel académico**, a la **materia** o al
+**periodo** —los tres, además, tocados por commits recientes del frontend—. Se
+leyó la ruta completa antes de medir nada: `GET /observaciones/...` **no tiene
+ni una rama** que dependa del nivel, la materia ni el periodo. El código es
+idéntico para todos los cursos. Lo que cambia entre cursos es **cuántos
+estudiantes tienen**, y de ahí salió la hipótesis correcta.
+
+Es la lección 2 de la campaña del 2026-08-27 repitiéndose: **el encuadre engaña
+más que el dato**.
+
+### La técnica que zanjó el diagnóstico
+
+Las dos primeras rondas de análisis fueron **teoría**, y una de sus afirmaciones
+resultó falsa (ver «El error registrado»). Lo que cerró el asunto fue medir el
+endpoint **real**, autenticado, en el entorno del usuario:
+
+1. Localizar en la base el caso exacto reportado: `PARVULO`/`ARTÍSTICA`,
+   asignación **131**, profesor **47**, tenant `tenant_2005`, **12 estudiantes**.
+2. Acuñar un token con `app.security.create_access_token` usando el venv del
+   proyecto.
+3. Llamar al endpoint local con `curl`, cronometrado, en solitario y en paralelo.
+
+Queda registrada porque es reutilizable: **extrapolar de `/health` no sirve**, y
+sin token no hay forma de medir un endpoint autenticado.
+
+Un detalle que despistó durante dos rondas: el backend corría **en local**, pero
+la base está en **Neon, `us-east-1`**. «Es local» no significa «es rápido»: cada
+consulta cruza a Estados Unidos y cuesta ~180 ms.
+
+### Lo medido
+
+| Medición | Resultado |
+|---|---|
+| Abrir una conexión nueva (TLS + auth) | **1329 ms** |
+| Una ida y vuelta cualquiera | **~180 ms** |
+| `information_schema.columns` | **178 ms** |
+| Una lectura de observación | **2,4 – 2,8 s** |
+| Las 12 del curso en paralelo | **14,4 – 20,3 s**, todas `http=200` |
+| Las 12 en una sola consulta | **162 ms** |
+
+**El endpoint no falla: llega tarde.** Las doce devolvieron `200`. El frontend
+aborta a los 10 s en `useObservacionEstudiante.js` y pinta el aviso.
+
+Una lectura hacía **17 idas y vueltas** repartidas en **5 conexiones**, y solo
+**2** leían datos del dominio. La línea base de la 7.0 —«2 conexiones como admin
+y 3 como profesor»— contaba **solo los guards del dominio** y era correcta en su
+alcance; el suelo real por petición, con autenticación incluida, es más alto y
+nunca se había medido.
+
+| Paso | Conexiones | Consultas |
+|---|---|---|
+| `ensure_tenant_allowed_for_app` | 1 | 3 |
+| `_validar_usuario_en_bd` | 1 | 4 |
+| `require_asignacion_access` | 1 | 3 |
+| `require_estudiante_in_asignacion` | 1 | 3 |
+| `get_cursor` + resolver + lectura | 1 | 4 |
+| **Total** | **5** | **17** |
+
+Cada apertura cuesta además dos consultas de arranque —`SET search_path` y el
+`set_config` de los timeouts— antes de la útil.
+
+### Lo que cambió
+
+- `_columnas_tabla` cachea por `(tenant, tabla)`; ahorra una ida y vuelta por
+  petición autenticada de **toda** la API.
+- `require_estudiante_in_asignacion` acepta `cursor=` opcional, igual que
+  `require_asignacion_access` ya hacía. Sin él, comportamiento histórico.
+- El `GET` del dominio corre los dos guards sobre su propio cursor: de **3
+  conexiones y 10 consultas a 1 y 6**.
+
+Contrato observable **intacto**: mismos códigos, mismo cuerpo, mismos mensajes.
+
+### La línea base de 7.0 que este turno movió, y con qué justificación
+
+`test_los_guards_se_evaluan_antes_de_abrir_el_cursor_en_la_lectura` fijaba por
+inspección de fuente que los guards aparecían **antes** de `with get_cursor()`.
+Este cambio la invalida a propósito.
+
+El alambre funcionó: obligó a parar y verificar qué protegía. No era el orden de
+las líneas —eso era el indicador— sino dos garantías:
+
+1. que ningún dato del dominio se lea sin permiso aprobado;
+2. que **un 403 no se convierta en 500**, que es el hallazgo 7 y la razón
+   original de que los guards vivieran fuera del `try`.
+
+Las dos se fijan ahora **por comportamiento**, no por texto. La segunda se
+comprueba lanzando una `HTTPException` desde un guard y verificando que sale con
+su propio status. Es una prueba más fuerte que la que sustituye: la anterior
+habría pasado con un `except` mal ordenado mientras las líneas siguieran en
+orden.
+
+También se corrigió el doble de
+`test_obtener_observacion_no_consulta_si_el_guard_rechaza`, que lanzaba
+`PermissionError` —tipo que **ningún guard lanza**—. Con los guards dentro del
+`try` eso saldría como 500, y la prueba habría fijado una ficción.
+
+### El error registrado
+
+La primera versión de este trabajo justificó el caché afirmando que
+`information_schema.columns` era «de las lecturas más caras de PostgreSQL». Se
+midió después: **178 ms, lo mismo que `SELECT 1`**. La afirmación era plausible
+y falsa, y se dio por sentada en vez de medirse.
+
+El comentario del código quedó corregido **con la medición dentro**, y se anota
+aquí porque el patrón —justificar una optimización con una creencia sobre el
+motor en vez de con un número— es exactamente el que la lección 2 del 2026-08-27
+ya había señalado.
+
+El caché se conserva: ahorra poco pero cuesta una búsqueda en un dict. Se
+mantiene **por el motivo correcto**, no por el que se escribió primero.
+
+### El resultado honesto: el fallo del usuario **sigue vivo**
+
+La lectura baja de ~3,1 s a ~2,8 s. **Un 10%.** Con 12 alumnos en paralelo sigue
+en 16-20 s y el aviso sigue saliendo.
+
+La causa raíz es que el observador hace **una petición HTTP por estudiante** —un
+N+1 sobre HTTP—, y eso no se corrige optimizando el 1. Además el sistema quedó
+**justo encima de la raya de los 10 s**:
+
+| En paralelo | Tiempo | ¿Pasa el límite? |
+|---|---|---|
+| 1 | 2,8 s | sí |
+| 2 | 8,1 – 9,7 s | sí, por 0,3 s |
+| 3 | 11,2 – 14,7 s | no |
+| 4 | 6,3 – 8,0 s | sí |
+| 6 | 10,3 – 12,4 s | no |
+| 12 | 16,2 – 20,1 s | no |
+
+Que **4 en paralelo salga más rápido que 2** es el dato decisivo: manda la
+variación de la red, no la concurrencia. El fallo es **intermitente**, y un
+intermitente se da por cerrado y vuelve.
+
+**No subir el timeout del frontend.** Cambiaría «sale un error» por «la página
+tarda 20 segundos», que es peor: el profesor no sabe si está rota.
+
+### Trabajo pendiente, sin orden
+
+- **Endpoint por asignación y periodo**
+  (`GET /observaciones/{asignacion_id}/{periodo}`): medido en **162 ms** para el
+  curso entero. De 12 peticiones a 1, de ~20 s a ~2 s, y deja de crecer con el
+  número de alumnos. Es el arreglo de raíz. No choca con la ruta actual —tres
+  segmentos frente a dos—. Exige cambio simultáneo de frontend: subir la carga a
+  `ObservacionesPage` y pasar los datos por props, lo que además deja sin sentido
+  el `IntersectionObserver` de `useCargaObservacionVisible`, que existe solo para
+  disimular las N peticiones.
+- **Bloqueante de diseño**: antes de escribirlo hay que saber si el cambio
+  previsto por el usuario en observaciones **altera qué dimensiones existen**.
+  Hoy son tres columnas fijas —`conductual`, `cognitivo`, `lenguaje`— y los
+  commits recientes del frontend giran sobre preescolar frente a primaria. Se
+  preguntó y **no hay respuesta**; diseñar a ciegas obligaría a rehacerlo.
+- **Sobrecoste de autenticación**, ajeno a este dominio: 6 idas y vueltas y 2
+  conexiones por petición solo para confirmar identidad. Lo paga toda la API y
+  exige su propio alcance.
+- **`DB_POOL_MIN_CONNECTIONS = 1`** con conexiones que cuestan 1329 ms, así que
+  la primera ráfaga paga ese peaje en cascada. Subirlo es una línea, pero cambia
+  el consumo de conexiones en Neon y merece decidirse aparte.
+
+### Estado
+
+- La capa 7 de `observaciones` sigue **cerrada**. Esto no la reabrió.
+- El fallo reportado por el usuario sigue **abierto**, con su causa raíz
+  identificada, medida y **no corregida**.
+- Siguiente acción exacta: **esperar la respuesta del usuario** sobre el cambio
+  previsto en las dimensiones. Nada se inicia por inferencia.

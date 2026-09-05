@@ -21,6 +21,18 @@ Indice operativo para mantener control del backend SaaS escolar.
 - `modularizacion/README.md`: plan activo por capas y continuidad entre chats
   para la evolución segura del backend.
 
+## Funcionalidades de producto
+
+Funciones nuevas documentadas aparte del programa de modularizacion. Cada una
+tiene su gemela en `frontend-react/docs/funcionalidades/` y su prompt de
+continuacion para retomarla en otro chat u otro LLM.
+
+- `funcionalidades/NIVEL_ACADEMICO.md`: niveles preescolar y primaria, tipo de
+  evaluacion forzado y asistencia por jornada. **Completo y migrado.**
+- `funcionalidades/OBSERVADOR_ESTUDIANTE.md`: observador unificado por
+  estudiante, en bitacora acumulativa, en vez de una casilla por materia y
+  periodo. **Disenado, nada implementado.**
+
 ## Estado actual resumido
 
 - API FastAPI con PostgreSQL y `psycopg2`.

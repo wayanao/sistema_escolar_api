@@ -13,6 +13,8 @@ from scripts import apply_tenant_indexes
 RAIZ = Path(__file__).resolve().parents[1]
 MIGRACION = RAIZ / "migrations" / "20260908_observador_anotaciones.sql"
 MIGRACION_MATERIA = RAIZ / "migrations" / "20260908_observador_anotaciones_materia.sql"
+MIGRACION_HISTORICAS = RAIZ / "migrations" / "20260908_observador_anotaciones_historicas.sql"
+COPIA = RAIZ / "scripts" / "copiar_observaciones_al_observador.py"
 
 
 def sin_comentarios(texto):
@@ -21,6 +23,14 @@ def sin_comentarios(texto):
 
 def sql_materia():
     return sin_comentarios(MIGRACION_MATERIA.read_text(encoding="utf-8"))
+
+
+def sql_historicas():
+    return sin_comentarios(MIGRACION_HISTORICAS.read_text(encoding="utf-8"))
+
+
+def fuente_de_la_copia():
+    return COPIA.read_text(encoding="utf-8")
 
 
 def sql_sin_comentarios():
@@ -54,9 +64,15 @@ def test_la_bitacora_no_depende_de_la_materia():
 
 def test_las_columnas_de_identidad_no_admiten_nulos():
     """Una clave foranea no restringe NULL: en `observaciones` todas las
-    columnas eran nulables y se podian colar filas sin estudiante."""
+    columnas eran nulables y se podian colar filas sin estudiante.
+
+    `positiva` **ya no esta en esta lista**: nacio NOT NULL y dejo de serlo el
+    2026-09-08, cuando se decidio copiar las anotaciones viejas sin inventarles
+    una marca. Ver `test_las_heredadas_pueden_ir_sin_marca`. Las de identidad
+    de verdad siguen intactas.
+    """
     sql = sql_sin_comentarios()
-    for columna in ("estudiante_id", "profesor_id", "periodo", "positiva"):
+    for columna in ("estudiante_id", "profesor_id", "periodo"):
         assert re.search(rf"{columna}\s+\w+(\(\d+\))?\s+NOT NULL", sql), columna
 
 
@@ -124,3 +140,81 @@ def test_la_segunda_migracion_no_reescribe_la_primera():
     cuyo checksum cambie, asi que un cambio posterior va SIEMPRE en un archivo
     nuevo."""
     assert "materia" not in sql_sin_comentarios()
+
+
+# ---------------------------------------------------------------------------
+# Fase 4: las anotaciones heredadas de la tabla vieja
+# ---------------------------------------------------------------------------
+
+
+def test_las_heredadas_pueden_ir_sin_marca():
+    """El modelo viejo no distinguia positivo de negativo. Decidido con el
+    usuario: no se les inventa una. Solo las nuevas la llevan, y ahi la exige
+    el esquema de la API."""
+    assert "ALTER COLUMN positiva DROP NOT NULL" in sql_historicas()
+
+
+def test_las_heredadas_pueden_ir_sin_fecha():
+    """`observaciones` nunca guardo cuando se escribio cada una. Poner la fecha
+    de la copia las haria parecer escritas hoy y las mezclaria con las nuevas;
+    NULL significa «no se sabe» y la lectura las manda al final."""
+    assert "ALTER COLUMN creada_en DROP NOT NULL" in sql_historicas()
+
+
+def test_la_copia_no_se_puede_duplicar():
+    """El riesgo que el documento tenia anotado: ejecutar la copia dos veces
+    duplicaria el historial de un alumno."""
+    sql = sql_historicas()
+    assert "observacion_origen_id" in sql
+    assert "UNIQUE (observacion_origen_id)" in sql
+
+
+def test_ninguna_migracion_del_observador_toca_la_tabla_vieja():
+    """`observaciones` se jubila, no se elimina. Se conserva intacta como unica
+    copia de ese historial."""
+    for sql in (sql_sin_comentarios(), sql_materia(), sql_historicas()):
+        mayus = sql.upper()
+        assert "DROP TABLE" not in mayus
+        assert "ALTER TABLE OBSERVACIONES" not in mayus
+        assert "DELETE FROM" not in mayus
+
+
+def test_el_script_de_copia_solo_lee_la_tabla_vieja():
+    """Copiar no puede convertirse en mover. Si esto falla, alguien esta a un
+    paso de borrar las unicas 68 filas de ese historial."""
+    fuente = fuente_de_la_copia().upper()
+    assert "DELETE FROM OBSERVACIONES" not in fuente
+    assert "UPDATE OBSERVACIONES" not in fuente
+    assert "DROP TABLE" not in fuente
+    assert "TRUNCATE" not in fuente
+
+
+def test_el_script_de_copia_es_repetible():
+    assert "ON CONFLICT (observacion_origen_id) DO NOTHING" in fuente_de_la_copia()
+
+
+def test_las_copiadas_van_sin_marca_y_sin_fecha():
+    """Los dos NULL del INSERT no son un descuido: son las dos cosas que el
+    modelo viejo no guardaba."""
+    fuente = fuente_de_la_copia()
+    assert "estudiante_id, profesor_id, periodo, positiva," in fuente
+    assert "materia, creada_en, observacion_origen_id" in fuente
+
+
+def test_la_copia_recupera_el_profesor_y_la_materia():
+    """Lo unico que si se puede rescatar de la fila vieja, a traves de su
+    asignacion. Sin esto las heredadas quedarian anonimas."""
+    fuente = fuente_de_la_copia()
+    assert "JOIN asignaciones a ON a.id = o.asignacion_id" in fuente
+    assert "LEFT JOIN materias m ON m.id = a.materia_id" in fuente
+
+
+def test_la_copia_descarta_lo_que_la_tabla_nueva_no_admite():
+    """Y lo cuenta: 68 no pueden convertirse en 60 en silencio."""
+    fuente = fuente_de_la_copia()
+    assert "o.estudiante_id IS NOT NULL" in fuente
+    assert "a.profesor_id IS NOT NULL" in fuente
+    assert "o.periodo BETWEEN 1 AND 4" in fuente
+    # El recuento informa de cada motivo por separado.
+    for motivo in ("sin_estudiante", "sin_profesor", "periodo_invalido", "sin_texto"):
+        assert motivo in fuente

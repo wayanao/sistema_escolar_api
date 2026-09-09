@@ -6,6 +6,76 @@ Ultima revision documental: 2026-09-08.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
+## 2026-09-08 - Observador unificado, fase 4: copiar lo viejo
+
+Autorizada por el usuario. `scripts/copiar_observaciones_al_observador.py` lleva
+las observaciones de la tabla vieja a la bitacora nueva. **`observaciones` no se
+toca ni se borra**: el script solo lee de ella, y hay prueba que lo impide.
+
+### Lo que se recupera y lo que no
+
+De la fila vieja, a traves de su `asignacion_id`, se rescatan el **profesor** y
+la **materia**. No quedan anonimas, y la materia es dato real que se habria
+perdido: la pantalla no la muestra, pero capturarla ahora cuesta cero.
+
+Dos cosas **no existen** en el modelo viejo y no se inventan:
+
+* **La fecha.** `observaciones` nunca la guardo -sus columnas son id,
+  estudiante_id, asignacion_id, periodo y los tres textos, comprobado en los dos
+  tenants-. Va `NULL`, «no se sabe», y el `ORDER BY ... NULLS LAST` que la
+  lectura ya tenia las manda al final, que es su sitio por ser las mas antiguas.
+  Poner la fecha de la copia las haria parecer escritas hoy y las mezclaria
+  arriba con las nuevas.
+* **Si era positiva o negativa.** El modelo viejo no distinguia. Decidido con el
+  usuario: **no se les inventa una marca**. Van con `positiva` en `NULL`. Solo
+  las anotaciones nuevas la llevan, y ahi la sigue exigiendo el esquema de la
+  API, asi que ningun registro nuevo puede nacer sin ella.
+
+Por eso `20260908_observador_anotaciones_historicas.sql` quita el `NOT NULL` de
+esas dos columnas. Las de identidad -estudiante, profesor, periodo- siguen
+intactas.
+
+### Repetir la copia no duplica
+
+Cada anotacion heredada guarda de que fila salio, en `observacion_origen_id`,
+con un `UNIQUE`. El `INSERT` lleva `ON CONFLICT DO NOTHING`. Era el riesgo que
+el documento tenia anotado desde el diseno: ejecutar la copia dos veces
+duplicaria el historial de un alumno.
+
+Sirve ademas para reconocer una heredada sin adivinarlo por el hueco de la
+fecha.
+
+### Ensayado contra la base real, con rollback
+
+| | `tenant_2005` | `tenant_colegio_1` |
+|---|---|---|
+| Observaciones viejas | 63 | 5 |
+| Copiables | **63** | **5** |
+| Descartadas | **0** | **0** |
+| Materia recuperada | 63 | 5 |
+| Profesores distintos | 7 | 1 |
+| Al repetir la copia | 0 filas | 0 filas |
+
+**Las 68 entran enteras**, ninguna se queda fuera. El endpoint las devuelve bien:
+`SADAY JIMENEZ JULIO | PRE-ESCRITURA | P3 | positiva=None | creada_en=None`.
+Tras el rollback, bitacora vacia y las viejas intactas.
+
+El script informa de cada descarte por separado -sin estudiante, sin profesor,
+periodo fuera de 1-4, las tres dimensiones vacias- para que 68 no puedan
+convertirse en 60 en silencio.
+
+### El texto heredado se copia tal cual
+
+Sin pasarlo por la correccion de mayusculas. Lo que escribio una profesora hace
+meses es historico: no se reescribe.
+
+### Pruebas
+
+`1262 pasan`. Diez nuevas. Una existente cambio de significado y se corrigio en
+vez de dejarla mentir: `test_las_columnas_de_identidad_no_admiten_nulos`
+incluia `positiva`, que nacio `NOT NULL` y dejo de serlo hoy. Se saco de la
+lista con el motivo escrito, y se anadio la prueba que fija el cambio.
+
 ## 2026-09-08 - Observador unificado, fase 3: escribir y editar
 
 `POST /observador` y `PUT /observador/{anotacion_id}`. Con esto **el backend de

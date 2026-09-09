@@ -162,6 +162,35 @@ def test_un_403_del_guard_no_se_convierte_en_500(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
+def test_una_anotacion_heredada_sale_sin_marca_y_sin_fecha(monkeypatch):
+    """Las 68 que vienen de la tabla vieja. Ese modelo no guardaba ni la fecha
+    ni si era positiva o negativa, y no se les inventa ninguna de las dos: la
+    pantalla las pinta sin punto de color y con «Sin fecha»."""
+    heredada = FILA[:6] + (3, None, "Le cuesta compartir", "", "", None, None, None)
+    cursor_de(monkeypatch, filas=[heredada])
+
+    anotacion = observador.obtener_observador(55, None, PROFESOR)["anotaciones"][0]
+
+    assert anotacion["positiva"] is None
+    assert anotacion["creada_en"] is None
+    assert anotacion["conductual"] == "Le cuesta compartir"
+    # Lo que si se rescato de la fila vieja, por su asignacion.
+    assert anotacion["profesor"] == "Ana Gomez"
+    assert anotacion["materia"] == "Matematicas"
+
+
+def test_las_heredadas_van_al_final_por_no_tener_fecha(monkeypatch):
+    """`NULLS LAST` no es un detalle de SQL: es lo que las coloca donde deben,
+    al fondo, por ser las mas antiguas. Sin el, PostgreSQL pone los nulos
+    primero en un DESC y las heredadas taparian las nuevas."""
+    cursor = cursor_de(monkeypatch)
+
+    observador.obtener_observador(55, None, PROFESOR)
+
+    consulta = cursor.calls[-1][0]
+    assert "creada_en DESC NULLS LAST" in consulta
+
+
 def test_el_nivel_del_curso_llega_fuera_de_las_anotaciones(monkeypatch):
     """Es del alumno, no de la anotacion. Repetirlo en cada una seria ruido, y
     ademas no llegaria cuando no hay ninguna."""

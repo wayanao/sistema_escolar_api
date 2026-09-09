@@ -484,21 +484,30 @@ Una fase a la vez. No empezar la siguiente sin cerrar y verificar la anterior.
     deshecha al final: crear, leer de vuelta, editar y los cuatro permisos. Ver
     `docs/CAMBIOS_BACKEND.md`.
 
-**Fase 4 — Copia de lo viejo** (solo si el usuario lo confirma)
-10. Script de copia de las filas viejas, idempotente. Contarlas justo antes:
-    la pantalla vieja sigue en uso y el número sube.
+**Fase 4 — Copia de lo viejo — LISTA, pendiente de ejecutar**
+10. ~~Script de copia~~: `scripts/copiar_observaciones_al_observador.py`, con
+    `--dry-run`. Autorizada por el usuario el 2026-09-08.
+
+    Ensayado contra la base real con rollback: **las 68 se copian enteras**, 63
+    en `tenant_2005` y 5 en `tenant_colegio_1`, **ninguna descartada**. Al
+    repetir la copia inserta 0. Todas recuperan profesor y materia; 7 profesores
+    distintos en `tenant_2005`.
+
+    Requiere antes `migrations/20260908_observador_anotaciones_historicas.sql`.
 
 El frontend no debe depender de nada de esto hasta que la fase 2 esté cerrada.
 
 ## Preguntas abiertas
 
-1. **¿Se copian las anotaciones actuales a la bitácora nueva?** El asistente
-   lo recomendó y el usuario no lo confirmó explícitamente. Sin respuesta, la
-   fase 4 no se ejecuta. Si se copian, hay que decidir qué fecha llevan (no
-   existe en el modelo viejo) y qué se hace con la materia, que en el modelo
-   nuevo ya no se guarda.
-2. **¿Qué `positiva` reciben las anotaciones copiadas?** El modelo viejo no
-   distingue positivo de negativo.
+1. ~~**¿Se copian las anotaciones actuales?**~~ **Sí, autorizado el
+   2026-09-08.** La materia **sí** se recupera, por la asignación de la fila
+   vieja, aunque la pantalla no la muestre: es dato real que se perdería si no
+   se captura ahora. La **fecha no existe** en el modelo viejo, así que van con
+   `creada_en` en `NULL` —«no se sabe»— y la lectura las manda al final con
+   `NULLS LAST`. Inventar la fecha de la copia las haría parecer escritas hoy.
+2. ~~**¿Qué `positiva` reciben las copiadas?**~~ **Ninguna, decidido el
+   2026-09-08.** Van sin marcar (`NULL`). Solo las anotaciones nuevas la llevan,
+   y ahí la sigue exigiendo el esquema de la API.
 3. ~~**¿El texto normalizado se guarda ya corregido?**~~ **Resuelta el
    2026-09-08: se guarda corregido.** La profesora ve la corrección al salir del
    campo y puede rehacerla, así que lo que aprueba es lo que queda escrito —y lo
@@ -507,16 +516,21 @@ El frontend no debe depender de nada de esto hasta que la fase 2 esté cerrada.
    2026-09-08: de ningún sitio, por ahora.** No se rellena y no se muestra. Ver
    «Por qué la columna no se rellena».
 
-**Solo quedan la 1 y la 2, y bloquean únicamente la fase 4.** El backend está
-completo sin ellas.
+**No queda ninguna abierta en este repo.** Las del frontend siguen en su
+documento.
 
 ## Entrega para el siguiente chat
 
-- Última acción terminada: **Fase 3 (escritura), el 2026-09-08. El backend está
-  completo.** Tabla, índice, `GET`, `POST` y `PUT`, con 63 pruebas propias
-  verificadas con mutaciones y una prueba de extremo a extremo contra la base
-  real, deshecha con rollback. **No hay pantalla**, así que la bitácora sigue
-  vacía y los profesores siguen usando la vieja.
+- Última acción terminada: **Fase 4 escrita y ensayada, el 2026-09-08.** El
+  backend está completo: tabla, índice, `GET`, `POST`, `PUT` y el script de
+  copia. 73 pruebas propias, verificadas con mutaciones, más dos pruebas de
+  extremo a extremo contra la base real deshechas con rollback.
+- **Pendiente de ejecutar por el usuario:** la migración
+  `20260908_observador_anotaciones_historicas.sql` y después
+  `scripts/copiar_observaciones_al_observador.py`. Hasta entonces la bitácora
+  está vacía. Comprobar con
+  `SELECT count(*) FROM <tenant>.observador_anotaciones`.
+- **No hay pantalla**, así que los profesores siguen usando la vieja.
 - **El fallo original sigue vivo**, y seguirá hasta que exista la pantalla
   nueva: es ella la que convierte doce peticiones en una.
 - Daño colateral atendido: `test_ddl_fija_unicidad_estado_y_tres_referencias_externas`

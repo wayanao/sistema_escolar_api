@@ -11,7 +11,7 @@
 -- No usar apply_migration.py con este archivo: es para dar de alta un
 -- tenant nuevo, no para los existentes, que ya tienen estas tablas.
 --
--- MIGRACIONES INCORPORADAS (34):
+-- MIGRACIONES INCORPORADAS (35):
 --   20260429_pagos_tipo_pago_largo.sql
 --   20260429_plan_de_clases_reportes.sql
 --   20260509_branding_plantillas_impresion.sql
@@ -45,6 +45,7 @@
 --   20260825_observaciones_claves_foraneas.sql
 --   20260901_cursos_nivel_academico.sql
 --   20260908_observador_anotaciones.sql
+--   20260908_observador_anotaciones_historicas.sql
 --   20260908_observador_anotaciones_materia.sql
 -- FIN MIGRACIONES INCORPORADAS
 
@@ -256,16 +257,18 @@ CREATE TABLE IF NOT EXISTS observador_anotaciones (
     estudiante_id integer NOT NULL,
     profesor_id integer NOT NULL,
     periodo integer NOT NULL,
-    positiva boolean NOT NULL,
+    positiva boolean,
     conductual text DEFAULT ''::text NOT NULL,
     cognitivo text DEFAULT ''::text NOT NULL,
     lenguaje text DEFAULT ''::text NOT NULL,
-    creada_en timestamp with time zone DEFAULT now() NOT NULL,
+    creada_en timestamp with time zone DEFAULT now(),
     editada_en timestamp with time zone,
     editada_por integer,
     materia character varying(100) DEFAULT ''::character varying NOT NULL,
+    observacion_origen_id integer,
     CONSTRAINT observador_anotaciones_periodo_check CHECK (((periodo >= 1) AND (periodo <= 4))),
-    CONSTRAINT observador_anotaciones_pkey PRIMARY KEY (id)
+    CONSTRAINT observador_anotaciones_pkey PRIMARY KEY (id),
+    CONSTRAINT observador_anotaciones_observacion_origen_id_key UNIQUE (observacion_origen_id)
 );
 
 CREATE TABLE IF NOT EXISTS pagos (

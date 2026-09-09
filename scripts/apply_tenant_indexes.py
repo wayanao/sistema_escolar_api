@@ -21,6 +21,11 @@ INDEXES = [
     ("asignaciones", "idx_asignaciones_profesor_id", ["profesor_id"]),
     ("ventas", "idx_ventas_estudiante_estado", ["estudiante_id", "estado"]),
     ("plan_de_clases", "idx_plan_de_clases_asignacion_fecha", ["asignacion_id", "fecha"]),
+    # Bitacora del observador: todas las anotaciones de un estudiante, la mas
+    # nueva primero. Basta con orden ascendente: un indice btree se recorre en
+    # ambos sentidos, y aqui estudiante_id es constante, asi que sirve igual a
+    # ORDER BY creada_en DESC.
+    ("observador_anotaciones", "idx_observador_anotaciones_estudiante", ["estudiante_id", "creada_en"]),
 ]
 
 

@@ -1,6 +1,6 @@
 -- Esquema base de un tenant. ARCHIVO GENERADO, no editar a mano.
 --
--- Extraido de tenant_colegio_1 el 2026-09-02 con
+-- Extraido de tenant_colegio_1 el 2026-09-08 con
 -- scripts/generar_esquema_base.py. Para rehacerlo, aplica antes la
 -- migracion nueva a ese schema y vuelve a ejecutar el script.
 --
@@ -11,7 +11,7 @@
 -- No usar apply_migration.py con este archivo: es para dar de alta un
 -- tenant nuevo, no para los existentes, que ya tienen estas tablas.
 --
--- MIGRACIONES INCORPORADAS (32):
+-- MIGRACIONES INCORPORADAS (33):
 --   20260429_pagos_tipo_pago_largo.sql
 --   20260429_plan_de_clases_reportes.sql
 --   20260509_branding_plantillas_impresion.sql
@@ -44,6 +44,7 @@
 --   20260722_plan_de_clases_revision.sql
 --   20260825_observaciones_claves_foraneas.sql
 --   20260901_cursos_nivel_academico.sql
+--   20260908_observador_anotaciones.sql
 -- FIN MIGRACIONES INCORPORADAS
 
 CREATE TABLE IF NOT EXISTS asignaciones (
@@ -247,6 +248,22 @@ CREATE TABLE IF NOT EXISTS observaciones (
     lenguaje text,
     CONSTRAINT observaciones_pkey PRIMARY KEY (id),
     CONSTRAINT unique_observacion UNIQUE (estudiante_id, asignacion_id, periodo)
+);
+
+CREATE TABLE IF NOT EXISTS observador_anotaciones (
+    id SERIAL,
+    estudiante_id integer NOT NULL,
+    profesor_id integer NOT NULL,
+    periodo integer NOT NULL,
+    positiva boolean NOT NULL,
+    conductual text DEFAULT ''::text NOT NULL,
+    cognitivo text DEFAULT ''::text NOT NULL,
+    lenguaje text DEFAULT ''::text NOT NULL,
+    creada_en timestamp with time zone DEFAULT now() NOT NULL,
+    editada_en timestamp with time zone,
+    editada_por integer,
+    CONSTRAINT observador_anotaciones_periodo_check CHECK (((periodo >= 1) AND (periodo <= 4))),
+    CONSTRAINT observador_anotaciones_pkey PRIMARY KEY (id)
 );
 
 CREATE TABLE IF NOT EXISTS pagos (
@@ -498,6 +515,7 @@ CREATE INDEX IF NOT EXISTS idx_inventario_estado ON inventario USING btree (esta
 CREATE INDEX IF NOT EXISTS idx_materias_estado ON materias USING btree (estado);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_materias_nombre_unico ON materias USING btree (upper(regexp_replace(TRIM(BOTH FROM nombre), '[[:space:]]+'::text, ' '::text, 'g'::text))) WHERE (NULLIF(TRIM(BOTH FROM COALESCE(nombre, ''::character varying)), ''::text) IS NOT NULL);
 CREATE INDEX IF NOT EXISTS tenant_colegio_1_idx_notas_detalle_estudiante_asignacion_period ON notas_detalle USING btree (estudiante_id, asignacion_id, periodo);
+CREATE INDEX IF NOT EXISTS tenant_colegio_1_idx_observador_anotaciones_estudiante ON observador_anotaciones USING btree (estudiante_id, creada_en);
 CREATE INDEX IF NOT EXISTS idx_pagos_estado ON pagos USING btree (estado);
 CREATE INDEX IF NOT EXISTS idx_pagos_venta_id ON pagos USING btree (venta_id);
 CREATE INDEX IF NOT EXISTS tenant_colegio_1_idx_pagos_estudiante_id ON pagos USING btree (estudiante_id);
@@ -550,6 +568,9 @@ ALTER TABLE notas_detalle ADD CONSTRAINT notas_detalle_asignacion_id_fkey FOREIG
 ALTER TABLE notas_detalle ADD CONSTRAINT notas_detalle_estudiante_id_fkey FOREIGN KEY (estudiante_id) REFERENCES estudiantes(id);
 ALTER TABLE observaciones ADD CONSTRAINT observaciones_asignacion_id_fkey FOREIGN KEY (asignacion_id) REFERENCES asignaciones(id) ON DELETE CASCADE;
 ALTER TABLE observaciones ADD CONSTRAINT observaciones_estudiante_id_fkey FOREIGN KEY (estudiante_id) REFERENCES estudiantes(id);
+ALTER TABLE observador_anotaciones ADD CONSTRAINT observador_anotaciones_editada_por_fkey FOREIGN KEY (editada_por) REFERENCES profesor(id);
+ALTER TABLE observador_anotaciones ADD CONSTRAINT observador_anotaciones_estudiante_id_fkey FOREIGN KEY (estudiante_id) REFERENCES estudiantes(id);
+ALTER TABLE observador_anotaciones ADD CONSTRAINT observador_anotaciones_profesor_id_fkey FOREIGN KEY (profesor_id) REFERENCES profesor(id);
 ALTER TABLE pagos ADD CONSTRAINT pagos_estudiante_id_fkey FOREIGN KEY (estudiante_id) REFERENCES estudiantes(id);
 ALTER TABLE pagos ADD CONSTRAINT pagos_venta_id_fkey FOREIGN KEY (venta_id) REFERENCES ventas(id);
 ALTER TABLE pagos_aplicaciones ADD CONSTRAINT pagos_aplicaciones_estudiante_id_fkey FOREIGN KEY (estudiante_id) REFERENCES estudiantes(id);

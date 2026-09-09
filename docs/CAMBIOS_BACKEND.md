@@ -1,10 +1,97 @@
 # Cambios Backend
 
-Ultima revision documental: 2026-09-03.
+Ultima revision documental: 2026-09-08.
 
 ## Proposito
 
 Bitacora de cambios documentales y tecnicos observables del backend.
+
+## 2026-09-08 - Observador unificado, fase 1: la tabla existe y nadie la usa
+
+Estructura y nada más. Se crea `observador_anotaciones` en los dos tenants
+operativos. **No hay endpoint ni pantalla**: nada lee ni escribe esa tabla, y la
+pantalla vieja del observador sigue siendo la única que los profesores usan. El
+fallo «No pudimos recuperar la observación guardada» **sigue vivo**: lo cierra la
+fase 2, no esta.
+
+Diseño completo y decisiones en `docs/funcionalidades/OBSERVADOR_ESTUDIANTE.md`.
+
+### Qué se creó
+
+`migrations/20260908_observador_anotaciones.sql`, aplicada con el runner:
+
+| Tenant | Migración | Índice | Filas | `observaciones` (vieja) |
+|---|---|---|---|---|
+| `tenant_colegio_1` | OK | OK | 0 | 5, intacta |
+| `tenant_2005` | OK | OK | 0 | 63, intacta |
+
+La tabla vieja no se tocó y **no se toca**: se jubila cuando lo nuevo funcione,
+y ni entonces se borra.
+
+### El índice va en el script, no en la migración
+
+El plan decía crearlo en la migración **y** en `scripts/apply_tenant_indexes.py`.
+Se comprobó contra la base antes de hacerlo y habría creado un duplicado en cada
+tenant: el script antepone el nombre del schema (`f"{schema}_{index_name}"`), así
+que no habría reconocido el `idx_...` de la migración —`CREATE INDEX IF NOT
+EXISTS` compara por **nombre**, no por definición— y habría creado otro idéntico
+al lado.
+
+No es hipotético. `tenant_2005` ya arrastra tres pares duplicados por esa causa:
+
+```
+asistencia_estudiante_id_fecha_idx      +  tenant_2005_idx_asistencia_estudiante_fecha
+asistencia_asignacion_id_periodo_idx    +  tenant_2005_idx_asistencia_asignacion_periodo
+estudiantes_curso_id_idx                +  tenant_2005_idx_estudiantes_curso_id
+```
+
+Decidido con el usuario: el índice lo crea **solo** `apply_tenant_indexes.py`, y
+el archivo base lo hereda al regenerarse. La tabla nueva queda con exactamente
+dos índices por tenant —su clave primaria y el suyo—, sin duplicados.
+
+Queda anotado como **deuda, sin prisa**: el prefijo por schema de
+`apply_tenant_indexes.py` es lo que produce esos duplicados, y los tres pares de
+`tenant_2005` siguen ahí. Limpiarlos exige su propio alcance.
+
+### Lo que se midió antes de tocar producción
+
+Ensayo en los dos tenants: crear tabla e índice dentro de una transacción y
+deshacerla. Confirmó que las claves foráneas resuelven contra `estudiantes` y
+`profesor`, que no hay `CASCADE` ni `UNIQUE`, y que un `periodo = 99` rebota. Al
+terminar, la tabla no existía en ningún schema.
+
+No se usó una rama de Neon, que es lo que pide `docs/MIGRACIONES.md` paso 2. Para
+una migración puramente aditiva el ensayo transaccional cubrió lo mismo. Si
+alguna vez la migración altera datos, la rama deja de ser opcional.
+
+### Pruebas
+
+`1199 pasan`. Nueve nuevas en `tests/test_migracion_observador_anotaciones.py`,
+verificadas con mutaciones —meter `CASCADE`, quitar un `NOT NULL`, aflojar el
+`CHECK`, meter `UNIQUE`, meter `asignacion_id`, meter el índice en la
+migración—: las seis cayeron, cada una en una sola prueba.
+
+Una existente cambió: `test_ddl_fija_unicidad_estado_y_tres_referencias_externas`
+contaba las referencias a `profesor(id)` en el archivo base y exigía 3. La tabla
+nueva añade dos —el autor y quien editó—, así que son 5. Se actualizó declarando
+las dos nuevas explícitamente, no solo subiendo el número, porque el valor de esa
+prueba no es el número sino obligar a mirar cada referencia nueva y decidir a
+propósito si arrastra borrados. Las dos nuevas **no** llevan `ON DELETE CASCADE`.
+Renombrada a `test_ddl_fija_unicidad_estado_y_las_referencias_externas`, que no
+envejece con la siguiente tabla.
+
+### Tropiezo operativo, por si vuelve
+
+`apply_migration.py` **se niega** sobre el endpoint agrupado de Neon
+(`-pooler`), que es justo el que trae `.env`: allí su cerrojo de sesión no impide
+dos ejecuciones simultáneas. Hay que apuntar `DATABASE_URL` al endpoint directo
+—el mismo host sin `-pooler`— solo para ese comando. Está en
+`docs/MIGRACIONES.md`, pero se olvida.
+
+### Qué cambia para el cliente
+
+**Nada.** Ni una ruta, ni un código de estado, ni un cuerpo de respuesta. La
+tabla nace vacía y ningún camino de código la menciona.
 
 ## 2026-09-03 - Lectura de observaciones: una conexión en vez de tres, y caché de columnas
 

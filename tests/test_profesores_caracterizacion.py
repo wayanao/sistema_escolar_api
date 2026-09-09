@@ -333,7 +333,11 @@ def test_no_hay_execute_dentro_de_bucles_en_la_frontera_propia():
         assert loop_executes == [], relative_path
 
 
-def test_ddl_fija_unicidad_estado_y_tres_referencias_externas():
+def test_ddl_fija_unicidad_estado_y_las_referencias_externas():
+    """El recuento no es decorativo: obliga a declarar aqui cada tabla nueva que
+    apunte a profesor, y con ello a decidir a proposito si su borrado arrastra
+    filas. Si sube sin que nadie lo mire, una tabla puede nacer con un CASCADE
+    que nadie eligio."""
     base = _source("migrations/base/20260813_esquema_base_tenant.sql")
     migration = _source("migrations/20260604_profesor_estado.sql")
 
@@ -343,7 +347,7 @@ def test_ddl_fija_unicidad_estado_y_tres_referencias_externas():
     assert "CONSTRAINT profesor_documento_identidad_key UNIQUE (documento_identidad)" in base
     assert "CONSTRAINT unique_documento_identidad UNIQUE (documento_identidad)" in base
     assert "estado character varying(30)," in base
-    assert base.count("REFERENCES profesor(id)") == 3
+    assert base.count("REFERENCES profesor(id)") == 5
     assert (
         "asignaciones_profesor_id_fkey FOREIGN KEY (profesor_id) "
         "REFERENCES profesor(id);"
@@ -355,6 +359,17 @@ def test_ddl_fija_unicidad_estado_y_tres_referencias_externas():
     assert (
         "prestamos_profesor_id_fkey FOREIGN KEY (profesor_id) "
         "REFERENCES profesor(id) ON DELETE CASCADE;"
+    ) in base
+    # La bitacora del observador apunta dos veces a profesor: quien escribio y
+    # quien edito. Ninguna lleva ON DELETE CASCADE, a proposito: dar de baja a
+    # un profesor no puede borrar el historial del alumno.
+    assert (
+        "observador_anotaciones_profesor_id_fkey FOREIGN KEY (profesor_id) "
+        "REFERENCES profesor(id);"
+    ) in base
+    assert (
+        "observador_anotaciones_editada_por_fkey FOREIGN KEY (editada_por) "
+        "REFERENCES profesor(id);"
     ) in base
     assert "ADD COLUMN IF NOT EXISTS estado VARCHAR(30)" in migration
     assert "SET estado = 'activo'" in migration

@@ -2,9 +2,10 @@
 
 ## Control
 
-- Estado: **Diseñado, nada implementado.** No hay tabla, ni endpoints, ni
-  migración. Este documento recoge las decisiones tomadas con el usuario el
-  2026-09-04 y el plan de fases. La primera fase no ha empezado.
+- Estado: **Fase 1 (estructura) terminada el 2026-09-08.** La tabla y su índice
+  existen en los dos tenants operativos. **No hay endpoints ni pantalla**: nada
+  escribe ni lee esa tabla todavía, y la pantalla vieja sigue siendo la única
+  que los profesores usan. Las fases 2 a 4 no han empezado.
 - Tipo: Función nueva de producto. **No** es una capa del programa de
   modularización de `docs/modularizacion/` y no debe confundirse con una. La
   capa 7 de `observaciones` está cerrada desde el 2026-08-21 y esto no la
@@ -15,7 +16,7 @@
 - Riesgo inicial: Medio. Tabla nueva en todos los tenants, modelo de permisos
   con una excepción deliberada a la norma del proyecto, y sustituye una
   pantalla que hoy usan los profesores.
-- Última actualización: 2026-09-04.
+- Última actualización: 2026-09-08.
 
 ## Objetivo
 
@@ -156,22 +157,46 @@ SELECT ... FROM observador_anotaciones
 WHERE estudiante_id = %s ORDER BY creada_en DESC
 ```
 
-El índice que la sirve:
+El índice que la sirve es `(estudiante_id, creada_en)`. Basta ascendente: un
+índice btree se recorre en los dos sentidos, y aquí `estudiante_id` es
+constante, así que sirve igual a `ORDER BY creada_en DESC`.
 
-```sql
-CREATE INDEX IF NOT EXISTS idx_observador_anotaciones_estudiante
-    ON observador_anotaciones (estudiante_id, creada_en DESC);
-```
-
-**Hay que crearlo en DOS sitios, o quedará incompleto:**
+**Se crea en DOS sitios, y en el tercero NO** (esto último se decidió el
+2026-09-08, al implementar la fase 1):
 
 1. `scripts/apply_tenant_indexes.py`, en la lista `INDEXES`, para los colegios
-   que ya existen.
+   que ya existen. **Es el único que lo crea.**
 2. `migrations/base/20260813_esquema_base_tenant.sql`, para los colegios que se
-   creen después.
+   creen después. No se escribe a mano: sale de regenerar el archivo con
+   `scripts/generar_esquema_base.py` **después** del paso 1.
+3. **La migración `20260908_observador_anotaciones.sql` NO lo crea**, aunque el
+   plan original decía que sí.
 
-Este es el fallo que ya ocurrió con la tabla actual: `observaciones` **no está**
-en `apply_tenant_indexes.py`, aunque su gemela `asistencia` sí. Y la deriva
+El motivo del punto 3, comprobado contra la base real antes de decidirlo:
+`apply_tenant_indexes.py` antepone el nombre del schema al nombre del índice
+(`create_index` hace `f"{schema}_{index_name}"`). Si la migración hubiera dejado
+un `idx_observador_anotaciones_estudiante`, el script buscaría después
+`tenant_x_idx_observador_anotaciones_estudiante`, **no lo reconocería** —
+`CREATE INDEX IF NOT EXISTS` compara por nombre, no por definición— y crearía un
+segundo índice idéntico al lado.
+
+Eso no es hipotético: `tenant_2005` tiene hoy tres pares duplicados por esa
+misma causa, verificados en `pg_indexes`:
+
+| Tabla | Los dos índices que hacen lo mismo |
+|---|---|
+| `asistencia` | `asistencia_estudiante_id_fecha_idx` · `tenant_2005_idx_asistencia_estudiante_fecha` |
+| `asistencia` | `asistencia_asignacion_id_periodo_idx` · `tenant_2005_idx_asistencia_asignacion_periodo` |
+| `estudiantes` | `estudiantes_curso_id_idx` · `tenant_2005_idx_estudiantes_curso_id` |
+
+Tras la fase 1, la tabla nueva tiene **exactamente dos** índices por tenant: su
+clave primaria y `tenant_<schema>_idx_observador_anotaciones_estudiante`. Sin
+duplicados. `tests/test_migracion_observador_anotaciones.py` fija los dos lados
+de la decisión: que la migración no crea índices y que el script sí lo lista.
+
+El fallo original que motivó todo esto sigue siendo cierto para la tabla vieja:
+`observaciones` **no está** en `apply_tenant_indexes.py`, aunque su gemela
+`asistencia` sí. Y la deriva
 entre inquilinos ya es real y verificable: la misma restricción se llama
 `unique_observacion` en `tenant_colegio_1` y
 `observaciones_estudiante_id_asignacion_id_periodo_key` en `tenant_2005`,
@@ -233,10 +258,10 @@ Orden acordado:
 1. Mientras se construye lo nuevo, **no se toca**. La pantalla vieja sigue
    funcionando.
 2. Cuando lo nuevo funcione, se deja de escribir en ella.
-3. Se copian las 51 filas existentes a la bitácora nueva (**pregunta abierta**,
+3. Se copian las filas existentes a la bitácora nueva (**pregunta abierta**,
    ver abajo).
-4. **No se borra.** Son 51 filas, no ocupan nada, borrar no se deshace y es la
-   única copia de ese historial. Si algún día se elimina, que sea después de un
+4. **No se borra.** Son pocas filas, no ocupan nada, borrar no se deshace y es
+   la única copia de ese historial. Si algún día se elimina, que sea después de un
    año escolar completo.
 
 Al jubilarla hay que **anotarlo en `docs/CAMBIOS_BACKEND.md`**, para que dentro
@@ -263,17 +288,34 @@ de un año nadie dude de a qué tabla escribir.
 | El índice se crea solo en los tenants actuales y los colegios nuevos nacen sin él | Añadirlo **también** al esquema base. Es el fallo que ya tiene `observaciones` |
 | Alguien añade el atajo de admin en el guard de edición | Prueba explícita que lo prohíbe (invariante 3) |
 | Se rompe la pantalla vieja antes de que la nueva funcione | Tabla nueva, no modificar la vieja. Se puede volver atrás |
-| Copiar las 51 filas duplica historial si se ejecuta dos veces | El script de copia debe ser idempotente o ejecutarse una sola vez con constancia |
+| Copiar las filas viejas duplica historial si se ejecuta dos veces | El script de copia debe ser idempotente o ejecutarse una sola vez con constancia |
 
 ## Plan de fases (backend)
 
 Una fase a la vez. No empezar la siguiente sin cerrar y verificar la anterior.
 
-**Fase 1 — Estructura**
-1. Migración con la tabla y el índice.
-2. Añadir el índice a `scripts/apply_tenant_indexes.py`.
-3. Regenerar/actualizar `migrations/base/20260813_esquema_base_tenant.sql`.
-4. Aplicar a los tenants operativos y registrar el resultado de cada uno.
+**Fase 1 — Estructura — TERMINADA el 2026-09-08**
+1. ~~Migración con la tabla~~ `migrations/20260908_observador_anotaciones.sql`.
+   Sin el índice, ver arriba el motivo.
+2. ~~Añadir el índice a `scripts/apply_tenant_indexes.py`~~.
+3. ~~Regenerar `migrations/base/20260813_esquema_base_tenant.sql`~~ con
+   `generar_esquema_base.py --schema tenant_colegio_1`, después de aplicar.
+4. ~~Aplicar a los tenants operativos~~. Resultado, tenant por tenant:
+
+   | Tenant | Migración | Índice | Filas | `observaciones` (vieja) |
+   |---|---|---|---|---|
+   | `tenant_colegio_1` | OK | OK | 0 | 5, intacta |
+   | `tenant_2005` | OK | OK | 0 | 63, intacta |
+
+   Registrado en `public.schema_migrations` para los dos. Compuerta en verde:
+   **1199 pruebas**.
+
+   Antes de aplicar se hizo un ensayo contra la base real en los dos tenants
+   —crear tabla e índice dentro de una transacción y deshacerla— que confirmó
+   que las claves foráneas resuelven, que no hay `CASCADE` ni `UNIQUE`, y que un
+   `periodo = 99` rebota. No se usó una rama de Neon, que es lo que pide
+   `docs/MIGRACIONES.md`; el ensayo transaccional cubrió lo mismo para una
+   migración puramente aditiva.
 
 **Fase 2 — Lectura**
 5. Repositorio y `GET /observador/{estudiante_id}` con `require_estudiante_access`.
@@ -287,13 +329,14 @@ Una fase a la vez. No empezar la siguiente sin cerrar y verificar la anterior.
    editar lo de otro; `profesor_id` del cuerpo se ignora.
 
 **Fase 4 — Copia de lo viejo** (solo si el usuario lo confirma)
-10. Script de copia de las 51 filas, idempotente.
+10. Script de copia de las filas viejas, idempotente. Contarlas justo antes:
+    la pantalla vieja sigue en uso y el número sube.
 
 El frontend no debe depender de nada de esto hasta que la fase 2 esté cerrada.
 
 ## Preguntas abiertas
 
-1. **¿Se copian las 51 anotaciones actuales a la bitácora nueva?** El asistente
+1. **¿Se copian las anotaciones actuales a la bitácora nueva?** El asistente
    lo recomendó y el usuario no lo confirmó explícitamente. Sin respuesta, la
    fase 4 no se ejecuta. Si se copian, hay que decidir qué fecha llevan (no
    existe en el modelo viejo) y qué se hace con la materia, que en el modelo
@@ -307,9 +350,20 @@ Ninguna bloquea las fases 1 a 3.
 
 ## Entrega para el siguiente chat
 
-- Última acción terminada: **ninguna.** Este documento y su equivalente de
-  frontend son lo único que existe. No hay tabla, migración, endpoint ni
-  prueba.
+- Última acción terminada: **Fase 1 (estructura), el 2026-09-08.** Existen la
+  tabla `observador_anotaciones` y su índice en los dos tenants operativos, la
+  migración, la entrada en `apply_tenant_indexes.py`, el archivo base
+  regenerado y `tests/test_migracion_observador_anotaciones.py` (9 pruebas,
+  verificadas con mutaciones). **No hay repositorio, ni endpoint, ni pantalla:
+  nada lee ni escribe esa tabla todavía.**
+- Daño colateral atendido: `test_ddl_fija_unicidad_estado_y_tres_referencias_externas`
+  (en `tests/test_profesores_caracterizacion.py`) contaba las referencias a
+  `profesor(id)` en el archivo base y exigía 3. La tabla nueva añade dos —el
+  autor y quien editó—, así que ahora son 5. Se actualizó declarando las dos
+  nuevas explícitamente, no solo subiendo el número, y se renombró a
+  `test_ddl_fija_unicidad_estado_y_las_referencias_externas`. Su valor está en
+  obligar a mirar cada referencia nueva y decidir a propósito si arrastra
+  borrados; las dos nuevas **no** llevan `ON DELETE CASCADE`.
 - Trabajo previo relacionado, **ya commiteado y publicado**, que no forma parte
   de esta funcionalidad: la optimización de la lectura actual de observaciones
   del 2026-09-03 (`app/dependencies.py`, `app/core/permissions.py`,
@@ -317,8 +371,13 @@ Ninguna bloquea las fases 1 a 3.
   `71e1b44`, publicados en `main` el 2026-09-04 —o sea, **ya desplegados en
   producción**—. Baja la lectura un 10% y **no** arregla el fallo del usuario,
   que sigue vivo. Ver `docs/CAMBIOS_BACKEND.md`.
-- Siguiente acción exacta: que el usuario **autorice la Fase 1**. Una
-  instrucción genérica como «continúa» no basta.
+- Siguiente acción exacta: que el usuario **autorice la Fase 2 (lectura)**:
+  repositorio y `GET /observador/{estudiante_id}` con `require_estudiante_access`.
+  Una instrucción genérica como «continúa» no basta.
+- Aviso operativo descubierto al aplicar: `apply_migration.py` **se niega** sobre
+  el endpoint agrupado de Neon (`-pooler`), que es el que trae `.env`. Hay que
+  apuntar `DATABASE_URL` al endpoint directo solo para ese comando. Está en
+  `docs/MIGRACIONES.md`, pero se olvida.
 - Recordatorio operativo: en este repositorio, `git push origin main`
   **despliega producción automáticamente**. La migración debe aplicarse antes
   de publicar código que dependa de ella.

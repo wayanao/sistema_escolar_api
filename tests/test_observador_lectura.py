@@ -400,12 +400,7 @@ def test_el_nombre_del_profesor_sale_limpio_sin_apellido(monkeypatch, apellido):
     assert anotacion["profesor"] == "Ana"
 
 
-def test_no_existe_ninguna_forma_de_borrar_una_anotacion():
-    """Invariante 1: nadie borra. No hay endpoint, y no debe anadirse sin una
-    orden explicita del usuario."""
-    metodos = set()
-    for ruta in observador.router.routes:
-        metodos |= set(getattr(ruta, "methods", set()))
-
-    assert "DELETE" not in metodos
-    assert metodos <= {"GET", "HEAD", "OPTIONS"}, "la fase 2 es solo lectura"
+# El invariante 1 -nadie borra- se fija en
+# `tests/test_observador_escritura.py::test_no_existe_endpoint_de_borrado`, que
+# es donde viven los metodos de escritura. Tenerlo aqui tambien lo duplicaba, y
+# la copia de aqui se quedo obsoleta en cuanto aparecieron el POST y el PUT.

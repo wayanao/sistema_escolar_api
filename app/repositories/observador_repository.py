@@ -108,3 +108,96 @@ def leer_bitacora(cursor, estudiante_id, periodo=None):
             (periodo, estudiante_id),
         )
     return cursor.fetchall()
+
+
+def crear_anotacion(
+    cursor,
+    estudiante_id,
+    profesor_id,
+    periodo,
+    positiva,
+    conductual,
+    cognitivo,
+    lenguaje,
+):
+    """Inserta una anotacion nueva y devuelve su id.
+
+    `profesor_id` lo pone quien llama a partir del token, **nunca** del cuerpo
+    de la peticion: es el invariante 4 del documento.
+
+    `materia` no se toca: se queda en su valor por defecto, la cadena vacia. Por
+    ahora no se rellena, y el motivo esta en el documento.
+
+    El `commit` es de quien llama, como en los demas repositorios.
+    """
+    cursor.execute(
+        """
+        INSERT INTO observador_anotaciones (
+            estudiante_id, profesor_id, periodo, positiva,
+            conductual, cognitivo, lenguaje
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        RETURNING id
+        """,
+        (estudiante_id, profesor_id, periodo, positiva, conductual, cognitivo, lenguaje),
+    )
+    return cursor.fetchone()[0]
+
+
+def actualizar_anotacion_del_autor(
+    cursor,
+    anotacion_id,
+    profesor_id,
+    positiva,
+    conductual,
+    cognitivo,
+    lenguaje,
+):
+    """Actualiza la anotacion **solo si la escribio ese profesor**.
+
+    Devuelve `True` si actualizo, `False` si no habia ninguna fila que
+    cumpliera las dos condiciones. Quien llama distingue entonces «no existe»
+    de «no es tuya» con una segunda consulta, que solo se paga en el camino de
+    error.
+
+    El `profesor_id` va en el `WHERE`, no en un `if` previo: asi la comprobacion
+    de autoria y la escritura son **la misma sentencia**, y no hay ventana entre
+    comprobar y escribir. Es tambien el invariante 3 -el admin no edita
+    anotaciones de profesores-, porque el id de un admin sale de `usuarios` y
+    nunca coincidira con el autor... salvo por casualidad numerica, que es justo
+    lo que el guard de la ruta impide antes de llegar aqui.
+
+    Editar **siempre deja rastro**: `editada_en` y `editada_por` se fijan en la
+    misma sentencia, sin depender de que quien llame se acuerde. Es el
+    invariante 2.
+    """
+    cursor.execute(
+        """
+        UPDATE observador_anotaciones
+           SET positiva = %s,
+               conductual = %s,
+               cognitivo = %s,
+               lenguaje = %s,
+               editada_en = now(),
+               editada_por = %s
+         WHERE id = %s AND profesor_id = %s
+        RETURNING id
+        """,
+        (positiva, conductual, cognitivo, lenguaje, profesor_id, anotacion_id, profesor_id),
+    )
+    return cursor.fetchone() is not None
+
+
+def leer_autor(cursor, anotacion_id):
+    """El `profesor_id` que escribio la anotacion, o `None` si no existe.
+
+    **Solo se usa en el camino de error de la edicion**, para distinguir un 404
+    de un 403. En el camino normal no se ejecuta, asi que guardar sigue
+    costando una sola ida y vuelta.
+    """
+    cursor.execute(
+        "SELECT profesor_id FROM observador_anotaciones WHERE id = %s",
+        (anotacion_id,),
+    )
+    fila = cursor.fetchone()
+    return fila[0] if fila else None

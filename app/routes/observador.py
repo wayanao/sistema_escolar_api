@@ -1,8 +1,8 @@
 """Bitacora del observador del estudiante.
 
-Ver `docs/funcionalidades/OBSERVADOR_ESTUDIANTE.md`. Fase 2: **solo lectura**.
-Todavia no existen `POST` ni `PUT`, y `DELETE` no existira nunca: nadie borra
-una anotacion, es el invariante 1 del documento.
+Ver `docs/funcionalidades/OBSERVADOR_ESTUDIANTE.md`. Leer, crear y editar.
+**`DELETE` no existe y no debe anadirse**: nadie borra una anotacion, es el
+invariante 1 del documento. Hay prueba que lo impide.
 
 Convive con `app/routes/observaciones.py`, que sirve la pantalla vieja. Esa
 sigue funcionando y no se toca hasta que esta este verificada.
@@ -15,6 +15,7 @@ from app.core.permissions import require_estudiante_access
 from app.database import get_cursor
 from app.dependencies import get_current_user
 from app.repositories import observador_repository
+from app.schemas.observador import AnotacionCreate, AnotacionUpdate
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +24,10 @@ logger = logging.getLogger(__name__)
 # de PostgreSQL, con nombres internos, en la pantalla de una profesora.
 _ERROR_CONSULTAR = "No se pudo consultar el observador. Intenta de nuevo."
 _ERROR_NO_EXISTE = "No encontramos a ese estudiante."
+_ERROR_GUARDAR = "No se pudo guardar la anotacion. Intenta de nuevo."
+_ERROR_ANOTACION_NO_EXISTE = "Esa anotacion ya no existe."
+_ERROR_SOLO_EL_AUTOR = "Solo quien escribio una anotacion puede editarla."
+_ERROR_SOLO_PROFESORES = "Solo un profesor del estudiante puede escribir en el observador."
 
 router = APIRouter(tags=["Observador"], dependencies=[Depends(get_current_user)])
 
@@ -130,3 +135,105 @@ def obtener_observador(
         # nulo, y se descarta aqui: hacia fuera son cero anotaciones.
         "anotaciones": [_anotacion(fila) for fila in filas if fila[1] is not None],
     }
+
+
+def _profesor_que_escribe(current_user):
+    """El `profesor_id` del autor, o un 403 si quien pide no es profesor.
+
+    **El admin no escribe ni edita, y esto no es un descuido.** Su `id` sale de
+    la tabla `usuarios`, no de `profesor`, asi que usarlo como autor firmaria la
+    anotacion con el profesor que por casualidad tenga ese mismo numero. No es
+    teorico: al escribir esto, en `tenant_colegio_1` la administradora tiene
+    `usuarios.id = 1` y el profesor 1 es otra persona. Una bitacora que atribuye
+    a alguien lo que no escribio no sirve ante una reclamacion.
+
+    Se suma al invariante 3, que ya prohibia al admin editar lo de un profesor.
+    """
+    if current_user.get("rol") != "profesor":
+        raise HTTPException(status_code=403, detail=_ERROR_SOLO_PROFESORES)
+    return current_user["id"]
+
+
+@router.post("/observador", status_code=201)
+def crear_anotacion(data: AnotacionCreate, current_user: dict = Depends(get_current_user)):
+    """Anade una anotacion a la bitacora de un estudiante.
+
+    Nunca actualiza una existente: es una bitacora, y **todas quedan**. Un
+    profesor puede anotar cuantas veces quiera en el mismo periodo, que es
+    justo lo que el `UNIQUE` de la tabla vieja impedia.
+    """
+    profesor_id = _profesor_que_escribe(current_user)
+
+    try:
+        with get_cursor(commit=True) as cursor:
+            require_estudiante_access(data.estudiante_id, current_user, cursor=cursor)
+
+            anotacion_id = observador_repository.crear_anotacion(
+                cursor,
+                data.estudiante_id,
+                profesor_id,
+                data.periodo,
+                data.positiva,
+                data.conductual,
+                data.cognitivo,
+                data.lenguaje,
+            )
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception(
+            "Fallo al crear la anotacion del estudiante %s por el profesor %s",
+            data.estudiante_id,
+            profesor_id,
+        )
+        raise HTTPException(status_code=500, detail=_ERROR_GUARDAR)
+
+    return {"id": anotacion_id}
+
+
+@router.put("/observador/{anotacion_id}")
+def editar_anotacion(
+    anotacion_id: int,
+    data: AnotacionUpdate,
+    current_user: dict = Depends(get_current_user),
+):
+    """Corrige una anotacion **propia**. Deja rastro de que se edito.
+
+    No cambia de estudiante ni de periodo: se corrige como se conto, no cuando
+    paso.
+    """
+    profesor_id = _profesor_que_escribe(current_user)
+
+    try:
+        with get_cursor(commit=True) as cursor:
+            actualizada = observador_repository.actualizar_anotacion_del_autor(
+                cursor,
+                anotacion_id,
+                profesor_id,
+                data.positiva,
+                data.conductual,
+                data.cognitivo,
+                data.lenguaje,
+            )
+
+            if not actualizada:
+                # Solo aqui, en el camino de error, se paga una segunda
+                # consulta: sirve para no decir «no es tuya» de algo que no
+                # existe, ni «no existe» de algo que si.
+                autor = observador_repository.leer_autor(cursor, anotacion_id)
+                if autor is None:
+                    raise HTTPException(
+                        status_code=404, detail=_ERROR_ANOTACION_NO_EXISTE
+                    )
+                raise HTTPException(status_code=403, detail=_ERROR_SOLO_EL_AUTOR)
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception(
+            "Fallo al editar la anotacion %s por el profesor %s",
+            anotacion_id,
+            profesor_id,
+        )
+        raise HTTPException(status_code=500, detail=_ERROR_GUARDAR)
+
+    return {"id": anotacion_id}

@@ -2,11 +2,11 @@
 
 ## Control
 
-- Estado: **Fases 1 y 2 terminadas el 2026-09-08.** Existen la tabla, su índice
-  y `GET /observador/{estudiante_id}`. **Aún no hay pantalla ni escritura**: la
-  bitácora se puede leer pero está vacía, nadie puede anotar todavía, y la
-  pantalla vieja sigue siendo la única que los profesores usan. Las fases 3 y 4
-  no han empezado.
+- Estado: **Fases 1, 2 y 3 terminadas el 2026-09-08.** El backend está
+  completo: tabla, índice, leer, crear y editar. **No hay pantalla**, así que la
+  bitácora sigue vacía y la pantalla vieja sigue siendo la única que los
+  profesores usan. La fase 4 (copiar lo viejo) no ha empezado y sigue sin
+  autorizarse.
 - Tipo: Función nueva de producto. **No** es una capa del programa de
   modularización de `docs/modularizacion/` y no debe confundirse con una. La
   capa 7 de `observaciones` está cerrada desde el 2026-08-21 y esto no la
@@ -72,7 +72,8 @@ Cuatro razones, en orden de peso:
 | 8 | Cada anotación se marca **positiva o negativa** | Sustituye a la idea de categorías (académico/convivencia/logro) |
 | 9 | El **admin ve todo pero NO edita** | Excepción deliberada a la norma del proyecto, ver abajo |
 | 10 | El periodo **no oculta** nada | Es una etiqueta de cada anotación, no un filtro obligatorio |
-| 11 | La anotación **dice de qué materia era** | Decidido el 2026-09-08. Es texto copiado, no un vínculo. Ver abajo |
+| 11 | La columna `materia` **existe pero no se rellena** | Decidido el 2026-09-08, tras medir que el servidor no puede deducirla. Ver abajo |
+| 12 | La pantalla muestra **el nivel del curso**, no la materia | Una vez en el título, en los dos niveles |
 
 ### La decisión 9 es una excepción a la norma, y es deliberada
 
@@ -91,7 +92,24 @@ El admin **sí** puede leer cualquier bitácora, de cualquier estudiante, sin
 compartir curso con él.
 
 Quien implemente esto encontrará natural añadir el atajo de admin en el guard
-de edición. **No lo añadas.** Debe haber una prueba que lo impida.
+de edición. **No lo añadas.** Hay una prueba que lo impide
+(`test_el_admin_no_puede_editar_la_anotacion_de_un_profesor`).
+
+#### Y el admin tampoco CREA, descubierto al implementar la fase 3
+
+Este documento se contradecía: la tabla de permisos decía que crear era «igual
+que leer» —lo que incluye al admin— y la tabla de la API decía «profesor del
+alumno». Se resolvió a favor de la segunda, y no por gusto:
+
+**el `id` de un admin sale de la tabla `usuarios`, no de `profesor`.** Usarlo
+como autor firmaría la anotación con el profesor que por casualidad tenga ese
+mismo número. No es teórico: al comprobarlo, en `tenant_colegio_1` la
+administradora **maristella polo** tiene `usuarios.id = 1`, y el profesor 1 es
+**SINDY PAOLA VERGARA**. La anotación habría quedado a nombre de Sindy Paola,
+sin error y sin aviso.
+
+Una bitácora que atribuye a alguien lo que no escribió no sirve para lo único
+que justifica su existencia. Lo impide `_profesor_que_escribe`, con prueba.
 
 ## Diseño de datos
 
@@ -161,10 +179,16 @@ ALTER TABLE observador_anotaciones
 Va en **una migración aparte** porque la primera ya estaba aplicada en
 producción, y el runner bloquea un archivo cuyo checksum cambie.
 
-**Por qué existe.** El documento de frontend dibuja «Prof. Ana · Matemáticas ·
+**Por qué existe.** El documento de frontend dibujaba «Prof. Ana · Matemáticas ·
 20/mar», pero el diseño original quitó la materia de la tabla: la pantalla no
 habría podido escribir esa columna del medio. La contradicción entre los dos
 documentos se detectó al empezar la fase 2 y la resolvió el usuario.
+
+> **Y el mismo día el usuario cambió de idea.** La columna se queda **vacía por
+> ahora**: no se muestra la materia y no se le pide a nadie. El motivo está en
+> «Por qué la columna no se rellena», más abajo. La columna **no es código
+> muerto**: se conserva a propósito, lista si algún día se decide usarla.
+> Quitarla exigiría otra migración y no gana nada.
 
 **Por qué es texto copiado y no una clave foránea a `materias(id)`:**
 
@@ -177,6 +201,35 @@ documentos se detectó al empezar la fase 2 y la resolvió el usuario.
 Que la anotación lleve la materia **no** reabre la decisión 1: el observador
 sigue siendo por estudiante. La materia es contexto de quién anotó, no la clave
 del registro. `asignacion_id` sigue sin existir.
+
+#### Por qué la columna no se rellena
+
+Decidido el 2026-09-08, **después de medir**. Para etiquetar una anotación con
+su materia hay que saber cuál es, y el servidor **no puede deducirla**:
+
+| Materias que da un profesor en un mismo curso | `tenant_2005` | `tenant_colegio_1` |
+|---|---|---|
+| Una sola (deducible) | 9 casos, **27%** | 1 caso, **25%** |
+| Varias (ambiguo) | 24 casos, **73%** | 3 casos, **75%** |
+
+Casos reales: LILIANA da **9** materias en PRIMERO-A; ANGELICA, **5** en
+JARDIN-B. No es un caso de borde, es la norma.
+
+Las dos salidas posibles tenían coste:
+
+- **Que la profesora la elija** al guardar: fricción en cada anotación, para un
+  dato secundario.
+- **Deducirla de la asignación desde la que entra**: sin fricción, pero **ata la
+  página a una única puerta de entrada** —dejaría de poder abrirse desde un
+  listado de alumnos—.
+
+El usuario eligió **ninguna de las dos, por ahora**. La anotación no lleva
+materia, nadie elige nada, y la pantalla muestra el nivel del curso en el
+título. Consecuencia asumida: **no queda registrado en qué clase pasó**; el
+nombre de la profesora sigue diciendo quién observó.
+
+Por eso el `POST` de la fase 3 **no recibe `asignacion_id` ni `materia`**, y la
+columna queda en su valor por defecto, la cadena vacía.
 
 #### La lectura devuelve también el nivel del curso
 
@@ -296,8 +349,8 @@ repetirlo en cada uno. El que se salte uno queda distinto para siempre.
 | Acción | Regla | Guard |
 |---|---|---|
 | Leer la bitácora | Profesor que comparta curso con el alumno; admin siempre | `require_estudiante_access` (**ya existe**) |
-| Crear anotación | Igual que leer | `require_estudiante_access` |
-| Editar anotación | **Solo el autor.** Admin **no** | Comprobación nueva: `anotacion.profesor_id == current_user["id"]` |
+| Crear anotación | Profesor del alumno. **Admin no** | `_profesor_que_escribe` + `require_estudiante_access` |
+| Editar anotación | **Solo el autor.** Admin **no** | `profesor_id` en el `WHERE` del `UPDATE`, en la misma sentencia que escribe |
 | Borrar | Nadie | No existe el endpoint |
 
 `require_estudiante_access` ya está en `app/core/permissions.py` y hace
@@ -310,8 +363,8 @@ que inventar un permiso nuevo para leer.**
 | Método | Ruta | Quién | Nota |
 |---|---|---|---|
 | `GET` | `/observador/{estudiante_id}` | Profesor del alumno o admin | **Implementado (fase 2).** `{"nivel": ..., "anotaciones": [...]}`. `?periodo=N` opcional, validado entre 1 y 4; **sin él devuelve todas**, que es el caso por defecto. `404` solo si el estudiante no existe |
-| `POST` | `/observador` | Profesor del alumno | Crea una anotación. `profesor_id` sale del token, **nunca del cuerpo** |
-| `PUT` | `/observador/{anotacion_id}` | Solo el autor | Actualiza texto y `positiva`; fija `editada_en` y `editada_por` |
+| `POST` | `/observador` | Profesor del alumno. **Admin no** | **Implementado (fase 3).** Crea una anotación y devuelve `{"id": N}` con `201`. `profesor_id` sale del token, **nunca del cuerpo** |
+| `PUT` | `/observador/{anotacion_id}` | Solo el autor | **Implementado (fase 3).** Actualiza texto y `positiva`; fija `editada_en` y `editada_por`. `403` si no es tuya, `404` si no existe. No cambia estudiante ni periodo |
 
 No hay `DELETE`, y es a propósito.
 
@@ -417,12 +470,19 @@ Una fase a la vez. No empezar la siguiente sin cerrar y verificar la anterior.
 8. La migración de `materia` **debe aplicarse antes de publicar** este código: la
    consulta de lectura la nombra.
 
-**Fase 3 — Escritura**
-7. `POST /observador`, con `profesor_id` desde el token y normalización de texto.
-8. `PUT /observador/{anotacion_id}` solo para el autor, fijando `editada_en` y
-   `editada_por`.
-9. Pruebas: **el admin no puede editar lo de un profesor**; un profesor no puede
-   editar lo de otro; `profesor_id` del cuerpo se ignora.
+**Fase 3 — Escritura — TERMINADA el 2026-09-08**
+7. ~~`POST /observador`~~, con `profesor_id` desde el token y normalización de
+   texto en `app/core/texto_observador.py`.
+8. ~~`PUT /observador/{anotacion_id}`~~ solo para el autor. La autoría va en el
+   `WHERE` del `UPDATE`, así que comprobar y escribir son **la misma
+   sentencia**: no hay ventana entre una cosa y otra, y el camino normal cuesta
+   una sola consulta. La segunda solo se paga al fallar, para distinguir un 404
+   de un 403.
+9. ~~Pruebas~~: 29 en `tests/test_observador_escritura.py`, verificadas con
+   mutaciones.
+10. Probado de extremo a extremo contra la base real, dentro de una transacción
+    deshecha al final: crear, leer de vuelta, editar y los cuatro permisos. Ver
+    `docs/CAMBIOS_BACKEND.md`.
 
 **Fase 4 — Copia de lo viejo** (solo si el usuario lo confirma)
 10. Script de copia de las filas viejas, idempotente. Contarlas justo antes:
@@ -439,31 +499,26 @@ El frontend no debe depender de nada de esto hasta que la fase 2 esté cerrada.
    nuevo ya no se guarda.
 2. **¿Qué `positiva` reciben las anotaciones copiadas?** El modelo viejo no
    distingue positivo de negativo.
-3. **¿El texto normalizado se guarda ya corregido, o se corrige solo al
-   mostrar?** El diseño asume lo primero (se guarda corregido). Confirmar.
-4. **¿De dónde sale la materia al crear una anotación?** La columna existe y la
-   lectura ya la devuelve, pero nadie la rellena todavía. El `POST` no lleva
-   `asignacion_id` a propósito, así que hay dos caminos: que el cliente mande la
-   materia elegida, o que el servidor la deduzca de las asignaciones que ese
-   profesor tiene en el curso del alumno —ambiguo si da dos materias en ese
-   curso—. **Bloquea la fase 3**, no las anteriores.
+3. ~~**¿El texto normalizado se guarda ya corregido?**~~ **Resuelta el
+   2026-09-08: se guarda corregido.** La profesora ve la corrección al salir del
+   campo y puede rehacerla, así que lo que aprueba es lo que queda escrito —y lo
+   que se imprime—. Vive en `app/core/texto_observador.py`.
+4. ~~**¿De dónde sale la materia al crear una anotación?**~~ **Resuelta el
+   2026-09-08: de ningún sitio, por ahora.** No se rellena y no se muestra. Ver
+   «Por qué la columna no se rellena».
 
-Las tres primeras no bloquearon las fases 1 y 2. La cuarta sí bloquea la 3.
+**Solo quedan la 1 y la 2, y bloquean únicamente la fase 4.** El backend está
+completo sin ellas.
 
 ## Entrega para el siguiente chat
 
-- Última acción terminada: **Fase 2 (lectura) y el añadido del `nivel`, el
-  2026-09-08.** Existen la tabla con su índice y su columna `materia`, el
-  repositorio, `GET /observador/{estudiante_id}` devolviendo
-  `{"nivel", "anotaciones"}` y 34 pruebas entre las dos fases, todas verificadas
-  con mutaciones. **No hay
-  escritura ni pantalla**: la bitácora se lee, pero está vacía y nadie puede
-  anotar todavía.
-- **Pendiente operativo:** la migración de `materia` está escrita y probada pero
-  puede no estar aplicada. Comprobar antes de seguir:
-  `SELECT 1 FROM information_schema.columns WHERE table_name='observador_anotaciones' AND column_name='materia'`.
-  Sin ella, el `GET` responde 500. La compuerta lo delata: `test_esquema_base`
-  falla mientras el archivo base no incorpore la migración.
+- Última acción terminada: **Fase 3 (escritura), el 2026-09-08. El backend está
+  completo.** Tabla, índice, `GET`, `POST` y `PUT`, con 63 pruebas propias
+  verificadas con mutaciones y una prueba de extremo a extremo contra la base
+  real, deshecha con rollback. **No hay pantalla**, así que la bitácora sigue
+  vacía y los profesores siguen usando la vieja.
+- **El fallo original sigue vivo**, y seguirá hasta que exista la pantalla
+  nueva: es ella la que convierte doce peticiones en una.
 - Daño colateral atendido: `test_ddl_fija_unicidad_estado_y_tres_referencias_externas`
   (en `tests/test_profesores_caracterizacion.py`) contaba las referencias a
   `profesor(id)` en el archivo base y exigía 3. La tabla nueva añade dos —el
@@ -479,10 +534,10 @@ Las tres primeras no bloquearon las fases 1 y 2. La cuarta sí bloquea la 3.
   `71e1b44`, publicados en `main` el 2026-09-04 —o sea, **ya desplegados en
   producción**—. Baja la lectura un 10% y **no** arregla el fallo del usuario,
   que sigue vivo. Ver `docs/CAMBIOS_BACKEND.md`.
-- Siguiente acción exacta: que el usuario **autorice la Fase 3 (escritura)**:
-  `POST /observador` y `PUT /observador/{anotacion_id}`. Antes de empezarla hay
-  que resolver la pregunta abierta 4 —de dónde sale la materia al guardar— y la
-  3. Una instrucción genérica como «continúa» no basta.
+- Siguiente acción exacta: que el usuario **autorice la Fase 1 del frontend**
+  (la pantalla). El backend ya no bloquea nada. La fase 4 de este repo —copiar
+  las anotaciones viejas— sigue **sin autorizar** y depende de las preguntas
+  abiertas 1 y 2. Una instrucción genérica como «continúa» no basta.
 - Aviso operativo descubierto al aplicar: `apply_migration.py` **se niega** sobre
   el endpoint agrupado de Neon (`-pooler`), que es el que trae `.env`. Hay que
   apuntar `DATABASE_URL` al endpoint directo solo para ese comando. Está en

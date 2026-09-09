@@ -6,6 +6,168 @@ Ultima revision documental: 2026-09-08.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
+## 2026-09-08 - Observador unificado, fase 3: escribir y editar
+
+`POST /observador` y `PUT /observador/{anotacion_id}`. Con esto **el backend de
+la funcionalidad esta completo**. Sigue sin haber pantalla, asi que la bitacora
+esta vacia y los profesores siguen usando la vieja: el fallo original sigue
+vivo y lo cierra el frontend, no esto.
+
+### El admin no crea, y esto corrigio una contradiccion del diseno
+
+El documento decia dos cosas: su tabla de permisos daba a crear el mismo alcance
+que a leer -lo que incluye al admin- y su tabla de API decia «profesor del
+alumno». Se resolvio a favor de la segunda, con motivo:
+
+**el `id` de un admin sale de la tabla `usuarios`, no de `profesor`.** Usarlo
+como autor firmaria la anotacion con el profesor que por casualidad tenga ese
+mismo numero. Se comprobo antes de decidir: en `tenant_colegio_1` la
+administradora **maristella polo** tiene `usuarios.id = 1` y el profesor 1 es
+**SINDY PAOLA VERGARA**. La anotacion habria quedado a nombre de Sindy Paola,
+sin error, sin aviso y sin forma de notarlo despues.
+
+Una bitacora que atribuye a alguien lo que no escribio no sirve para lo unico
+que justifica su existencia. Lo impide `_profesor_que_escribe`, con prueba.
+
+Se suma al invariante 3, que ya prohibia al admin **editar** lo de un profesor.
+Ese sigue siendo una excepcion deliberada a la norma del proyecto -casi todos
+los guards empiezan con `if rol == "admin": return`- y tiene su propia prueba,
+que el documento pedia explicitamente.
+
+### La autoria se comprueba en la sentencia que escribe
+
+`UPDATE ... WHERE id = %s AND profesor_id = %s`. No hay un `SELECT` previo que
+compruebe y luego un `UPDATE` que escriba: es la misma sentencia, sin ventana
+entre las dos cosas, y el camino normal cuesta **una sola consulta**.
+
+Cuando no actualiza nada se paga una segunda, **solo en el camino de error**,
+para no decir «no es tuya» de algo que no existe ni «no existe» de algo que si.
+De ahi que haya `403` y `404` distintos.
+
+`editada_en` y `editada_por` se fijan en esa misma sentencia, no en el codigo
+que la llama: el rastro no depende de que alguien se acuerde. Es el invariante 2.
+
+### El texto se guarda ya corregido
+
+Decidido con el usuario. `app/core/texto_observador.py` pone mayuscula en la
+primera letra y despues de `.`, `?` y `!` -no despues de `,`, `;` ni `:`-,
+colapsa espacios y anade el que falta tras el punto.
+
+Vive en el servidor **ademas de** en el frontend: alli es comodidad, aqui es la
+garantia. La profesora ve la correccion al salir del campo y puede rehacerla,
+asi que lo que aprueba con los ojos es lo que queda escrito y lo que se imprime.
+
+Dos detalles que costaron una vuelta:
+
+- **`¿por que?` se quedaba en minuscula.** La primera letra no siempre es el
+  primer caracter: en castellano la frase abre con `¿` o `¡`. Se corrigio
+  buscando la primera letra, no el primer caracter, y lo mismo tras cada punto.
+- **`mide 1.75 metros` no se toca.** El espacio tras el punto solo se anade si
+  lo que sigue empieza frase de verdad, no si es un digito.
+
+Defecto conocido y aceptado: `etc. y luego` -> `etc. Y luego`. Es raro en una
+observacion, todos los sistemas que hacen esto lo tienen, y se ve en pantalla
+antes de guardar.
+
+### Probado de extremo a extremo contra la base real
+
+Dentro de una transaccion deshecha al final, con un caso real de `tenant_2005`
+-MARIA VICTORIA, de TRANSICION-A, preescolar-:
+
+| Comprobacion | Resultado |
+|---|---|
+| La profesora crea una anotacion | OK |
+| El admin NO puede crear | `403` |
+| **La misma profesora anota otra vez en el mismo periodo** | OK, y quedan las dos |
+| Leer de vuelta | 2 anotaciones, la mas nueva primero, `nivel='preescolar'` |
+| El texto quedo corregido | `Se para mucho. Hace desorden` |
+| Filtrar por un periodo vacio | 0 anotaciones y **el nivel sigue llegando** |
+| La autora edita la suya | OK |
+| El ADMIN edita lo de la profesora | `403` |
+| Otro profesor edita lo ajeno | `403` |
+| Editar una que no existe | `404` |
+| El rastro | `editada_en` con fecha, `editada_por = 40` |
+
+Tras el rollback, cero filas en los dos tenants.
+
+La tercera fila es la que cierra el motivo de todo esto: **la tabla vieja no
+podia hacerlo**. Su `UNIQUE (estudiante_id, asignacion_id, periodo)` y su
+`UPSERT` hacian que el segundo guardado borrara el primero.
+
+### Pruebas
+
+`1252 pasan`. Veintinueve nuevas en `tests/test_observador_escritura.py`,
+verificadas con mutaciones: meter el atajo de admin, quitar el rastro de
+edicion, sacar la autoria del `WHERE`, convertir el `INSERT` en `UPSERT`, quitar
+la correccion de mayusculas, quitar el rango del periodo, permitir la anotacion
+vacia y confundir el `404` con el `403`. Todas cayeron.
+
+Se borro `test_no_existe_ninguna_forma_de_borrar_una_anotacion` de
+`test_observador_lectura.py`: afirmaba que el router era «solo lectura» y quedo
+obsoleta al aparecer el `POST`. El invariante 1 -nadie borra- lo fija ahora
+`test_no_existe_endpoint_de_borrado`, en el archivo de escritura, que ademas
+comprueba que el repositorio no sabe borrar.
+
+### Qué cambia para el cliente
+
+Dos rutas nuevas. Ninguna existente cambia.
+
+## 2026-09-08 - La materia del observador no se rellena, y el porque
+
+Cambio de decision el mismo dia en que se creo la columna. Se registra entero
+porque el recorrido vale mas que la conclusion, y porque deja una columna vacia
+en la base que alguien podria confundir con un descuido.
+
+**No lo es.** `observador_anotaciones.materia` existe, esta migrada en los dos
+tenants y se queda **vacia a proposito**.
+
+### Lo que la tumbo fue una medicion
+
+Para etiquetar una anotacion con su materia hay que saber cual es. Se midio si
+el servidor podia deducirla a partir del profesor y el alumno:
+
+| Materias que da un profesor en un mismo curso | `tenant_2005` | `tenant_colegio_1` |
+|---|---|---|
+| Una sola, deducible | 9 casos, **27%** | 1 caso, **25%** |
+| Varias, ambiguo | 24 casos, **73%** | 3 casos, **75%** |
+
+LILIANA da **9** materias en PRIMERO-A. ANGELICA, **5** en JARDIN-B. No es un
+caso de borde: es la norma. **El servidor no puede deducirla**, y no es cuestion
+de programarlo mejor.
+
+### Las dos salidas, y por que se descartaron las dos
+
+- **Que la profesora elija** la materia al guardar: friccion en cada anotacion,
+  para un dato secundario.
+- **Deducirla de la asignacion desde la que entra** —su planilla de
+  Matematicas—: sin friccion, pero **ata la pagina a una unica puerta de
+  entrada**. El observador dejaria de poder abrirse desde un listado de alumnos,
+  y esa puerta todavia no esta decidida.
+
+Decision del usuario: **ninguna de las dos, por ahora**. La pantalla mostrara el
+nivel del curso en el titulo -«Pepito · Primaria»- y las anotaciones iran solo
+con profesora, fecha y periodo.
+
+### Consecuencias, dichas claro
+
+- **No queda registrado en que clase paso.** Se acepto a conciencia; el nombre
+  de la profesora sigue diciendo quien observo.
+- El `POST` de la fase 3 **no recibe `asignacion_id` ni `materia`**. Eso lo
+  simplifica: le basta `require_estudiante_access`, el mismo guard de la
+  lectura.
+- La columna se conserva. Quitarla exigiria otra migracion y no gana nada;
+  dejarla cuesta cero y queda lista si algun dia se decide usarla.
+- `GET /observador/{estudiante_id}` **sigue devolviendo `materia`** en cada
+  anotacion, con la cadena vacia. Es el valor real de la fila, no un adorno: la
+  respuesta no miente sobre lo que hay guardado.
+- Lo que **si** se aprovecha es el `nivel` anadido antes: ahora es lo unico que
+  la pantalla pone tras el nombre del alumno, asi que aquel trabajo no se tira.
+
+### Codigo
+
+Ninguno. Nada que revertir: la escritura todavia no existe, asi que no habia una
+sola linea que rellenara la columna. `1224 pasan`, sin cambios en pruebas.
+
 ## 2026-09-08 - La lectura del observador devuelve el nivel del curso
 
 Añadido justo después de cerrar la fase 2, por una decisión de presentación: la

@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 # `observaciones.py`. Es una constante y NUNCA `str(e)`: ahi saldria el mensaje
 # de PostgreSQL, con nombres internos, en la pantalla de una profesora.
 _ERROR_CONSULTAR = "No se pudo consultar el observador. Intenta de nuevo."
+_ERROR_NO_EXISTE = "No encontramos a ese estudiante."
 
 router = APIRouter(tags=["Observador"], dependencies=[Depends(get_current_user)])
 
@@ -34,6 +35,7 @@ def _anotacion(fila):
     frontend no puede ser la unica defensa.
     """
     (
+        _nivel,
         anotacion_id,
         profesor_id,
         nombre,
@@ -80,6 +82,13 @@ def obtener_observador(
 ):
     """La bitacora completa de un estudiante, la anotacion mas nueva primero.
 
+    Devuelve el `nivel` del curso junto a las anotaciones, y no dentro de cada
+    una: es del alumno, no de la anotacion. Va fuera **porque tiene que llegar
+    aunque no haya ninguna anotacion**, que hoy es el caso de todos los alumnos.
+    La pantalla lo necesita para decidir si muestra la materia: preescolar la
+    omite y dice el nivel en el titulo, primaria la lleva en capsula, y un curso
+    sin nivel se comporta como primaria.
+
     Sin `periodo` devuelve **todas**, que es el caso por defecto: cambiar de
     periodo en la pantalla no puede ocultar historial.
 
@@ -99,7 +108,12 @@ def obtener_observador(
     try:
         with get_cursor() as cursor:
             require_estudiante_access(estudiante_id, current_user, cursor=cursor)
-            filas = observador_repository.leer_anotaciones(cursor, estudiante_id, periodo)
+            filas = observador_repository.leer_bitacora(cursor, estudiante_id, periodo)
+
+            # Sin filas el estudiante no existe. Uno real sin anotaciones trae
+            # una fila de relleno, con el nivel y el resto en NULL.
+            if not filas:
+                raise HTTPException(status_code=404, detail=_ERROR_NO_EXISTE)
     except HTTPException:
         raise
     except Exception:
@@ -110,4 +124,9 @@ def obtener_observador(
         )
         raise HTTPException(status_code=500, detail=_ERROR_CONSULTAR)
 
-    return [_anotacion(fila) for fila in filas]
+    return {
+        "nivel": filas[0][0],
+        # La fila de relleno del alumno sin anotaciones se reconoce por el `id`
+        # nulo, y se descarta aqui: hacia fuera son cero anotaciones.
+        "anotaciones": [_anotacion(fila) for fila in filas if fila[1] is not None],
+    }

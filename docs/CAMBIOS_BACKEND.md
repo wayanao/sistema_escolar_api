@@ -6,6 +6,82 @@ Ultima revision documental: 2026-09-08.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
+## 2026-09-08 - La lectura del observador devuelve el nivel del curso
+
+Añadido justo después de cerrar la fase 2, por una decisión de presentación: la
+pantalla mostrará la materia **según el nivel** —preescolar la omite y dice el
+nivel una vez en el título, primaria la lleva en cápsula, y un curso **sin
+nivel** se comporta como primaria—. El detalle vive en el documento de frontend.
+
+### La consulta arranca en `estudiantes`, y ese es todo el cambio
+
+Antes arrancaba en `observador_anotaciones`. Ahora:
+
+```sql
+FROM estudiantes e
+LEFT JOIN cursos c ON c.id = e.curso_id
+LEFT JOIN observador_anotaciones a ON a.estudiante_id = e.id
+                                  [AND a.periodo = %s]
+LEFT JOIN profesor p ON p.id = a.profesor_id
+WHERE e.id = %s
+```
+
+Tres trampas, las tres reales, las tres con prueba y mutación:
+
+1. **Un alumno sin anotaciones.** Arrancando en las anotaciones devolvería cero
+   filas y con ellas ningún nivel: la pantalla no podría ni escribir su título.
+   No es un caso raro — **hoy es el caso de todos los alumnos**, porque la
+   escritura no existe.
+2. **`estudiantes.curso_id` es nulable**, comprobado en `information_schema`.
+   Con unión interna a `cursos`, un alumno sin curso desaparecería de su propia
+   bitácora: sin error y sin aviso.
+3. **El filtro de periodo va en el `ON`, no en el `WHERE`.** En el `WHERE`
+   descartaría también la fila del estudiante cuando ese periodo no tuviera
+   anotaciones, y cambiar de periodo dejaría la pantalla sin nivel.
+
+Las dos uniones nuevas **no cuestan idas y vueltas**: sigue siendo una sola
+consulta, y hay prueba que cuenta las sentencias para que siga siéndolo.
+
+### La respuesta cambia de forma, y el `404` es nuevo
+
+De una lista a `{"nivel": ..., "anotaciones": [...]}`. El nivel va fuera porque
+es del alumno, no de cada anotación, y sobre todo **porque tiene que llegar
+aunque no haya ninguna**. No rompe a nadie: todavía no hay cliente.
+
+Cero filas solo puede significar que el estudiante no existe, así que la ruta
+responde `404`. Un alumno real sin anotaciones trae una fila de relleno con el
+nivel y el resto en `NULL`, que la ruta descarta. La diferencia importa: en
+pantalla, «no existe» y «todavía nadie le ha escrito» son mensajes distintos.
+
+`leer_anotaciones` pasa a llamarse `leer_bitacora`: ya no devuelve solo
+anotaciones.
+
+### Medido contra la base real
+
+Con casos reales de `tenant_2005`, ambos con la bitácora vacía:
+
+| Caso | Tiempo | Resultado |
+|---|---|---|
+| Alumno de PARVULO (preescolar), todos los periodos | 1374 ms (abre conexión) | `nivel='preescolar'`, 0 anotaciones |
+| El mismo, filtrando por periodo 3 | 618 ms | `nivel='preescolar'`, 0 anotaciones |
+| Alumno de PRIMERO-A (primaria) | 607 ms | `nivel='primaria'`, 0 anotaciones |
+| Estudiante inexistente, como admin | 529 ms | `404` |
+
+La segunda fila es la que importa: **el nivel llega con el filtro de periodo
+puesto y sin ninguna anotación**, que es justo lo que la trampa 3 rompía.
+
+El camino del alumno **sin curso** no lo cubre ningún dato real —no hay ninguno
+en ese tenant—, así que se protege fijando en una prueba que las uniones sean
+`LEFT`. Es la regresión probable: alguien reordena la consulta y borra la
+palabra.
+
+### Pruebas
+
+`1224 pasan`. Veintiuna en `tests/test_observador_lectura.py`, siete más que
+antes. Verificadas con mutaciones: mover el filtro de periodo al `WHERE`, quitar
+el `404`, dejar pasar la fila de relleno, perder el nivel y convertir cada
+`LEFT JOIN` en interna. Todas cayeron.
+
 ## 2026-09-08 - Observador unificado, fase 2: la lectura
 
 `GET /observador/{estudiante_id}` devuelve la bitácora completa de un alumno.

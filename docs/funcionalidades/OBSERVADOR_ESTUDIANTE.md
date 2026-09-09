@@ -178,28 +178,60 @@ Que la anotación lleve la materia **no** reabre la decisión 1: el observador
 sigue siendo por estudiante. La materia es contexto de quién anotó, no la clave
 del registro. `asignacion_id` sigue sin existir.
 
-#### Pendiente: la lectura debe devolver también el nivel del curso
+#### La lectura devuelve también el nivel del curso
 
-Decidido con el usuario el 2026-09-08, después de cerrar la fase 2. La pantalla
-muestra la materia **según el nivel**: preescolar la omite y dice el nivel una
-vez en el título, primaria la lleva en cápsula, y un curso **sin nivel** se
-comporta como primaria. El detalle vive en el documento de frontend.
+Añadido el 2026-09-08. La pantalla muestra la materia **según el nivel**:
+preescolar la omite y dice el nivel una vez en el título, primaria la lleva en
+cápsula, y un curso **sin nivel** se comporta como primaria. El detalle de
+presentación vive en el documento de frontend.
 
-`GET /observador/{estudiante_id}` **todavía no devuelve `nivel`**, así que la
-pantalla no puede decidir. Falta añadirlo:
+**La consulta arranca en `estudiantes`, no en las anotaciones**, y es lo único
+que hay que entender de este endpoint:
 
 ```sql
-JOIN estudiantes e ON e.id = a.estudiante_id
-JOIN cursos c      ON c.id = e.curso_id
+FROM estudiantes e
+LEFT JOIN cursos c ON c.id = e.curso_id
+LEFT JOIN observador_anotaciones a ON a.estudiante_id = e.id
+                                  [AND a.periodo = %s]
+LEFT JOIN profesor p ON p.id = a.profesor_id
+WHERE e.id = %s
 ```
 
-Es una unión más **dentro de la misma consulta**: no añade ninguna ida y vuelta,
-que es lo único que cuesta tiempo contra Neon. Se eligió esto en vez de resolver
-la presentación al guardar, para que cambiar cómo se ve no exija otra migración.
+Tres trampas, las tres reales y las tres con prueba:
 
-Ojo con `estudiantes.curso_id`: es **nulable**. Un alumno sin curso no puede
-romper la lectura, así que la unión con `cursos` tiene que ser `LEFT` o el
-alumno desaparecería de su propia bitácora.
+1. **Un alumno sin anotaciones.** Arrancando en `observador_anotaciones`
+   devolvería cero filas, y con ellas ningún nivel: la pantalla no podría ni
+   escribir su título. **Hoy es el caso de todos los alumnos**, porque la
+   escritura no existe todavía.
+2. **`estudiantes.curso_id` es nulable.** Con una unión interna a `cursos`, un
+   alumno sin curso desaparecería de su propia bitácora: sin error y sin aviso,
+   la pantalla diría que no existe.
+3. **El filtro de periodo va en el `ON`, no en el `WHERE`.** En el `WHERE`
+   descartaría también la fila del estudiante cuando ese periodo no tuviera
+   anotaciones, y cambiar de periodo dejaría la pantalla sin nivel.
+
+Todo sigue siendo **una sola consulta**: las uniones no cuestan idas y vueltas,
+que es lo único que se paga contra Neon.
+
+Se eligió esto en vez de resolver la presentación al guardar, para que cambiar
+cómo se ve no exija otra migración.
+
+**Forma de la respuesta.** El `nivel` va **fuera** de las anotaciones, porque es
+del alumno y no de cada anotación —y porque tiene que llegar aunque no haya
+ninguna—:
+
+```json
+{
+  "nivel": "primaria",
+  "anotaciones": [ { "id": 12, "profesor_id": 7, "profesor": "Ana Gómez", ... } ]
+}
+```
+
+**Cero filas solo significa que el estudiante no existe**, y entonces la ruta
+responde `404`. Un alumno real sin anotaciones devuelve una fila de relleno, con
+el nivel y el resto en `NULL`, que la ruta descarta. Esa diferencia es la que
+permite distinguir «no existe» de «todavía no tiene nada escrito», que en
+pantalla son mensajes distintos.
 
 ### Índice, y el error multi-inquilino que hay que evitar
 
@@ -277,7 +309,7 @@ que inventar un permiso nuevo para leer.**
 
 | Método | Ruta | Quién | Nota |
 |---|---|---|---|
-| `GET` | `/observador/{estudiante_id}` | Profesor del alumno o admin | **Implementado (fase 2).** Todas las anotaciones. `?periodo=N` opcional, validado entre 1 y 4; **sin él devuelve todas**, que es el caso por defecto |
+| `GET` | `/observador/{estudiante_id}` | Profesor del alumno o admin | **Implementado (fase 2).** `{"nivel": ..., "anotaciones": [...]}`. `?periodo=N` opcional, validado entre 1 y 4; **sin él devuelve todas**, que es el caso por defecto. `404` solo si el estudiante no existe |
 | `POST` | `/observador` | Profesor del alumno | Crea una anotación. `profesor_id` sale del token, **nunca del cuerpo** |
 | `PUT` | `/observador/{anotacion_id}` | Solo el autor | Actualiza texto y `positiva`; fija `editada_en` y `editada_por` |
 
@@ -420,9 +452,11 @@ Las tres primeras no bloquearon las fases 1 y 2. La cuarta sí bloquea la 3.
 
 ## Entrega para el siguiente chat
 
-- Última acción terminada: **Fase 2 (lectura), el 2026-09-08.** Existen la tabla
-  con su índice y su columna `materia`, el repositorio, `GET /observador/{estudiante_id}`
-  y 27 pruebas entre las dos fases, todas verificadas con mutaciones. **No hay
+- Última acción terminada: **Fase 2 (lectura) y el añadido del `nivel`, el
+  2026-09-08.** Existen la tabla con su índice y su columna `materia`, el
+  repositorio, `GET /observador/{estudiante_id}` devolviendo
+  `{"nivel", "anotaciones"}` y 34 pruebas entre las dos fases, todas verificadas
+  con mutaciones. **No hay
   escritura ni pantalla**: la bitácora se lee, pero está vacía y nadie puede
   anotar todavía.
 - **Pendiente operativo:** la migración de `materia` está escrita y probada pero
@@ -445,8 +479,6 @@ Las tres primeras no bloquearon las fases 1 y 2. La cuarta sí bloquea la 3.
   `71e1b44`, publicados en `main` el 2026-09-04 —o sea, **ya desplegados en
   producción**—. Baja la lectura un 10% y **no** arregla el fallo del usuario,
   que sigue vivo. Ver `docs/CAMBIOS_BACKEND.md`.
-- Pendiente pequeño y ya decidido, **no empezado**: devolver `nivel` en la
-  lectura, para que la pantalla decida si muestra la materia. Ver arriba.
 - Siguiente acción exacta: que el usuario **autorice la Fase 3 (escritura)**:
   `POST /observador` y `PUT /observador/{anotacion_id}`. Antes de empezarla hay
   que resolver la pregunta abierta 4 —de dónde sale la materia al guardar— y la

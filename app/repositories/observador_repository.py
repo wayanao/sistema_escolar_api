@@ -12,20 +12,41 @@ vuelta cuesta ~180 ms se consulte lo que se consulte, asi que lo que hay que
 vigilar es **cuantas** consultas se hacen, no lo complicada que sea cada una.
 Si alguien anade aqui una segunda consulta, que sea sabiendo eso.
 
-El nombre del profesor sale de la misma union y no de una consulta aparte. El
-`JOIN` es interno y no `LEFT`: `profesor_id` es `NOT NULL` y su clave foranea no
-lleva `ON DELETE CASCADE` ni `SET NULL`, asi que PostgreSQL **impide** borrar un
+El nombre del profesor sale de la misma union y no de una consulta aparte. Ese
+`JOIN` es interno: `profesor_id` es `NOT NULL` y su clave foranea no lleva
+`ON DELETE CASCADE` ni `SET NULL`, asi que PostgreSQL **impide** borrar un
 profesor con anotaciones. La fila siempre existe. Dar de baja a un profesor en
-esta aplicacion es cambiarle el `estado`, no borrarlo, y eso no afecta a nada de
-aqui.
+esta aplicacion es cambiarle el `estado`, no borrarlo.
 
 La materia es una **etiqueta copiada** en la propia fila, no una union con
 `materias`: si manana quitan esa materia del horario, la anotacion conserva el
 texto. Tambien ahorra la union.
 """
 
+# La consulta arranca en `estudiantes`, no en las anotaciones, y eso es lo unico
+# que hay que entender de este modulo.
+#
+# La pantalla necesita el nivel del curso para decidir si muestra la materia
+# (preescolar la omite, primaria la lleva en capsula). Si la consulta arrancara
+# en `observador_anotaciones`, un alumno **sin anotaciones** devolveria cero
+# filas y con ellas ningun nivel: la pantalla no podria ni escribir su titulo.
+# Y ese no es un caso raro -hoy es el caso de TODOS los alumnos, porque la
+# escritura todavia no existe-.
+#
+# Arrancando en el estudiante siempre vuelve al menos una fila. Si no tiene
+# anotaciones, las columnas de la anotacion llegan en `NULL` y quien llama las
+# descarta mirando `id`.
+#
+# Las dos uniones anadidas son `LEFT` a proposito:
+#   - `cursos`, porque `estudiantes.curso_id` es NULABLE. Con un `JOIN` normal,
+#     un alumno sin curso desapareceria de su propia bitacora: sin error, sin
+#     aviso, simplemente vacia.
+#   - `observador_anotaciones`, que es justo lo que permite el caso de arriba.
+#
+# Ninguna de las dos anade una ida y vuelta: siguen siendo una sola consulta.
 _SELECT = """
-    SELECT a.id,
+    SELECT c.nivel,
+           a.id,
            a.profesor_id,
            p.nombre,
            p.apellido,
@@ -38,16 +59,35 @@ _SELECT = """
            a.creada_en,
            a.editada_en,
            a.editada_por
-    FROM observador_anotaciones a
-    JOIN profesor p ON p.id = a.profesor_id
-    WHERE a.estudiante_id = %s
+    FROM estudiantes e
+    LEFT JOIN cursos c ON c.id = e.curso_id
+    LEFT JOIN observador_anotaciones a
+           ON a.estudiante_id = e.id
 """
 
-_ORDEN = " ORDER BY a.creada_en DESC, a.id DESC"
+# El filtro de periodo va en el ON de la union, NO en el WHERE. En el WHERE
+# descartaria tambien la fila del estudiante cuando ese periodo no tuviera
+# anotaciones, y volveriamos a quedarnos sin nivel.
+_FILTRO_PERIODO = "          AND a.periodo = %s\n"
+
+_RESTO = """
+    LEFT JOIN profesor p ON p.id = a.profesor_id
+    WHERE e.id = %s
+    ORDER BY a.creada_en DESC NULLS LAST, a.id DESC NULLS LAST
+"""
 
 
-def leer_anotaciones(cursor, estudiante_id, periodo=None):
-    """Todas las anotaciones de un estudiante, la mas nueva primero.
+def leer_bitacora(cursor, estudiante_id, periodo=None):
+    """El nivel del curso del estudiante y todas sus anotaciones.
+
+    Devuelve las filas crudas. Quien llama distingue las anotaciones reales de
+    la fila de relleno mirando si el `id` -la segunda columna- es `None`, y
+    saca el nivel de la primera columna de cualquier fila.
+
+    Devuelve **lista vacia solo si el estudiante no existe**. Un alumno real sin
+    anotaciones devuelve exactamente una fila, con el nivel y el resto en
+    `NULL`. Esa diferencia es la que deja distinguir «no existe» de «todavia no
+    tiene nada escrito», que en pantalla son mensajes distintos.
 
     `periodo` es **opcional a proposito**: sin el devuelve el ano entero. El
     periodo es una etiqueta de cada anotacion, no un filtro obligatorio, y
@@ -61,10 +101,10 @@ def leer_anotaciones(cursor, estudiante_id, periodo=None):
     identicas.
     """
     if periodo is None:
-        cursor.execute(_SELECT + _ORDEN, (estudiante_id,))
+        cursor.execute(_SELECT + _RESTO, (estudiante_id,))
     else:
         cursor.execute(
-            _SELECT + " AND a.periodo = %s" + _ORDEN,
-            (estudiante_id, periodo),
+            _SELECT + _FILTRO_PERIODO + _RESTO,
+            (periodo, estudiante_id),
         )
     return cursor.fetchall()

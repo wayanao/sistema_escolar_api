@@ -6,6 +6,114 @@ Ultima revision documental: 2026-09-08.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
+## 2026-09-08 - Observador unificado, fase 2: la lectura
+
+`GET /observador/{estudiante_id}` devuelve la bitácora completa de un alumno.
+**Solo lectura**: no hay `POST` ni `PUT` todavía, y `DELETE` no existirá nunca.
+La pantalla vieja no se toca y sigue siendo la única que los profesores usan.
+
+### Una consulta y una conexión, que es el punto
+
+La pantalla vieja hace **una petición HTTP por alumno**: con 12 tarda 16-20 s y
+el frontend aborta a los 10 s. Aquí se abre **un** estudiante y su bitácora
+entera sale de **una consulta**, con el guard corriendo sobre el mismo cursor
+que después lee. El N+1 desaparece por diseño, no por optimización.
+
+Hay dos pruebas que lo fijan por aserción y no por comentario: que se pide una
+sola conexión al pool y que los guards no abren la suya. Si alguien vuelve a
+partirlo en dos consultas, fallan.
+
+### `require_estudiante_access` acepta `cursor=`
+
+Replica lo que la optimización del 2026-09-03 hizo con `require_asignacion_access`
+y `require_estudiante_in_asignacion`. Sin `cursor` conserva el comportamiento
+histórico, así que los tres llamadores de `app/routes/notas.py` no cambian y sus
+pruebas siguen pasando sin tocarlas.
+
+Prestar el cursor **no relaja el permiso**: misma consulta, mismos parámetros,
+mismo 403.
+
+### La materia: una contradicción entre los dos documentos
+
+El documento de frontend dibuja «Prof. Ana · Matemáticas · 20/mar». El de
+backend había quitado la materia de la tabla. Nadie lo había cruzado. Decidido
+con el usuario: la anotación **sí** dice de qué materia era.
+
+`migrations/20260908_observador_anotaciones_materia.sql` añade la columna. Va
+aparte porque la primera migración ya estaba aplicada y el runner bloquea un
+archivo cuyo checksum cambie.
+
+Es **texto copiado**, no una clave foránea a `materias(id)`: un vínculo
+reintroduciría el defecto que esta tabla vino a corregir —quitar la materia del
+horario se llevaría el dato— y además obligaría a una unión más en cada lectura.
+
+Nadie la rellena todavía: eso es la fase 3, y **de dónde sale al guardar sigue
+sin decidirse**. Queda como pregunta abierta que bloquea esa fase.
+
+### Seis censos que había que actualizar a mano
+
+El repositorio nuevo hizo fallar siete pruebas, y todas tenían razón:
+
+- cinco enumeran el conjunto exacto de repositorios (`asistencia`, `dashboard`,
+  `notas`, `planilla`, `ventas`), a propósito, para que ninguno se cuele sin
+  reconocerse;
+- una enumera los archivos que tocan la tabla `profesor` por SQL directo. El
+  repositorio nuevo la une **solo** para el nombre que muestra la bitácora, en
+  la misma consulta de lectura;
+- `test_esquema_base` pide regenerar el archivo base tras la migración nueva.
+
+Ninguna se relajó: todas se actualizaron declarando la pieza nueva.
+
+### Pruebas
+
+`1216 pasan` con la migración de `materia` aplicada. Catorce nuevas en
+`tests/test_observador_lectura.py`, verificadas con mutaciones: quitar el
+`except HTTPException`, dar al guard su propia conexión, filtrar el error de
+PostgreSQL al cliente, quitar el desempate del orden y filtrar siempre por
+periodo. Las cinco cayeron.
+
+Una sexta mutación —aceptar la cadena vacía en el apellido— **no** cayó, y eso
+destapó un hueco real: la prueba cubría el apellido nulo pero no el vacío. Se
+amplió a los dos casos y entonces sí cae.
+
+### Medido contra la base real, no estimado
+
+Ejecutando la funcion de la ruta contra Neon con un caso real de `tenant_2005`
+—profesor 40, estudiante 518—, con la bitacora todavia vacia:
+
+| Llamada | Tiempo |
+|---|---|
+| Profesor del alumno, todos los periodos (primera, abre conexion) | 1147 ms |
+| El mismo, filtrando por periodo | 593 ms |
+| Admin, sin compartir curso | 445 ms |
+| Rol no autorizado, `403` | 412 ms |
+
+Los ~450-600 ms en caliente son el suelo de este proyecto: arranque de conexion
+mas dos o tres idas y vueltas a ~180 ms cada una.
+
+**La medicion NO incluye el sobrecoste de autenticacion**, porque llama a la
+funcion de la ruta y no pasa por `get_current_user`. Una peticion HTTP real suma
+las 6 idas y vueltas documentadas el 2026-09-03, o sea alrededor de 1,1 s mas.
+Eso sigue siendo un defecto transversal, con su propio alcance, y esta
+funcionalidad no lo toca.
+
+Aun asi la comparacion decide: la pantalla vieja hace **12 peticiones** de ~2,8 s
+para un curso y suma 16-20 s. Esta hace **una**. Lo que cambia no es el precio de
+cada peticion sino cuantas hay, que era la conclusion de la medicion del
+2026-09-03.
+
+### El JOIN es interno a propósito
+
+`profesor_id` es `NOT NULL` y su clave foránea no lleva `ON DELETE CASCADE` ni
+`SET NULL`, así que PostgreSQL **impide** borrar un profesor con anotaciones. La
+fila siempre existe. Dar de baja a un profesor en esta aplicación es cambiarle
+el `estado`, no borrarlo, y eso no afecta a nada de aquí.
+
+### Qué cambia para el cliente
+
+Una ruta nueva. Ninguna existente cambia de comportamiento, código de estado ni
+cuerpo.
+
 ## 2026-09-08 - Observador unificado, fase 1: la tabla existe y nadie la usa
 
 Estructura y nada más. Se crea `observador_anotaciones` en los dos tenants

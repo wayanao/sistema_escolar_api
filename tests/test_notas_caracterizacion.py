@@ -179,6 +179,7 @@ def test_el_repositorio_de_notas_es_el_septimo():
         "estudiantes_repository",
         "notas_repository",
         "observaciones_repository",
+        "observador_repository",
         "pagos_repository",
         "plan_de_clases_repository",
         "planeador_anual_repository",

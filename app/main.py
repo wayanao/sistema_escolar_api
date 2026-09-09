@@ -45,6 +45,7 @@ from app.routes import (
     nomina,
     notas,
     observaciones,
+    observador,
     pagos,
     plan_de_clases,
     planeador_anual,
@@ -214,6 +215,7 @@ app.include_router(asistencia.router)
 app.include_router(auth.router)
 app.include_router(materias.router)
 app.include_router(observaciones.router)
+app.include_router(observador.router)
 app.include_router(plan_de_clases.router)
 app.include_router(dashboard.router)
 app.include_router(planeador_anual.router)

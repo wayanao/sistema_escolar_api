@@ -6,29 +6,58 @@ from app.repositories.plan_de_clases_repository import (
 )
 
 
-def require_estudiante_access(estudiante_id: int, current_user: dict) -> None:
+_SQL_PROFESOR_COMPARTE_CURSO = """
+            SELECT 1
+            FROM estudiantes e
+            JOIN asignaciones a ON a.curso_id = e.curso_id
+            WHERE e.id = %s AND a.profesor_id = %s
+            """
+
+
+def require_estudiante_access(
+    estudiante_id: int,
+    current_user: dict,
+    *,
+    cursor=None,
+) -> None:
+    """El profesor comparte curso con el estudiante, o es admin.
+
+    `cursor` es opcional y replica el que ya aceptan `require_asignacion_access`
+    y `require_estudiante_in_asignacion` desde el 2026-09-03: quien ya tiene una
+    conexion abierta presta su cursor y se ahorra pedir otra al pool. Contra Neon
+    cada ida y vuelta cuesta ~180 ms, y lo que se paga es el numero de idas y
+    vueltas, no lo que consulte cada una. Sin `cursor` abre y cierra la suya, que
+    es el comportamiento historico y el de los llamadores de `app/routes/notas.py`.
+
+    Prestar el cursor **no relaja el permiso**: es la misma consulta con los
+    mismos parametros, y el 403 se lanza igual.
+
+    El atajo de admin de la primera linea es correcto **para leer**. En la
+    edicion de una anotacion del observador NO debe copiarse: ver el invariante 3
+    de `docs/funcionalidades/OBSERVADOR_ESTUDIANTE.md`.
+    """
     if current_user.get("rol") == "admin":
         return
 
     if current_user.get("rol") != "profesor":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No autorizado")
 
-    conn = get_connection()
-    cursor = conn.cursor()
-    try:
-        cursor.execute(
-            """
-            SELECT 1
-            FROM estudiantes e
-            JOIN asignaciones a ON a.curso_id = e.curso_id
-            WHERE e.id = %s AND a.profesor_id = %s
-            """,
-            (estudiante_id, current_user.get("id")),
-        )
+    parametros = (estudiante_id, current_user.get("id"))
+
+    if cursor is not None:
+        cursor.execute(_SQL_PROFESOR_COMPARTE_CURSO, parametros)
         if cursor.fetchone():
             return
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No autorizado")
+
+    conn = get_connection()
+    own_cursor = conn.cursor()
+    try:
+        own_cursor.execute(_SQL_PROFESOR_COMPARTE_CURSO, parametros)
+        if own_cursor.fetchone():
+            return
     finally:
-        cursor.close()
+        own_cursor.close()
         conn.close()
 
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No autorizado")

@@ -2,10 +2,11 @@
 
 ## Control
 
-- Estado: **Fase 1 (estructura) terminada el 2026-09-08.** La tabla y su índice
-  existen en los dos tenants operativos. **No hay endpoints ni pantalla**: nada
-  escribe ni lee esa tabla todavía, y la pantalla vieja sigue siendo la única
-  que los profesores usan. Las fases 2 a 4 no han empezado.
+- Estado: **Fases 1 y 2 terminadas el 2026-09-08.** Existen la tabla, su índice
+  y `GET /observador/{estudiante_id}`. **Aún no hay pantalla ni escritura**: la
+  bitácora se puede leer pero está vacía, nadie puede anotar todavía, y la
+  pantalla vieja sigue siendo la única que los profesores usan. Las fases 3 y 4
+  no han empezado.
 - Tipo: Función nueva de producto. **No** es una capa del programa de
   modularización de `docs/modularizacion/` y no debe confundirse con una. La
   capa 7 de `observaciones` está cerrada desde el 2026-08-21 y esto no la
@@ -71,6 +72,7 @@ Cuatro razones, en orden de peso:
 | 8 | Cada anotación se marca **positiva o negativa** | Sustituye a la idea de categorías (académico/convivencia/logro) |
 | 9 | El **admin ve todo pero NO edita** | Excepción deliberada a la norma del proyecto, ver abajo |
 | 10 | El periodo **no oculta** nada | Es una etiqueta de cada anotación, no un filtro obligatorio |
+| 11 | La anotación **dice de qué materia era** | Decidido el 2026-09-08. Es texto copiado, no un vínculo. Ver abajo |
 
 ### La decisión 9 es una excepción a la norma, y es deliberada
 
@@ -146,6 +148,58 @@ Diferencias deliberadas frente a `observaciones`, cada una con su motivo:
   estudiante. Aquí no.
 - **`CHECK` en `periodo`.** Hoy el esquema acepta `periodo = 99`; hay una
   prueba que lo fija como comportamiento actual. La tabla nueva no lo hereda.
+
+### La materia, añadida el 2026-09-08
+
+`migrations/20260908_observador_anotaciones_materia.sql` añade:
+
+```sql
+ALTER TABLE observador_anotaciones
+    ADD COLUMN IF NOT EXISTS materia character varying(100) NOT NULL DEFAULT '';
+```
+
+Va en **una migración aparte** porque la primera ya estaba aplicada en
+producción, y el runner bloquea un archivo cuyo checksum cambie.
+
+**Por qué existe.** El documento de frontend dibuja «Prof. Ana · Matemáticas ·
+20/mar», pero el diseño original quitó la materia de la tabla: la pantalla no
+habría podido escribir esa columna del medio. La contradicción entre los dos
+documentos se detectó al empezar la fase 2 y la resolvió el usuario.
+
+**Por qué es texto copiado y no una clave foránea a `materias(id)`:**
+
+- Un vínculo reintroduciría el defecto que esta tabla vino a corregir. Si mañana
+  quitan esa materia del horario, la anotación perdería el dato o arrastraría la
+  fila. Una etiqueta sobrevive a todo.
+- Leer la bitácora no necesita entonces ninguna unión extra. A ~180 ms por ida
+  y vuelta contra Neon, lo que se paga es el **número** de consultas.
+
+Que la anotación lleve la materia **no** reabre la decisión 1: el observador
+sigue siendo por estudiante. La materia es contexto de quién anotó, no la clave
+del registro. `asignacion_id` sigue sin existir.
+
+#### Pendiente: la lectura debe devolver también el nivel del curso
+
+Decidido con el usuario el 2026-09-08, después de cerrar la fase 2. La pantalla
+muestra la materia **según el nivel**: preescolar la omite y dice el nivel una
+vez en el título, primaria la lleva en cápsula, y un curso **sin nivel** se
+comporta como primaria. El detalle vive en el documento de frontend.
+
+`GET /observador/{estudiante_id}` **todavía no devuelve `nivel`**, así que la
+pantalla no puede decidir. Falta añadirlo:
+
+```sql
+JOIN estudiantes e ON e.id = a.estudiante_id
+JOIN cursos c      ON c.id = e.curso_id
+```
+
+Es una unión más **dentro de la misma consulta**: no añade ninguna ida y vuelta,
+que es lo único que cuesta tiempo contra Neon. Se eligió esto en vez de resolver
+la presentación al guardar, para que cambiar cómo se ve no exija otra migración.
+
+Ojo con `estudiantes.curso_id`: es **nulable**. Un alumno sin curso no puede
+romper la lectura, así que la unión con `cursos` tiene que ser `LEFT` o el
+alumno desaparecería de su propia bitácora.
 
 ### Índice, y el error multi-inquilino que hay que evitar
 
@@ -223,7 +277,7 @@ que inventar un permiso nuevo para leer.**
 
 | Método | Ruta | Quién | Nota |
 |---|---|---|---|
-| `GET` | `/observador/{estudiante_id}` | Profesor del alumno o admin | Todas las anotaciones. `?periodo=N` opcional; **sin él devuelve todas**, que es el caso por defecto |
+| `GET` | `/observador/{estudiante_id}` | Profesor del alumno o admin | **Implementado (fase 2).** Todas las anotaciones. `?periodo=N` opcional, validado entre 1 y 4; **sin él devuelve todas**, que es el caso por defecto |
 | `POST` | `/observador` | Profesor del alumno | Crea una anotación. `profesor_id` sale del token, **nunca del cuerpo** |
 | `PUT` | `/observador/{anotacion_id}` | Solo el autor | Actualiza texto y `positiva`; fija `editada_en` y `editada_por` |
 
@@ -317,9 +371,19 @@ Una fase a la vez. No empezar la siguiente sin cerrar y verificar la anterior.
    `docs/MIGRACIONES.md`; el ensayo transaccional cubrió lo mismo para una
    migración puramente aditiva.
 
-**Fase 2 — Lectura**
-5. Repositorio y `GET /observador/{estudiante_id}` con `require_estudiante_access`.
-6. Pruebas: permiso concedido, permiso denegado, filtro de periodo, orden.
+**Fase 2 — Lectura — TERMINADA el 2026-09-08**
+5. ~~Repositorio y `GET /observador/{estudiante_id}`~~:
+   `app/repositories/observador_repository.py` y `app/routes/observador.py`.
+   Una sola consulta y **una sola conexión**, con el guard corriendo sobre el
+   cursor que ya abrió la ruta. Hay prueba que lo fija por aserción: es el
+   motivo de existir de la funcionalidad.
+6. ~~Pruebas~~: 14 en `tests/test_observador_lectura.py`, verificadas con
+   mutaciones.
+7. `require_estudiante_access` acepta ahora `cursor=` opcional, replicando lo
+   que la optimización del 2026-09-03 hizo con sus dos hermanos. Sin él conserva
+   el comportamiento histórico, así que `app/routes/notas.py` no cambia.
+8. La migración de `materia` **debe aplicarse antes de publicar** este código: la
+   consulta de lectura la nombra.
 
 **Fase 3 — Escritura**
 7. `POST /observador`, con `profesor_id` desde el token y normalización de texto.
@@ -345,17 +409,27 @@ El frontend no debe depender de nada de esto hasta que la fase 2 esté cerrada.
    distingue positivo de negativo.
 3. **¿El texto normalizado se guarda ya corregido, o se corrige solo al
    mostrar?** El diseño asume lo primero (se guarda corregido). Confirmar.
+4. **¿De dónde sale la materia al crear una anotación?** La columna existe y la
+   lectura ya la devuelve, pero nadie la rellena todavía. El `POST` no lleva
+   `asignacion_id` a propósito, así que hay dos caminos: que el cliente mande la
+   materia elegida, o que el servidor la deduzca de las asignaciones que ese
+   profesor tiene en el curso del alumno —ambiguo si da dos materias en ese
+   curso—. **Bloquea la fase 3**, no las anteriores.
 
-Ninguna bloquea las fases 1 a 3.
+Las tres primeras no bloquearon las fases 1 y 2. La cuarta sí bloquea la 3.
 
 ## Entrega para el siguiente chat
 
-- Última acción terminada: **Fase 1 (estructura), el 2026-09-08.** Existen la
-  tabla `observador_anotaciones` y su índice en los dos tenants operativos, la
-  migración, la entrada en `apply_tenant_indexes.py`, el archivo base
-  regenerado y `tests/test_migracion_observador_anotaciones.py` (9 pruebas,
-  verificadas con mutaciones). **No hay repositorio, ni endpoint, ni pantalla:
-  nada lee ni escribe esa tabla todavía.**
+- Última acción terminada: **Fase 2 (lectura), el 2026-09-08.** Existen la tabla
+  con su índice y su columna `materia`, el repositorio, `GET /observador/{estudiante_id}`
+  y 27 pruebas entre las dos fases, todas verificadas con mutaciones. **No hay
+  escritura ni pantalla**: la bitácora se lee, pero está vacía y nadie puede
+  anotar todavía.
+- **Pendiente operativo:** la migración de `materia` está escrita y probada pero
+  puede no estar aplicada. Comprobar antes de seguir:
+  `SELECT 1 FROM information_schema.columns WHERE table_name='observador_anotaciones' AND column_name='materia'`.
+  Sin ella, el `GET` responde 500. La compuerta lo delata: `test_esquema_base`
+  falla mientras el archivo base no incorpore la migración.
 - Daño colateral atendido: `test_ddl_fija_unicidad_estado_y_tres_referencias_externas`
   (en `tests/test_profesores_caracterizacion.py`) contaba las referencias a
   `profesor(id)` en el archivo base y exigía 3. La tabla nueva añade dos —el
@@ -371,9 +445,12 @@ Ninguna bloquea las fases 1 a 3.
   `71e1b44`, publicados en `main` el 2026-09-04 —o sea, **ya desplegados en
   producción**—. Baja la lectura un 10% y **no** arregla el fallo del usuario,
   que sigue vivo. Ver `docs/CAMBIOS_BACKEND.md`.
-- Siguiente acción exacta: que el usuario **autorice la Fase 2 (lectura)**:
-  repositorio y `GET /observador/{estudiante_id}` con `require_estudiante_access`.
-  Una instrucción genérica como «continúa» no basta.
+- Pendiente pequeño y ya decidido, **no empezado**: devolver `nivel` en la
+  lectura, para que la pantalla decida si muestra la materia. Ver arriba.
+- Siguiente acción exacta: que el usuario **autorice la Fase 3 (escritura)**:
+  `POST /observador` y `PUT /observador/{anotacion_id}`. Antes de empezarla hay
+  que resolver la pregunta abierta 4 —de dónde sale la materia al guardar— y la
+  3. Una instrucción genérica como «continúa» no basta.
 - Aviso operativo descubierto al aplicar: `apply_migration.py` **se niega** sobre
   el endpoint agrupado de Neon (`-pooler`), que es el que trae `.env`. Hay que
   apuntar `DATABASE_URL` al endpoint directo solo para ese comando. Está en

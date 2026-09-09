@@ -12,13 +12,21 @@ from scripts import apply_tenant_indexes
 
 RAIZ = Path(__file__).resolve().parents[1]
 MIGRACION = RAIZ / "migrations" / "20260908_observador_anotaciones.sql"
+MIGRACION_MATERIA = RAIZ / "migrations" / "20260908_observador_anotaciones_materia.sql"
+
+
+def sin_comentarios(texto):
+    return re.sub(r"--.*$", "", texto, flags=re.MULTILINE)
+
+
+def sql_materia():
+    return sin_comentarios(MIGRACION_MATERIA.read_text(encoding="utf-8"))
 
 
 def sql_sin_comentarios():
     """El SQL de verdad. Los comentarios explican decisiones y nombran cosas
     (CASCADE, UNIQUE, asignacion_id) que no deben confundirse con codigo."""
-    texto = MIGRACION.read_text(encoding="utf-8")
-    return "\n".join(re.sub(r"--.*$", "", linea) for linea in texto.splitlines())
+    return sin_comentarios(MIGRACION.read_text(encoding="utf-8"))
 
 
 def test_la_migracion_crea_la_tabla_de_la_bitacora():
@@ -85,3 +93,34 @@ def test_el_indice_de_la_bitacora_esta_en_el_script_de_indices():
         "idx_observador_anotaciones_estudiante",
         ("estudiante_id", "creada_en"),
     ) in indices
+
+
+def test_la_anotacion_guarda_de_que_materia_era():
+    """La pantalla muestra «Prof. Ana - Matematicas - 20/mar»: sin esto, la
+    columna del medio no se puede escribir."""
+    sql = sql_materia()
+    assert "ALTER TABLE observador_anotaciones" in sql
+    assert "ADD COLUMN IF NOT EXISTS materia character varying(100)" in sql
+
+
+def test_la_materia_es_una_etiqueta_copiada_y_no_un_vinculo():
+    """Una clave foranea a materias(id) reintroduciria el defecto que esta tabla
+    vino a corregir: borrar la materia del horario se llevaria por delante el
+    dato, o la fila entera."""
+    sql = sql_materia().upper()
+    assert "REFERENCES" not in sql
+    assert "CASCADE" not in sql
+
+
+def test_la_materia_no_deja_filas_a_medias():
+    """NOT NULL con DEFAULT '': las anotaciones que ya existieran quedan con la
+    materia vacia, no con un nulo que luego haya que comprobar en cada lectura."""
+    sql = sql_materia()
+    assert "NOT NULL DEFAULT ''" in sql
+
+
+def test_la_segunda_migracion_no_reescribe_la_primera():
+    """La primera ya esta aplicada en produccion. El runner bloquea un archivo
+    cuyo checksum cambie, asi que un cambio posterior va SIEMPRE en un archivo
+    nuevo."""
+    assert "materia" not in sql_sin_comentarios()

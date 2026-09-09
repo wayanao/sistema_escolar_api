@@ -309,6 +309,9 @@ def test_consumidores_sql_directos_de_profesor_quedan_enumerados():
         "app/repositories/boletin_repository.py",
         "app/repositories/estudiantes_repository.py",
         "app/repositories/notas_repository.py",
+        # Une con profesor solo para el nombre que muestra la bitacora, en la
+        # misma consulta de lectura. Ver observador_repository.
+        "app/repositories/observador_repository.py",
         "app/repositories/plan_de_clases_repository.py",
         "app/repositories/profesores_repository.py",
         "app/repositories/reportes_repository.py",

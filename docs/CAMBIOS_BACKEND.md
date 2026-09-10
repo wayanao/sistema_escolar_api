@@ -1,10 +1,103 @@
 # Cambios Backend
 
-Ultima revision documental: 2026-09-08.
+Ultima revision documental: 2026-09-09.
 
 ## Proposito
 
 Bitacora de cambios documentales y tecnicos observables del backend.
+
+## 2026-09-09 - Observador: la lista de alumnos de un profesor
+
+`GET /observador/mis-estudiantes`. **Solo lectura, sin migracion y sin tocar la
+base de datos.** Autorizado por el usuario.
+
+### Por que existe
+
+La pantalla del observador exigia tener una asignacion elegida. El usuario
+pregunto por que, si el observador no depende de la materia, y tenia razon en la
+premisa: la anotacion no guarda nada de la materia. La asignacion solo servia
+para **saber a que alumnos listar**, porque el unico endpoint que lo hacia era
+`GET /planilla/{asignacion_id}`, que pide una clase.
+
+Las dos salidas sin backend estaban descartadas:
+
+* **Pedir las clases y luego los alumnos de cada una.** Con 6 cursos son 7 idas
+  y vueltas, a ~180 ms cada una: reconstruir el N+1 justo en la pantalla que
+  existe para matarlo.
+* **`GET /estudiantes`.** Devuelve todos los ninos del colegio, sin filtrar por
+  profesor.
+
+### La misma regla que el guard, y no por casualidad
+
+La consulta es el mismo `JOIN` que `_SQL_PROFESOR_COMPARTE_CURSO` de
+`app/core/permissions.py`, el que decide si un profesor puede abrir la bitacora
+de un nino. Si fueran distintas, la lista mentiria: mas ancha listaria alumnos
+que al abrirlos dan 403, mas estrecha esconderia alumnos que si se pueden ver.
+Hay prueba que compara las dos.
+
+Consecuencia coherente: un alumno **sin curso** no aparece, porque el `JOIN` no
+encuentra pareja. Tampoco se podria abrir su bitacora por esta puerta.
+
+### El `DISTINCT` no es cosmetico
+
+Un profesor puede tener varias asignaciones en el mismo curso -medido: el 73% de
+los pares profesor-curso dan mas de una materia, y una profesora da 9 en
+PRIMERO-A-. Sin `DISTINCT`, su curso entero saldria nueve veces.
+
+Verificado contra la base real: EDGAR VILLANUEVA devuelve **81 alumnos y 81 ids
+distintos**.
+
+### El admin no tiene lista, y es deliberado
+
+Su `id` sale de `usuarios`, no de `profesor`. Devolverle una lista no daria
+error: daria los alumnos del profesor que por casualidad tenga ese mismo numero.
+Es la misma trampa que ya documentaba `_profesor_que_escribe`, y en
+`tenant_colegio_1` es real.
+
+**No se le quita nada**: el admin sigue leyendo cualquier bitacora. Comprobado
+contra el servidor real: `403` en la lista, `200` en `GET /observador/531`.
+
+### La trampa del orden de las rutas
+
+`/observador/mis-estudiantes` encaja tambien en el patron
+`/observador/{estudiante_id}`, y Starlette prueba las rutas en el orden en que
+se declaran. Declarada despues, FastAPI intenta convertir `"mis-estudiantes"` en
+`int` y responde un **422** incomprensible.
+
+No es teorico: se movio la ruta a proposito para comprobarlo y el 422 salio. Lo
+fijan dos pruebas, una estructural y otra que pide la URL real por HTTP.
+
+### Medido contra la base real, no estimado
+
+Servidor local contra Neon (`us-east-1`), token acunado para EDGAR VILLANUEVA
+-6 cursos, el peor caso de `tenant_2005`-:
+
+| Peticion | Que devuelve | Tiempo |
+|---|---|---|
+| `GET /observador/mis-estudiantes` | **81 alumnos, 6 cursos** | **1,35 s** |
+| `GET /planilla/212` (lo de hoy) | los de **una** clase | 2,0 - 3,3 s |
+
+La lista nueva es **mas rapida que la que reemplaza y trae seis veces mas**. El
+motivo es el numero de idas y vueltas: `/planilla` resuelve la asignacion
+academica, corre su guard y calcula promedios; esta hace **una consulta y abre
+una conexion**, porque el profesor sale del token y no hay nada que validar
+contra la URL.
+
+La consulta en si tarda 69 ms sobre 81 filas. Lo que se paga es el viaje, no la
+consulta.
+
+### Lo que sigue costando lo mismo
+
+El sobrecoste de autenticacion -6 idas y vueltas por peticion- sigue ahi y sigue
+fuera de alcance. Es lo que explica que 69 ms de consulta se conviertan en 1,35 s
+de respuesta.
+
+### Pruebas
+
+`1275 pasan`. Doce nuevas en `tests/test_observador_mis_estudiantes.py`,
+verificadas con mutaciones: quitar el `DISTINCT`, dar al admin el atajo de
+siempre, y declarar la ruta estatica despues de la parametrizada. Las tres
+rompen pruebas. `ruff` y `pip check`, en verde.
 
 ## 2026-09-08 - Observador unificado, fase 4: copiar lo viejo
 

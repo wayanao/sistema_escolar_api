@@ -2,11 +2,12 @@
 
 ## Control
 
-- Estado: **Fases 1, 2 y 3 terminadas el 2026-09-08.** El backend está
-  completo: tabla, índice, leer, crear y editar. **No hay pantalla**, así que la
-  bitácora sigue vacía y la pantalla vieja sigue siendo la única que los
-  profesores usan. La fase 4 (copiar lo viejo) no ha empezado y sigue sin
-  autorizarse.
+- Estado: **Backend completo.** Fases 1, 2 y 3 el 2026-09-08 -tabla, índice,
+  leer, crear y editar-; la fase 4 -copiar lo viejo- escrita y ensayada, y
+  **pendiente de ejecutar**. El 2026-09-09 se añadió
+  `GET /observador/mis-estudiantes`, para que la pantalla no dependa de una
+  asignación elegida. **La pantalla del frontend ya existe y usa todo esto**,
+  pero nada de los dos repos está publicado todavía.
 - Tipo: Función nueva de producto. **No** es una capa del programa de
   modularización de `docs/modularizacion/` y no debe confundirse con una. La
   capa 7 de `observaciones` está cerrada desde el 2026-08-21 y esto no la
@@ -17,7 +18,7 @@
 - Riesgo inicial: Medio. Tabla nueva en todos los tenants, modelo de permisos
   con una excepción deliberada a la norma del proyecto, y sustituye una
   pantalla que hoy usan los profesores.
-- Última actualización: 2026-09-08.
+- Última actualización: 2026-09-09.
 
 ## Objetivo
 
@@ -351,6 +352,7 @@ repetirlo en cada uno. El que se salte uno queda distinto para siempre.
 | Leer la bitácora | Profesor que comparta curso con el alumno; admin siempre | `require_estudiante_access` (**ya existe**) |
 | Crear anotación | Profesor del alumno. **Admin no** | `_profesor_que_escribe` + `require_estudiante_access` |
 | Editar anotación | **Solo el autor.** Admin **no** | `profesor_id` en el `WHERE` del `UPDATE`, en la misma sentencia que escribe |
+| Listar mis alumnos | Profesor. **Admin no** | `_profesor_de_la_sesion` + el mismo `JOIN` del guard de lectura |
 | Borrar | Nadie | No existe el endpoint |
 
 `require_estudiante_access` ya está en `app/core/permissions.py` y hace
@@ -365,6 +367,7 @@ que inventar un permiso nuevo para leer.**
 | `GET` | `/observador/{estudiante_id}` | Profesor del alumno o admin | **Implementado (fase 2).** `{"nivel": ..., "anotaciones": [...]}`. `?periodo=N` opcional, validado entre 1 y 4; **sin él devuelve todas**, que es el caso por defecto. `404` solo si el estudiante no existe |
 | `POST` | `/observador` | Profesor del alumno. **Admin no** | **Implementado (fase 3).** Crea una anotación y devuelve `{"id": N}` con `201`. `profesor_id` sale del token, **nunca del cuerpo** |
 | `PUT` | `/observador/{anotacion_id}` | Solo el autor | **Implementado (fase 3).** Actualiza texto y `positiva`; fija `editada_en` y `editada_por`. `403` si no es tuya, `404` si no existe. No cambia estudiante ni periodo |
+| `GET` | `/observador/mis-estudiantes` | Profesor. **Admin no** | **Implementado el 2026-09-09.** Los alumnos de todos sus cursos, con el curso de cada uno. Existe para que la pantalla no dependa de una asignación elegida. **Va declarada antes que `/observador/{estudiante_id}`**, ver abajo |
 
 No hay `DELETE`, y es a propósito.
 
@@ -387,6 +390,65 @@ Ver el documento de frontend para la parte visible.
 
 Se mantiene la validación actual de `observaciones`: **al menos uno** de los
 tres campos debe traer contenido, si no es un `422`.
+
+## La lista de alumnos de un profesor
+
+Añadido el 2026-09-09, porque el usuario pidió que la pantalla **no dependa de
+una asignación elegida**. Tenía razón en la premisa: la anotación no guarda nada
+de la materia. La asignación solo servía para saber a quién listar.
+
+**Es el mismo `JOIN` que `require_estudiante_access`**, y eso es lo único que
+hay que entender de este endpoint:
+
+```sql
+FROM estudiantes e
+JOIN asignaciones a ON a.curso_id = e.curso_id
+LEFT JOIN cursos c ON c.id = e.curso_id
+WHERE a.profesor_id = %s
+  AND COALESCE(LOWER(e.estado), 'activo') = 'activo'
+```
+
+Si esta consulta y el guard se separan, la lista miente: más ancha listaría
+alumnos que al abrirlos dan `403`, más estrecha escondería alumnos que sí se
+pueden ver. Hay prueba que compara las dos.
+
+Tres decisiones con su motivo:
+
+- **`SELECT DISTINCT`.** Un profesor puede tener varias asignaciones en el mismo
+  curso —el 73% de los pares profesor-curso, medido—, así que sin él cada alumno
+  saldría una vez por materia.
+- **Solo alumnos activos**, igual que `GET /planilla/{asignacion_id}`, la lista
+  que reemplaza. Filtra la lista, no el permiso: la bitácora de un retirado se
+  sigue leyendo si se llega por su `id`.
+- **El admin no tiene lista**, y no es un descuido: su `id` sale de `usuarios` y
+  devolvería los alumnos del profesor con ese mismo número. Sigue leyendo
+  cualquier bitácora; comprobado contra el servidor real, `403` en la lista y
+  `200` en la lectura.
+
+### El orden de las rutas es obligatorio
+
+`/observador/mis-estudiantes` encaja también en el patrón
+`/observador/{estudiante_id}`, y Starlette prueba las rutas **en el orden en que
+se declaran**. Si la parametrizada fuera primero, FastAPI intentaría convertir
+`"mis-estudiantes"` en `int` y respondería un `422` que nadie entendería.
+
+Se comprobó moviéndola a propósito: el `422` sale. Lo fijan dos pruebas, una
+estructural y otra que pide la URL real por HTTP.
+
+### Medido, no estimado
+
+Servidor local contra Neon, token acuñado para EDGAR VILLANUEVA —6 cursos, el
+peor caso de `tenant_2005`—:
+
+| Petición | Qué devuelve | Tiempo |
+|---|---|---|
+| `GET /observador/mis-estudiantes` | **81 alumnos, 6 cursos** | **1,35 s** |
+| `GET /planilla/212`, lo de hoy | los de **una** clase | 2,0 – 3,3 s |
+
+Es **más rápida que la que reemplaza y trae seis veces más**, porque hace una
+consulta y abre una conexión: el profesor sale del token y no hay nada que
+validar contra la URL. La consulta en sí tarda 69 ms; el resto es el
+sobrecoste de autenticación, que sigue fuera de alcance.
 
 ## Qué pasa con lo que ya existe
 
@@ -521,41 +583,35 @@ documento.
 
 ## Entrega para el siguiente chat
 
-- Última acción terminada: **Fase 4 escrita y ensayada, el 2026-09-08.** El
-  backend está completo: tabla, índice, `GET`, `POST`, `PUT` y el script de
-  copia. 73 pruebas propias, verificadas con mutaciones, más dos pruebas de
-  extremo a extremo contra la base real deshechas con rollback.
+- Última acción terminada: **`GET /observador/mis-estudiantes`, el 2026-09-09.**
+  Solo lectura, sin migración y sin tocar la base de datos. Existe para que la
+  pantalla del observador no dependa de una asignación elegida. Verificado de
+  extremo a extremo contra la base real: 81 alumnos y 81 ids distintos para el
+  peor caso, `403` para el admin y `200` para ese mismo admin leyendo una
+  bitácora.
+- Compuerta en verde: **1275 pruebas**, `ruff` y `pip check`. Doce nuevas en
+  `tests/test_observador_mis_estudiantes.py`, verificadas con mutaciones.
+- **Nada de este repo está publicado.** Siete commits locales sin subir. La base
+  de datos de producción **sí** tiene la tabla y sus índices desde el
+  2026-09-08. Recordatorio: `git push origin main` **despliega producción**.
 - **Pendiente de ejecutar por el usuario:** la migración
   `20260908_observador_anotaciones_historicas.sql` y después
-  `scripts/copiar_observaciones_al_observador.py`. Hasta entonces la bitácora
-  está vacía. Comprobar con
+  `scripts/copiar_observaciones_al_observador.py`, que trae las 68 anotaciones
+  viejas. Hasta entonces la bitácora solo tiene lo que se escriba con la
+  pantalla nueva. Comprobar con
   `SELECT count(*) FROM <tenant>.observador_anotaciones`.
-- **No hay pantalla**, así que los profesores siguen usando la vieja.
-- **El fallo original sigue vivo**, y seguirá hasta que exista la pantalla
-  nueva: es ella la que convierte doce peticiones en una.
-- Daño colateral atendido: `test_ddl_fija_unicidad_estado_y_tres_referencias_externas`
-  (en `tests/test_profesores_caracterizacion.py`) contaba las referencias a
-  `profesor(id)` en el archivo base y exigía 3. La tabla nueva añade dos —el
-  autor y quien editó—, así que ahora son 5. Se actualizó declarando las dos
-  nuevas explícitamente, no solo subiendo el número, y se renombró a
-  `test_ddl_fija_unicidad_estado_y_las_referencias_externas`. Su valor está en
-  obligar a mirar cada referencia nueva y decidir a propósito si arrastra
-  borrados; las dos nuevas **no** llevan `ON DELETE CASCADE`.
-- Trabajo previo relacionado, **ya commiteado y publicado**, que no forma parte
-  de esta funcionalidad: la optimización de la lectura actual de observaciones
-  del 2026-09-03 (`app/dependencies.py`, `app/core/permissions.py`,
-  `app/routes/observaciones.py` y tres archivos de prueba). Commits `efb7f91` y
-  `71e1b44`, publicados en `main` el 2026-09-04 —o sea, **ya desplegados en
-  producción**—. Baja la lectura un 10% y **no** arregla el fallo del usuario,
-  que sigue vivo. Ver `docs/CAMBIOS_BACKEND.md`.
-- Siguiente acción exacta: que el usuario **autorice la Fase 1 del frontend**
-  (la pantalla). El backend ya no bloquea nada. La fase 4 de este repo —copiar
-  las anotaciones viejas— sigue **sin autorizar** y depende de las preguntas
-  abiertas 1 y 2. Una instrucción genérica como «continúa» no basta.
-- Aviso operativo descubierto al aplicar: `apply_migration.py` **se niega** sobre
-  el endpoint agrupado de Neon (`-pooler`), que es el que trae `.env`. Hay que
-  apuntar `DATABASE_URL` al endpoint directo solo para ese comando. Está en
-  `docs/MIGRACIONES.md`, pero se olvida.
-- Recordatorio operativo: en este repositorio, `git push origin main`
-  **despliega producción automáticamente**. La migración debe aplicarse antes
-  de publicar código que dependa de ella.
+- **El frontend ya consume todo esto.** Su pantalla lee, escribe y corrige, y
+  desde el 2026-09-09 entra sin elegir clase. Ver
+  `frontend-react/docs/funcionalidades/OBSERVADOR_ESTUDIANTE.md`. **El backend
+  debe publicarse primero**: al revés, la pantalla pediría endpoints que en
+  producción no existen.
+- Trampa que costará un rato a quien la repita: `/observador/mis-estudiantes`
+  **debe declararse antes** que `/observador/{estudiante_id}`, o FastAPI
+  responde un `422` incomprensible. Hay dos pruebas que lo fijan.
+- El sobrecoste de autenticación —6 idas y vueltas por petición, ~1,2 s— sigue
+  ahí y **sigue fuera de alcance**. Es lo que convierte 69 ms de consulta en
+  1,35 s de respuesta. Exige su propio alcance y su propia orden.
+- Siguiente acción exacta: no hay nada pendiente de este repo para el
+  observador. Lo que queda es del frontend (vista por fecha e impresión) y
+  ejecutar la copia de lo viejo. Una instrucción genérica como «continúa» no
+  basta.

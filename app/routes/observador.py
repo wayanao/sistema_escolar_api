@@ -28,6 +28,8 @@ _ERROR_GUARDAR = "No se pudo guardar la anotacion. Intenta de nuevo."
 _ERROR_ANOTACION_NO_EXISTE = "Esa anotacion ya no existe."
 _ERROR_SOLO_EL_AUTOR = "Solo quien escribio una anotacion puede editarla."
 _ERROR_SOLO_PROFESORES = "Solo un profesor del estudiante puede escribir en el observador."
+_ERROR_CONSULTAR_LISTA = "No se pudo consultar tu lista de estudiantes. Intenta de nuevo."
+_ERROR_SOLO_PROFESORES_LISTA = "Solo un profesor tiene lista de estudiantes."
 
 router = APIRouter(tags=["Observador"], dependencies=[Depends(get_current_user)])
 
@@ -72,6 +74,75 @@ def _anotacion(fila):
         "editada_en": editada_en,
         "editada_por": editada_por,
     }
+
+
+def _profesor_de_la_sesion(current_user):
+    """El `profesor_id` de quien pide, o un 403 si no es profesor.
+
+    **El admin tampoco tiene lista, y no es un descuido.** Su `id` sale de la
+    tabla `usuarios`, no de `profesor`: usarlo aqui devolveria los alumnos del
+    profesor que por casualidad tenga ese mismo numero. Es la misma trampa que
+    documenta `_profesor_que_escribe`, y en `tenant_colegio_1` es real -la
+    administradora tiene `usuarios.id = 1` y el profesor 1 es otra persona-.
+    Ahi no saldria un error: saldria una lista de ninos ajenos con toda
+    naturalidad.
+
+    El admin entra al observador por la ficha del alumno, no por esta lista.
+    """
+    if current_user.get("rol") != "profesor":
+        raise HTTPException(status_code=403, detail=_ERROR_SOLO_PROFESORES_LISTA)
+    return current_user["id"]
+
+
+# ATENCION: esta ruta va ANTES de `/observador/{estudiante_id}`, y el orden es
+# obligatorio. Starlette prueba las rutas en el orden en que se declaran: si la
+# parametrizada fuera primero, `/observador/mis-estudiantes` encajaria en ella,
+# FastAPI intentaria convertir "mis-estudiantes" en `int` y devolveria un 422
+# que no habria forma de entender. Hay prueba que fija el orden y otra que pide
+# la ruta de verdad por HTTP.
+@router.get("/observador/mis-estudiantes")
+def listar_mis_estudiantes(current_user: dict = Depends(get_current_user)):
+    """Los alumnos del profesor, de todos los cursos donde tiene clase.
+
+    Existe para que la pantalla del observador **no dependa de una asignacion
+    elegida**. El observador es del nino y no de la materia; la clase solo
+    servia para saber a quien listar, y eso ataba la pantalla a una unica
+    puerta de entrada.
+
+    Devuelve el curso de cada alumno para poder agruparlos: un profesor puede
+    tener 81 -medido-, y una lista plana de 81 nombres no se lee.
+
+    **Una sola consulta**, con la misma regla que decide quien puede abrir cada
+    bitacora. Ver `observador_repository.leer_estudiantes_del_profesor`.
+    """
+    profesor_id = _profesor_de_la_sesion(current_user)
+
+    try:
+        with get_cursor() as cursor:
+            filas = observador_repository.leer_estudiantes_del_profesor(
+                cursor, profesor_id
+            )
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception(
+            "Fallo al listar los estudiantes del profesor %s", profesor_id
+        )
+        raise HTTPException(status_code=500, detail=_ERROR_CONSULTAR_LISTA)
+
+    # `estudiante_id` y no `id`: es el nombre que ya usa
+    # `GET /planilla/{asignacion_id}`, la lista que esta reemplazando, asi que
+    # la pantalla no tiene que traducir nada.
+    return [
+        {
+            "estudiante_id": fila[0],
+            "nombre": fila[1],
+            "apellido": fila[2],
+            "curso_id": fila[3],
+            "curso": fila[4],
+        }
+        for fila in filas
+    ]
 
 
 @router.get("/observador/{estudiante_id}")

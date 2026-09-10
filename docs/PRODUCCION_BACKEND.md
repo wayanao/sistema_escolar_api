@@ -455,6 +455,10 @@ Migraciones antes de deploy:
   - `migrations/20260604_materias_estado.sql`
   - `migrations/20260604_inventario_estado.sql`
   - `migrations/20260604_egresos_origen.sql`
+- Para habilitar el fin configurable de mensualidades en tenants operativos,
+  aplicar `migrations/20260910_tipos_pagos_mes_final.sql` con el runner oficial:
+  primero `--dry-run`, luego aplicación y una segunda simulación. Debe preceder
+  al frontend que envía `mes_final`; el esquema base ya cubre altas nuevas.
 - Las consultas normales ya no crean `public.tenant_suscripciones`; si falta la
   migracion, el deploy debe corregirse antes de usar el sistema.
 

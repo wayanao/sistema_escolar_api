@@ -5,7 +5,7 @@ consistente entre el resumen del estudiante, el reporte por curso y
 cualquier otro punto del sistema que necesite saber cuánto debe alguien.
 
 Reglas implementadas:
-- Cuotas vencidas se calculan respetando mes_inicial, frecuencia_meses,
+- Cuotas vencidas se calculan respetando mes_inicial, mes_final, frecuencia_meses,
   dia_limite_mes y dias_gracia.
 - La mora se aplica POR CADA cuota vencida no pagada.
 - El día de vencimiento se ajusta automáticamente si el mes tiene menos días
@@ -43,6 +43,7 @@ def listar_cuotas_vencidas(
     hoy: Optional[date] = None,
     *,
     mes_inicial: Optional[int] = None,
+    mes_final: int = 12,
     frecuencia_meses: int = 1,
     dia_limite_mes: Optional[int] = None,
     dias_gracia: int = 0,
@@ -57,11 +58,14 @@ def listar_cuotas_vencidas(
     mes_inicio = int(mes_inicial) if mes_inicial else hoy.month
     if not (1 <= mes_inicio <= 12):
         mes_inicio = hoy.month
+    mes_fin = int(mes_final) if mes_final is not None else 12
+    if not (1 <= mes_fin <= 12):
+        mes_fin = 12
 
     cuotas = []
     for i in range(max(1, int(max_cuotas or 1))):
         mes_cuota = mes_inicio + i * frecuencia
-        if mes_cuota < 1 or mes_cuota > 12:
+        if mes_cuota < 1 or mes_cuota > mes_fin:
             break
 
         ultimo_dia = _ultimo_dia_del_mes(hoy.year, mes_cuota)
@@ -85,6 +89,7 @@ def calcular_cuotas_vencidas(
     hoy: Optional[date] = None,
     *,
     mes_inicial: Optional[int] = None,
+    mes_final: int = 12,
     frecuencia_meses: int = 1,
     dia_limite_mes: Optional[int] = None,
     dias_gracia: int = 0,
@@ -100,6 +105,7 @@ def calcular_cuotas_vencidas(
     cuotas_vencidas = listar_cuotas_vencidas(
         hoy=hoy,
         mes_inicial=mes_inicial,
+        mes_final=mes_final,
         frecuencia_meses=frecuencia_meses,
         dia_limite_mes=dia_limite_mes,
         dias_gracia=dias_gracia,
@@ -110,9 +116,12 @@ def calcular_cuotas_vencidas(
     mes_inicio = int(mes_inicial) if mes_inicial else hoy.month
     if not (1 <= mes_inicio <= 12):
         mes_inicio = hoy.month
+    mes_fin = int(mes_final) if mes_final is not None else 12
+    if not (1 <= mes_fin <= 12):
+        mes_fin = 12
     siguiente_mes = mes_inicio + len(cuotas_vencidas) * frecuencia
     proxima_fecha: Optional[date] = None
-    if 1 <= siguiente_mes <= 12:
+    if 1 <= siguiente_mes <= mes_fin:
         ultimo_dia = _ultimo_dia_del_mes(hoy.year, siguiente_mes)
         dia = int(dia_limite_mes) if dia_limite_mes else ultimo_dia
         proxima_fecha = date(hoy.year, siguiente_mes, min(dia, ultimo_dia))
@@ -158,6 +167,7 @@ def calcular_deuda_concepto(
     pagado: float,
     hoy: Optional[date] = None,
     mes_inicial: Optional[int] = None,
+    mes_final: int = 12,
     frecuencia_meses: int = 1,
     dia_limite_mes: Optional[int] = None,
     dias_gracia: int = 0,
@@ -182,6 +192,7 @@ def calcular_deuda_concepto(
         res = calcular_cuotas_vencidas(
             hoy=hoy,
             mes_inicial=mes_inicial,
+            mes_final=mes_final,
             frecuencia_meses=frecuencia_meses,
             dia_limite_mes=dia_limite_mes,
             dias_gracia=dias_gracia,

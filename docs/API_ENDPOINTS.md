@@ -129,7 +129,8 @@ Notas:
 - Los pagos antiguos sin periodo se distribuyen solo para visualizacion por
   FIFO, desde el mes vencido mas antiguo.
 - Las opciones de adelanto incluyen solamente conceptos `mensual` asignados al
-  estudiante y meses posteriores al actual dentro del mismo año.
+  estudiante y meses posteriores al actual, sin superar el `mes_final` del
+  concepto dentro del mismo año.
 - `POST /pagos/adelanto` recibe `estudiante_id`, `tipo_pago_id`,
   `fecha` opcional, una lista no vacia de `metodos` y exactamente una modalidad:
   `cantidad_meses` o `monto_distribuir`.
@@ -137,6 +138,10 @@ Notas:
   cada saldo y aplica el remanente como abono parcial al siguiente periodo.
 - Las opciones futuras incluyen `saldo` por mes y `total_disponible`; un mes
   parcialmente abonado continua disponible por el valor restante.
+- Cada elemento de `GET /pagos/adelanto/opciones/{estudiante_id}` incluye
+  `mes_final`. El servidor vuelve a calcular ese límite al registrar el pago,
+  por lo que un cliente no puede adelantar un periodo posterior enviándolo por
+  su cuenta.
 - El cliente no define el valor de las cuotas: el backend usa la prioridad
   valor del estudiante > valor del curso > valor base y valida la suma de los
   metodos.
@@ -434,6 +439,42 @@ Notas:
 - `GET /estudiantes/{estudiante_id}/valores-pago-personalizados`
 - `PUT /estudiantes/{estudiante_id}/valores-pago-personalizados/{tipo_pago_id}`
 - `DELETE /estudiantes/{estudiante_id}/valores-pago-personalizados/{tipo_pago_id}`
+
+Configuracion avanzada completa de ejemplo (todos los campos son opcionales en
+una actualizacion parcial):
+
+```json
+{
+  "descripcion": "Pensión ordinaria",
+  "tipo_cobro": "mensual",
+  "fecha_limite": null,
+  "dia_limite_mes": 5,
+  "dias_gracia": 0,
+  "mora_tipo": "porcentaje",
+  "mora_valor": 0,
+  "mes_inicial": 2,
+  "mes_final": 11,
+  "frecuencia_meses": 1,
+  "generacion_automatica": false,
+  "activo": true
+}
+```
+
+`mes_final` forma parte de las respuestas detalladas y del cuerpo opcional de
+`PUT /tipos-pagos/{id}/configuracion`. Acepta enteros entre `1` y `12`, usa
+diciembre (`12`) por defecto y, para una configuracion efectiva de tipo
+`mensual`, debe ser mayor o igual que `mes_inicial` cuando este exista. La regla
+no se aplica a conceptos `unico`, `anual` u `opcional`; en los mensuales limita
+cartera, cuotas vencidas y adelantos, sin cambiar ni eliminar pagos historicos.
+
+Una pareja mensual invalida enviada junto con `tipo_cobro: "mensual"` falla en
+validacion HTTP. El controlador bloquea la fila y combina los campos enviados
+con los ya guardados; si esa configuracion efectiva queda invertida, el endpoint
+responde `400` con
+`El mes final no puede ser anterior al mes inicial.`. Si se intenta guardar
+`mes_final` antes de aplicar `20260910_tipos_pagos_mes_final.sql`, responde
+`409` e indica el comando de migracion. Las lecturas conservan `12` como
+fallback mientras la columna no exista.
 
 Valores personalizados por estudiante:
 

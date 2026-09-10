@@ -4,7 +4,11 @@ from types import SimpleNamespace
 from app.controllers import pagos_controller
 from app.schemas.pago import PagoCreate
 from app.services import cobros
-from app.services.cartera import listar_cuotas_vencidas
+from app.services.cartera import (
+    calcular_cuotas_vencidas,
+    calcular_deuda_concepto,
+    listar_cuotas_vencidas,
+)
 
 
 class FakeCursor:
@@ -74,6 +78,48 @@ def test_listar_cuotas_vencidas_devuelve_periodos_y_fechas_limite():
         datetime.date(2026, 3, 1),
     ]
     assert cuotas[0].fecha_vencimiento == datetime.date(2026, 2, 5)
+
+
+def test_mensualidad_febrero_noviembre_no_genera_cuota_de_diciembre():
+    cuotas = listar_cuotas_vencidas(
+        hoy=datetime.date(2026, 12, 31),
+        mes_inicial=2,
+        mes_final=11,
+        frecuencia_meses=1,
+        dia_limite_mes=1,
+        max_cuotas=12,
+    )
+
+    assert [cuota.periodo.month for cuota in cuotas] == list(range(2, 12))
+
+    deuda = calcular_deuda_concepto(
+        valor_unitario=100,
+        tipo_cobro="mensual",
+        pagado=0,
+        hoy=datetime.date(2026, 12, 31),
+        mes_inicial=2,
+        mes_final=11,
+        frecuencia_meses=1,
+        dia_limite_mes=1,
+        max_cuotas=12,
+    )
+    assert deuda["cuotas_vencidas"] == 10
+    assert deuda["valor_total"] == 1000
+
+
+def test_proxima_fecha_no_anuncia_diciembre_despues_del_ultimo_mes():
+    resultado = calcular_cuotas_vencidas(
+        hoy=datetime.date(2026, 11, 30),
+        mes_inicial=2,
+        mes_final=11,
+        frecuencia_meses=1,
+        dia_limite_mes=1,
+        max_cuotas=12,
+    )
+
+    assert resultado.cuotas_vencidas == 10
+    assert resultado.proxima_fecha is None
+    assert resultado.proxima_cuota_pendiente is False
 
 
 def test_opciones_vencidas_aplican_legacy_fifo_y_respetan_abono_explicito(monkeypatch):

@@ -157,11 +157,18 @@ Flujo backend:
 - valida codigo con `^[a-z0-9_]{3,50}$`;
 - crea schema `tenant_<codigo>`;
 - registra colegio en `public.colegios`;
-- copia tablas desde `DEFAULT_TENANT_SCHEMA`;
+- construye sus tablas desde
+  `migrations/base/20260813_esquema_base_tenant.sql`;
 - inserta branding inicial vacio;
 - copia plantillas predefinidas;
 - crea usuario admin con password hasheada y cambio obligatorio;
 - registra suscripcion y auditoria de creacion.
+
+El archivo base incorpora las migraciones tenant vigentes. Desde
+`20260910_tipos_pagos_mes_final.sql`, los colegios nuevos nacen con
+`tipos_de_pagos.mes_final = 12` y las restricciones del rango mensual. Los
+colegios existentes reciben la misma capacidad mediante `apply_migration.py`;
+el alta de un tenant no sustituye ese paso para schemas anteriores.
 
 ## Riesgos pendientes documentados
 

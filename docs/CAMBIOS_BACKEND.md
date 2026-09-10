@@ -1,10 +1,79 @@
 # Cambios Backend
 
-Ultima revision documental: 2026-09-09.
+Ultima revision documental: 2026-09-10.
 
 ## Proposito
 
 Bitacora de cambios documentales y tecnicos observables del backend.
+
+## 2026-09-10 - Mes final configurable para mensualidades
+
+Los conceptos mensuales dejan de tener diciembre codificado como cierre
+obligatorio. `mes_final` fija el ultimo mes que puede generar deuda, aparecer
+como cuota vencida o aceptarse como adelanto dentro del año lectivo.
+
+### Capacidad para todos, calendario intacto por defecto
+
+La migracion tenant `20260910_tipos_pagos_mes_final.sql` agrega
+`mes_final SMALLINT NOT NULL DEFAULT 12` a `tipos_de_pagos`, rellena con `12`
+las filas existentes y crea dos defensas en PostgreSQL: rango `1..12` y
+`mes_final >= mes_inicial` cuando hay inicio y el concepto es `mensual`. Los
+tipos `unico`, `anual` y `opcional` conservan sus reglas anteriores.
+
+Esto **no pone noviembre en todos los colegios**. Los tenants operativos
+recibiran la capacidad conservando diciembre cuando se aplique la migracion, y
+el esquema base queda actualizado para que cualquier tenant nuevo nazca igual.
+El cierre en noviembre de `tenant_2005` es un dato posterior: el administrador
+debe guardar final `11` en su concepto de mensualidad y conservar el inicio y la
+frecuencia institucionales que realmente correspondan.
+
+### Una regla compartida por cartera y pagos
+
+El servicio central de cobros transporta `mes_final` con fallback `12`. El
+cálculo de deuda y cuotas vencidas se detiene al llegar al límite, incluida la
+próxima fecha prevista. Las opciones de adelanto enumeran solo periodos
+posteriores al actual y no mayores que el final; el registro vuelve a calcular
+la misma lista dentro de su transacción, así que no confía en periodos del
+cliente.
+
+Cambiar el límite no elimina pagos ni aplicaciones históricas. Solo cambia qué
+cuotas del calendario se calculan en adelante.
+
+### Contrato y validación
+
+`GET /tipos-pagos/detallado` y `GET /tipos-pagos/{id}/detalle` incluyen el
+campo. `PUT /tipos-pagos/{id}/configuracion` acepta enteros `1..12` y comprueba
+la pareja mensual enviada y la configuración efectiva con los valores ya
+guardados. Para evitar carreras, bloquea la fila mientras combina tipo, inicio
+y final; esto cubre también convertir un concepto existente a `mensual`. Un
+rango incompatible responde `400` con
+`El mes final no puede ser anterior al mes inicial.` cuando llega al dominio;
+los valores fuera de `1..12` siguen la validación `422` de FastAPI.
+
+Si el cliente intenta guardar el campo antes de aplicar la migración, recibe
+`409` con el comando exacto de `apply_migration.py`; no se acepta el guardado en
+silencio. Las lecturas sí usan diciembre como fallback para permitir un
+despliegue gradual.
+
+### Operación pendiente
+
+Orden seguro: probar en una copia, revisar el `--dry-run`, aplicar por el
+endpoint directo, repetir el `--dry-run`, desplegar backend, desplegar frontend
+y solo entonces configurar `tenant_2005`. La guía y los comandos exactos están
+en `docs/MIGRACIONES.md` y `migrations/README.md`.
+
+En este cambio **no se ejecutó la migración**, no se abrió una conexión a Neon
+y no se modificó ningún dato de un tenant. La actualización de `mes_final` a
+noviembre en `tenant_2005` permanece como paso operativo posterior al
+despliegue.
+
+### Pruebas locales
+
+Pasaron 128 pruebas enfocadas del dominio —configuración, cartera, cuotas
+vencidas, adelantos y consumidores de reportes—. La compuerta completa terminó
+con **1293 pruebas aprobadas** y 6 warnings preexistentes. Estas pruebas usan
+dobles o bases locales de test; no constituyen evidencia de que la migración se
+haya ejecutado en Neon o en producción.
 
 ## 2026-09-09 - Observador: la marca de positiva o negativa deja de pedirse
 
@@ -4693,9 +4762,4 @@ Verificacion ejecutada:
 Resultado:
 
 - Sintaxis OK.
-
-
-
-
-
 

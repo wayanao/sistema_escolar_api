@@ -39,6 +39,7 @@ def obtener_tipos_pago(cursor) -> list[dict]:
             {col(columnas, 'tipo_cobro', "'unico'")} AS tipo_cobro,
             {col(columnas, 'activo', 'TRUE')} AS activo,
             {col(columnas, 'mes_inicial', 'NULL')} AS mes_inicial,
+            {col(columnas, 'mes_final', '12')} AS mes_final,
             {col(columnas, 'frecuencia_meses', '1')} AS frecuencia_meses,
             {col(columnas, 'dia_limite_mes', 'NULL')} AS dia_limite_mes,
             {col(columnas, 'dias_gracia', '0')} AS dias_gracia,
@@ -57,11 +58,12 @@ def obtener_tipos_pago(cursor) -> list[dict]:
             "tipo_cobro": row[3] or "unico",
             "activo": bool(row[4]) if row[4] is not None else True,
             "mes_inicial": row[5],
-            "frecuencia_meses": int(row[6]) if row[6] is not None else 1,
-            "dia_limite_mes": row[7],
-            "dias_gracia": int(row[8]) if row[8] is not None else 0,
-            "mora_tipo": row[9],
-            "mora_valor": float(row[10] or 0),
+            "mes_final": int(row[6]) if row[6] is not None else 12,
+            "frecuencia_meses": int(row[7]) if row[7] is not None else 1,
+            "dia_limite_mes": row[8],
+            "dias_gracia": int(row[9]) if row[9] is not None else 0,
+            "mora_tipo": row[10],
+            "mora_valor": float(row[11] or 0),
         }
         for row in cursor.fetchall()
     ]
@@ -351,6 +353,7 @@ def obtener_cuotas_vencidas_estudiante(
         for cuota in listar_cuotas_vencidas(
             hoy=fecha_referencia,
             mes_inicial=concepto.get("mes_inicial"),
+            mes_final=concepto.get("mes_final", 12),
             frecuencia_meses=concepto.get("frecuencia_meses", 1),
             dia_limite_mes=concepto.get("dia_limite_mes"),
             dias_gracia=concepto.get("dias_gracia", 0),
@@ -426,6 +429,7 @@ def _calcular_deudas(
             pagado=pagado,
             hoy=hoy,
             mes_inicial=tipo_pago.get("mes_inicial"),
+            mes_final=tipo_pago.get("mes_final", 12),
             frecuencia_meses=tipo_pago.get("frecuencia_meses", 1),
             dia_limite_mes=tipo_pago.get("dia_limite_mes"),
             dias_gracia=tipo_pago.get("dias_gracia", 0),

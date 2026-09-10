@@ -1,8 +1,9 @@
 -- Esquema base de un tenant. ARCHIVO GENERADO, no editar a mano.
 --
 -- Extraido de tenant_colegio_1 el 2026-09-08 con
--- scripts/generar_esquema_base.py. Para rehacerlo, aplica antes la
--- migracion nueva a ese schema y vuelve a ejecutar el script.
+-- scripts/generar_esquema_base.py y sincronizado el 2026-09-10 con la
+-- migracion de mes final. Para rehacerlo, aplica antes las migraciones nuevas
+-- al schema de referencia y vuelve a ejecutar el script.
 --
 -- Se aplica con el search_path apuntando SOLO al schema destino. Sus
 -- nombres no van cualificados: con otro schema en el camino, las claves
@@ -11,7 +12,7 @@
 -- No usar apply_migration.py con este archivo: es para dar de alta un
 -- tenant nuevo, no para los existentes, que ya tienen estas tablas.
 --
--- MIGRACIONES INCORPORADAS (35):
+-- MIGRACIONES INCORPORADAS (36):
 --   20260429_pagos_tipo_pago_largo.sql
 --   20260429_plan_de_clases_reportes.sql
 --   20260509_branding_plantillas_impresion.sql
@@ -47,6 +48,7 @@
 --   20260908_observador_anotaciones.sql
 --   20260908_observador_anotaciones_historicas.sql
 --   20260908_observador_anotaciones_materia.sql
+--   20260910_tipos_pagos_mes_final.sql
 -- FIN MIGRACIONES INCORPORADAS
 
 CREATE TABLE IF NOT EXISTS asignaciones (
@@ -423,14 +425,17 @@ CREATE TABLE IF NOT EXISTS tipos_de_pagos (
     mora_tipo character varying(20),
     mora_valor numeric(12,2) DEFAULT 0 NOT NULL,
     mes_inicial smallint,
+    mes_final smallint DEFAULT 12 NOT NULL,
     frecuencia_meses smallint DEFAULT 1 NOT NULL,
     generacion_automatica boolean DEFAULT false NOT NULL,
     activo boolean DEFAULT true NOT NULL,
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     CONSTRAINT chk_dia_limite_mes CHECK (((dia_limite_mes IS NULL) OR ((dia_limite_mes >= 1) AND (dia_limite_mes <= 31)))),
+    CONSTRAINT chk_mes_final CHECK (((mes_final >= 1) AND (mes_final <= 12))),
     CONSTRAINT chk_mes_inicial CHECK (((mes_inicial IS NULL) OR ((mes_inicial >= 1) AND (mes_inicial <= 12)))),
     CONSTRAINT chk_mora_tipo CHECK (((mora_tipo IS NULL) OR ((mora_tipo)::text = ANY ((ARRAY['porcentaje'::character varying, 'fijo'::character varying])::text[])))),
+    CONSTRAINT chk_rango_meses_recurrencia CHECK ((((tipo_cobro)::text <> 'mensual'::text) OR (mes_inicial IS NULL) OR (mes_final >= mes_inicial))),
     CONSTRAINT chk_tipo_cobro CHECK (((tipo_cobro)::text = ANY ((ARRAY['unico'::character varying, 'mensual'::character varying, 'anual'::character varying, 'opcional'::character varying])::text[]))),
     CONSTRAINT tipos_de_pagos_pkey PRIMARY KEY (id),
     CONSTRAINT tipos_de_pagos_nombre_key UNIQUE (nombre)

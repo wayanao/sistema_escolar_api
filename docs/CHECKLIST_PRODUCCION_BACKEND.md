@@ -1,6 +1,6 @@
 # Checklist Produccion Backend
 
-Ultima revision documental: 2026-06-13.
+Ultima revision documental: 2026-09-10.
 
 Este checklist documenta puntos pendientes o sensibles observados en el backend actual. No propone cambios de codigo dentro de este archivo; solo deja control para revision antes de produccion.
 
@@ -136,6 +136,20 @@ Como probarlo:
 ```
 
 - Revisar `public.schema_migrations`.
+- Para el límite mensual, ejecutar primero la simulación en el endpoint
+  directo y revisar `activo` y `en_mora` uno por uno:
+
+```powershell
+python apply_migration.py migrations/20260910_tipos_pagos_mes_final.sql --dry-run
+```
+
+- Aplicar el mismo archivo sin `--dry-run` solo después de aprobar la salida;
+  repetir la simulación y exigir que todos aparezcan como ya aplicados.
+- Confirmar en un entorno controlado que diciembre sigue siendo el default,
+  que un final anterior al inicio se rechaza y que cartera, cuotas vencidas y
+  adelantos no pasan de `mes_final`.
+- Tras desplegar ambos repositorios, fijar `mes_final=11` en la mensualidad de
+  `tenant_2005` desde Tipos de Pago, conservando el inicio y frecuencia reales.
 
 ### 1.6 Revisar SECRET_KEY y variables sensibles
 

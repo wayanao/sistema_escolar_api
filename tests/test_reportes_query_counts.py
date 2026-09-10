@@ -20,6 +20,7 @@ TIPOS_PAGO_COLUMNS = [
     "tipo_cobro",
     "activo",
     "mes_inicial",
+    "mes_final",
     "frecuencia_meses",
     "dia_limite_mes",
     "dias_gracia",
@@ -58,7 +59,7 @@ class QueryCountingCursor:
         if "from information_schema.tables" in query:
             return [(1,)]
         if "from tipos_de_pagos" in query and "order by id" in query:
-            return [(4, "Pensión", 100, "unico", True, None, 1, None, 0, None, 0)]
+            return [(4, "Pensión", 100, "unico", True, None, 12, 1, None, 0, None, 0)]
         if "select curso_id, tipo_pago_id, valor" in query:
             return [(3, 4, 100)]
         if "from tipos_pagos_cursos" in query:

@@ -2,7 +2,7 @@ from typing import List, Literal, Optional
 from datetime import date
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, Field, conint, confloat
+from pydantic import BaseModel, Field, conint, confloat, model_validator
 
 from app.dependencies import get_current_active_admin, HTTPException
 from app.controllers.tipos_pagos_controller import (
@@ -20,6 +20,7 @@ from app.controllers.tipos_pagos_controller import (
     upsert_valor_personalizado_estudiante,
     eliminar_valor_personalizado_estudiante,
     MigracionPendienteError,
+    ConfiguracionTipoPagoInvalidaError,
     TipoPagoDuplicadoError,
     TipoPagoInfraestructuraError,
 )
@@ -50,9 +51,20 @@ class ConfiguracionTipoPago(BaseModel):
     mora_tipo: Optional[MoraTipo] = None
     mora_valor: Optional[confloat(ge=0)] = None
     mes_inicial: Optional[conint(ge=1, le=12)] = None
+    mes_final: conint(ge=1, le=12) = 12
     frecuencia_meses: Optional[conint(ge=1, le=12)] = None
     generacion_automatica: Optional[bool] = None
     activo: Optional[bool] = None
+
+    @model_validator(mode="after")
+    def validar_rango_meses(self):
+        if (
+            self.tipo_cobro == "mensual"
+            and self.mes_inicial is not None
+            and self.mes_final < self.mes_inicial
+        ):
+            raise ValueError("El mes final no puede ser anterior al mes inicial.")
+        return self
 
 
 class CursoAsignacionItem(BaseModel):
@@ -141,6 +153,8 @@ def update_configuracion_tipo_pago(id: int, config: ConfiguracionTipoPago):
         res = actualizar_configuracion_tipo_pago(id, payload)
     except MigracionPendienteError as e:
         raise HTTPException(status_code=409, detail=str(e))
+    except ConfiguracionTipoPagoInvalidaError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except TipoPagoInfraestructuraError:
         raise HTTPException(status_code=500, detail=_ERROR_INTERNO_TIPOS_PAGO)
 

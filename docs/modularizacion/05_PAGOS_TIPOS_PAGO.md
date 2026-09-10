@@ -1376,3 +1376,31 @@ escribieron.
 - Siguiente acción exacta: revisión del diff por el usuario y, si lo aprueba,
   su verificación manual en staging y su flujo de commit/push. No hay subcapa
   activa ni se inicia otro hallazgo.
+
+## 2026-09-10 — cambio funcional posterior: mes final de conceptos mensuales
+
+La capa 5 sigue cerrada. Este cambio de producto, autorizado aparte, agrega
+`mes_final` a la configuración avanzada y lo lleva por las fronteras ya
+modularizadas de tipos de pago, cobros, cartera, cuotas vencidas y adelantos.
+
+- Compatibilidad: `12` conserva diciembre para conceptos existentes, schemas
+  sin migrar y tenants nuevos.
+- Integridad: API y PostgreSQL exigen `1..12`; solo una configuración efectiva
+  `mensual` exige que el final no sea anterior al inicio. Una escritura contra
+  un schema sin la columna falla con `409` y el comando de migración, en vez de
+  aparentar éxito.
+- Persistencia: migración incremental
+  `migrations/20260910_tipos_pagos_mes_final.sql` para tenants operativos y la
+  misma columna/constraints en el esquema base de altas nuevas.
+- Alcance financiero: la deuda recurrente, las cuotas vencidas y la próxima
+  fecha se cortan en `mes_final`; los adelantos solo ofrecen y aceptan periodos
+  hasta ese mes. No se borran pagos o aplicaciones históricas.
+- Separación capacidad/dato: la migración deja `12` en todos. La mensualidad de
+  `tenant_2005` se debe configurar después, desde Tipos de Pago, con noviembre
+  (`11`) como final y sin alterar por suposición el inicio o la frecuencia.
+- Operación: `apply_migration.py` no se ejecutó, no hubo conexión a Neon ni
+  cambios de datos. El dry-run, la aplicación real y la configuración del
+  colegio permanecen pendientes del despliegue controlado documentado en
+  `docs/MIGRACIONES.md`.
+- Verificación local: 128 pruebas enfocadas y 1293 de la suite completa
+  pasaron; los 6 warnings de la compuerta eran preexistentes.

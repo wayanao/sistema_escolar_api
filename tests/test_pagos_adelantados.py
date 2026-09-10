@@ -82,6 +82,37 @@ def test_periodos_programados_solo_incluye_meses_futuros_del_anio():
     ]
 
 
+def test_periodos_programados_no_ofrece_diciembre_si_termina_en_noviembre():
+    concepto = {**_concepto_mensual(), "mes_final": 11}
+
+    periodos = pagos_controller._periodos_programados(
+        concepto,
+        datetime.date(2026, 7, 16),
+    )
+
+    assert periodos == [
+        datetime.date(2026, mes, 1)
+        for mes in range(8, 12)
+    ]
+
+
+def test_opcion_adelanto_expone_mes_final_y_solo_sus_periodos():
+    cursor = FakeCursor(fetches=[[]])
+    concepto = {**_concepto_mensual(), "mes_final": 11}
+
+    opcion = pagos_controller._serializar_opcion_adelanto(
+        cursor,
+        7,
+        concepto,
+        datetime.date(2026, 10, 15),
+    )
+
+    assert opcion["mes_final"] == 11
+    assert [item["periodo"] for item in opcion["periodos_disponibles"]] == [
+        "2026-11-01"
+    ]
+
+
 def test_registrar_adelanto_crea_un_pago_y_una_aplicacion_por_mes(monkeypatch):
     cursor = FakeCursor(fetches=[(81,)])
     conn = FakeConnection(cursor)

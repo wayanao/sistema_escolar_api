@@ -117,6 +117,7 @@ _ADVANCED_COLUMNS = [
     "mora_tipo",
     "mora_valor",
     "mes_inicial",
+    "mes_final",
     "frecuencia_meses",
     "generacion_automatica",
     "activo",
@@ -131,6 +132,7 @@ _DEFAULTS = {
     "mora_tipo": None,
     "mora_valor": 0,
     "mes_inicial": None,
+    "mes_final": 12,
     "frecuencia_meses": 1,
     "generacion_automatica": False,
     "activo": True,
@@ -257,8 +259,47 @@ def _table_names(cursor):
 
 
 class MigracionPendienteError(Exception):
-    """Se lanza cuando se intenta usar columnas avanzadas pero la migración
-    20260517_tipos_pagos_avanzado.sql no se ha ejecutado."""
+    """Se lanza cuando falta una migración requerida por la configuración."""
+
+
+class ConfiguracionTipoPagoInvalidaError(ValueError):
+    """Se lanza cuando la combinación efectiva de meses no es válida."""
+
+
+def _validar_rango_meses(cursor, id, config, columnas):
+    if not ({"tipo_cobro", "mes_inicial", "mes_final"} & config.keys()):
+        return
+
+    columnas_rango = [
+        columna
+        for columna in ("tipo_cobro", "mes_inicial", "mes_final")
+        if columna in columnas
+    ]
+    if not columnas_rango:
+        return
+
+    cursor.execute(
+        f"SELECT {', '.join(columnas_rango)} "
+        "FROM tipos_de_pagos WHERE id = %s FOR UPDATE",
+        (id,),
+    )
+    fila = cursor.fetchone()
+    if not fila:
+        return
+
+    actuales = dict(zip(columnas_rango, fila))
+    tipo_cobro = config.get("tipo_cobro", actuales.get("tipo_cobro", "unico"))
+    if str(tipo_cobro or "").strip().lower() != "mensual":
+        return
+
+    mes_inicial = config.get("mes_inicial", actuales.get("mes_inicial"))
+    mes_final = config.get("mes_final", actuales.get("mes_final", 12))
+    mes_final = 12 if mes_final is None else int(mes_final)
+
+    if mes_inicial is not None and mes_final < int(mes_inicial):
+        raise ConfiguracionTipoPagoInvalidaError(
+            "El mes final no puede ser anterior al mes inicial."
+        )
 
 
 def actualizar_configuracion_tipo_pago(id, config):
@@ -282,6 +323,15 @@ def actualizar_configuracion_tipo_pago(id, config):
                 "Ejecuta: python scripts/apply_tipos_pagos_avanzado_migration.py"
             )
 
+        if "mes_final" in config and "mes_final" not in columnas:
+            raise MigracionPendienteError(
+                "La columna 'mes_final' de 'tipos_de_pagos' no existe. "
+                "Ejecuta: python apply_migration.py "
+                "migrations/20260910_tipos_pagos_mes_final.sql"
+            )
+
+        _validar_rango_meses(cursor, id, config, columnas)
+
         sets = []
         params = []
         for col in _ADVANCED_COLUMNS:
@@ -303,7 +353,7 @@ def actualizar_configuracion_tipo_pago(id, config):
             conn.commit()
             return True
         return False
-    except MigracionPendienteError:
+    except (MigracionPendienteError, ConfiguracionTipoPagoInvalidaError):
         conn.rollback()
         raise
     except Exception as exc:

@@ -35,6 +35,33 @@ Reglas:
 - ejecutar primero con `--dry-run`;
 - revisar el resultado tenant por tenant.
 
+## Mes final de conceptos mensuales
+
+`20260910_tipos_pagos_mes_final.sql` agrega
+`tipos_de_pagos.mes_final SMALLINT NOT NULL DEFAULT 12`, valida el rango
+`1..12` y, solo para conceptos `mensual`, exige `mes_final >= mes_inicial`
+cuando hay mes inicial. El relleno a diciembre conserva los calendarios
+actuales; la migracion habilita el campo, pero no configura noviembre para
+ningun colegio.
+
+Desde la raiz del backend, primero se simula y luego, solo tras revisar todos
+los tenants operativos, se aplica:
+
+```powershell
+python apply_migration.py migrations/20260910_tipos_pagos_mes_final.sql --dry-run
+python apply_migration.py migrations/20260910_tipos_pagos_mes_final.sql
+```
+
+`DATABASE_URL` debe apuntar al endpoint directo, nunca al `-pooler`. Estos
+comandos no se ejecutaron al crear la migracion. El esquema base fue actualizado
+en el mismo cambio para que los tenants nuevos ya incluyan la columna.
+
+Después de aplicar y desplegar backend/frontend, `tenant_2005` se configura
+desde Tipos de Pago: se establece noviembre (`11`) como mes final y se conservan
+el mes inicial y la frecuencia institucionales que realmente correspondan. Esa
+modificacion es un dato operativo separado y no forma parte del SQL de
+migracion.
+
 Inicializacion recomendada:
 
 ```bash

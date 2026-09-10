@@ -123,9 +123,12 @@ def _bloquear_registro_de_pagos(cursor, estudiante_id):
 def _periodos_programados(concepto, hoy):
     frecuencia = max(1, int(concepto.get("frecuencia_meses") or 1))
     mes_inicial = concepto.get("mes_inicial")
+    mes_final = int(concepto.get("mes_final") or 12)
+    if not 1 <= mes_final <= 12:
+        mes_final = 12
     periodos = []
 
-    for mes in range(hoy.month + 1, 13):
+    for mes in range(hoy.month + 1, mes_final + 1):
         if mes_inicial:
             inicio = int(mes_inicial)
             if mes < inicio or (mes - inicio) % frecuencia != 0:
@@ -166,6 +169,7 @@ def _serializar_opcion_adelanto(cursor, estudiante_id, concepto, hoy):
         "concepto": concepto["nombre"],
         "valor_unitario": round(float(concepto["valor_unitario"]), 2),
         "valor_origen": concepto["valor_origen"],
+        "mes_final": int(concepto.get("mes_final") or 12),
         "periodos_disponibles": [
             {
                 "periodo": item["periodo"].isoformat(),

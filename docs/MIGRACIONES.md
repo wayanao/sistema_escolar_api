@@ -1,6 +1,6 @@
 # Migraciones
 
-Ultima revision documental: 2026-07-22.
+Ultima revision documental: 2026-09-10.
 
 ## Carpeta de migraciones
 
@@ -40,6 +40,12 @@ Archivos actuales:
 - `20260722_plan_de_clases_integridad.sql`
 - `20260722_plan_de_clases_notificaciones.sql`
 - `20260722_plan_de_clases_revision.sql`
+- `20260825_observaciones_claves_foraneas.sql`
+- `20260901_cursos_nivel_academico.sql`
+- `20260908_observador_anotaciones.sql`
+- `20260908_observador_anotaciones_historicas.sql`
+- `20260908_observador_anotaciones_materia.sql`
+- `20260910_tipos_pagos_mes_final.sql`
 - `README.md`
 
 Migraciones globales `public`:
@@ -77,6 +83,65 @@ Comportamiento actual:
 - al aplicar, ejecuta `SET search_path TO <schema>, public`;
 - ejecuta SQL;
 - registra migracion en `public.schema_migrations`.
+
+## Migracion de mes final de mensualidades
+
+`20260910_tipos_pagos_mes_final.sql` es una migracion tenant incremental. Agrega
+`tipos_de_pagos.mes_final`, rellena los registros existentes con `12`, fija
+`DEFAULT 12` y `NOT NULL`, valida el rango `1..12` y exige que el final no sea
+anterior a `mes_inicial` cuando la fila es de tipo `mensual`. Los tipos `unico`,
+`anual` y `opcional` no quedan sujetos a esa relacion.
+
+Hay dos efectos distintos que no deben confundirse:
+
+- **Capacidad:** los tenants operativos existentes (`activo` y `en_mora`)
+  recibiran la columna con diciembre cuando se ejecute el runner, y los tenants
+  nuevos la reciben desde
+  `migrations/base/20260813_esquema_base_tenant.sql`.
+- **Dato institucional:** un colegio solo deja de cobrar antes de diciembre
+  cuando un administrador cambia `mes_final` en su concepto mensual. Para
+  `tenant_2005`, la operacion prevista es establecer noviembre (`11`) como mes
+  final y conservar el mes inicial y la frecuencia que realmente correspondan;
+  no viene incluida en la migracion.
+
+### Orden de despliegue seguro
+
+1. Probar la migracion y la aplicacion en una rama/copia no productiva.
+2. Con `DATABASE_URL` apuntando al endpoint directo, ejecutar y revisar:
+
+   ```powershell
+   python apply_migration.py migrations/20260910_tipos_pagos_mes_final.sql --dry-run
+   ```
+
+   El runner debe listar cada schema operativo pendiente sin modificarlo.
+3. Aplicar el mismo archivo, una sola vez:
+
+   ```powershell
+   python apply_migration.py migrations/20260910_tipos_pagos_mes_final.sql
+   ```
+
+4. Repetir el `--dry-run`; todos los destinos aplicados deben aparecer como
+   omitidos por historial. Verificar tambien columna, default y constraints.
+5. Desplegar backend y luego frontend. La columna es aditiva, por lo que el
+   backend anterior puede convivir durante el paso 3.
+6. Hacer pruebas de humo con un concepto que conserve diciembre y, solo despues,
+   guardar noviembre como mes final de la mensualidad de `tenant_2005` desde
+   Tipos de Pago, sin alterar por suposicion el inicio o la frecuencia vigentes.
+   Revisar cartera, cuotas vencidas y adelantos sin registrar cobros de prueba
+   sobre estudiantes reales.
+
+Fallback: el backend actualizado lee `12` cuando la columna aun no existe. Sus
+calculadores internos tambien se protegen con `12` ante un valor ausente o fuera
+de rango, mientras que la API rechaza ese valor invalido. Cualquier intento de
+guardar `mes_final` sin la migracion responde `409`; por eso el frontend no debe
+publicarse antes del paso 3. Si se revierte la aplicacion, la columna aditiva
+puede conservarse con valor `12`; no se recomienda borrarla ni eliminar
+historial como rollback.
+
+Estado al documentar: migracion, esquema base y codigo validados localmente; 128
+pruebas enfocadas y la suite completa de 1293 pruebas pasaron (6 warnings
+preexistentes). **No se ejecuto** `apply_migration.py`, no se conecto a Neon ni
+se modifico `tenant_2005` o cualquier otro tenant.
 
 ## Integridad previa del plan de clases
 
@@ -447,7 +512,3 @@ Estado:
 
 - Aplicada en `tenant_colegio_1`, `tenant_3333` y `tenant_4444`.
 - Registrada en `public.schema_migrations`.
-
-
-
-

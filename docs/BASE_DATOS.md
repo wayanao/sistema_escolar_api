@@ -189,6 +189,18 @@ Estado actual:
 - La asignacion de cobros por curso se hace en `tipos_pagos_cursos`.
 - Las excepciones por estudiante se guardan en `tipos_pagos_estudiantes`.
 - La regla de valor vigente es: valor activo del estudiante > valor activo del curso > valor base del tipo de pago.
+- Los conceptos recurrentes usan `mes_inicial`, `mes_final` y
+  `frecuencia_meses`. `mes_final` es `SMALLINT NOT NULL DEFAULT 12`, debe estar
+  entre `1` y `12` (`chk_mes_final`) y, cuando `tipo_cobro = 'mensual'` y existe
+  `mes_inicial`, no puede ser menor. La restriccion
+  `chk_rango_meses_recurrencia` equivale a
+  `tipo_cobro <> 'mensual' OR mes_inicial IS NULL OR mes_final >= mes_inicial`.
+- `20260910_tipos_pagos_mes_final.sql` agrega esa columna y rellena con `12`
+  todos los conceptos existentes. Esto habilita la capacidad sin cambiar el
+  calendario de ningun colegio; un limite distinto se guarda despues como dato
+  de configuracion del concepto.
+- Cartera, cuotas vencidas y periodos de adelanto dejan de generar opciones al
+  superar `mes_final`. Los pagos y aplicaciones ya registrados se conservan.
 - `cursos` ya no debe contener ni alimentar:
   - `matricula`;
   - `mensualidad`;

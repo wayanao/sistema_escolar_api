@@ -39,6 +39,7 @@ COLUMNAS_TIPOS_PAGO = [
     "tipo_cobro",
     "activo",
     "mes_inicial",
+    "mes_final",
     "frecuencia_meses",
     "dia_limite_mes",
     "dias_gracia",
@@ -48,7 +49,7 @@ COLUMNAS_TIPOS_PAGO = [
 
 def fila_tipo_pago(tipo_cobro):
     """Un unico concepto de 100 asignado al curso 3 del estudiante 1."""
-    return (4, "Pension", 100, tipo_cobro, True, None, 1, None, 0, None, 0)
+    return (4, "Pension", 100, tipo_cobro, True, None, 12, 1, None, 0, None, 0)
 
 
 class CursorFalso:

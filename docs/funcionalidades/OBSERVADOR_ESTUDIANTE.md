@@ -70,7 +70,7 @@ Cuatro razones, en orden de peso:
 | 5 | **Borrar: nadie** | No hay endpoint de borrado |
 | 6 | Editar **deja rastro** | Se guarda cuándo y quién editó |
 | 7 | Se **mantienen los tres campos** actuales | `conductual`, `cognitivo`, `lenguaje` |
-| 8 | Cada anotación se marca **positiva o negativa** | Sustituye a la idea de categorías (académico/convivencia/logro) |
+| 8 | ~~Cada anotación se marca **positiva o negativa**~~ | **Revertida el 2026-09-09**: el usuario la quitó. La columna se jubila como `materia`; ver abajo |
 | 9 | El **admin ve todo pero NO edita** | Excepción deliberada a la norma del proyecto, ver abajo |
 | 10 | El periodo **no oculta** nada | Es una etiqueta de cada anotación, no un filtro obligatorio |
 | 11 | La columna `materia` **existe pero no se rellena** | Decidido el 2026-09-08, tras medir que el servidor no puede deducirla. Ver abajo |
@@ -344,6 +344,28 @@ porque se crearon en momentos distintos.
 
 En un modelo de **un schema por colegio**, todo cambio de estructura hay que
 repetirlo en cada uno. El que se salte uno queda distinto para siempre.
+
+## La marca de positiva o negativa, retirada
+
+Decidido por el usuario el 2026-09-09. **Revierte la decisión 8.** Se quitó del
+todo: no se pide al guardar y la pantalla no la muestra.
+
+La columna **se jubila, no se elimina**, exactamente como `materia`:
+
+- sigue en la tabla y la lectura la sigue devolviendo, así que volver atrás sería
+  cambiar solo la pantalla, sin otra migración;
+- el `POST` ya no la acepta ni la escribe: la fila nace con `NULL`;
+- el `PUT` **ya no la toca**. Antes la sobrescribía en cada edición, así que
+  corregir una tilde de una anotación heredada obligaba a ponerle una marca que
+  nunca tuvo.
+
+En producción hay **cuatro filas con marca**, todas de las pruebas del usuario, y
+se quedan como están. Nadie borra nada.
+
+**Un cliente sin actualizar no rompe nada:** Pydantic ignora los campos que no
+declara, igual que con `profesor_id`. Un frontend que siga mandando `positiva`
+recibe su `201` y el campo se descarta. Es lo que permite publicar este repo
+antes que la pantalla.
 
 ## Permisos
 

@@ -78,7 +78,6 @@ def anotacion_nueva(**cambios):
     datos = {
         "estudiante_id": 55,
         "periodo": 1,
-        "positiva": False,
         "conductual": "se para mucho.hace desorden",
     }
     datos.update(cambios)
@@ -86,7 +85,7 @@ def anotacion_nueva(**cambios):
 
 
 def edicion(**cambios):
-    datos = {"positiva": True, "conductual": "ya mejoro"}
+    datos = {"conductual": "ya mejoro"}
     datos.update(cambios)
     return AnotacionUpdate(**datos)
 
@@ -229,6 +228,48 @@ def test_la_materia_no_se_escribe(monkeypatch):
 
     assert "materia" not in cursor.calls[-1][0]
     assert "materia" not in AnotacionCreate.model_fields
+
+
+def test_la_marca_de_positiva_o_negativa_no_se_pide_ni_se_escribe(monkeypatch):
+    """El usuario la quito el 2026-09-09. Antes era obligatoria.
+
+    Como `materia`, la columna **no se borra** de la tabla: deja de pedirse y de
+    rellenarse, y la fila nace con `NULL`. Si algun dia vuelve, no hace falta
+    otra migracion.
+    """
+    cursor = cursor_de(monkeypatch, [(1,), (99,)])
+
+    observador.crear_anotacion(anotacion_nueva(), PROFESOR)
+
+    assert "positiva" not in cursor.calls[-1][0]
+    assert "positiva" not in AnotacionCreate.model_fields
+    assert "positiva" not in AnotacionUpdate.model_fields
+
+
+def test_mandar_la_marca_en_el_cuerpo_no_hace_nada():
+    """Un cliente sin actualizar puede seguir mandandola: Pydantic la descarta.
+
+    Se fija por prueba porque es lo que permite publicar el backend antes que la
+    pantalla, que es el orden obligatorio en este proyecto.
+    """
+    datos = anotacion_nueva(positiva=True)
+
+    assert not hasattr(datos, "positiva")
+
+
+def test_editar_no_toca_la_marca_que_ya_tuviera(monkeypatch):
+    """Antes la sobrescribia en cada edicion.
+
+    Eso obligaba a ponerle una marca a una anotacion heredada que no la tenia,
+    solo por corregirle una tilde. Ahora la fila conserva la suya.
+    """
+    cursor = cursor_de(monkeypatch, [(12,)])
+
+    observador.editar_anotacion(12, edicion(), PROFESOR)
+
+    consulta = cursor.calls[-1][0]
+    assert "positiva" not in consulta
+    assert "editada_en" in consulta, "el rastro de la edicion si se sigue fijando"
 
 
 # ---------------------------------------------------------------------------

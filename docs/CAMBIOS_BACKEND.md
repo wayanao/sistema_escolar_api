@@ -6,6 +6,44 @@ Ultima revision documental: 2026-09-09.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
+## 2026-09-09 - Observador: la marca de positiva o negativa deja de pedirse
+
+Decidido por el usuario. **Revierte la decision 8** de este documento, que era
+una de las que pedia no reabrir; las tomo el y las puede cambiar. **Sin
+migracion: la base de datos no se toca.**
+
+### La columna se jubila, no se elimina
+
+Igual que `materia`:
+
+* sigue en la tabla y `GET /observador/{estudiante_id}` la sigue devolviendo, asi
+  que volver atras seria cambiar solo la pantalla;
+* `POST` ya no la acepta ni la escribe: la fila nace con `NULL`;
+* **`PUT` ya no la toca.** Antes la sobrescribia en cada edicion, asi que
+  corregir una tilde de una anotacion heredada obligaba a ponerle una marca que
+  nunca tuvo. Ahora la fila conserva la suya.
+
+En produccion hay **cuatro filas con marca**, todas de las pruebas del usuario, y
+se quedan como estan.
+
+### Un cliente sin actualizar no rompe nada
+
+Pydantic ignora los campos que no declara, igual que con `profesor_id`. Un
+frontend que siga mandando `positiva` recibe un `201` normal y el campo se
+descarta. **Eso es lo que permite publicar el backend antes que la pantalla**,
+que es el orden obligatorio en este proyecto. Hay prueba que lo fija.
+
+### Un hueco de las pruebas, tapado
+
+Las pruebas de escritura **construian** el esquema con `positiva` pero nunca
+fijaron que fuera obligatoria ni que llegara a la base. Al quitarla, las 1275
+siguieron pasando sin enterarse. Se anadieron tres que si fijan el
+comportamiento nuevo, y se verificaron con mutaciones.
+
+### Pruebas
+
+`1278 pasan`, tres nuevas. `ruff` y `pip check`, en verde.
+
 ## 2026-09-09 - Observador: la lista de alumnos de un profesor
 
 `GET /observador/mis-estudiantes`. **Solo lectura, sin migracion y sin tocar la

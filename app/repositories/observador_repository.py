@@ -164,7 +164,6 @@ def crear_anotacion(
     estudiante_id,
     profesor_id,
     periodo,
-    positiva,
     conductual,
     cognitivo,
     lenguaje,
@@ -177,18 +176,22 @@ def crear_anotacion(
     `materia` no se toca: se queda en su valor por defecto, la cadena vacia. Por
     ahora no se rellena, y el motivo esta en el documento.
 
+    `positiva` tampoco se toca desde el 2026-09-09, cuando el usuario quito la
+    marca de buena o mala: la fila nace con `NULL`. La columna se conserva -no se
+    borra nada- por si algun dia vuelve.
+
     El `commit` es de quien llama, como en los demas repositorios.
     """
     cursor.execute(
         """
         INSERT INTO observador_anotaciones (
-            estudiante_id, profesor_id, periodo, positiva,
+            estudiante_id, profesor_id, periodo,
             conductual, cognitivo, lenguaje
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s)
         RETURNING id
         """,
-        (estudiante_id, profesor_id, periodo, positiva, conductual, cognitivo, lenguaje),
+        (estudiante_id, profesor_id, periodo, conductual, cognitivo, lenguaje),
     )
     return cursor.fetchone()[0]
 
@@ -197,7 +200,6 @@ def actualizar_anotacion_del_autor(
     cursor,
     anotacion_id,
     profesor_id,
-    positiva,
     conductual,
     cognitivo,
     lenguaje,
@@ -219,12 +221,16 @@ def actualizar_anotacion_del_autor(
     Editar **siempre deja rastro**: `editada_en` y `editada_por` se fijan en la
     misma sentencia, sin depender de que quien llame se acuerde. Es el
     invariante 2.
+
+    **No toca `positiva`** desde el 2026-09-09. Antes la sobrescribia en cada
+    edicion, asi que corregir una heredada obligaba a ponerle una marca que no
+    tenia. Ahora una fila conserva la que tuviera, y las nuevas nacen sin
+    ninguna.
     """
     cursor.execute(
         """
         UPDATE observador_anotaciones
-           SET positiva = %s,
-               conductual = %s,
+           SET conductual = %s,
                cognitivo = %s,
                lenguaje = %s,
                editada_en = now(),
@@ -232,7 +238,7 @@ def actualizar_anotacion_del_autor(
          WHERE id = %s AND profesor_id = %s
         RETURNING id
         """,
-        (positiva, conductual, cognitivo, lenguaje, profesor_id, anotacion_id, profesor_id),
+        (conductual, cognitivo, lenguaje, profesor_id, anotacion_id, profesor_id),
     )
     return cursor.fetchone() is not None
 

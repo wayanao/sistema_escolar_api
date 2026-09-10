@@ -40,6 +40,10 @@ def _anotacion(fila):
     `profesor_id` viaja para que la pantalla decida si pinta el boton Editar.
     Es **comodidad visual**: la regla de verdad la impone el servidor, y el
     frontend no puede ser la unica defensa.
+
+    `positiva` sigue viajando aunque desde el 2026-09-09 nadie la rellene ni la
+    muestre, igual que `materia`. La columna no se borra y la forma de la
+    respuesta no cambia: si algun dia vuelve la marca, solo cambia la pantalla.
     """
     (
         _nivel,
@@ -244,7 +248,6 @@ def crear_anotacion(data: AnotacionCreate, current_user: dict = Depends(get_curr
                 data.estudiante_id,
                 profesor_id,
                 data.periodo,
-                data.positiva,
                 data.conductual,
                 data.cognitivo,
                 data.lenguaje,
@@ -281,7 +284,6 @@ def editar_anotacion(
                 cursor,
                 anotacion_id,
                 profesor_id,
-                data.positiva,
                 data.conductual,
                 data.cognitivo,
                 data.lenguaje,

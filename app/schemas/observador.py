@@ -8,6 +8,11 @@ los campos que no declara, asi que mandarlo no hace nada; hay prueba que lo fija
 
 `materia` tampoco aparece: por ahora no se rellena. El motivo -que el servidor
 no puede deducirla y que preguntarla es friccion- esta en el documento.
+
+`positiva` tampoco, desde el 2026-09-09: el usuario quito la marca de buena o
+mala. La columna sigue en la tabla, como `materia`, y la lectura la sigue
+devolviendo; simplemente ya no se pide ni se rellena. Pydantic ignora los campos
+que no declara, asi que un cliente viejo que la mande no rompe nada.
 """
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -15,7 +20,6 @@ from app.core.texto_observador import normalizar_texto
 
 
 class _AnotacionBase(BaseModel):
-    positiva: bool
     conductual: str = ""
     cognitivo: str = ""
     lenguaje: str = ""

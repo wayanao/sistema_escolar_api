@@ -355,7 +355,7 @@ def listar_planes_admin(
         parametros.extend([like, like, like, like, like])
     if estado_revision:
         if estado_revision == "pendiente":
-            condiciones.append("pdc.estado_revision IN ('pendiente', 'visto')")
+            condiciones.append("pdc.estado_revision = 'pendiente'")
         elif estado_revision == "revisado":
             condiciones.append(
                 "pdc.estado_revision IN ('revisado', 'con_observaciones')"

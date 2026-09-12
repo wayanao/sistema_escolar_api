@@ -352,7 +352,7 @@ def test_eliminar_evidencia_revisada_no_notifica_de_nuevo(monkeypatch):
     assert "THEN estado_revision" in query
 
 
-def test_filtros_admin_agrupan_estados_internos(monkeypatch):
+def test_filtros_admin_separan_pendientes_de_vistos(monkeypatch):
     cursores = []
 
     @contextmanager
@@ -365,11 +365,16 @@ def test_filtros_admin_agrupan_estados_internos(monkeypatch):
 
     plan_de_clases_repository.listar_planes_admin(estado_revision="pendiente")
     plan_de_clases_repository.listar_planes_admin(estado_revision="revisado")
+    plan_de_clases_repository.listar_planes_admin(estado_revision="visto")
 
     consultas_pendientes = " ".join(query for query, _params in cursores[0].calls)
     consultas_revisadas = " ".join(query for query, _params in cursores[1].calls)
-    assert "IN ('pendiente', 'visto')" in consultas_pendientes
+    consultas_vistas = " ".join(query for query, _params in cursores[2].calls)
+    # Pendiente es su propio cajon: marcar como visto saca el plan de la cola.
+    assert "estado_revision = 'pendiente'" in consultas_pendientes
+    assert "IN ('pendiente', 'visto')" not in consultas_pendientes
     assert "IN ('revisado', 'con_observaciones')" in consultas_revisadas
+    assert "pdc.estado_revision = %s" in consultas_vistas
 
 
 def test_historial_asignacion_aplica_paginacion_opcional(monkeypatch):

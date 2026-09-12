@@ -83,7 +83,11 @@ def test_marcar_plan_visto_bloquea_y_valida_version(monkeypatch):
     assert resultado["version_revision"] == 4
     assert "FOR UPDATE" in cursor.calls[0][0]
     assert cursor.calls[1][1] == (8, 21)
-    assert "plan_de_clases_notificaciones_admin" in cursor.calls[2][0]
+    # Marcar como visto tambien apaga la campanita del admin para ese plan.
+    consulta_notificaciones = cursor.calls[2][0]
+    assert "plan_de_clases_notificaciones_admin" in consulta_notificaciones
+    assert "SET leida_at = COALESCE(leida_at, CURRENT_TIMESTAMP)" in consulta_notificaciones
+    assert cursor.calls[2][1] == (21, 4)
 
 
 def test_revision_rechaza_version_desactualizada_sin_actualizar(monkeypatch):

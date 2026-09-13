@@ -336,7 +336,11 @@ Notas:
   `offset` mayor o igual que cero; si se omite `limit`, conserva la lista
   completa por compatibilidad.
 - Las cajas de texto (`unidad`, `proposito`, `clase`, `estandar`, `dba`, `competencias`, `actividad_casa` y `tema`) son opcionales, aceptan texto largo y se guardan como texto vacio si no se envian.
-- Las imagenes `imagen1` e `imagen2` tambien son opcionales.
+- Los adjuntos `imagen1` e `imagen2` tambien son opcionales. Cada uno acepta
+  una imagen PNG, JPG, JPEG o WEBP de hasta 5MB, o un PDF de hasta 15MB. El
+  PDF ademas debe empezar por la firma `%PDF-`: no basta con renombrar el
+  archivo. Ambos se guardan en el mismo campo y se sirven por
+  `GET /uploads/{ruta}` con su propio tipo de contenido.
 - Los planes retornan `estado_revision`, `version_revision`, fechas de
   seguimiento y contadores de observaciones.
 - `GET /admin/plan-de-clases` acepta el filtro opcional `estado_revision`:

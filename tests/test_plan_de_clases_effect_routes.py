@@ -782,16 +782,60 @@ def test_valid_image_is_read_and_saved_under_tenant_directory(monkeypatch):
     }
 
 
+def test_valid_pdf_is_read_and_saved_under_tenant_directory(monkeypatch):
+    upload = UploadFile(
+        BytesIO(b"%PDF-1.7 taller"),
+        filename="taller.PDF",
+        headers=Headers({"content-type": "application/pdf"}),
+    )
+    observed = {}
+    monkeypatch.setattr(
+        plan_de_clases_controller.uuid,
+        "uuid4",
+        lambda: SimpleNamespace(hex="archivo456"),
+    )
+    monkeypatch.setattr(
+        plan_de_clases_controller,
+        "save_bytes",
+        lambda key, content, content_type: observed.update(
+            key=key,
+            content=content,
+            content_type=content_type,
+        ),
+    )
+    monkeypatch.setattr(
+        plan_de_clases_controller,
+        "db_path_for_key",
+        lambda key: f"uploads/{key}",
+    )
+
+    result = plan_de_clases_controller.guardar_imagen_plan(
+        "tenant_demo/plan_de_clases",
+        upload,
+    )
+
+    assert result == "uploads/tenant_demo/plan_de_clases/archivo456.pdf"
+    assert observed == {
+        "key": "tenant_demo/plan_de_clases/archivo456.pdf",
+        "content": b"%PDF-1.7 taller",
+        "content_type": "application/pdf",
+    }
+
+
 @pytest.mark.parametrize(
     ("upload", "detail"),
     [
         (
             FakeUpload("evidencia.jpg", "text/plain", b"contenido"),
-            "Tipo de imagen no permitido",
+            "Tipo de archivo no permitido. Use imagen o PDF",
         ),
         (
             FakeUpload("evidencia.gif", "image/png", b"contenido"),
-            "Extension de imagen no permitida",
+            "Extension de archivo no permitida",
+        ),
+        (
+            FakeUpload("evidencia.docx", "application/pdf", b"%PDF-1.7"),
+            "Extension de archivo no permitida",
         ),
         (
             FakeUpload(
@@ -799,7 +843,19 @@ def test_valid_image_is_read_and_saved_under_tenant_directory(monkeypatch):
                 "image/png",
                 b"x" * (plan_de_clases_controller.MAX_IMAGE_BYTES + 1),
             ),
-            "Imagen demasiado grande (max 5MB)",
+            "Archivo demasiado grande (max 5MB)",
+        ),
+        (
+            FakeUpload(
+                "evidencia.pdf",
+                "application/pdf",
+                b"%PDF-" + b"x" * plan_de_clases_controller.MAX_PDF_BYTES,
+            ),
+            "Archivo demasiado grande (max 15MB)",
+        ),
+        (
+            FakeUpload("evidencia.pdf", "application/pdf", b"MZ ejecutable"),
+            "El archivo no es un PDF valido",
         ),
     ],
 )

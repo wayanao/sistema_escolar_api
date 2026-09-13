@@ -1,10 +1,54 @@
 # Cambios Backend
 
-Ultima revision documental: 2026-09-10.
+Ultima revision documental: 2026-09-13.
 
 ## Proposito
 
 Bitacora de cambios documentales y tecnicos observables del backend.
+
+## 2026-09-13 - Las evidencias del plan de clases aceptan PDF
+
+Hasta hoy `POST /plan-de-clases` solo admitia imagenes. Un taller escaneado o
+una guia en PDF rebotaban con `400`, y el profesor no tenia donde adjuntarlos.
+
+### Sin columna nueva ni migracion
+
+`imagen1` e `imagen2` no guardan una imagen: guardan la ruta de un archivo. El
+almacenamiento ya es indiferente al tipo -`save_bytes` conserva el content type
+y `/uploads` lo devuelve igual-, y el permiso se resuelve por ruta. Un PDF queda
+tan protegido como una imagen sin tocar base de datos ni rutas.
+
+Lo unico que lo impedia era la lista blanca de
+`plan_de_clases_controller.guardar_imagen_plan`.
+
+### Limites distintos por tipo
+
+Imagen hasta 5MB, como siempre. PDF hasta 15MB, porque un taller escaneado pasa
+de cinco con facilidad. El tope se elige segun el tipo declarado, no un unico
+maximo para todo.
+
+### Se verifica el contenido, no el nombre
+
+Ampliar la puerta a PDF pide una defensa que antes no hacia falta: el archivo
+debe empezar por `%PDF-`, la firma real del formato. Renombrar cualquier cosa a
+`.pdf` ya no alcanza. Son cuatro lineas y cierran el hueco que abre el cambio.
+
+### Mensajes de error
+
+Decian "imagen" cuando ya no es solo imagen. Ahora dicen archivo:
+`Tipo de archivo no permitido. Use imagen o PDF`,
+`Extension de archivo no permitida` y `Archivo demasiado grande (max NMB)`.
+El frontend los muestra tal cual, no los interpreta, asi que el cambio no rompe
+ningun consumidor.
+
+### Pruebas
+
+`1297 pasan`, cuatro nuevas: PDF valido guardado bajo el directorio del tenant,
+PDF con extension equivocada, PDF sobre el tope y archivo que miente sobre ser
+PDF. `ruff` y `pip check`, en verde.
+
+El conteo de lineas del dominio en `test_plan_de_clases_caracterizacion.py` sube
+de 1365 a 1382 por las lineas nuevas del controlador.
 
 ## 2026-09-10 - Mes final configurable para mensualidades
 

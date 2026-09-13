@@ -28,6 +28,13 @@ ALLOWED_IMAGE_TYPES = {"image/png", "image/jpeg", "image/jpg", "image/webp"}
 ALLOWED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
+ALLOWED_PDF_TYPES = {"application/pdf"}
+ALLOWED_PDF_EXTENSIONS = {".pdf"}
+MAX_PDF_BYTES = 15 * 1024 * 1024
+# Los cinco primeros bytes de todo PDF. Se verifica el contenido y no solo el
+# nombre para que renombrar un archivo a .pdf no alcance para subirlo.
+FIRMA_PDF = b"%PDF-"
+
 
 def obtener_directorio_archivos():
     tenant = tenant_schema_var.get()
@@ -35,27 +42,37 @@ def obtener_directorio_archivos():
 
 
 def guardar_imagen_plan(upload_dir, imagen):
+    """Guarda una evidencia del plan: imagen hasta 5MB o PDF hasta 15MB."""
     if not imagen:
         return None
 
-    if imagen.content_type not in ALLOWED_IMAGE_TYPES:
+    es_pdf = imagen.content_type in ALLOWED_PDF_TYPES
+    if not es_pdf and imagen.content_type not in ALLOWED_IMAGE_TYPES:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Tipo de imagen no permitido"
+            detail="Tipo de archivo no permitido. Use imagen o PDF"
         )
 
+    extensiones = ALLOWED_PDF_EXTENSIONS if es_pdf else ALLOWED_EXTENSIONS
     ext = Path(imagen.filename or "").suffix.lower()
-    if ext not in ALLOWED_EXTENSIONS:
+    if ext not in extensiones:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Extension de imagen no permitida"
+            detail="Extension de archivo no permitida"
         )
 
+    maximo = MAX_PDF_BYTES if es_pdf else MAX_IMAGE_BYTES
     contenido = imagen.file.read()
-    if len(contenido) > MAX_IMAGE_BYTES:
+    if len(contenido) > maximo:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Imagen demasiado grande (max {MAX_IMAGE_BYTES // (1024 * 1024)}MB)"
+            detail=f"Archivo demasiado grande (max {maximo // (1024 * 1024)}MB)"
+        )
+
+    if es_pdf and not contenido.startswith(FIRMA_PDF):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El archivo no es un PDF valido"
         )
 
     key = f"{upload_dir}/{uuid.uuid4().hex}{ext}"

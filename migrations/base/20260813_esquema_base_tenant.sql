@@ -1,9 +1,8 @@
 -- Esquema base de un tenant. ARCHIVO GENERADO, no editar a mano.
 --
--- Extraido de tenant_colegio_1 el 2026-09-08 con
--- scripts/generar_esquema_base.py y sincronizado el 2026-09-10 con la
--- migracion de mes final. Para rehacerlo, aplica antes las migraciones nuevas
--- al schema de referencia y vuelve a ejecutar el script.
+-- Extraido de tenant_colegio_1 el 2026-09-16 con
+-- scripts/generar_esquema_base.py. Para rehacerlo, aplica antes la
+-- migracion nueva a ese schema y vuelve a ejecutar el script.
 --
 -- Se aplica con el search_path apuntando SOLO al schema destino. Sus
 -- nombres no van cualificados: con otro schema en el camino, las claves
@@ -12,7 +11,7 @@
 -- No usar apply_migration.py con este archivo: es para dar de alta un
 -- tenant nuevo, no para los existentes, que ya tienen estas tablas.
 --
--- MIGRACIONES INCORPORADAS (36):
+-- MIGRACIONES INCORPORADAS (37):
 --   20260429_pagos_tipo_pago_largo.sql
 --   20260429_plan_de_clases_reportes.sql
 --   20260509_branding_plantillas_impresion.sql
@@ -49,6 +48,7 @@
 --   20260908_observador_anotaciones_historicas.sql
 --   20260908_observador_anotaciones_materia.sql
 --   20260910_tipos_pagos_mes_final.sql
+--   20260915_cursos_director_grupo.sql
 -- FIN MIGRACIONES INCORPORADAS
 
 CREATE TABLE IF NOT EXISTS asignaciones (
@@ -103,6 +103,7 @@ CREATE TABLE IF NOT EXISTS cursos (
     jornada character varying(20) DEFAULT 'Mañana'::character varying,
     estado character varying(30),
     nivel character varying(20),
+    director_grupo_id integer,
     CONSTRAINT chk_cursos_nivel CHECK (((nivel IS NULL) OR ((nivel)::text = ANY ((ARRAY['preescolar'::character varying, 'primaria'::character varying])::text[])))),
     CONSTRAINT cursos_pkey PRIMARY KEY (id)
 );
@@ -425,12 +426,12 @@ CREATE TABLE IF NOT EXISTS tipos_de_pagos (
     mora_tipo character varying(20),
     mora_valor numeric(12,2) DEFAULT 0 NOT NULL,
     mes_inicial smallint,
-    mes_final smallint DEFAULT 12 NOT NULL,
     frecuencia_meses smallint DEFAULT 1 NOT NULL,
     generacion_automatica boolean DEFAULT false NOT NULL,
     activo boolean DEFAULT true NOT NULL,
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    mes_final smallint DEFAULT 12 NOT NULL,
     CONSTRAINT chk_dia_limite_mes CHECK (((dia_limite_mes IS NULL) OR ((dia_limite_mes >= 1) AND (dia_limite_mes <= 31)))),
     CONSTRAINT chk_mes_final CHECK (((mes_final >= 1) AND (mes_final <= 12))),
     CONSTRAINT chk_mes_inicial CHECK (((mes_inicial IS NULL) OR ((mes_inicial >= 1) AND (mes_inicial <= 12)))),
@@ -516,6 +517,7 @@ CREATE INDEX IF NOT EXISTS tenant_colegio_1_idx_asignaciones_profesor_id ON asig
 CREATE INDEX IF NOT EXISTS tenant_colegio_1_idx_asistencia_asignacion_periodo ON asistencia USING btree (asignacion_id, periodo);
 CREATE INDEX IF NOT EXISTS tenant_colegio_1_idx_asistencia_estudiante_fecha ON asistencia USING btree (estudiante_id, fecha);
 CREATE INDEX IF NOT EXISTS tenant_colegio_1_idx_boletin_cabecera_lookup ON boletin_cabecera USING btree (estudiante_id, asignacion_id, periodo);
+CREATE INDEX IF NOT EXISTS idx_cursos_director_grupo ON cursos USING btree (director_grupo_id);
 CREATE INDEX IF NOT EXISTS idx_cursos_estado ON cursos USING btree (estado);
 CREATE INDEX IF NOT EXISTS idx_cursos_nivel ON cursos USING btree (nivel);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_cursos_nombre_jornada_unico ON cursos USING btree (upper(regexp_replace(TRIM(BOTH FROM nombre), '[[:space:]]+'::text, ' '::text, 'g'::text)), lower(COALESCE(NULLIF(TRIM(BOTH FROM jornada), ''::text), 'Mañana'::text))) WHERE (NULLIF(TRIM(BOTH FROM COALESCE(nombre, ''::character varying)), ''::text) IS NOT NULL);
@@ -568,6 +570,7 @@ ALTER TABLE asistencia ADD CONSTRAINT asistencia_estudiante_id_fkey FOREIGN KEY 
 ALTER TABLE boletin_cabecera ADD CONSTRAINT boletin_cabecera_asignacion_id_fkey FOREIGN KEY (asignacion_id) REFERENCES asignaciones(id) ON DELETE CASCADE;
 ALTER TABLE boletin_cabecera ADD CONSTRAINT boletin_cabecera_estudiante_id_fkey FOREIGN KEY (estudiante_id) REFERENCES estudiantes(id) ON DELETE CASCADE;
 ALTER TABLE boletin_detalles ADD CONSTRAINT boletin_detalles_boletin_id_fkey FOREIGN KEY (boletin_id) REFERENCES boletin_cabecera(id) ON DELETE CASCADE;
+ALTER TABLE cursos ADD CONSTRAINT cursos_director_grupo_id_fkey FOREIGN KEY (director_grupo_id) REFERENCES profesor(id) ON DELETE SET NULL;
 ALTER TABLE estudiantes ADD CONSTRAINT estudiantes_curso_id_fkey FOREIGN KEY (curso_id) REFERENCES cursos(id);
 ALTER TABLE matriculas ADD CONSTRAINT matriculas_curso_id_fkey FOREIGN KEY (curso_id) REFERENCES cursos(id);
 ALTER TABLE matriculas ADD CONSTRAINT matriculas_estudiante_id_fkey FOREIGN KEY (estudiante_id) REFERENCES estudiantes(id);

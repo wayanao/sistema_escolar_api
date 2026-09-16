@@ -202,6 +202,10 @@ def obtener_boletin_admin_controller(estudiante_id: int, periodo: int):
             'estudiante_nombre': est_info['estudiante_nombre'],
             'estudiante_apellido': est_info['estudiante_apellido'],
             'curso': est_info['curso_nombre'],
+            'director_grupo': (
+                f"{est_info['director_grupo_nombre']} {est_info['director_grupo_apellido']}"
+                if est_info.get('director_grupo_nombre') else None
+            ),
             'periodo': periodo,
             'puesto': ranking_row.get('puesto'),
             'total_estudiantes': ranking_row.get('total') or 0,
@@ -300,6 +304,10 @@ def obtener_reporte_parcial_admin_controller(estudiante_id: int, periodo: int):
             'estudiante_nombre': est_info['estudiante_nombre'],
             'estudiante_apellido': est_info['estudiante_apellido'],
             'curso': est_info['curso_nombre'],
+            'director_grupo': (
+                f"{est_info['director_grupo_nombre']} {est_info['director_grupo_apellido']}"
+                if est_info.get('director_grupo_nombre') else None
+            ),
             'periodo': periodo,
             'materias': list(materias.values()),
         }

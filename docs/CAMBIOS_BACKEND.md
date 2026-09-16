@@ -1,10 +1,60 @@
 # Cambios Backend
 
-Ultima revision documental: 2026-09-13.
+Ultima revision documental: 2026-09-15.
 
 ## Proposito
 
 Bitacora de cambios documentales y tecnicos observables del backend.
+
+## 2026-09-15 - Director de grupo en el boletin
+
+El boletin impreso solo tenia "Director de Grupo" como una etiqueta fija de
+firma a mano, sin nombre real. El usuario pidio que el nombre apareciera
+tambien como dato informativo aparte, sin tocar esa firma.
+
+### Sin dato previo, ni forma de derivarlo
+
+`cursos` no tenia ningun campo de profesor. Se penso primero en derivarlo de
+`asignaciones`, pero esa tabla es materia-profesor-curso-horario, simetrica:
+ninguna fila marca "este es el encargado del grupo", y adivinarlo (el primer
+profesor asignado, o el de alguna materia en particular) no tiene sentido
+semantico. Se opto por agregar una columna nueva a `cursos`, mismo patron ya
+usado para `nivel` (`docs/funcionalidades/NIVEL_ACADEMICO.md`).
+
+### Columna nueva
+
+`cursos.director_grupo_id` (nullable, `REFERENCES profesor(id) ON DELETE SET
+NULL`), migracion `20260915_cursos_director_grupo.sql`. Un curso sin director
+de grupo se comporta exactamente igual que hoy.
+
+### Boletin: mismo dato, dos caminos
+
+`obtener_boletin_admin_controller` y `obtener_reporte_parcial_admin_controller`
+usan lecturas de estudiante independientes
+(`leer_datos_del_estudiante`/`leer_datos_basicos_del_estudiante`, con SQL
+distinto a proposito, ver el docstring de `boletin_repository.py`). Se agrego
+el mismo `LEFT JOIN profesor` a ambas, sin crear una consulta compartida
+nueva. Cero consultas adicionales: es el mismo query con un JOIN mas.
+
+### Detalle completo
+
+`docs/funcionalidades/DIRECTOR_GRUPO.md` — diseño de datos, decisiones,
+invariantes y el orden de despliegue obligatorio (la migracion debe aplicarse
+a todos los tenants antes de publicar este codigo, igual que nivel
+academico).
+
+### Pruebas
+
+`scripts/verify.py`: **1307 pasan** (subio de 1297; +11 nuevas: 7 en
+`tests/test_curso_controlador.py`, 4 en `tests/test_boletin_caracterizacion.py`).
+Ruff y `pip check` en verde. Una falla esperada:
+`test_esquema_base.py::test_la_base_incorpora_todas_las_migraciones_de_tenant`,
+la compuerta que exige aplicar la migracion real y regenerar el esquema base
+antes de que quede en verde — no se fuerza a mano.
+
+Nada commiteado ni publicado. La migracion no se aplico a Neon ni a ningun
+tenant: queda pendiente para el usuario, siguiendo el mismo orden de
+despliegue documentado para nivel academico.
 
 ## 2026-09-13 - Las evidencias del plan de clases aceptan PDF
 

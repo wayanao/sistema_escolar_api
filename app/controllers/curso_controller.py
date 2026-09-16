@@ -68,14 +68,15 @@ def crear_curso_controller(curso):
         _validar_curso_unico(cursor, nombre, jornada)
 
         cursor.execute("""
-            INSERT INTO cursos (nombre, jornada, estado, nivel)
-            VALUES (%s, %s, %s, %s)
+            INSERT INTO cursos (nombre, jornada, estado, nivel, director_grupo_id)
+            VALUES (%s, %s, %s, %s, %s)
             RETURNING id
         """, (
             nombre,
             jornada,
             _normalizar_estado(curso.estado),
             curso.nivel,
+            curso.director_grupo_id,
         ))
 
         curso_id = cursor.fetchone()[0]
@@ -102,6 +103,7 @@ def _formatear_curso(row):
         "jornada": row[2] or "Mañana",
         "estado": _normalizar_estado(row[3] if len(row) > 3 else ESTADO_CURSO_DEFAULT),
         "nivel": row[4] if len(row) > 4 else None,
+        "director_grupo_id": row[5] if len(row) > 5 else None,
     }
 
 
@@ -117,7 +119,7 @@ def obtener_cursos_controller(estado=ESTADO_CURSO_DEFAULT):
         where_sql = f"WHERE {' AND '.join(filtros)}" if filtros else ""
 
         cursor.execute("""
-            SELECT id, nombre, jornada, COALESCE(LOWER(estado), 'activo') AS estado, nivel
+            SELECT id, nombre, jornada, COALESCE(LOWER(estado), 'activo') AS estado, nivel, director_grupo_id
             FROM cursos
             {where_sql}
             ORDER BY id
@@ -150,7 +152,7 @@ def obtener_cursos_paginado_controller(limit=50, offset=0, busqueda=None, estado
         total = cursor.fetchone()[0]
 
         cursor.execute(f"""
-            SELECT id, nombre, jornada, COALESCE(LOWER(estado), 'activo') AS estado, nivel
+            SELECT id, nombre, jornada, COALESCE(LOWER(estado), 'activo') AS estado, nivel, director_grupo_id
             FROM cursos
             {where_sql}
             ORDER BY id
@@ -179,10 +181,17 @@ def actualizar_curso_controller(curso_id, curso):
 
         cursor.execute('''
             UPDATE cursos
-            SET nombre = %s, jornada = %s, estado = %s, nivel = %s
+            SET nombre = %s, jornada = %s, estado = %s, nivel = %s, director_grupo_id = %s
             WHERE id = %s
             RETURNING id
-        ''', (nombre, jornada, _normalizar_estado(curso.estado), curso.nivel, curso_id))
+        ''', (
+            nombre,
+            jornada,
+            _normalizar_estado(curso.estado),
+            curso.nivel,
+            curso.director_grupo_id,
+            curso_id,
+        ))
         if not cursor.fetchone():
             conn.rollback()
             return {"error": "Curso no encontrado"}
@@ -212,7 +221,7 @@ def actualizar_estado_curso_controller(curso_id, estado):
             UPDATE cursos
             SET estado = %s
             WHERE id = %s
-            RETURNING id, nombre, jornada, COALESCE(LOWER(estado), 'activo') AS estado, nivel
+            RETURNING id, nombre, jornada, COALESCE(LOWER(estado), 'activo') AS estado, nivel, director_grupo_id
             """,
             (estado_normalizado, curso_id),
         )

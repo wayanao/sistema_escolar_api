@@ -350,7 +350,7 @@ def test_ddl_fija_unicidad_estado_y_las_referencias_externas():
     assert "CONSTRAINT profesor_documento_identidad_key UNIQUE (documento_identidad)" in base
     assert "CONSTRAINT unique_documento_identidad UNIQUE (documento_identidad)" in base
     assert "estado character varying(30)," in base
-    assert base.count("REFERENCES profesor(id)") == 5
+    assert base.count("REFERENCES profesor(id)") == 6
     assert (
         "asignaciones_profesor_id_fkey FOREIGN KEY (profesor_id) "
         "REFERENCES profesor(id);"
@@ -373,6 +373,12 @@ def test_ddl_fija_unicidad_estado_y_las_referencias_externas():
     assert (
         "observador_anotaciones_editada_por_fkey FOREIGN KEY (editada_por) "
         "REFERENCES profesor(id);"
+    ) in base
+    # El director de grupo de un curso es opcional y se desasigna solo, sin
+    # arrastrar el curso, si el profesor llegara a borrarse fisicamente.
+    assert (
+        "cursos_director_grupo_id_fkey FOREIGN KEY (director_grupo_id) "
+        "REFERENCES profesor(id) ON DELETE SET NULL;"
     ) in base
     assert "ADD COLUMN IF NOT EXISTS estado VARCHAR(30)" in migration
     assert "SET estado = 'activo'" in migration

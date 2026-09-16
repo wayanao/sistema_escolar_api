@@ -1,6 +1,6 @@
 # API Endpoints
 
-Ultima revision documental: 2026-08-27.
+Ultima revision documental: 2026-09-15.
 
 ## Routers
 
@@ -182,6 +182,9 @@ Notas:
   asignaciones activas.
 - `POST /cursos` y `PUT /cursos/{curso_id}` responden `409 Conflict` si ya
   existe un curso con el mismo `nombre` y `jornada`.
+- `POST /cursos`, `PUT /cursos/{curso_id}` y el listado aceptan/devuelven
+  `director_grupo_id` (opcional, `int` o `null`; referencia a `profesor.id`).
+  Ver `docs/funcionalidades/DIRECTOR_GRUPO.md`.
 
 ## Profesores
 
@@ -655,6 +658,10 @@ Notas:
   fotografia en tiempo real de `notas_detalle`, incluyendo `descripcion`, nota
   o valoracion y el promedio numerico vigente por materia. No depende de que el
   profesor haya guardado el boletin para administracion.
+- Ambos endpoints devuelven `director_grupo`: `"Nombre Apellido"` del profesor
+  asignado como director de grupo del curso del estudiante, o `null` si el
+  curso no tiene uno asignado (`cursos.director_grupo_id`). Ver
+  `docs/funcionalidades/DIRECTOR_GRUPO.md`.
 
 ## Branding
 

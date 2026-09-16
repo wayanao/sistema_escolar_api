@@ -11,6 +11,7 @@ class CursoCreate(BaseModel):
     jornada: str = "Mañana"
     estado: EstadoCurso = "activo"
     nivel: Optional[NivelCurso] = None
+    director_grupo_id: Optional[int] = None
 
 
 class CursoEstadoUpdate(BaseModel):

@@ -1,6 +1,6 @@
 # Migraciones
 
-Ultima revision documental: 2026-09-10.
+Ultima revision documental: 2026-09-15.
 
 ## Carpeta de migraciones
 
@@ -46,6 +46,7 @@ Archivos actuales:
 - `20260908_observador_anotaciones_historicas.sql`
 - `20260908_observador_anotaciones_materia.sql`
 - `20260910_tipos_pagos_mes_final.sql`
+- `20260915_cursos_director_grupo.sql`
 - `README.md`
 
 Migraciones globales `public`:
@@ -488,6 +489,34 @@ Estado:
 
 - Aplicada en los tenants operativos existentes durante la auditoria.
 - Registrada en `public.schema_migrations`.
+
+## Migracion 20260915_cursos_director_grupo.sql
+
+Objetivo:
+
+- Permitir asignar un profesor como director de grupo de un curso.
+- Que el boletin muestre su nombre como dato informativo, sin reemplazar la
+  linea de firma a mano existente.
+
+Columna agregada a `cursos`:
+
+- `director_grupo_id` (INTEGER, `REFERENCES profesor(id) ON DELETE SET NULL`,
+  nullable).
+
+Indice creado:
+
+- `idx_cursos_director_grupo`.
+
+Detalle completo (motivacion, decisiones, invariantes, orden de despliegue):
+
+- `docs/funcionalidades/DIRECTOR_GRUPO.md`.
+
+Estado:
+
+- Codigo y pruebas locales completos (`scripts/verify.py`: 1307 pasan, 1
+  falla esperada de `test_esquema_base.py` hasta aplicar la migracion real).
+- **No aplicada** a Neon ni a ningun tenant. Pendiente de que el usuario la
+  aplique con `apply_migration.py` y regenere el esquema base.
 
 ## Migracion 20260604_egresos_origen.sql
 

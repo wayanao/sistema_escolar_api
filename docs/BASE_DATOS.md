@@ -1,6 +1,6 @@
 # Base de Datos
 
-Ultima revision documental: 2026-07-16.
+Ultima revision documental: 2026-09-15.
 
 ## Motor
 
@@ -205,6 +205,11 @@ Estado actual:
   - `matricula`;
   - `mensualidad`;
   - `meses`.
+- `cursos.director_grupo_id` (nullable, `REFERENCES profesor(id) ON DELETE
+  SET NULL`) guarda el profesor asignado como director de grupo del curso.
+  Sin uso previo: se agrega para que el boletin muestre su nombre como dato
+  informativo aparte de la firma a mano. Ver
+  `docs/funcionalidades/DIRECTOR_GRUPO.md`.
 
 Migracion relacionada:
 

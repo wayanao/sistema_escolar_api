@@ -223,12 +223,12 @@ def leer_detalles_por_asignaciones(cursor, periodo, estudiante_id, asignacion_id
 
 
 def leer_datos_del_estudiante(cursor, estudiante_id):
-    """Nombre, apellido, curso y director de grupo del curso. Devuelve `None`
-    si el estudiante no existe, y eso es lo que acaba siendo el **404** de la
-    ruta."""
+    """Nombre, apellido, curso, jornada y director de grupo del curso. Devuelve
+    `None` si el estudiante no existe, y eso es lo que acaba siendo el **404**
+    de la ruta."""
     cursor.execute('''
             SELECT e.nombre as estudiante_nombre, e.apellido as estudiante_apellido,
-                   c.nombre as curso_nombre,
+                   c.nombre as curso_nombre, c.jornada as jornada,
                    dg.nombre as director_grupo_nombre, dg.apellido as director_grupo_apellido
             FROM estudiantes e
             LEFT JOIN cursos c ON e.curso_id = c.id
@@ -286,6 +286,7 @@ def leer_datos_basicos_del_estudiante(cursor, estudiante_id):
                 e.nombre AS estudiante_nombre,
                 e.apellido AS estudiante_apellido,
                 c.nombre AS curso_nombre,
+                c.jornada AS jornada,
                 dg.nombre AS director_grupo_nombre,
                 dg.apellido AS director_grupo_apellido
             FROM estudiantes e

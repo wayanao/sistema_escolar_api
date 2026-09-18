@@ -644,6 +644,24 @@ def test_boletin_de_admin_sin_director_de_grupo_devuelve_none(monkeypatch):
     assert resultado["director_grupo"] is None
 
 
+def test_boletin_de_admin_incluye_la_jornada_del_curso(monkeypatch):
+    cursor = CursorFalso(
+        una_fila={
+            "estudiante_nombre": "Sara",
+            "estudiante_apellido": "López",
+            "curso_nombre": "Quinto",
+            "jornada": "Tarde",
+        },
+        filas=[],
+    )
+    conn = ConexionFalsa(cursor)
+    monkeypatch.setattr(boletin_controller, "get_connection", lambda: conn)
+
+    resultado = boletin_controller.obtener_boletin_admin_controller(8, 2)
+
+    assert resultado["jornada"] == "Tarde"
+
+
 def test_linea_base_de_consultas_del_reporte_parcial(monkeypatch):
     cursor = CursorFalso(
         una_fila={
@@ -697,6 +715,24 @@ def test_reporte_parcial_sin_director_de_grupo_devuelve_none(monkeypatch):
     resultado = boletin_controller.obtener_reporte_parcial_admin_controller(8, 2)
 
     assert resultado["director_grupo"] is None
+
+
+def test_reporte_parcial_incluye_la_jornada_del_curso(monkeypatch):
+    cursor = CursorFalso(
+        una_fila={
+            "estudiante_nombre": "Sara",
+            "estudiante_apellido": "López",
+            "curso_nombre": "Quinto",
+            "jornada": "Tarde",
+        },
+        filas=[],
+    )
+    conn = ConexionFalsa(cursor)
+    monkeypatch.setattr(boletin_controller, "get_connection", lambda: conn)
+
+    resultado = boletin_controller.obtener_reporte_parcial_admin_controller(8, 2)
+
+    assert resultado["jornada"] == "Tarde"
 
 
 def test_linea_base_de_consultas_de_referencia_para_profesor(monkeypatch):

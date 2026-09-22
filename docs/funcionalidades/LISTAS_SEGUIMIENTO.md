@@ -1,0 +1,248 @@
+# Funcionalidad: Listas de Seguimiento por Curso — Backend
+
+## Control
+
+- Estado: **En diseño. Sin código escrito todavía.** Se cerró el diseño de
+  datos y de API con el usuario (ver este documento) y quedó guardado como
+  plan; no se creó ningún archivo de código, no se escribió la migración, no
+  se corrió nada contra ningún tenant.
+- Tipo: Función nueva de producto. No es una capa del programa de
+  modularización de `docs/modularizacion/` y no debe confundirse con una.
+- Repos afectados: este repo (`sistema_escolar_api`) y `frontend-react`. Ver
+  también `frontend-react/docs/funcionalidades/LISTAS_SEGUIMIENTO.md`, que
+  cubre la parte de pantallas.
+- Riesgo inicial: Bajo. Tablas enteramente nuevas — a diferencia de
+  `NIVEL_ACADEMICO.md`/`DIRECTOR_GRUPO.md`, que agregan una columna a
+  `cursos` (una tabla que ya leen y escriben endpoints existentes), acá nada
+  del código actual toca las tablas nuevas. Si se publicara antes de aplicar
+  la migración, solo fallarían los endpoints nuevos de este router
+  (`relation does not exist`), no el resto del sistema. Aun así, el orden de
+  despliegue de abajo aplica igual.
+- Última actualización: 2026-09-21.
+
+## Objetivo
+
+Que el administrador pueda, por curso, definir columnas con el nombre que
+quiera (ej. "Asistió a la cumbre", "Compró el libro") y marcar cada alumno
+con un check + una nota corta opcional por columna. No es notas ni
+asistencia: es un registro libre para cualquier seguimiento administrativo
+que no encaje en lo que ya existe.
+
+## Motivación
+
+El usuario pidió una vista tipo hoja de cálculo por curso (a partir de una
+planilla de sueldos como referencia visual), configurable por él mismo, para
+llevar registros que hoy no tienen dónde vivir. Se investigó primero si el
+dato ya existía en otra forma:
+
+- `notas_detalle` (planilla del profesor) tiene columnas de nombre libre,
+  pero atadas a `asignacion_id` (materia+profesor+horario), no a curso
+  directo, y una columna solo existe una vez que ya tiene al menos una fila
+  — no sirve para "definir la columna primero, marcar después".
+- `asistencia` es una fila por alumno por fecha, sin entidad de columna
+  propia — la "columna" es una fecha, no un nombre libre elegido por el
+  admin.
+- `tipos_de_pagos` / `tipos_pagos_estudiantes` es el precedente más parecido
+  (nombre definido por el admin + valor por alumno, con upsert), pero está
+  pensado para plata: usa baja lógica (`activo`) para preservar historial
+  financiero y una tabla puente a cursos que acá no hace falta (ver
+  "Decisiones ya tomadas").
+- No existe ningún mecanismo genérico de "campo personalizado" en todo el
+  backend — se revisó a fondo: la única columna JSON de todo el esquema es
+  `institucion_branding.configuracion_extra`, un blob de configuración por
+  colegio, no una mecánica fila por fila reutilizable.
+
+## Fuera de alcance
+
+- Notas, boletines, asistencia, pagos: sin cambios en esta propuesta.
+- Reutilizar una columna entre varios cursos: decisión explícita del
+  usuario, cada curso tiene su propia lista independiente (ver "Decisiones
+  ya tomadas").
+- Un corte por período o año lectivo: no existe esa dimensión en este
+  diseño; una columna vive mientras exista el curso, hasta que el admin la
+  borre a mano.
+- Reordenar columnas a mano (drag and drop): no se pidió; se listan en el
+  orden en que se crean.
+
+## Decisiones ya tomadas (con el usuario, en la conversación de origen)
+
+- Columnas **independientes por curso**, sin compartir ni reutilizar entre
+  cursos — no hace falta una tabla puente como `tipos_pagos_cursos`.
+- Cada celda guarda **`marcado` (booleano) + `nota` (texto corto,
+  opcional)**, no solo un check.
+- Nombre visible para el admin: **"Listas de Seguimiento"** — a propósito
+  distinto de "Planilla" (que en este sistema significa notas del profesor)
+  y de `VistaPlanillaObservador` (que es otra cosa: un buscador de alumnos
+  del observador, no una grilla).
+- Borrado de columna es **definitivo** (no baja lógica): no hay historial
+  financiero que proteger acá, a diferencia de tipos de pago.
+- Guardado de marcas **en lote**, con un botón "Guardar cambios" y
+  confirmación previa — no una petición por click ni por tecla. Detalle de
+  UX en el documento del frontend.
+
+## Diseño de datos
+
+### Tabla `listas_seguimiento_columnas`
+
+```sql
+CREATE TABLE IF NOT EXISTS listas_seguimiento_columnas (
+    id SERIAL PRIMARY KEY,
+    curso_id INTEGER NOT NULL REFERENCES cursos(id) ON DELETE CASCADE,
+    nombre VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Nombre único por curso, ignorando mayúsculas/espacios — mismo patrón que
+-- idx_cursos_nombre_jornada_unico en 20260623_admin_unicos_academicos.sql
+CREATE UNIQUE INDEX IF NOT EXISTS idx_listas_seguimiento_columnas_nombre_unico
+ON listas_seguimiento_columnas (
+    curso_id,
+    (UPPER(REGEXP_REPLACE(TRIM(nombre), '[[:space:]]+', ' ', 'g')))
+);
+CREATE INDEX IF NOT EXISTS idx_listas_seguimiento_columnas_curso
+    ON listas_seguimiento_columnas(curso_id);
+```
+
+### Tabla `listas_seguimiento_marcas`
+
+```sql
+CREATE TABLE IF NOT EXISTS listas_seguimiento_marcas (
+    id SERIAL PRIMARY KEY,
+    columna_id INTEGER NOT NULL REFERENCES listas_seguimiento_columnas(id) ON DELETE CASCADE,
+    estudiante_id INTEGER NOT NULL REFERENCES estudiantes(id) ON DELETE CASCADE,
+    marcado BOOLEAN NOT NULL DEFAULT FALSE,
+    nota TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (columna_id, estudiante_id)
+);
+ALTER TABLE listas_seguimiento_marcas
+    ADD CONSTRAINT chk_listas_seguimiento_marcas_nota_longitud
+    CHECK (nota IS NULL OR char_length(nota) <= 240);
+CREATE INDEX IF NOT EXISTS idx_listas_seguimiento_marcas_columna
+    ON listas_seguimiento_marcas(columna_id);
+CREATE INDEX IF NOT EXISTS idx_listas_seguimiento_marcas_estudiante
+    ON listas_seguimiento_marcas(estudiante_id);
+```
+
+`UNIQUE (columna_id, estudiante_id)` + upsert (`ON CONFLICT ... DO UPDATE`)
+copia el patrón ya probado en `tipos_pagos_estudiantes`
+(`app/controllers/tipos_pagos_controller.py:639-651`).
+
+## Capas (mismo layout que el resto del repo)
+
+- `app/schemas/listas_seguimiento.py` — `ColumnaSeguimientoCreate {nombre}`,
+  `MarcaSeguimientoItem {columna_id, estudiante_id, marcado, nota}`.
+- `app/repositories/listas_seguimiento_repository.py` — SQL puro: leer
+  columnas de un curso, leer el roster del curso (`SELECT id, nombre,
+  apellido FROM estudiantes WHERE curso_id = %s ORDER BY apellido, nombre`
+  — misma consulta que ya usa, para otro fin,
+  `estado_cuenta_curso_controller` en
+  `app/controllers/estado_cuenta_controller.py:40-51`, replicada acá sin la
+  parte de deudas porque la original está privada dentro de un controlador
+  de cartera), leer marcas por columnas, chequear nombre duplicado,
+  crear/borrar columna, upsert de marca.
+- `app/controllers/listas_seguimiento_controller.py` — arma la respuesta
+  combinada, valida curso existente (404), nombre duplicado (409), y que
+  cada `columna_id`/`estudiante_id` de un lote de marcas realmente
+  pertenezca al curso antes de guardar nada.
+- `app/routes/listas_seguimiento.py` — `APIRouter(prefix="/listas-seguimiento",
+  dependencies=[Depends(get_current_active_admin)])`, igual que
+  `tipos_pagos.py`/`cursos.py`: solo admin a nivel de router, sin necesidad
+  de los helpers de `app/core/permissions.py` (esos acotan a un profesor a
+  sus propias asignaciones; acá no aplica).
+- Registrar el router en `app/main.py`, junto a los demás.
+
+## Cambios de API
+
+| Método | Ruta | Body | Notas |
+|---|---|---|---|
+| `GET` | `/listas-seguimiento/{curso_id}` | — | columnas + roster + marcas en una sola respuesta; 404 si el curso no existe |
+| `POST` | `/listas-seguimiento/{curso_id}/columnas` | `{"nombre": "..."}` | 201; 409 si el nombre ya existe en ese curso |
+| `DELETE` | `/listas-seguimiento/{curso_id}/columnas/{columna_id}` | — | borra en cascada sus marcas |
+| `POST` | `/listas-seguimiento/{curso_id}/marcas` | lista `[{columna_id, estudiante_id, marcado, nota}]` (mismo formato de lista que ya usa `POST /asistencia`) | 422 si el lote viene vacío, con celdas repetidas, o referencia algo fuera del curso |
+
+Forma de la respuesta de `GET /listas-seguimiento/{curso_id}`:
+
+```jsonc
+{
+  "curso_id": 12,
+  "columnas": [{"id": 5, "nombre": "Asistió a la cumbre"}],
+  "estudiantes": [
+    {
+      "estudiante_id": 101, "nombre": "Juan", "apellido": "Pérez",
+      "marcas": {"5": {"marcado": true, "nota": "Llegó tarde"}}
+    }
+  ]
+}
+```
+
+Las claves de `marcas` son el id de columna (como texto, por cómo serializa
+JSON). Un alumno sin fila para una columna simplemente no aparece ahí — el
+frontend le pone el default (`marcado: false, nota: ""`), igual que ya hace
+con `notas`/`valoraciones` ausentes en la respuesta de planilla.
+
+## Invariantes
+
+- Un curso sin columnas definidas se ve exactamente igual que hoy: nada que
+  mostrar, sin error.
+- No se toca `notas_detalle`, `asistencia`, `tipos_de_pagos` ni ninguna
+  tabla existente.
+- Permisos, roles y aislamiento por tenant no cambian: el router es
+  admin-only, igual que `tipos_pagos`/`cursos`; el aislamiento entre
+  colegios lo sigue dando el `search_path` por schema, como en el resto del
+  sistema.
+
+## Riesgos y mitigación
+
+| Riesgo | Mitigación |
+|---|---|
+| Publicar el router antes de aplicar la migración | Solo fallan los endpoints nuevos (`relation does not exist`); no afecta nada existente. Aun así, ver "Orden de despliegue obligatorio". |
+| Nombre de columna duplicado por una carrera de condición (dos requests casi simultáneos) | El índice único (`idx_listas_seguimiento_columnas_nombre_unico`) es la garantía real; el chequeo previo en el controlador es solo para devolver un 409 legible en el caso normal. |
+| Migración multi-tenant | Se aplica con el runner ya probado (`apply_migration.py`), igual que las migraciones anteriores. |
+
+### Orden de despliegue obligatorio
+
+1. Aplicar `migrations/20260921_listas_seguimiento.sql` a todos los tenants
+   activos con `apply_migration.py` (`--dry-run` primero).
+2. Regenerar `migrations/base/20260813_esquema_base_tenant.sql` con
+   `scripts/generar_esquema_base.py`, después del paso 1.
+3. Confirmar que `tests/test_esquema_base.py` pasa.
+4. Recién después, `git push origin main` — en este repositorio un push a
+   `main` despliega producción automáticamente.
+
+## Plan de fases (backend)
+
+1. Migración: las dos tablas de arriba. **Pendiente.**
+2. `app/repositories/listas_seguimiento_repository.py`. **Pendiente.**
+3. `app/schemas/listas_seguimiento.py`. **Pendiente.**
+4. `app/controllers/listas_seguimiento_controller.py`. **Pendiente.**
+5. `app/routes/listas_seguimiento.py` + registro en `app/main.py`.
+   **Pendiente.**
+6. Pruebas (`tests/test_listas_seguimiento_controlador.py`,
+   `tests/test_listas_seguimiento_routes.py`). **Pendiente.**
+7. Aplicar la migración real a los tenants y regenerar el esquema base.
+   **Pendiente.**
+
+## Preguntas abiertas
+
+- ¿Un `curso_id` se reutiliza de un año lectivo a otro, o cada año se crea
+  un curso nuevo? Define si en el futuro hace falta un corte por
+  período/año para estas columnas. **Sin responder** — no bloquea empezar,
+  el diseño actual no depende de la respuesta.
+- ¿Hace falta poder reordenar columnas a mano? **Sin responder** — se asume
+  que no, se puede agregar después si se pide.
+
+## Entrega para el siguiente chat
+
+- Última acción terminada: **ninguna.** Se cerró el diseño (tablas,
+  endpoints, decisiones de producto) con el usuario y quedó documentado
+  acá; no se escribió ningún archivo de código ni se corrió ninguna
+  migración.
+- Siguiente acción exacta: implementar el paso 1 del "Plan de fases"
+  (migración de las dos tablas), y recién ahí seguir con el resto de los
+  pasos, uno a la vez, verificando con `scripts/verify.py` después de cada
+  uno.
+- Sin riesgos abiertos conocidos más allá de las preguntas abiertas de
+  arriba, ninguna de las cuales bloquea empezar.

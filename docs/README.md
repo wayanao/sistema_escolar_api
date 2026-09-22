@@ -32,6 +32,10 @@ continuacion para retomarla en otro chat u otro LLM.
 - `funcionalidades/OBSERVADOR_ESTUDIANTE.md`: observador unificado por
   estudiante, en bitacora acumulativa, en vez de una casilla por materia y
   periodo. **Disenado, nada implementado.**
+- `funcionalidades/LISTAS_SEGUIMIENTO.md`: columnas con nombre libre por
+  curso para que el administrador marque alumnos (ej. asistencia a un
+  evento, compra de un libro) fuera de notas y pagos. **Disenado, nada
+  implementado.**
 
 ## Estado actual resumido
 

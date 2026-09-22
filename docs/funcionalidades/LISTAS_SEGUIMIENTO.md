@@ -2,11 +2,12 @@
 
 ## Control
 
-- Estado: **Pasos 1, 2, 3 y 7 de 7 hechos.** Existen la migración
-  (`8d9fa09`), el repositorio (`02b9d2e`) y los esquemas de entrada. **La
-  migración ya está aplicada** a los dos tenants operativos y el esquema base
-  regenerado (`23737bc`, 2026-09-22). Faltan el controlador, las rutas y sus
-  pruebas: pasos 4, 5 y 6.
+- Estado: **Pasos 1, 2, 3, 4 y 7 de 7 hechos.** Existen la migración
+  (`8d9fa09`), el repositorio (`02b9d2e`), los esquemas (`535200c`) y el
+  controlador. **La migración ya está aplicada** a los dos tenants operativos
+  y el esquema base regenerado (`23737bc`, 2026-09-22). Falta el paso 5, las
+  rutas, y con él lo que queda del paso 6:
+  `tests/test_listas_seguimiento_routes.py`.
 - Tipo: Función nueva de producto. No es una capa del programa de
   modularización de `docs/modularizacion/` y no debe confundirse con una.
 - Repos afectados: este repo (`sistema_escolar_api`) y `frontend-react`. Ver
@@ -200,7 +201,30 @@ copia el patrón ya probado en `tipos_pagos_estudiantes`
 - `app/controllers/listas_seguimiento_controller.py` — arma la respuesta
   combinada, valida curso existente (404), nombre duplicado (409), y que
   cada `columna_id`/`estudiante_id` de un lote de marcas realmente
-  pertenezca al curso antes de guardar nada.
+  pertenezca al curso antes de guardar nada. **Hecho (2026-09-22)**, con
+  `tests/test_listas_seguimiento_controlador.py` (23 pruebas). Cuatro cosas a
+  saber:
+    - **No conoce HTTP.** Lanza `CursoNoEncontradoError`,
+      `ColumnaDuplicadaError`, `ColumnaNoEncontradaError` y
+      `MarcasFueraDelCursoError`; traducirlos a 404/409/422 es trabajo de la
+      ruta, igual que hace `curso_controller` con `CursoDuplicadoError`. Hay
+      prueba que lo fija.
+    - **El duplicado se atrapa dos veces, y las dos hacen falta.** La consulta
+      previa da el 409 legible; el `except IntegrityError` recoge la carrera
+      —dos pestañas, un doble clic— que el índice único rechaza. Sin el
+      segundo, esa carrera sería un 500.
+    - **Los mensajes de error son constantes**, nunca `str(exc)` de la base.
+      El frontend los muestra tal cual, y el texto de un `IntegrityError`
+      pondría nombres de tablas e índices en la pantalla de una secretaria.
+      Es la lección que dejó escrita `app/routes/observador.py`, y hay prueba
+      que lo verifica.
+    - **Coste fijo en consultas**, que es lo que se degrada en silencio: el
+      `GET` cuesta 4 (o 3 si el curso no tiene columnas), crear 3, borrar 1 y
+      guardar el lote 3. **Ninguno crece con la cantidad de alumnos ni de
+      columnas.** Cada operación usa una sola conexión, y en las escrituras
+      validar y escribir van dentro de la misma transacción: si se validara en
+      una conexión y se escribiera en otra, entre las dos podrían borrar la
+      columna que se acaba de dar por buena.
 - `app/routes/listas_seguimiento.py` — `APIRouter(prefix="/listas-seguimiento",
   dependencies=[Depends(get_current_active_admin)])`, igual que
   `tipos_pagos.py`/`cursos.py`: solo admin a nivel de router, sin necesidad
@@ -275,11 +299,16 @@ con `notas`/`valoraciones` ausentes en la respuesta de planilla.
    (27 pruebas).
 3. `app/schemas/listas_seguimiento.py`. **Hecho (2026-09-22)**, con
    `tests/test_listas_seguimiento_esquemas.py` (22 pruebas).
-4. `app/controllers/listas_seguimiento_controller.py`. **Pendiente.**
+4. `app/controllers/listas_seguimiento_controller.py`. **Hecho
+   (2026-09-22)**, con `tests/test_listas_seguimiento_controlador.py`
+   (23 pruebas).
 5. `app/routes/listas_seguimiento.py` + registro en `app/main.py`.
    **Pendiente.**
 6. Pruebas (`tests/test_listas_seguimiento_controlador.py`,
-   `tests/test_listas_seguimiento_routes.py`). **Pendiente.**
+   `tests/test_listas_seguimiento_routes.py`). **A medias.** Las del
+   controlador se escribieron junto con él, en el paso 4; cada capa ha ido
+   llevando las suyas. Lo único que falta de este paso es
+   `tests/test_listas_seguimiento_routes.py`, que va con el paso 5.
 7. Aplicar la migración real a los tenants y regenerar el esquema base.
    **Hecho (2026-09-22)**, fuera de orden y a propósito: el "Orden de
    despliegue obligatorio" de más arriba manda aplicar antes de publicar, no
@@ -304,24 +333,22 @@ con `notas`/`valoraciones` ausentes en la respuesta de planilla.
 
 ## Entrega para el siguiente chat
 
-- Última acción terminada: **paso 3 del "Plan de fases"**, el 2026-09-22.
+- Última acción terminada: **paso 4 del "Plan de fases"**, el 2026-09-22.
 - Commits ya hechos por el usuario, **ninguno pusheado**:
   - `8d9fa09` — la migración y su documentación (paso 1).
   - `02b9d2e` — el repositorio y sus 27 pruebas (paso 2).
   - `23737bc` — la migración aplicada y el esquema base regenerado (paso 7).
-  - El paso 3 agrega `app/schemas/listas_seguimiento.py` y
-    `tests/test_listas_seguimiento_esquemas.py` (22 pruebas). **Sin commit
+  - `535200c` — los esquemas de entrada y sus 22 pruebas (paso 3).
+  - El paso 4 agrega `app/controllers/listas_seguimiento_controller.py` y
+    `tests/test_listas_seguimiento_controlador.py` (23 pruebas). **Sin commit
     todavía.**
-- Verificación del paso 3, con las variables de CI (`DATABASE_URL` falsa,
+- Verificación del paso 4, con las variables de CI (`DATABASE_URL` falsa,
   para no poder alcanzar ninguna base real):
-  - `scripts/verify.py`: **1359 pruebas pasan, 0 fallan.** Ruff y `pip check`
+  - `scripts/verify.py`: **1382 pruebas pasan, 0 fallan.** Ruff y `pip check`
     limpios.
   - `git diff --check`: limpio.
-  - No hubo que tocar ningún archivo de otro módulo: los esquemas no tienen
-    un censo como el que tienen los repositorios.
-- Dos frases del paso 2 quedaron desfasadas y se corrigieron: el docstring de
-  `crear_columna` y el de su prueba decían que el nombre lo recorta el
-  controlador. Lo recorta el esquema, en la frontera HTTP.
+  - No hubo que tocar ningún archivo de otro módulo: los controladores no
+    tienen un censo como el que tienen los repositorios.
 - Lo que hubo que tocar de otros módulos en el paso 2, por si alguien lo
   revisa: los cinco censos de `app/repositories/` que viven en
   `tests/test_{asistencia,dashboard,notas,planilla,ventas}_caracterizacion.py`
@@ -332,13 +359,25 @@ con `notas`/`valoraciones` ausentes en la respuesta de planilla.
   se puede editar**, porque está aplicada y el runner guarda su checksum. Si
   los pasos 4 a 6 revelaran que a las tablas les falta algo, va en una
   migración nueva, como ya pasó con las tres del observador.
-- Siguiente acción exacta: paso 4 del "Plan de fases",
-  `app/controllers/listas_seguimiento_controller.py` — arma la respuesta
-  combinada del `GET`, valida curso existente (404), nombre duplicado (409) y
-  que cada `columna_id`/`estudiante_id` de un lote pertenezca al curso antes
-  de guardar nada (422). Ojo al escribirlo: el 409 **también** tiene que
-  atrapar el error de unicidad de PostgreSQL, no solo el `SELECT` previo,
-  porque entre los dos hay una ventana por la que otra petición puede
-  colarse. Con sus pruebas. **No iniciado.**
+- Siguiente acción exacta: paso 5 del "Plan de fases",
+  `app/routes/listas_seguimiento.py` más su registro en `app/main.py`, con
+  `tests/test_listas_seguimiento_routes.py`. Lo que la ruta tiene que hacer,
+  y nada más:
+  - `APIRouter(prefix="/listas-seguimiento", dependencies=[Depends(get_current_active_admin)])`,
+    solo admin a nivel de router, igual que `tipos_pagos.py` y `cursos.py`.
+    Los helpers de `app/core/permissions.py` no aplican: acotan a un profesor
+    a sus propias asignaciones, y aquí no hay profesores.
+  - Traducir los cuatro errores del controlador:
+    `CursoNoEncontradoError` y `ColumnaNoEncontradaError` → 404,
+    `ColumnaDuplicadaError` → 409, `MarcasFueraDelCursoError` → 422.
+    `str(exc)` aquí **sí** es seguro: esos mensajes son constantes escritas a
+    mano en el controlador, no texto de PostgreSQL.
+  - Declarar el cuerpo del `POST` de marcas como `LoteDeMarcas`, no como
+    `list[MarcaSeguimientoItem]`, o se pierden las dos reglas del lote.
+    **Conviene confirmar en una prueba** que FastAPI lo interpreta como cuerpo
+    y que sus dos validaciones salen como 422; hasta ahora solo se ha probado
+    el tipo por separado, fuera de FastAPI.
+  - El `POST` de columnas responde 201.
+  **No iniciado.**
 - Sin más riesgos abiertos que ese y las preguntas abiertas de arriba,
   ninguna de las cuales bloquea seguir.

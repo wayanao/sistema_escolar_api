@@ -153,9 +153,9 @@ def existe_columna_con_ese_nombre(cursor, curso_id, nombre):
 def crear_columna(cursor, curso_id, nombre):
     """Inserta una columna y devuelve su id.
 
-    Guarda el `nombre` **tal como llega**. Recortarlo es cosa del controlador,
-    igual que `tipos_pagos_controller` recorta el motivo antes de guardarlo.
-    Este modulo no decide que es un nombre valido.
+    Guarda el `nombre` **tal como llega**. Quien lo recorta es
+    `ColumnaSeguimientoCreate`, en la frontera HTTP, asi que aqui ya llega
+    limpio. Este modulo no decide que es un nombre valido.
 
     El `commit` es de quien llama, como en los demas repositorios.
     """

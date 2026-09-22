@@ -222,8 +222,8 @@ def test_crear_columna_devuelve_el_id_nuevo():
 
 
 def test_crear_columna_guarda_el_nombre_tal_como_llega():
-    """Recortar es cosa del controlador. Si el repositorio recortara tambien,
-    habria dos sitios decidiendo que es un nombre valido."""
+    """Recortar es cosa del esquema, en la frontera HTTP. Si el repositorio
+    recortara tambien, habria dos sitios decidiendo que es un nombre valido."""
     cursor = CursorFalso(fila=(7,))
 
     repo.crear_columna(cursor, 12, "  Con espacios  ")

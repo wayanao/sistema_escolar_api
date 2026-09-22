@@ -2,12 +2,11 @@
 
 ## Control
 
-- Estado: **Pasos 1, 2 y 7 de 7 hechos.** Existen
-  `migrations/20260921_listas_seguimiento.sql` (commit `8d9fa09`) y
-  `app/repositories/listas_seguimiento_repository.py` con sus 27 pruebas.
-  **La migración ya está aplicada** a los dos tenants operativos y el esquema
-  base regenerado (2026-09-22). Faltan los esquemas, el controlador, las
-  rutas y sus pruebas: pasos 3 a 6.
+- Estado: **Pasos 1, 2, 3 y 7 de 7 hechos.** Existen la migración
+  (`8d9fa09`), el repositorio (`02b9d2e`) y los esquemas de entrada. **La
+  migración ya está aplicada** a los dos tenants operativos y el esquema base
+  regenerado (`23737bc`, 2026-09-22). Faltan el controlador, las rutas y sus
+  pruebas: pasos 4, 5 y 6.
 - Tipo: Función nueva de producto. No es una capa del programa de
   modularización de `docs/modularizacion/` y no debe confundirse con una.
 - Repos afectados: este repo (`sistema_escolar_api`) y `frontend-react`. Ver
@@ -137,7 +136,31 @@ copia el patrón ya probado en `tipos_pagos_estudiantes`
 ## Capas (mismo layout que el resto del repo)
 
 - `app/schemas/listas_seguimiento.py` — `ColumnaSeguimientoCreate {nombre}`,
-  `MarcaSeguimientoItem {columna_id, estudiante_id, marcado, nota}`.
+  `MarcaSeguimientoItem {columna_id, estudiante_id, marcado, nota}`. **Hecho
+  (2026-09-22)**, con `tests/test_listas_seguimiento_esquemas.py` (22
+  pruebas). El criterio, copiado de `observador.py`: **toda regla que la base
+  ya impone se repite aquí**, para que salga como 422 con mensaje útil en vez
+  de reventar dentro de PostgreSQL y llegar como 500. Tres cosas a saber:
+    - **Se agregó un tercer objeto, `LoteDeMarcas`**, que no estaba en esta
+      lista: es el tipo del cuerpo de `POST .../marcas`, una lista pelada con
+      dos reglas encima — no vacía y sin celdas repetidas. Son dos de los 422
+      que la tabla de "Cambios de API" ya promete. La de celdas repetidas es
+      la que **impide un 500**: `guardar_marcas` escribe el lote en una sola
+      sentencia con `ON CONFLICT DO UPDATE`, y PostgreSQL aborta si la misma
+      celda viene dos veces. Viven en el esquema y no en la ruta a propósito;
+      `app/routes/asistencia.py` las tiene en la ruta, pero eso está
+      documentado como defecto conocido de esa capa, no como patrón a copiar.
+    - **El recorte de espacios corre antes de medir la longitud**, en `nombre`
+      y en `nota`. Así lo que se mide es lo que se va a guardar, y un texto
+      que solo se pasa por espacios sobrantes se acepta en vez de rechazarse
+      por largo. Los espacios interiores no se tocan: que "a  b" y "a b"
+      cuenten como el mismo nombre lo resuelve el índice único.
+    - **`marcado` es obligatorio, sin valor por defecto.** Con un defecto de
+      `False`, un cliente que se olvidara del campo borraría la marca en vez
+      de dejarla como estaba, porque el lote se guarda con upsert: lo que
+      llega pisa lo que había. `nota` sí admite faltar, y admite `null`, que
+      es lo que manda un formulario vacío desde JavaScript; las dos formas se
+      guardan como cadena vacía.
 - `app/repositories/listas_seguimiento_repository.py` — SQL puro: leer
   columnas de un curso, leer el roster del curso (`SELECT id, nombre,
   apellido FROM estudiantes WHERE curso_id = %s ORDER BY apellido, nombre`
@@ -250,7 +273,8 @@ con `notas`/`valoraciones` ausentes en la respuesta de planilla.
 2. `app/repositories/listas_seguimiento_repository.py`. **Hecho
    (2026-09-22)**, con `tests/test_listas_seguimiento_repositorio.py`
    (27 pruebas).
-3. `app/schemas/listas_seguimiento.py`. **Pendiente.**
+3. `app/schemas/listas_seguimiento.py`. **Hecho (2026-09-22)**, con
+   `tests/test_listas_seguimiento_esquemas.py` (22 pruebas).
 4. `app/controllers/listas_seguimiento_controller.py`. **Pendiente.**
 5. `app/routes/listas_seguimiento.py` + registro en `app/main.py`.
    **Pendiente.**
@@ -280,61 +304,41 @@ con `notas`/`valoraciones` ausentes en la respuesta de planilla.
 
 ## Entrega para el siguiente chat
 
-- Última acción terminada: **paso 2 del "Plan de fases"**, el 2026-09-22.
-  - El paso 1 (la migración) quedó commiteado por el usuario como `8d9fa09`,
-    junto con `docs/MIGRACIONES.md` y este documento. **Sin pushear.**
-  - El paso 2 agrega `app/repositories/listas_seguimiento_repository.py` y
-    `tests/test_listas_seguimiento_repositorio.py` (27 pruebas). Sin commit
-    todavía.
-- Archivos de otros módulos que hubo que tocar, y por qué:
-  `tests/test_asistencia_caracterizacion.py`,
-  `test_dashboard_caracterizacion.py`, `test_notas_caracterizacion.py`,
-  `test_planilla_caracterizacion.py` y `test_ventas_caracterizacion.py`
-  llevan un **censo con la lista exacta de los archivos de
-  `app/repositories/`**, puesto a propósito para que un repositorio nuevo no
-  se cuele sin que nadie lo note (lo dice el docstring del de asistencia). Se
-  agregó `listas_seguimiento_repository` a las cinco listas y se subió de 17
-  a 18 el conteo de `test_asistencia_caracterizacion.py:228`. **No se tocó
-  ninguna otra línea ni el código de esos módulos**: es el reconocimiento que
-  el propio guardián exige, no un cambio de su comportamiento. Ojo: aparecer
-  en ese censo no significa que esta funcionalidad forme parte del programa
-  de `docs/modularizacion/`, que no la incluye.
-- Verificación del paso 2, con las variables de CI (`DATABASE_URL` falsa,
+- Última acción terminada: **paso 3 del "Plan de fases"**, el 2026-09-22.
+- Commits ya hechos por el usuario, **ninguno pusheado**:
+  - `8d9fa09` — la migración y su documentación (paso 1).
+  - `02b9d2e` — el repositorio y sus 27 pruebas (paso 2).
+  - `23737bc` — la migración aplicada y el esquema base regenerado (paso 7).
+  - El paso 3 agrega `app/schemas/listas_seguimiento.py` y
+    `tests/test_listas_seguimiento_esquemas.py` (22 pruebas). **Sin commit
+    todavía.**
+- Verificación del paso 3, con las variables de CI (`DATABASE_URL` falsa,
   para no poder alcanzar ninguna base real):
-  - `scripts/verify.py`: **1336 pruebas pasan, 1 falla esperada**,
-    `test_esquema_base.py::test_la_base_incorpora_todas_las_migraciones_de_tenant`.
-    Ruff y `pip check` limpios.
-  - Esa falla es el guardián del esquema base y es **correcta**: avisa que
-    hay una migración en `migrations/` que
-    `migrations/base/20260813_esquema_base_tenant.sql` todavía no declara.
-    Se apaga sola al aplicar la migración a un schema de referencia y
-    regenerar la base con `scripts/generar_esquema_base.py`, que lee la
-    estructura desde una base real. Mismo estado documentado que tuvo
-    `20260915_cursos_director_grupo.sql` en `docs/MIGRACIONES.md`.
+  - `scripts/verify.py`: **1359 pruebas pasan, 0 fallan.** Ruff y `pip check`
+    limpios.
   - `git diff --check`: limpio.
-  - Lo que **no** se pudo verificar: no hay PostgreSQL local ni Docker en la
-    máquina, así que ninguna sentencia SQL de esta funcionalidad se ha
-    ejecutado nunca contra un motor real. Lo que sí se comprobó sin base: que
-    psycopg2 traduce las listas de Python a `ARRAY[...]`, que es de lo que
-    depende el `UNNEST` de `guardar_marcas`.
-- **Ese riesgo quedó cerrado el mismo día.** La migración se aplicó a los
-  dos tenants operativos y el esquema base se regeneró, así que CI ya no
-  puede quedar en rojo por esto y un colegio nuevo nace con las dos tablas.
-  `scripts/verify.py` pasa entero: **1337 pruebas, 0 fallas**.
-- Aplicarla también cerró el único hueco de verificación que quedaba: hasta
-  ese momento ninguna de estas sentencias SQL se había ejecutado nunca contra
-  un motor real. Lo que PostgreSQL creó coincide con lo escrito, incluido el
-  índice único por expresión, que solo al aplicarlo se confirma que es
-  válido.
-- Consecuencia a tener presente: `20260921_listas_seguimiento.sql` **ya no se
-  puede editar**. El runner guarda su checksum y rechazaría una versión
-  distinta con el mismo nombre. Si los pasos 3 a 6 revelaran que falta algo
-  en las tablas, va en una migración nueva, como ya pasó con las tres del
-  observador.
-- Siguiente acción exacta: paso 3 del "Plan de fases",
-  `app/schemas/listas_seguimiento.py` — los modelos Pydantic
-  `ColumnaSeguimientoCreate {nombre}` y
-  `MarcaSeguimientoItem {columna_id, estudiante_id, marcado, nota}`, con sus
-  pruebas. **No iniciado.**
-- Sin más riesgos abiertos conocidos que ese y las preguntas abiertas de
-  arriba, ninguna de las cuales bloquea seguir.
+  - No hubo que tocar ningún archivo de otro módulo: los esquemas no tienen
+    un censo como el que tienen los repositorios.
+- Dos frases del paso 2 quedaron desfasadas y se corrigieron: el docstring de
+  `crear_columna` y el de su prueba decían que el nombre lo recorta el
+  controlador. Lo recorta el esquema, en la frontera HTTP.
+- Lo que hubo que tocar de otros módulos en el paso 2, por si alguien lo
+  revisa: los cinco censos de `app/repositories/` que viven en
+  `tests/test_{asistencia,dashboard,notas,planilla,ventas}_caracterizacion.py`
+  reconocen ahora el archivo nuevo. Son guardias que enumeran el conjunto
+  exacto a propósito; no se tocó nada más de esos módulos. Aparecer ahí no
+  mete esta funcionalidad en el programa de `docs/modularizacion/`.
+- Riesgo abierto a tener presente: `20260921_listas_seguimiento.sql` **ya no
+  se puede editar**, porque está aplicada y el runner guarda su checksum. Si
+  los pasos 4 a 6 revelaran que a las tablas les falta algo, va en una
+  migración nueva, como ya pasó con las tres del observador.
+- Siguiente acción exacta: paso 4 del "Plan de fases",
+  `app/controllers/listas_seguimiento_controller.py` — arma la respuesta
+  combinada del `GET`, valida curso existente (404), nombre duplicado (409) y
+  que cada `columna_id`/`estudiante_id` de un lote pertenezca al curso antes
+  de guardar nada (422). Ojo al escribirlo: el 409 **también** tiene que
+  atrapar el error de unicidad de PostgreSQL, no solo el `SELECT` previo,
+  porque entre los dos hay una ventana por la que otra petición puede
+  colarse. Con sus pruebas. **No iniciado.**
+- Sin más riesgos abiertos que ese y las preguntas abiertas de arriba,
+  ninguna de las cuales bloquea seguir.

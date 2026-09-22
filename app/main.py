@@ -41,6 +41,7 @@ from app.routes import (
     estudiantes,
     health,
     inventario,
+    listas_seguimiento,
     materias,
     nomina,
     notas,
@@ -233,5 +234,6 @@ app.include_router(boletines.router)
 app.include_router(branding.router)
 app.include_router(plantillas.router)
 app.include_router(cartera.router)
+app.include_router(listas_seguimiento.router)
 
 

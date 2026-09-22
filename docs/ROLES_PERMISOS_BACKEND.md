@@ -1,6 +1,6 @@
 # Roles y Permisos Backend
 
-Ultima revision documental: 2026-07-15.
+Ultima revision documental: 2026-09-22.
 
 ## Roles actuales
 
@@ -123,6 +123,7 @@ Segun los routers actuales, usan `get_current_active_admin`:
 - inventario
 - cartera
 - nomina
+- listas_seguimiento
 - varias rutas admin de plan de clases, plantillas, branding, ventas, prestamos y egresos
 
 ## Routers protegidos por super admin

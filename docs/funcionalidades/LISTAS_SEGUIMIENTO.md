@@ -2,12 +2,11 @@
 
 ## Control
 
-- Estado: **Pasos 1, 2, 3, 4 y 7 de 7 hechos.** Existen la migración
-  (`8d9fa09`), el repositorio (`02b9d2e`), los esquemas (`535200c`) y el
-  controlador. **La migración ya está aplicada** a los dos tenants operativos
-  y el esquema base regenerado (`23737bc`, 2026-09-22). Falta el paso 5, las
-  rutas, y con él lo que queda del paso 6:
-  `tests/test_listas_seguimiento_routes.py`.
+- Estado: **Backend completo. Los 7 pasos hechos (2026-09-22).** Migración
+  aplicada a los dos tenants operativos, esquema base regenerado, y los cuatro
+  endpoints en pie con 95 pruebas propias. Lo que falta ahora es **el
+  frontend**, que es una propuesta aparte: ver
+  `frontend-react/docs/funcionalidades/LISTAS_SEGUIMIENTO.md`.
 - Tipo: Función nueva de producto. No es una capa del programa de
   modularización de `docs/modularizacion/` y no debe confundirse con una.
 - Repos afectados: este repo (`sistema_escolar_api`) y `frontend-react`. Ver
@@ -229,8 +228,24 @@ copia el patrón ya probado en `tipos_pagos_estudiantes`
   dependencies=[Depends(get_current_active_admin)])`, igual que
   `tipos_pagos.py`/`cursos.py`: solo admin a nivel de router, sin necesidad
   de los helpers de `app/core/permissions.py` (esos acotan a un profesor a
-  sus propias asignaciones; acá no aplica).
-- Registrar el router en `app/main.py`, junto a los demás.
+  sus propias asignaciones; acá no aplica). **Hecho (2026-09-22)**, con
+  `tests/test_listas_seguimiento_routes.py` (23 pruebas). Tres cosas a saber:
+    - **La protección va en el `APIRouter`, no en cada función.** Así un
+      endpoint nuevo nace protegido en vez de nacer abierto y depender de que
+      alguien se acuerde. Hay prueba que lo fija, y otra que comprueba que un
+      profesor recibe 403 en las cuatro rutas.
+    - **El cuerpo del `POST` de marcas se declara `LoteDeMarcas`**, no
+      `list[MarcaSeguimientoItem]`. Parecen lo mismo y no lo son: con el
+      segundo se pierden las dos reglas del lote y una celda repetida llegaría
+      a PostgreSQL, que aborta la sentencia entera — un 500 donde el documento
+      promete un 422. Hay prueba que lo fija **pasando por FastAPI**, porque
+      hasta el paso 5 ese tipo solo se había ejercitado por separado.
+    - `str(exc)` **sí** es seguro en esta capa, al contrario de lo que avisa
+      `observador.py`: los cuatro errores que traduce llevan mensajes que son
+      constantes escritas a mano en el controlador, nunca texto de PostgreSQL.
+- Registrar el router en `app/main.py`, junto a los demás. **Hecho.** Hay
+  prueba de que está registrado: sin ella el módulo existiría, pasaría sus
+  pruebas y no respondería a nadie.
 
 ## Cambios de API
 
@@ -302,13 +317,15 @@ con `notas`/`valoraciones` ausentes en la respuesta de planilla.
 4. `app/controllers/listas_seguimiento_controller.py`. **Hecho
    (2026-09-22)**, con `tests/test_listas_seguimiento_controlador.py`
    (23 pruebas).
-5. `app/routes/listas_seguimiento.py` + registro en `app/main.py`.
-   **Pendiente.**
+5. `app/routes/listas_seguimiento.py` + registro en `app/main.py`. **Hecho
+   (2026-09-22)**, con `tests/test_listas_seguimiento_routes.py`
+   (23 pruebas).
 6. Pruebas (`tests/test_listas_seguimiento_controlador.py`,
-   `tests/test_listas_seguimiento_routes.py`). **A medias.** Las del
-   controlador se escribieron junto con él, en el paso 4; cada capa ha ido
-   llevando las suyas. Lo único que falta de este paso es
-   `tests/test_listas_seguimiento_routes.py`, que va con el paso 5.
+   `tests/test_listas_seguimiento_routes.py`). **Hecho (2026-09-22).** Cada
+   capa llevó las suyas en su propio paso, en vez de dejarlas todas al final:
+   una prueba escrita tres pasos después ya no atrapa el error mientras se
+   comete. Total: 95 pruebas propias — 27 del repositorio, 22 de los
+   esquemas, 23 del controlador y 23 de las rutas.
 7. Aplicar la migración real a los tenants y regenerar el esquema base.
    **Hecho (2026-09-22)**, fuera de orden y a propósito: el "Orden de
    despliegue obligatorio" de más arriba manda aplicar antes de publicar, no
@@ -333,22 +350,32 @@ con `notas`/`valoraciones` ausentes en la respuesta de planilla.
 
 ## Entrega para el siguiente chat
 
-- Última acción terminada: **paso 4 del "Plan de fases"**, el 2026-09-22.
+- Última acción terminada: **paso 5, y con él todo el backend**, el
+  2026-09-22.
 - Commits ya hechos por el usuario, **ninguno pusheado**:
   - `8d9fa09` — la migración y su documentación (paso 1).
   - `02b9d2e` — el repositorio y sus 27 pruebas (paso 2).
   - `23737bc` — la migración aplicada y el esquema base regenerado (paso 7).
   - `535200c` — los esquemas de entrada y sus 22 pruebas (paso 3).
-  - El paso 4 agrega `app/controllers/listas_seguimiento_controller.py` y
-    `tests/test_listas_seguimiento_controlador.py` (23 pruebas). **Sin commit
-    todavía.**
-- Verificación del paso 4, con las variables de CI (`DATABASE_URL` falsa,
+  - El paso 4 (controlador, 23 pruebas) y el paso 5 (rutas, registro en
+    `app/main.py`, 23 pruebas) están **sin commit todavía**, junto con la
+    documentación de cierre.
+- Verificación del paso 5, con las variables de CI (`DATABASE_URL` falsa,
   para no poder alcanzar ninguna base real):
-  - `scripts/verify.py`: **1382 pruebas pasan, 0 fallan.** Ruff y `pip check`
+  - `scripts/verify.py`: **1405 pruebas pasan, 0 fallan.** Ruff y `pip check`
     limpios.
   - `git diff --check`: limpio.
-  - No hubo que tocar ningún archivo de otro módulo: los controladores no
-    tienen un censo como el que tienen los repositorios.
+  - Las pruebas de ruta conducen la aplicación **real** por su interfaz ASGI,
+    no llaman a las funciones de ruta a mano: llamarlas directamente no
+    observa el código de estado, lo infiere, y el código es justo lo que esa
+    capa decide. No se usa `TestClient` porque `httpx` no está instalado,
+    igual que en `test_ventas_caracterizacion.py`.
+  - No hubo que tocar ningún archivo de otro módulo. `app/main.py` sí se
+    modifica, en dos líneas: el import y el `include_router`.
+- Documentación transversal actualizada al cerrar el backend, como pide el
+  `CLAUDE.md` del repo: `docs/API_ENDPOINTS.md` (los cuatro endpoints y sus
+  respuestas), `docs/ROLES_PERMISOS_BACKEND.md` (el router en la lista de
+  admin-only) y `docs/CAMBIOS_BACKEND.md` (la entrada del 2026-09-22).
 - Lo que hubo que tocar de otros módulos en el paso 2, por si alguien lo
   revisa: los cinco censos de `app/repositories/` que viven en
   `tests/test_{asistencia,dashboard,notas,planilla,ventas}_caracterizacion.py`
@@ -359,25 +386,17 @@ con `notas`/`valoraciones` ausentes en la respuesta de planilla.
   se puede editar**, porque está aplicada y el runner guarda su checksum. Si
   los pasos 4 a 6 revelaran que a las tablas les falta algo, va en una
   migración nueva, como ya pasó con las tres del observador.
-- Siguiente acción exacta: paso 5 del "Plan de fases",
-  `app/routes/listas_seguimiento.py` más su registro en `app/main.py`, con
-  `tests/test_listas_seguimiento_routes.py`. Lo que la ruta tiene que hacer,
-  y nada más:
-  - `APIRouter(prefix="/listas-seguimiento", dependencies=[Depends(get_current_active_admin)])`,
-    solo admin a nivel de router, igual que `tipos_pagos.py` y `cursos.py`.
-    Los helpers de `app/core/permissions.py` no aplican: acotan a un profesor
-    a sus propias asignaciones, y aquí no hay profesores.
-  - Traducir los cuatro errores del controlador:
-    `CursoNoEncontradoError` y `ColumnaNoEncontradaError` → 404,
-    `ColumnaDuplicadaError` → 409, `MarcasFueraDelCursoError` → 422.
-    `str(exc)` aquí **sí** es seguro: esos mensajes son constantes escritas a
-    mano en el controlador, no texto de PostgreSQL.
-  - Declarar el cuerpo del `POST` de marcas como `LoteDeMarcas`, no como
-    `list[MarcaSeguimientoItem]`, o se pierden las dos reglas del lote.
-    **Conviene confirmar en una prueba** que FastAPI lo interpreta como cuerpo
-    y que sus dos validaciones salen como 422; hasta ahora solo se ha probado
-    el tipo por separado, fuera de FastAPI.
-  - El `POST` de columnas responde 201.
-  **No iniciado.**
-- Sin más riesgos abiertos que ese y las preguntas abiertas de arriba,
-  ninguna de las cuales bloquea seguir.
+- **Nada de esto se ha probado contra el servidor corriendo.** Las 95
+  pruebas usan dobles: la base de datos nunca se toca y el controlador va
+  doblado en las pruebas de ruta. Lo único que se ha ejecutado de verdad
+  contra PostgreSQL es la migración. Antes de dar el backend por bueno en
+  producción conviene una prueba de humo a mano contra el servidor local, con
+  un curso real.
+- Siguiente acción exacta: **el frontend**, paso 1 de su propio plan de fases
+  en `frontend-react/docs/funcionalidades/LISTAS_SEGUIMIENTO.md`
+  (`listasSeguimientoApi.js` + utils + sus pruebas). La condición que ese
+  documento ponía para empezar —que los cuatro endpoints existan y estén
+  verificados— ya se cumple. **No iniciado.**
+- Riesgo abierto que sigue en pie: `20260921_listas_seguimiento.sql` **no se
+  puede editar**, porque está aplicada y el runner guarda su checksum.
+  Cualquier cambio en las tablas va en una migración nueva.

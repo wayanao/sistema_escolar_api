@@ -1,6 +1,6 @@
 # API Endpoints
 
-Ultima revision documental: 2026-09-15.
+Ultima revision documental: 2026-09-22.
 
 ## Routers
 
@@ -10,6 +10,7 @@ Prefijos definidos en router:
 
 - `boletines`: prefix `/boletines`
 - `egresos`: prefix `/api/egresos`
+- `listas_seguimiento`: prefix `/listas-seguimiento`
 - `prestamos`: prefix `/api/prestamos`
 - `super_admin`: prefix `/super-admin`
 - `ventas`: prefix `/api/ventas`
@@ -588,6 +589,61 @@ Notas:
   controlador.
 - La anulacion conserva trazabilidad, devuelve stock y anula pagos asociados
   cuando aplica.
+
+## Listas de seguimiento
+
+Registro libre del administrador por curso: columnas con el nombre que el elija
+y, por alumno, un check mas una nota corta. Router admin-only. Detalle completo
+en `docs/funcionalidades/LISTAS_SEGUIMIENTO.md`.
+
+- `GET /listas-seguimiento/{curso_id}`
+- `POST /listas-seguimiento/{curso_id}/columnas`
+- `DELETE /listas-seguimiento/{curso_id}/columnas/{columna_id}`
+- `POST /listas-seguimiento/{curso_id}/marcas`
+
+`GET /listas-seguimiento/{curso_id}` devuelve columnas, alumnos y marcas en una
+sola respuesta, para pintar la pantalla con una peticion:
+
+```jsonc
+{
+  "curso_id": 12,
+  "columnas": [{"id": 5, "nombre": "Asistio a la cumbre"}],
+  "estudiantes": [
+    {
+      "estudiante_id": 101, "nombre": "Juan", "apellido": "Perez",
+      "marcas": {"5": {"marcado": true, "nota": "Llego tarde"}}
+    }
+  ]
+}
+```
+
+Las claves de `marcas` son el id de columna como texto. Una celda sin fila no
+aparece; el frontend le pone el default (`marcado: false`, `nota: ""`), igual
+que ya hace con las notas ausentes de la planilla. `404` si el curso no existe.
+
+`POST /listas-seguimiento/{curso_id}/columnas` recibe `{"nombre": "..."}` y
+responde `201` con `{"id", "nombre"}`, el nombre ya recortado. `404` si el
+curso no existe, `409` si ese curso ya tiene una columna con ese nombre
+ignorando mayusculas y espacios repetidos, `422` si el nombre viene vacio o
+pasa de 100 caracteres.
+
+`DELETE /listas-seguimiento/{curso_id}/columnas/{columna_id}` borra la columna
+y sus marcas en cascada. El borrado es definitivo, sin baja logica. `404` si la
+columna no existe **o es de otro curso**: las dos cosas responden igual.
+
+`POST /listas-seguimiento/{curso_id}/marcas` recibe una lista pelada, el mismo
+formato que `POST /asistencia`:
+
+```jsonc
+[{"columna_id": 5, "estudiante_id": 101, "marcado": true, "nota": "Llego tarde"}]
+```
+
+`marcado` es obligatorio; `nota` puede faltar o venir `null`, y las dos formas
+se guardan como cadena vacia. Responde `{"mensaje", "guardadas"}` con el numero
+de celdas escritas. `422` si el lote viene vacio, si trae la misma celda dos
+veces, si una nota pasa de 240 caracteres, o si alguna celda referencia una
+columna o un alumno que no son de ese curso. El lote se valida entero antes de
+escribir nada: o entra todo o no entra nada.
 
 ## Auth SaaS
 

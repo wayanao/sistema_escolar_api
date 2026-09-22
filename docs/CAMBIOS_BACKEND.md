@@ -1,10 +1,54 @@
 # Cambios Backend
 
-Ultima revision documental: 2026-09-15.
+Ultima revision documental: 2026-09-22.
 
 ## Proposito
 
 Bitacora de cambios documentales y tecnicos observables del backend.
+
+## 2026-09-22 - Listas de Seguimiento por Curso
+
+El administrador no tenia donde llevar registros propios por curso -quien fue a
+un evento, quien compro el libro- fuera de notas y pagos. Se investigo primero
+si el dato ya existia en otra forma: `notas_detalle` tiene columnas de nombre
+libre pero atadas a una asignacion y solo existen cuando ya tienen una fila;
+`asistencia` no tiene entidad de columna, su columna es una fecha; y en todo el
+esquema no hay ningun mecanismo generico de campo personalizado. Detalle y
+decisiones de producto en `docs/funcionalidades/LISTAS_SEGUIMIENTO.md`.
+
+### Tablas nuevas, ninguna existente modificada
+
+`listas_seguimiento_columnas` y `listas_seguimiento_marcas`, migracion
+`20260921_listas_seguimiento.sql`, aplicada a los dos tenants operativos. No se
+toca `notas_detalle`, `asistencia` ni `tipos_de_pagos`. Un curso sin columnas se
+comporta exactamente igual que antes.
+
+### Endpoints nuevos
+
+Cuatro, admin-only a nivel de router, bajo el prefijo `/listas-seguimiento`. Ver
+`docs/API_ENDPOINTS.md`.
+
+### Lo que hay que saber para tocarlo
+
+- **El lote de marcas se escribe en una sola sentencia** con `UNNEST` y
+  `ON CONFLICT`, no una por celda. Marcar una columna de 30 alumnos serian 30
+  idas y vueltas -~5,4 s contra Neon- con el patron por fila que todavia tiene
+  `asistencia_repository`. De ahi sale una consecuencia que no es evidente:
+  PostgreSQL **aborta la sentencia entera** si el lote trae la misma celda dos
+  veces, asi que el 422 por celdas repetidas no es cosmetico, es lo que evita
+  un 500. La guarda vive en `LoteDeMarcas`, en el esquema.
+- **El nombre duplicado se comprueba dos veces.** La consulta previa da el 409
+  legible; el `except IntegrityError` recoge la carrera que rechaza el indice
+  unico. La consulta normaliza en SQL con la misma expresion del indice, y hay
+  prueba que lo verifica leyendo el propio archivo de migracion.
+- **Coste fijo en consultas**: 4 el GET, 3 crear, 1 borrar, 3 guardar. Ninguno
+  crece con la cantidad de alumnos ni de columnas.
+
+### Frontend
+
+Pendiente. La pantalla es una propuesta aparte, documentada en
+`frontend-react/docs/funcionalidades/LISTAS_SEGUIMIENTO.md`; el backend no
+depende de ella.
 
 ## 2026-09-15 - Director de grupo en el boletin
 

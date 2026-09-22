@@ -1,6 +1,6 @@
 # Migraciones
 
-Ultima revision documental: 2026-09-15.
+Ultima revision documental: 2026-09-22.
 
 ## Carpeta de migraciones
 
@@ -47,6 +47,7 @@ Archivos actuales:
 - `20260908_observador_anotaciones_materia.sql`
 - `20260910_tipos_pagos_mes_final.sql`
 - `20260915_cursos_director_grupo.sql`
+- `20260921_listas_seguimiento.sql`
 - `README.md`
 
 Migraciones globales `public`:
@@ -541,3 +542,48 @@ Estado:
 
 - Aplicada en `tenant_colegio_1`, `tenant_3333` y `tenant_4444`.
 - Registrada en `public.schema_migrations`.
+
+## Migracion 20260921_listas_seguimiento.sql
+
+Objetivo:
+
+- Dar al administrador un registro libre por curso: columnas con el nombre que
+  el elija y, por alumno, un check mas una nota corta opcional.
+
+Tablas creadas (ninguna existente se modifica):
+
+- `listas_seguimiento_columnas`: una fila por columna de un curso.
+  `curso_id` con `ON DELETE CASCADE`, `nombre` `VARCHAR(100) NOT NULL`.
+- `listas_seguimiento_marcas`: una fila por celda.
+  `UNIQUE (columna_id, estudiante_id)` para habilitar el upsert,
+  `marcado BOOLEAN NOT NULL DEFAULT FALSE`, `nota TEXT` limitada a 240
+  caracteres por `chk_listas_seguimiento_marcas_nota_longitud`. Borra en
+  cascada con su columna y con el estudiante.
+
+Indices creados:
+
+- `idx_listas_seguimiento_columnas_nombre_unico` (unico): nombre por curso
+  ignorando mayusculas y espacios repetidos, mismo patron que
+  `idx_cursos_nombre_jornada_unico`.
+- `idx_listas_seguimiento_columnas_curso`.
+- `idx_listas_seguimiento_marcas_columna`.
+- `idx_listas_seguimiento_marcas_estudiante`.
+
+`scripts/apply_tenant_indexes.py` no se toca: su lista fija `INDEXES` no
+incluye estas tablas, asi que los indices van en la migracion sin riesgo de
+duplicarse.
+
+Detalle completo (motivacion, decisiones, invariantes, orden de despliegue):
+
+- `docs/funcionalidades/LISTAS_SEGUIMIENTO.md`.
+
+Estado:
+
+- Solo existe el archivo SQL. Todavia no hay repositorio, esquemas,
+  controlador, rutas ni pruebas: es el paso 1 de 7 del plan de fases.
+- `scripts/verify.py`: 1309 pruebas pasan, ruff y pip check limpios, y falla
+  la unica esperada, `test_esquema_base.py::test_la_base_incorpora_todas_las_migraciones_de_tenant`,
+  hasta aplicar la migracion real y regenerar el esquema base.
+- **No aplicada** a Neon ni a ningun tenant. Pendiente de que el usuario la
+  aplique con `apply_migration.py` (`--dry-run` primero) y regenere la base
+  con `scripts/generar_esquema_base.py`.

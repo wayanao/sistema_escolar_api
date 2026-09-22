@@ -2,10 +2,11 @@
 
 ## Control
 
-- Estado: **En diseño. Sin código escrito todavía.** Se cerró el diseño de
-  datos y de API con el usuario (ver este documento) y quedó guardado como
-  plan; no se creó ningún archivo de código, no se escribió la migración, no
-  se corrió nada contra ningún tenant.
+- Estado: **Paso 1 de 7 hecho.** Existe el archivo
+  `migrations/20260921_listas_seguimiento.sql` con las dos tablas y sus
+  índices. No hay repositorio, esquemas, controlador, rutas ni pruebas
+  todavía, y **la migración no se ha aplicado a ningún tenant ni a Neon**:
+  solo se escribió el SQL.
 - Tipo: Función nueva de producto. No es una capa del programa de
   modularización de `docs/modularizacion/` y no debe confundirse con una.
 - Repos afectados: este repo (`sistema_escolar_api`) y `frontend-react`. Ver
@@ -18,7 +19,7 @@
   la migración, solo fallarían los endpoints nuevos de este router
   (`relation does not exist`), no el resto del sistema. Aun así, el orden de
   despliegue de abajo aplica igual.
-- Última actualización: 2026-09-21.
+- Última actualización: 2026-09-22.
 
 ## Objetivo
 
@@ -115,11 +116,13 @@ CREATE TABLE IF NOT EXISTS listas_seguimiento_marcas (
     nota TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE (columna_id, estudiante_id)
+    UNIQUE (columna_id, estudiante_id),
+    -- Dentro del CREATE TABLE y no en un ALTER aparte (cambio hecho al
+    -- escribir la migración real): así el archivo entero se puede reejecutar
+    -- sin error, igual que hace 20260908_observador_anotaciones.sql.
+    CONSTRAINT chk_listas_seguimiento_marcas_nota_longitud
+        CHECK (nota IS NULL OR char_length(nota) <= 240)
 );
-ALTER TABLE listas_seguimiento_marcas
-    ADD CONSTRAINT chk_listas_seguimiento_marcas_nota_longitud
-    CHECK (nota IS NULL OR char_length(nota) <= 240);
 CREATE INDEX IF NOT EXISTS idx_listas_seguimiento_marcas_columna
     ON listas_seguimiento_marcas(columna_id);
 CREATE INDEX IF NOT EXISTS idx_listas_seguimiento_marcas_estudiante
@@ -214,7 +217,8 @@ con `notas`/`valoraciones` ausentes en la respuesta de planilla.
 
 ## Plan de fases (backend)
 
-1. Migración: las dos tablas de arriba. **Pendiente.**
+1. Migración: las dos tablas de arriba. **Hecho (2026-09-22)** en
+   `migrations/20260921_listas_seguimiento.sql`. Escrita, no aplicada.
 2. `app/repositories/listas_seguimiento_repository.py`. **Pendiente.**
 3. `app/schemas/listas_seguimiento.py`. **Pendiente.**
 4. `app/controllers/listas_seguimiento_controller.py`. **Pendiente.**
@@ -229,20 +233,45 @@ con `notas`/`valoraciones` ausentes en la respuesta de planilla.
 
 - ¿Un `curso_id` se reutiliza de un año lectivo a otro, o cada año se crea
   un curso nuevo? Define si en el futuro hace falta un corte por
-  período/año para estas columnas. **Sin responder** — no bloquea empezar,
-  el diseño actual no depende de la respuesta.
-- ¿Hace falta poder reordenar columnas a mano? **Sin responder** — se asume
-  que no, se puede agregar después si se pide.
+  período/año para estas columnas. **Sigue sin responder al 2026-09-22:** el
+  usuario contestó que todavía no ha vivido un cambio de año lectivo
+  completo, así que no lo sabe. No bloquea nada; el diseño actual no depende
+  de la respuesta. Dato verificado en el esquema: `cursos` no tiene ninguna
+  columna de año ni de período, o sea que hoy el sistema no modela años
+  lectivos en absoluto. Si mañana se reutiliza el mismo curso, las columnas
+  del año anterior seguirán apareciendo y habrá que borrarlas a mano.
+- ¿Hace falta poder reordenar columnas a mano? **Respondida el 2026-09-22:
+  no.** El usuario confirmó que le sirve el orden de creación. Sigue en
+  "Fuera de alcance"; la tabla no lleva columna de orden.
 
 ## Entrega para el siguiente chat
 
-- Última acción terminada: **ninguna.** Se cerró el diseño (tablas,
-  endpoints, decisiones de producto) con el usuario y quedó documentado
-  acá; no se escribió ningún archivo de código ni se corrió ninguna
-  migración.
-- Siguiente acción exacta: implementar el paso 1 del "Plan de fases"
-  (migración de las dos tablas), y recién ahí seguir con el resto de los
-  pasos, uno a la vez, verificando con `scripts/verify.py` después de cada
-  uno.
+- Última acción terminada: **paso 1 del "Plan de fases"**, el 2026-09-22. Se
+  escribió `migrations/20260921_listas_seguimiento.sql` (86 líneas: dos
+  `CREATE TABLE` y cuatro índices). No se aplicó a ninguna base, no se tocó
+  ningún tenant, no se hizo commit.
+- Verificación de ese paso:
+  - `scripts/verify.py` con las variables de CI (`DATABASE_URL` falsa, para
+    no poder alcanzar ninguna base real): **1309 pruebas pasan, 1 falla
+    esperada**, `test_esquema_base.py::test_la_base_incorpora_todas_las_migraciones_de_tenant`.
+    Ruff y `pip check` limpios.
+  - Esa falla es el guardián del esquema base y es **correcta**: avisa que
+    hay una migración en `migrations/` que
+    `migrations/base/20260813_esquema_base_tenant.sql` todavía no declara.
+    Se apaga sola al aplicar la migración a un schema de referencia y
+    regenerar la base con `scripts/generar_esquema_base.py`, que lee la
+    estructura desde una base real. Mismo estado documentado que tuvo
+    `20260915_cursos_director_grupo.sql` en `docs/MIGRACIONES.md`.
+  - `git diff --check`: limpio.
+- **Antes de hacer commit de este paso**, el usuario tiene que aplicar la
+  migración y regenerar el esquema base, o CI (`backend-quality.yml`, que
+  corre `scripts/verify.py`) quedará en rojo. En este repo migración y
+  esquema base siempre viajan en el mismo commit; ver los commits `b8014d8`
+  y `37d2e0e`.
+- Siguiente acción exacta: paso 2 del "Plan de fases",
+  `app/repositories/listas_seguimiento_repository.py` (SQL puro, sin
+  FastAPI: leer columnas de un curso, leer el roster, leer marcas, chequear
+  nombre duplicado, crear/borrar columna, upsert de marca) con sus pruebas.
+  **No iniciado.**
 - Sin riesgos abiertos conocidos más allá de las preguntas abiertas de
-  arriba, ninguna de las cuales bloquea empezar.
+  arriba, ninguna de las cuales bloquea seguir.

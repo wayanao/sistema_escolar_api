@@ -2,11 +2,12 @@
 
 ## Control
 
-- Estado: **Pasos 1 y 2 de 7 hechos.** Existen
+- Estado: **Pasos 1, 2 y 7 de 7 hechos.** Existen
   `migrations/20260921_listas_seguimiento.sql` (commit `8d9fa09`) y
-  `app/repositories/listas_seguimiento_repository.py` con sus 27 pruebas. No
-  hay esquemas, controlador ni rutas todavía, y **la migración sigue sin
-  aplicarse a ningún tenant ni a Neon**.
+  `app/repositories/listas_seguimiento_repository.py` con sus 27 pruebas.
+  **La migración ya está aplicada** a los dos tenants operativos y el esquema
+  base regenerado (2026-09-22). Faltan los esquemas, el controlador, las
+  rutas y sus pruebas: pasos 3 a 6.
 - Tipo: Función nueva de producto. No es una capa del programa de
   modularización de `docs/modularizacion/` y no debe confundirse con una.
 - Repos afectados: este repo (`sistema_escolar_api`) y `frontend-react`. Ver
@@ -256,7 +257,11 @@ con `notas`/`valoraciones` ausentes en la respuesta de planilla.
 6. Pruebas (`tests/test_listas_seguimiento_controlador.py`,
    `tests/test_listas_seguimiento_routes.py`). **Pendiente.**
 7. Aplicar la migración real a los tenants y regenerar el esquema base.
-   **Pendiente.**
+   **Hecho (2026-09-22)**, fuera de orden y a propósito: el "Orden de
+   despliegue obligatorio" de más arriba manda aplicar antes de publicar, no
+   al final del código. Aplicada a `tenant_colegio_1` y `tenant_2005`;
+   esquema base regenerado desde `tenant_colegio_1`. Detalle en
+   `docs/MIGRACIONES.md`.
 
 ## Preguntas abiertas
 
@@ -312,12 +317,20 @@ con `notas`/`valoraciones` ausentes en la respuesta de planilla.
     ejecutado nunca contra un motor real. Lo que sí se comprobó sin base: que
     psycopg2 traduce las listas de Python a `ARRAY[...]`, que es de lo que
     depende el `UNNEST` de `guardar_marcas`.
-- **Riesgo abierto, y es el importante:** el commit `8d9fa09` ya existe sin
-  que la migración se haya aplicado ni el esquema base regenerado. Si se
-  pushea así, CI (`backend-quality.yml`, que corre `scripts/verify.py`) queda
-  en rojo, y un colegio nuevo nacería sin estas dos tablas. Todavía se puede
-  arreglar antes de publicar: aplicar la migración, regenerar la base y sumar
-  eso en un commit antes del push.
+- **Ese riesgo quedó cerrado el mismo día.** La migración se aplicó a los
+  dos tenants operativos y el esquema base se regeneró, así que CI ya no
+  puede quedar en rojo por esto y un colegio nuevo nace con las dos tablas.
+  `scripts/verify.py` pasa entero: **1337 pruebas, 0 fallas**.
+- Aplicarla también cerró el único hueco de verificación que quedaba: hasta
+  ese momento ninguna de estas sentencias SQL se había ejecutado nunca contra
+  un motor real. Lo que PostgreSQL creó coincide con lo escrito, incluido el
+  índice único por expresión, que solo al aplicarlo se confirma que es
+  válido.
+- Consecuencia a tener presente: `20260921_listas_seguimiento.sql` **ya no se
+  puede editar**. El runner guarda su checksum y rechazaría una versión
+  distinta con el mismo nombre. Si los pasos 3 a 6 revelaran que falta algo
+  en las tablas, va en una migración nueva, como ya pasó con las tres del
+  observador.
 - Siguiente acción exacta: paso 3 del "Plan de fases",
   `app/schemas/listas_seguimiento.py` — los modelos Pydantic
   `ColumnaSeguimientoCreate {nombre}` y

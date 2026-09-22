@@ -1,6 +1,6 @@
 -- Esquema base de un tenant. ARCHIVO GENERADO, no editar a mano.
 --
--- Extraido de tenant_colegio_1 el 2026-09-16 con
+-- Extraido de tenant_colegio_1 el 2026-09-22 con
 -- scripts/generar_esquema_base.py. Para rehacerlo, aplica antes la
 -- migracion nueva a ese schema y vuelve a ejecutar el script.
 --
@@ -11,7 +11,7 @@
 -- No usar apply_migration.py con este archivo: es para dar de alta un
 -- tenant nuevo, no para los existentes, que ya tienen estas tablas.
 --
--- MIGRACIONES INCORPORADAS (37):
+-- MIGRACIONES INCORPORADAS (38):
 --   20260429_pagos_tipo_pago_largo.sql
 --   20260429_plan_de_clases_reportes.sql
 --   20260509_branding_plantillas_impresion.sql
@@ -49,6 +49,7 @@
 --   20260908_observador_anotaciones_materia.sql
 --   20260910_tipos_pagos_mes_final.sql
 --   20260915_cursos_director_grupo.sql
+--   20260921_listas_seguimiento.sql
 -- FIN MIGRACIONES INCORPORADAS
 
 CREATE TABLE IF NOT EXISTS asignaciones (
@@ -189,6 +190,28 @@ CREATE TABLE IF NOT EXISTS inventario (
     stock_actual integer DEFAULT 0 NOT NULL,
     estado character varying(30),
     CONSTRAINT inventario_pkey PRIMARY KEY (id)
+);
+
+CREATE TABLE IF NOT EXISTS listas_seguimiento_columnas (
+    id SERIAL,
+    curso_id integer NOT NULL,
+    nombre character varying(100) NOT NULL,
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT listas_seguimiento_columnas_pkey PRIMARY KEY (id)
+);
+
+CREATE TABLE IF NOT EXISTS listas_seguimiento_marcas (
+    id SERIAL,
+    columna_id integer NOT NULL,
+    estudiante_id integer NOT NULL,
+    marcado boolean DEFAULT false NOT NULL,
+    nota text,
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT chk_listas_seguimiento_marcas_nota_longitud CHECK (((nota IS NULL) OR (char_length(nota) <= 240))),
+    CONSTRAINT listas_seguimiento_marcas_pkey PRIMARY KEY (id),
+    CONSTRAINT listas_seguimiento_marcas_columna_id_estudiante_id_key UNIQUE (columna_id, estudiante_id)
 );
 
 CREATE TABLE IF NOT EXISTS materias (
@@ -524,6 +547,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_cursos_nombre_jornada_unico ON cursos USIN
 CREATE INDEX IF NOT EXISTS idx_egresos_origen ON egresos USING btree (origen);
 CREATE INDEX IF NOT EXISTS tenant_colegio_1_idx_estudiantes_curso_id ON estudiantes USING btree (curso_id);
 CREATE INDEX IF NOT EXISTS idx_inventario_estado ON inventario USING btree (estado);
+CREATE INDEX IF NOT EXISTS idx_listas_seguimiento_columnas_curso ON listas_seguimiento_columnas USING btree (curso_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_listas_seguimiento_columnas_nombre_unico ON listas_seguimiento_columnas USING btree (curso_id, upper(regexp_replace(TRIM(BOTH FROM nombre), '[[:space:]]+'::text, ' '::text, 'g'::text)));
+CREATE INDEX IF NOT EXISTS idx_listas_seguimiento_marcas_columna ON listas_seguimiento_marcas USING btree (columna_id);
+CREATE INDEX IF NOT EXISTS idx_listas_seguimiento_marcas_estudiante ON listas_seguimiento_marcas USING btree (estudiante_id);
 CREATE INDEX IF NOT EXISTS idx_materias_estado ON materias USING btree (estado);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_materias_nombre_unico ON materias USING btree (upper(regexp_replace(TRIM(BOTH FROM nombre), '[[:space:]]+'::text, ' '::text, 'g'::text))) WHERE (NULLIF(TRIM(BOTH FROM COALESCE(nombre, ''::character varying)), ''::text) IS NOT NULL);
 CREATE INDEX IF NOT EXISTS tenant_colegio_1_idx_notas_detalle_estudiante_asignacion_period ON notas_detalle USING btree (estudiante_id, asignacion_id, periodo);
@@ -572,6 +599,9 @@ ALTER TABLE boletin_cabecera ADD CONSTRAINT boletin_cabecera_estudiante_id_fkey 
 ALTER TABLE boletin_detalles ADD CONSTRAINT boletin_detalles_boletin_id_fkey FOREIGN KEY (boletin_id) REFERENCES boletin_cabecera(id) ON DELETE CASCADE;
 ALTER TABLE cursos ADD CONSTRAINT cursos_director_grupo_id_fkey FOREIGN KEY (director_grupo_id) REFERENCES profesor(id) ON DELETE SET NULL;
 ALTER TABLE estudiantes ADD CONSTRAINT estudiantes_curso_id_fkey FOREIGN KEY (curso_id) REFERENCES cursos(id);
+ALTER TABLE listas_seguimiento_columnas ADD CONSTRAINT listas_seguimiento_columnas_curso_id_fkey FOREIGN KEY (curso_id) REFERENCES cursos(id) ON DELETE CASCADE;
+ALTER TABLE listas_seguimiento_marcas ADD CONSTRAINT listas_seguimiento_marcas_columna_id_fkey FOREIGN KEY (columna_id) REFERENCES listas_seguimiento_columnas(id) ON DELETE CASCADE;
+ALTER TABLE listas_seguimiento_marcas ADD CONSTRAINT listas_seguimiento_marcas_estudiante_id_fkey FOREIGN KEY (estudiante_id) REFERENCES estudiantes(id) ON DELETE CASCADE;
 ALTER TABLE matriculas ADD CONSTRAINT matriculas_curso_id_fkey FOREIGN KEY (curso_id) REFERENCES cursos(id);
 ALTER TABLE matriculas ADD CONSTRAINT matriculas_estudiante_id_fkey FOREIGN KEY (estudiante_id) REFERENCES estudiantes(id);
 ALTER TABLE nomina ADD CONSTRAINT nomina_profesor_id_fkey FOREIGN KEY (profesor_id) REFERENCES profesor(id) ON DELETE CASCADE;

@@ -579,11 +579,21 @@ Detalle completo (motivacion, decisiones, invariantes, orden de despliegue):
 
 Estado:
 
-- Solo existe el archivo SQL. Todavia no hay repositorio, esquemas,
-  controlador, rutas ni pruebas: es el paso 1 de 7 del plan de fases.
-- `scripts/verify.py`: 1309 pruebas pasan, ruff y pip check limpios, y falla
-  la unica esperada, `test_esquema_base.py::test_la_base_incorpora_todas_las_migraciones_de_tenant`,
-  hasta aplicar la migracion real y regenerar el esquema base.
-- **No aplicada** a Neon ni a ningun tenant. Pendiente de que el usuario la
-  aplique con `apply_migration.py` (`--dry-run` primero) y regenere la base
-  con `scripts/generar_esquema_base.py`.
+- **Aplicada el 2026-09-22** con `apply_migration.py` a los dos tenants
+  operativos, `tenant_colegio_1` (Colegio Demo) y `tenant_2005` (centro
+  educativo la sabiduria de galapa). Registrada en
+  `public.schema_migrations`.
+- Esquema base regenerado el mismo dia desde `tenant_colegio_1` con
+  `scripts/generar_esquema_base.py`: 33 tablas. Los colegios nuevos ya nacen
+  con las dos tablas.
+- `scripts/verify.py`: **1337 pruebas pasan, 0 fallan**, ruff y pip check
+  limpios.
+- Lo que PostgreSQL creo coincide con lo escrito en la migracion. El detalle
+  que solo se pudo confirmar al aplicarla: el indice unico por expresion es
+  valido -`upper(regexp_replace(...))` es IMMUTABLE, que es lo que un indice
+  exige- y el UNIQUE de la celda quedo con el nombre que genera PostgreSQL,
+  `listas_seguimiento_marcas_columna_id_estudiante_id_key`, igual que el de
+  `tipos_pagos_estudiantes`.
+- A partir de aqui el archivo **no se puede editar**: el runner guarda su
+  checksum y rechazaria una version distinta con el mismo nombre. Cualquier
+  cambio posterior va en una migracion nueva.

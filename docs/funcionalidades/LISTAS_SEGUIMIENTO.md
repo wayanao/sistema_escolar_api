@@ -4,8 +4,9 @@
 
 - Estado: **Backend completo. Los 7 pasos hechos (2026-09-22).** Migración
   aplicada a los dos tenants operativos, esquema base regenerado, y los cuatro
-  endpoints en pie con 95 pruebas propias. Lo que falta ahora es **el
-  frontend**, que es una propuesta aparte: ver
+  endpoints en pie con 96 pruebas propias más un ensayo del SQL contra
+  PostgreSQL real. Lo que falta ahora es **el frontend**, que es una propuesta
+  aparte: ver
   `frontend-react/docs/funcionalidades/LISTAS_SEGUIMIENTO.md`.
 - Tipo: Función nueva de producto. No es una capa del programa de
   modularización de `docs/modularizacion/` y no debe confundirse con una.
@@ -324,8 +325,8 @@ con `notas`/`valoraciones` ausentes en la respuesta de planilla.
    `tests/test_listas_seguimiento_routes.py`). **Hecho (2026-09-22).** Cada
    capa llevó las suyas en su propio paso, en vez de dejarlas todas al final:
    una prueba escrita tres pasos después ya no atrapa el error mientras se
-   comete. Total: 95 pruebas propias — 27 del repositorio, 22 de los
-   esquemas, 23 del controlador y 23 de las rutas.
+   comete. Total: 96 pruebas propias — 27 del repositorio, 22 de los
+   esquemas, 24 del controlador y 23 de las rutas.
 7. Aplicar la migración real a los tenants y regenerar el esquema base.
    **Hecho (2026-09-22)**, fuera de orden y a propósito: el "Orden de
    despliegue obligatorio" de más arriba manda aplicar antes de publicar, no
@@ -362,7 +363,7 @@ con `notas`/`valoraciones` ausentes en la respuesta de planilla.
     documentación de cierre.
 - Verificación del paso 5, con las variables de CI (`DATABASE_URL` falsa,
   para no poder alcanzar ninguna base real):
-  - `scripts/verify.py`: **1405 pruebas pasan, 0 fallan.** Ruff y `pip check`
+  - `scripts/verify.py`: **1406 pruebas pasan, 0 fallan.** Ruff y `pip check`
     limpios.
   - `git diff --check`: limpio.
   - Las pruebas de ruta conducen la aplicación **real** por su interfaz ASGI,
@@ -386,12 +387,40 @@ con `notas`/`valoraciones` ausentes en la respuesta de planilla.
   se puede editar**, porque está aplicada y el runner guarda su checksum. Si
   los pasos 4 a 6 revelaran que a las tablas les falta algo, va en una
   migración nueva, como ya pasó con las tres del observador.
-- **Nada de esto se ha probado contra el servidor corriendo.** Las 95
-  pruebas usan dobles: la base de datos nunca se toca y el controlador va
-  doblado en las pruebas de ruta. Lo único que se ha ejecutado de verdad
-  contra PostgreSQL es la migración. Antes de dar el backend por bueno en
-  producción conviene una prueba de humo a mano contra el servidor local, con
-  un curso real.
+- **El SQL sí se ejecutó contra PostgreSQL real** (2026-09-22). Las 96
+  pruebas usan dobles y no tocan la base, así que se hizo aparte un ensayo
+  sobre `tenant_colegio_1` (Colegio Demo): una sola transacción que llama a
+  **las ocho funciones reales del repositorio** y termina en `ROLLBACK`. No
+  quedó ninguna fila; se comprobó reconectando. `tenant_2005`, el colegio
+  real, no se tocó. Las 21 comprobaciones pasaron, y cuatro de ellas eran
+  suposiciones escritas en el código que hasta entonces nadie había visto
+  cumplirse:
+    - el `UNNEST` con cuatro arrays escribe el lote entero de una vez, y los
+      valores vuelven idénticos, incluidos `False` y la cadena vacía;
+    - el upsert **pisa** la celda en vez de duplicarla;
+    - el índice único rechaza `"  ensayo   TECNICO  "` frente a
+      `"Ensayo tecnico"` (`pgcode 23505`), o sea que la normalización del 409
+      y la del índice coinciden de verdad;
+    - **PostgreSQL aborta el lote con la misma celda dos veces**, con el texto
+      exacto `ON CONFLICT DO UPDATE command cannot affect row a second time`.
+      Era una predicción escrita en el repositorio, el esquema y el documento;
+      ahora está comprobada, y con ella el motivo de que el 422 por celdas
+      repetidas no sea cosmético.
+  También se comprobaron el `CHECK` de 240 caracteres (`pgcode 23514`), el
+  borrado en cascada y que una columna no se puede borrar desde otro curso.
+- **Se cerró además la suposición más peligrosa que quedaba**, con una prueba
+  permanente en `tests/test_listas_seguimiento_controlador.py`:
+  `crear_columna_controller` y `guardar_marcas_controller` devuelven su
+  resultado **desde dentro** del `with get_cursor(commit=True)`. Si eso no
+  confirmara la transacción, crear una columna no guardaría nada y todas las
+  demás pruebas seguirían en verde, porque el `get_cursor` falso solo anota
+  con qué valor de `commit` se le llamó, no si alguien lo honra.
+  `tests/test_db_session_contrato.py` cubría el `with` que termina solo y el
+  que termina en excepción, pero no este.
+- Lo que **sigue sin probarse** es la cadena entera de una vez: ruta →
+  controlador → repositorio → base real. Cada eslabón está probado por
+  separado. Una prueba de humo a mano contra el servidor local, entrando como
+  admin, lo cerraría del todo; el riesgo que queda es bajo pero no es cero.
 - Siguiente acción exacta: **el frontend**, paso 1 de su propio plan de fases
   en `frontend-react/docs/funcionalidades/LISTAS_SEGUIMIENTO.md`
   (`listasSeguimientoApi.js` + utils + sus pruebas). La condición que ese

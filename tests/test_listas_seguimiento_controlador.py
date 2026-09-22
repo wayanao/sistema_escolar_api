@@ -434,3 +434,58 @@ def test_leer_validar_y_escribir_ocurren_en_la_misma_conexion(entorno):
         "guardar_marcas",
     ]
     assert conexiones.abiertas == 1
+
+
+# ---------------------------------------------------------------------------
+# El `return` desde dentro del `with`: lo unico que los dobles de arriba no
+# pueden comprobar.
+# ---------------------------------------------------------------------------
+
+
+def test_devolver_desde_dentro_del_with_confirma_la_transaccion(monkeypatch):
+    """`crear_columna_controller` y `guardar_marcas_controller` devuelven su
+    resultado **desde dentro** del `with get_cursor(commit=True)`.
+
+    Si eso no confirmara la transaccion, crear una columna no guardaria nada y
+    todas las pruebas de este archivo seguirian en verde: el `get_cursor` falso
+    de arriba solo anota con que valor de `commit` se le llamo, no si alguien
+    lo honra.
+
+    `tests/test_db_session_contrato.py` cubre el `with` que termina solo y el
+    que termina en excepcion. Este caso no estaba, y la suposicion es de este
+    modulo, asi que la guarda vive aqui.
+    """
+    from app.db import session
+
+    class CursorInerte:
+        def close(self):
+            pass
+
+    class ConexionEspia:
+        def __init__(self):
+            self.commits = 0
+            self.rollbacks = 0
+
+        def cursor(self, cursor_factory=None):
+            return CursorInerte()
+
+        def commit(self):
+            self.commits += 1
+
+        def rollback(self):
+            self.rollbacks += 1
+
+        def close(self):
+            pass
+
+    espia = ConexionEspia()
+    monkeypatch.setattr(session, "get_connection", lambda: espia)
+
+    def devuelve_desde_dentro():
+        with session.get_cursor(commit=True) as cursor:
+            assert cursor is not None
+            return "listo"
+
+    assert devuelve_desde_dentro() == "listo"
+    assert espia.commits == 1
+    assert espia.rollbacks == 0

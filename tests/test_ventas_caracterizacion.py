@@ -197,6 +197,7 @@ def test_el_repositorio_de_ventas_es_el_octavo():
         "branding_repository",
         "dashboard_repository",
         "estudiantes_repository",
+        "listas_seguimiento_repository",
         "notas_repository",
         "observaciones_repository",
         "observador_repository",

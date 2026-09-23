@@ -6,16 +6,19 @@ mano: llamarlas directamente **no observa el codigo de estado, lo infiere**, y
 es justo el codigo lo que esta capa decide. No se usa `TestClient` porque
 `httpx` no esta instalado, igual que en `test_ventas_caracterizacion.py`.
 
-El controlador va doblado: sus reglas ya tienen sus propias 23 pruebas. Lo que
-se fija aqui es lo que solo se ve al pasar por HTTP:
+El controlador va doblado: sus reglas ya tienen sus propias pruebas. Lo que se
+fija aqui es lo que solo se ve al pasar por HTTP:
 
-- que las cuatro rutas son **solo para admin**, y que la proteccion esta en el
+- que todas las rutas son **solo para admin**, y que la proteccion esta en el
   router y no en cada funcion;
 - que cada error del controlador sale con el codigo que promete el documento;
 - que el cuerpo del lote se valida como `LoteDeMarcas` **dentro de FastAPI**.
   Hasta ahora ese tipo solo se habia probado por separado; si la ruta lo
   declarara como una lista normal, las dos reglas del lote desaparecerian sin
   que ninguna prueba anterior se enterara.
+
+La quinta ruta, el alta en todos los cursos, llego con la ampliacion del
+2026-09-22 y se prueba al final del archivo.
 """
 import asyncio
 import json
@@ -370,7 +373,7 @@ def test_una_nota_demasiado_larga_da_422(app_admin):
 # ---------------------------------------------------------------------------
 
 
-def test_las_cuatro_rutas_son_las_del_documento():
+def test_las_rutas_son_las_del_documento():
     """Un renombre o una errata aqui rompe el frontend sin que falle nada mas."""
     declaradas = {
         (ruta.path, metodo)
@@ -384,6 +387,8 @@ def test_las_cuatro_rutas_son_las_del_documento():
         ("/listas-seguimiento/{curso_id}/columnas", "POST"),
         ("/listas-seguimiento/{curso_id}/columnas/{columna_id}", "DELETE"),
         ("/listas-seguimiento/{curso_id}/marcas", "POST"),
+        # La del alta masiva no lleva curso: actua sobre todos.
+        ("/listas-seguimiento/columnas-en-todos-los-cursos", "POST"),
     }
 
 
@@ -394,3 +399,98 @@ def test_el_router_esta_registrado_en_la_aplicacion():
     caminos = {getattr(ruta, "path", "") for ruta in app.routes}
 
     assert "/listas-seguimiento/{curso_id}" in caminos
+
+
+# ---------------------------------------------------------------------------
+# Ampliacion: crear la columna en todos los cursos.
+#
+# Ver docs/funcionalidades/LISTAS_SEGUIMIENTO.md, seccion "Ampliacion".
+# ---------------------------------------------------------------------------
+
+
+RUTA_MASIVA = "/listas-seguimiento/columnas-en-todos-los-cursos"
+
+
+def test_el_alta_masiva_responde_200_con_los_conteos(app_admin):
+    app, doblar = app_admin
+    doblar(
+        "crear_columna_en_todos_los_cursos_controller",
+        resultado={"creadas": 9, "omitidas": 16, "total": 25},
+    )
+
+    estado, cuerpo = peticion(app, "POST", RUTA_MASIVA, {"nombre": "Excursion"})
+
+    assert estado == 200
+    assert cuerpo == {"creadas": 9, "omitidas": 16, "total": 25}
+
+
+def test_no_crear_ninguna_sigue_siendo_200(app_admin):
+    """Responde 200 y no 201, al contrario que el alta de una sola columna.
+
+    Que no cree nada es un resultado valido y frecuente -si todos los cursos ya
+    la tenian-, asi que un 201 fijo estaria mintiendo la mitad de las veces.
+    """
+    app, doblar = app_admin
+    doblar(
+        "crear_columna_en_todos_los_cursos_controller",
+        resultado={"creadas": 0, "omitidas": 25, "total": 25},
+    )
+
+    estado, cuerpo = peticion(app, "POST", RUTA_MASIVA, {"nombre": "Excursion"})
+
+    assert estado == 200
+    assert cuerpo["creadas"] == 0
+
+
+def test_la_carrera_del_indice_sale_como_409(app_admin):
+    app, doblar = app_admin
+    doblar(
+        "crear_columna_en_todos_los_cursos_controller",
+        error=ColumnaDuplicadaError(
+            "Otra persona estaba creando esa misma columna. Vuelve a intentarlo."
+        ),
+    )
+
+    estado, cuerpo = peticion(app, "POST", RUTA_MASIVA, {"nombre": "Excursion"})
+
+    assert estado == 409
+    assert "Vuelve a intentarlo" in cuerpo["detail"]
+
+
+@pytest.mark.parametrize("nombre", ["", "   ", "A" * 101])
+def test_un_nombre_invalido_ni_llega_al_controlador_en_el_alta_masiva(app_admin, nombre):
+    app, doblar = app_admin
+    doblar(
+        "crear_columna_en_todos_los_cursos_controller",
+        error=AssertionError("el controlador no deberia ejecutarse"),
+    )
+
+    estado, _ = peticion(app, "POST", RUTA_MASIVA, {"nombre": nombre})
+
+    assert estado == 422
+
+
+def test_el_alta_masiva_tambien_es_solo_para_admin(app_profesor):
+    estado, _ = peticion(app_profesor, "POST", RUTA_MASIVA, {"nombre": "Excursion"})
+
+    assert estado == 403
+
+
+def test_la_ruta_nueva_no_ensombrece_a_las_que_llevan_curso(app_admin):
+    """`/listas-seguimiento/columnas-en-todos-los-cursos` encaja tambien en el
+    molde de `/listas-seguimiento/{curso_id}`.
+
+    Son metodos distintos, asi que no deberia haber choque, pero eso es
+    razonarlo y no verlo. Aqui se ven las tres conviviendo.
+    """
+    app, doblar = app_admin
+    doblar("obtener_lista_seguimiento_controller", resultado=RESPUESTA_GET)
+    doblar("crear_columna_controller", resultado=7)
+    doblar(
+        "crear_columna_en_todos_los_cursos_controller",
+        resultado={"creadas": 1, "omitidas": 0, "total": 1},
+    )
+
+    assert peticion(app, "GET", "/listas-seguimiento/12")[0] == 200
+    assert peticion(app, "POST", "/listas-seguimiento/12/columnas", {"nombre": "X"})[0] == 201
+    assert peticion(app, "POST", RUTA_MASIVA, {"nombre": "X"})[0] == 200

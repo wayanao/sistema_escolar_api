@@ -479,7 +479,19 @@ Backend primero, como siempre:
      una sola. Reintentar funciona, porque a la segunda el `NOT EXISTS` ya la
      ve. Sin ese `except` sería un 500.
 3. La ruta nueva en `app/routes/listas_seguimiento.py` —el router ya existe y
-   ya es admin-only—, con sus pruebas. **Pendiente.**
+   ya es admin-only—, con sus pruebas. **Hecho (2026-09-22).** Ocho pruebas
+   nuevas. Dos decisiones:
+   - **Responde 200, no 201**, al contrario que el alta de una sola columna.
+     Que no cree nada es un resultado válido y frecuente —si todos los cursos
+     ya la tenían— y un 201 fijo estaría mintiendo la mitad de las veces. El
+     cuerpo dice lo que pasó de verdad.
+   - **Se comprobó que la ruta nueva no ensombrece a las que llevan curso.**
+     `/listas-seguimiento/columnas-en-todos-los-cursos` encaja también en el
+     molde de `/listas-seguimiento/{curso_id}`. Son métodos distintos, así que
+     no debería haber choque, pero eso es razonarlo y no verlo: hay una prueba
+     que ejercita las tres conviviendo.
+   Con esto **el backend de la ampliación está completo**: quedan las fases 4
+   a 6, todas de frontend y documentación.
 4. Frontend: servicio y hook de comando, con sus pruebas. **Pendiente.**
 5. Frontend: la casilla en `GestionColumnasSeguimiento` y el cableado en la
    página, con pruebas de integración. **Pendiente.**

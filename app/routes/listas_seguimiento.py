@@ -28,6 +28,7 @@ from app.controllers.listas_seguimiento_controller import (
     CursoNoEncontradoError,
     MarcasFueraDelCursoError,
     crear_columna_controller,
+    crear_columna_en_todos_los_cursos_controller,
     eliminar_columna_controller,
     guardar_marcas_controller,
     obtener_lista_seguimiento_controller,
@@ -78,6 +79,31 @@ def crear_columna(curso_id: int, columna: ColumnaSeguimientoCreate):
         ) from exc
 
     return {"id": columna_id, "nombre": columna.nombre}
+
+
+@router.post("/columnas-en-todos-los-cursos")
+def crear_columna_en_todos_los_cursos(columna: ColumnaSeguimientoCreate):
+    """Crea la columna en todos los cursos activos que aun no la tengan.
+
+    **Sin `curso_id` en la ruta, a proposito**: no actua sobre un curso sino
+    sobre todos. El nombre de la ruta es literal por lo mismo, para que al
+    leerla en un registro no se confunda con el alta suelta.
+
+    **Responde 200, no 201**, al contrario que el alta de una sola columna.
+    Que no cree nada es un resultado valido y frecuente -si todos los cursos
+    ya la tenian-, y un 201 fijo estaria mintiendo la mitad de las veces. El
+    cuerpo dice lo que paso de verdad: `{creadas, omitidas, total}`.
+
+    El 409 de aqui no es "ya existe esa columna" sino la carrera entre dos
+    peticiones simultaneas; el controlador le pone su propio mensaje, que
+    invita a reintentar porque reintentar funciona.
+    """
+    try:
+        return crear_columna_en_todos_los_cursos_controller(columna.nombre)
+    except ColumnaDuplicadaError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+        ) from exc
 
 
 @router.delete("/{curso_id}/columnas/{columna_id}")

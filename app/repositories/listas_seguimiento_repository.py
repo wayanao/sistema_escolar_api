@@ -19,8 +19,9 @@ Por eso, de este modulo:
 - `leer_marcas_de_columnas` y `guardar_marcas` **no consultan nada** si reciben
   una lista vacia: devuelven el vacio sin gastar el viaje.
 - `crear_columna_en_cursos_activos` crea la columna en todos los cursos que le
-  falten **en una sentencia**, no una por curso. Con once cursos, el camino
-  ingenuo serian 23 idas y vueltas.
+  falten **en una sentencia**, no una por curso. Medido en tenant_colegio_1:
+  25 cursos, asi que el camino ingenuo -leerlos, preguntar por cada uno si ya
+  la tiene, insertar- serian 51 idas y vueltas, unos 9 s.
 
 Ninguna funcion valida: el curso, el lote y el nombre los valida el
 controlador. Lo unico que este modulo garantiza es que la comprobacion de
@@ -211,10 +212,11 @@ def contar_cursos_activos(cursor):
     return cursor.fetchone()[0]
 
 
-# El alta en todos los cursos, en UNA sentencia. Con once cursos, el camino
-# ingenuo -leer los cursos, preguntar por cada uno si ya la tiene, insertar-
-# serian 23 idas y vueltas, unos 4 s contra Neon. Aqui el `NOT EXISTS` hace el
-# filtro dentro del mismo `INSERT ... SELECT`.
+# El alta en todos los cursos, en UNA sentencia. tenant_colegio_1 tiene 25
+# cursos -contados, no supuestos-, asi que el camino ingenuo -leer los cursos,
+# preguntar por cada uno si ya la tiene, insertar- serian 51 idas y vueltas,
+# unos 9 s contra Neon. Aqui el `NOT EXISTS` hace el filtro dentro del mismo
+# `INSERT ... SELECT`.
 #
 # El `%s` del SELECT y el del NOT EXISTS son el mismo nombre, y van en ese
 # orden: psycopg2 sustituye segun aparecen en el texto.

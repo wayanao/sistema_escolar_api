@@ -438,6 +438,21 @@ Backend primero, como siempre:
      cosa capaz de separarse del índice sin que nadie lo note. Las pruebas
      que ya existían pasaron sin tocarlas, que es lo que confirma que el
      cambio no altera el SQL que se envía.
+   - **Ensayada contra PostgreSQL real el 2026-09-22**, en `tenant_colegio_1`,
+     con el mismo método que la vez anterior: una transacción que termina en
+     `ROLLBACK` y no deja ni una fila. Las once comprobaciones pasaron. Tres
+     valían el viaje porque ninguna prueba con cursor falso puede darlas: que
+     repetir el alta **no duplica nada** (segunda pasada, 0 creadas), que con
+     otras mayúsculas y espacios de sobra **tampoco** crea nada, y que
+     rellenar un solo hueco crea exactamente una. También se comprobó el
+     filtro de estado poniendo un curso en `inactivo` —queda fuera— y luego
+     con `estado` nulo —sí entra—, revirtiendo las dos cosas y verificando
+     después, con una conexión nueva, que los estados quedaron intactos.
+   - **Dato medido, no supuesto: `tenant_colegio_1` tiene 25 cursos.** Yo
+     había escrito "once" en los comentarios. Con 25, el camino ingenuo serían
+     51 idas y vueltas, unos 9 s: el argumento de hacerlo en una sola
+     sentencia es más fuerte de lo que decía. Los números del código se
+     corrigieron con la medida real.
    - **La regla de "curso activo" se copió tal cual del resto del sistema**:
      `COALESCE(LOWER(estado), 'activo') = 'activo'`. Ojo al detalle, que no
      es evidente: `cursos.estado` admite nulos y un NULL **cuenta como

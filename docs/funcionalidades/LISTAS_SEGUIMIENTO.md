@@ -2,12 +2,14 @@
 
 ## Control
 
-- Estado: **Backend completo. Los 7 pasos hechos (2026-09-22).** Migración
-  aplicada a los dos tenants operativos, esquema base regenerado, y los cuatro
+- Estado: **Backend completo (2026-09-22)** y frontend también. Migración
+  aplicada a los dos tenants operativos, esquema base regenerado, los cuatro
   endpoints en pie con 96 pruebas propias más un ensayo del SQL contra
-  PostgreSQL real. Lo que falta ahora es **el frontend**, que es una propuesta
-  aparte: ver
+  PostgreSQL real, y la pantalla probada a mano en el navegador. Ver
   `frontend-react/docs/funcionalidades/LISTAS_SEGUIMIENTO.md`.
+- **Hay una ampliación en diseño, sin código todavía:** crear una columna en
+  todos los cursos de una vez. Ver la sección "Ampliación" más abajo. No
+  toca las tablas ni lo ya construido.
 - Tipo: Función nueva de producto. No es una capa del programa de
   modularización de `docs/modularizacion/` y no debe confundirse con una.
 - Repos afectados: este repo (`sistema_escolar_api`) y `frontend-react`. Ver
@@ -59,7 +61,10 @@ dato ya existía en otra forma:
 - Notas, boletines, asistencia, pagos: sin cambios en esta propuesta.
 - Reutilizar una columna entre varios cursos: decisión explícita del
   usuario, cada curso tiene su propia lista independiente (ver "Decisiones
-  ya tomadas").
+  ya tomadas"). **Matizado el 2026-09-22**, sin cambiar el modelo: se
+  añadirá una forma de crear la misma columna en todos los cursos de golpe,
+  pero como **copias independientes**, no como una columna compartida. Ver
+  "Ampliación". Una columna sigue perteneciendo a un solo curso.
 - Un corte por período o año lectivo: no existe esa dimensión en este
   diseño; una columna vive mientras exista el curso, hasta que el admin la
   borre a mano.
@@ -69,7 +74,10 @@ dato ya existía en otra forma:
 ## Decisiones ya tomadas (con el usuario, en la conversación de origen)
 
 - Columnas **independientes por curso**, sin compartir ni reutilizar entre
-  cursos — no hace falta una tabla puente como `tipos_pagos_cursos`.
+  cursos — no hace falta una tabla puente como `tipos_pagos_cursos`. **Sigue
+  siendo cierto después de la ampliación del 2026-09-22**: crear "en todos
+  los cursos" crea N filas independientes, una por curso, no una fila
+  compartida. El modelo de datos no cambia.
 - Cada celda guarda **`marcado` (booleano) + `nota` (texto corto,
   opcional)**, no solo un check.
 - Nombre visible para el admin: **"Listas de Seguimiento"** — a propósito
@@ -333,6 +341,102 @@ con `notas`/`valoraciones` ausentes en la respuesta de planilla.
    al final del código. Aplicada a `tenant_colegio_1` y `tenant_2005`;
    esquema base regenerado desde `tenant_colegio_1`. Detalle en
    `docs/MIGRACIONES.md`.
+
+## Ampliación: crear una columna en todos los cursos (2026-09-22)
+
+**En diseño. Sin código escrito todavía.**
+
+### De dónde sale
+
+El usuario preguntó si una columna podía "replicarse" en todos los cursos.
+Se aclaró primero el alcance: se refiere a **todos los cursos de su colegio**,
+no a los dos colegios de la plataforma. Cruzar tenants sería otra cosa muy
+distinta —solo tendría sentido desde el super admin, con una tabla de
+plantillas en `public`— y **no** es lo que se pide.
+
+Después se le ofrecieron dos caminos y eligió el primero:
+
+1. **Copiar al crear**, que es este. Se crean N columnas iguales, una por
+   curso, independientes a partir de ese momento.
+2. Una columna compartida de verdad, que viviría en todos los cursos a la
+   vez. **Descartada** por ahora: pide migración, tocar las cuatro capas y
+   resolver que el índice único no protege igual cuando `curso_id` queda
+   vacío.
+
+Esto **reabre a propósito** la decisión "cada curso tiene su propia lista
+independiente". Se reabre sin romperla: las columnas siguen siendo de un solo
+curso; lo único que se añade es la comodidad de no teclear el mismo nombre
+once veces.
+
+### Lo que NO cambia
+
+- **Ninguna migración.** Las tablas se quedan exactamente como están. Es lo
+  que hace barato este camino, y también lo que lo hace seguro:
+  `20260921_listas_seguimiento.sql` ya está aplicada y su checksum guardado,
+  así que no se puede editar.
+- Los cuatro endpoints actuales siguen igual.
+- Una columna sigue perteneciendo a un solo curso, y sus marcas a esa columna.
+
+### El endpoint nuevo
+
+| Método | Ruta | Body | Notas |
+|---|---|---|---|
+| `POST` | `/listas-seguimiento/columnas-en-todos-los-cursos` | `{"nombre": "..."}` | Crea la columna en todos los cursos activos que aún no la tengan |
+
+Sin `curso_id` en la ruta, a propósito: no actúa sobre un curso sino sobre
+todos. Respuesta:
+
+```jsonc
+{"creadas": 9, "omitidas": 2, "total": 11}
+```
+
+`omitidas` son los cursos que ya tenían una columna con ese nombre. Con eso
+la pantalla puede decir algo honesto: "Creada en 9 cursos. 2 ya la tenían."
+
+### Decisiones de diseño
+
+1. **Solo cursos activos.** No es un capricho: `GET /cursos` devuelve solo
+   los activos por defecto (`app/routes/cursos.py`), así que el selector de
+   esta pantalla ya solo muestra esos. Crear columnas en cursos que el admin
+   no ve sería crear basura invisible.
+2. **Los cursos que ya la tienen se saltan, no dan error.** Eso vuelve el
+   botón **repetible**, y con eso se cubre el caso del curso nuevo: se crea
+   4C en marzo, se vuelve a pulsar con el mismo nombre y solo se crea en 4C.
+   Sin esto, un curso creado después se quedaría sin la columna para siempre.
+3. **Una sola sentencia**, no una por curso. Con once cursos, el camino
+   ingenuo —leer cursos, preguntar por cada uno si ya la tiene, insertar—
+   serían 23 idas y vueltas, unos 4 s contra Neon. La forma correcta es un
+   `INSERT ... SELECT ... WHERE NOT EXISTS` sobre `cursos`, que hace el
+   filtro y la inserción de golpe y devuelve `rowcount`. Es la misma lección
+   que ya está escrita en `listas_seguimiento_repository.py`.
+4. **El índice único sigue siendo la garantía real.** El `NOT EXISTS` evita
+   el error en el caso normal; si dos peticiones entran a la vez, quien
+   rechaza es el índice, igual que en el alta normal.
+
+### Fuera de alcance de esta ampliación
+
+Se cierran a propósito, igual que las otras puertas del documento:
+
+- **Borrar en todos los cursos.** No se pidió. Hoy se borra curso por curso.
+- **Elegir un subconjunto de cursos.** El pedido es "todos", no "estos".
+- **Renombrar una columna**, ni suelta ni en todos los cursos.
+- **Columna compartida de verdad**, que es el camino 2 de arriba.
+
+### Plan de fases (ampliación)
+
+Backend primero, como siempre:
+
+1. `crear_columna_en_cursos_activos` en
+   `app/repositories/listas_seguimiento_repository.py`, con sus pruebas.
+   **Pendiente.**
+2. `crear_columna_en_todos_los_cursos_controller` en el controlador, con sus
+   pruebas. **Pendiente.**
+3. La ruta nueva en `app/routes/listas_seguimiento.py` —el router ya existe y
+   ya es admin-only—, con sus pruebas. **Pendiente.**
+4. Frontend: servicio y hook de comando, con sus pruebas. **Pendiente.**
+5. Frontend: la casilla en `GestionColumnasSeguimiento` y el cableado en la
+   página, con pruebas de integración. **Pendiente.**
+6. Documentación transversal de los dos repos. **Pendiente.**
 
 ## Preguntas abiertas
 

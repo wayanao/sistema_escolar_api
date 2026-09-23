@@ -492,9 +492,12 @@ Backend primero, como siempre:
      que ejercita las tres conviviendo.
    Con esto **el backend de la ampliación está completo**: quedan las fases 4
    a 6, todas de frontend y documentación.
-4. Frontend: servicio y hook de comando, con sus pruebas. **Pendiente.**
+4. Frontend: servicio y hook de comando, con sus pruebas. **Hecho
+   (2026-09-22).** Detalle en el documento del frontend.
 5. Frontend: la casilla en `GestionColumnasSeguimiento` y el cableado en la
-   página, con pruebas de integración. **Pendiente.**
+   página, con pruebas de integración. **Hecho (2026-09-22).** La página no
+   necesitó ningún cambio, como se esperaba. Detalle en el documento del
+   frontend.
 6. Documentación transversal de los dos repos. **Pendiente.**
 
 ## Preguntas abiertas

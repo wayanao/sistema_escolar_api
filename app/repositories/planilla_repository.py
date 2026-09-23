@@ -8,6 +8,10 @@ transacciones, resolucion de asignaciones, validaciones, calculos y payloads.
 Las cinco cadenas SQL conservan su texto original. Tambien se conservan sus
 parametros, retornos y orden de ejecucion, incluidos el reemplazo transaccional
 de una nota y la conexion separada que usa la validacion del servicio.
+
+Excepcion: ``leer_filas_de_planilla`` ahora tambien selecciona ``nd.id``, para
+que el controlador pueda ordenar las columnas de planilla por orden de
+creacion en vez de alfabeticamente (pedido explicito del usuario).
 """
 
 
@@ -80,7 +84,8 @@ def leer_filas_de_planilla(cursor, periodo, asignacion_id):
                 nd.descripcion,
                 nd.nota,
                 COALESCE(nd.tipo_evaluacion, 'numerica') AS tipo_evaluacion,
-                nd.valoracion
+                nd.valoracion,
+                nd.id AS nota_id
 
             FROM asignaciones a
             JOIN cursos c ON a.curso_id = c.id

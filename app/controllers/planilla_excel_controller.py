@@ -15,6 +15,7 @@ def planilla_excel_controller(asignacion_id, periodo=1):
 
     estudiantes = {}
     columnas = set()
+    primer_id_por_columna = {}
 
     for row in rows:
         est_id = row[0]
@@ -25,6 +26,7 @@ def planilla_excel_controller(asignacion_id, periodo=1):
         nota = row[5]
         tipo_evaluacion = row[6] or "numerica"
         valoracion = row[7]
+        nota_id = row[8]
 
         if est_id not in estudiantes:
             estudiantes[est_id] = {
@@ -44,6 +46,11 @@ def planilla_excel_controller(asignacion_id, periodo=1):
             estudiantes[est_id]["tipos_evaluacion"][descripcion] = tipo_evaluacion
             estudiantes[est_id]["valoraciones"][descripcion] = valoracion
 
+            if nota_id is not None:
+                anterior = primer_id_por_columna.get(descripcion)
+                if anterior is None or nota_id < anterior:
+                    primer_id_por_columna[descripcion] = nota_id
+
     # 🔥 calcular promedio
     for est in estudiantes.values():
         notas_validas = [
@@ -55,7 +62,11 @@ def planilla_excel_controller(asignacion_id, periodo=1):
         else:
             est["promedio"] = ""
 
+    columnas_por_orden_de_creacion = sorted(
+        columnas, key=lambda c: primer_id_por_columna.get(c, float("inf"))
+    )
+
     return {
-        "columnas": sorted([c.strip() for c in columnas]),
+        "columnas": [c.strip() for c in columnas_por_orden_de_creacion],
         "data": sorted(list(estudiantes.values()), key=lambda x: (x.get("apellido", "").lower(), x.get("nombre", "").lower()))
     }

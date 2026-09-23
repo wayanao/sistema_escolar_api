@@ -227,8 +227,8 @@ def test_eliminar_tipo_usa_periodo_uno_por_defecto(cursor_planilla):
 
 def test_excel_agrupa_notas_por_estudiante_y_calcula_promedio(cursor_excel):
     filas = [
-        (11, "Ana", "Ríos", "Matemáticas", "Parcial 1", 4.0, "numerica", None),
-        (11, "Ana", "Ríos", "Matemáticas", "Parcial 2", 3.0, "numerica", None),
+        (11, "Ana", "Ríos", "Matemáticas", "Parcial 1", 4.0, "numerica", None, 101),
+        (11, "Ana", "Ríos", "Matemáticas", "Parcial 2", 3.0, "numerica", None, 102),
     ]
     cursor, commits, resueltos, _ = cursor_excel(filas=filas)
 
@@ -243,8 +243,20 @@ def test_excel_agrupa_notas_por_estudiante_y_calcula_promedio(cursor_excel):
     assert resultado["data"][0]["notas"] == {"Parcial 1": 4.0, "Parcial 2": 3.0}
 
 
+def test_excel_ordena_columnas_por_orden_de_creacion_no_alfabetico(cursor_excel):
+    filas = [
+        (11, "Ana", "Ríos", "Matemáticas", "Segundo parcial", 3.0, "numerica", None, 202),
+        (11, "Ana", "Ríos", "Matemáticas", "Autoevaluación", 4.0, "numerica", None, 201),
+    ]
+    cursor_excel(filas=filas)
+
+    resultado = planilla_excel_controller.planilla_excel_controller(12)
+
+    assert resultado["columnas"] == ["Autoevaluación", "Segundo parcial"]
+
+
 def test_excel_descarta_la_descripcion_heredada_desde_react(cursor_excel):
-    filas = [(11, "Ana", "Ríos", "Matemáticas", "Desde React", 4.0, "numerica", None)]
+    filas = [(11, "Ana", "Ríos", "Matemáticas", "Desde React", 4.0, "numerica", None, 301)]
     cursor_excel(filas=filas)
 
     resultado = planilla_excel_controller.planilla_excel_controller(12)
@@ -254,7 +266,7 @@ def test_excel_descarta_la_descripcion_heredada_desde_react(cursor_excel):
 
 
 def test_excel_devuelve_promedio_como_cadena_vacia_si_no_hay_notas_numericas(cursor_excel):
-    filas = [(11, "Ana", "Ríos", "Matemáticas", "Ensayo", None, "desarrollo", "Alto")]
+    filas = [(11, "Ana", "Ríos", "Matemáticas", "Ensayo", None, "desarrollo", "Alto", 401)]
     cursor_excel(filas=filas)
 
     resultado = planilla_excel_controller.planilla_excel_controller(12)
@@ -265,8 +277,8 @@ def test_excel_devuelve_promedio_como_cadena_vacia_si_no_hay_notas_numericas(cur
 
 def test_excel_excluye_las_de_desarrollo_del_promedio(cursor_excel):
     filas = [
-        (11, "Ana", "Ríos", "Matemáticas", "Parcial 1", 4.0, "numerica", None),
-        (11, "Ana", "Ríos", "Matemáticas", "Ensayo", 1.0, "desarrollo", "Alto"),
+        (11, "Ana", "Ríos", "Matemáticas", "Parcial 1", 4.0, "numerica", None, 501),
+        (11, "Ana", "Ríos", "Matemáticas", "Ensayo", 1.0, "desarrollo", "Alto", 502),
     ]
     cursor_excel(filas=filas)
 
@@ -277,8 +289,8 @@ def test_excel_excluye_las_de_desarrollo_del_promedio(cursor_excel):
 
 def test_excel_ordena_por_apellido_y_nombre(cursor_excel):
     filas = [
-        (12, "Beto", "Sáenz", "Matemáticas", "Parcial 1", 3.0, "numerica", None),
-        (11, "Ana", "Ríos", "Matemáticas", "Parcial 1", 4.0, "numerica", None),
+        (12, "Beto", "Sáenz", "Matemáticas", "Parcial 1", 3.0, "numerica", None, 601),
+        (11, "Ana", "Ríos", "Matemáticas", "Parcial 1", 4.0, "numerica", None, 602),
     ]
     cursor_excel(filas=filas)
 

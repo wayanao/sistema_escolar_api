@@ -521,6 +521,7 @@ def test_excel_no_tiene_n_mas_un_en_consultas_ni_conexiones(
             4.0,
             "numerica",
             None,
+            indice,
         )
         for indice in range(1, numero_estudiantes + 1)
     ]

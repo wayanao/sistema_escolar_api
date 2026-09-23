@@ -1,10 +1,24 @@
 # Cambios Backend
 
-Ultima revision documental: 2026-09-22.
+Ultima revision documental: 2026-09-23.
 
 ## Proposito
 
 Bitacora de cambios documentales y tecnicos observables del backend.
+
+## 2026-09-23 - Planilla: columnas en orden de creacion, no alfabetico
+
+El profesor pidio que, al agregar un tipo de nota nuevo en Planilla, la
+columna aparezca en el orden en que la fue creando, no reordenada
+alfabeticamente.
+
+`planilla_excel_controller` guardaba las columnas en un `set()` y las
+devolvia con `sorted(...)`, por lo que el orden visible no tenia relacion con
+el orden de creacion. Se agrego `nd.id` a la consulta de
+`leer_filas_de_planilla` (unica excepcion a "las cinco cadenas SQL conservan
+su texto original" que documenta ese repositorio) y el controlador ahora
+ordena las columnas por el `id` minimo con el que aparece cada descripcion,
+que equivale a su orden real de creacion.
 
 ## 2026-09-22 - Crear una columna de seguimiento en todos los cursos
 

@@ -600,6 +600,7 @@ en `docs/funcionalidades/LISTAS_SEGUIMIENTO.md`.
 - `POST /listas-seguimiento/{curso_id}/columnas`
 - `DELETE /listas-seguimiento/{curso_id}/columnas/{columna_id}`
 - `POST /listas-seguimiento/{curso_id}/marcas`
+- `POST /listas-seguimiento/columnas-en-todos-los-cursos`
 
 `GET /listas-seguimiento/{curso_id}` devuelve columnas, alumnos y marcas en una
 sola respuesta, para pintar la pantalla con una peticion:
@@ -644,6 +645,30 @@ de celdas escritas. `422` si el lote viene vacio, si trae la misma celda dos
 veces, si una nota pasa de 240 caracteres, o si alguna celda referencia una
 columna o un alumno que no son de ese curso. El lote se valida entero antes de
 escribir nada: o entra todo o no entra nada.
+
+`POST /listas-seguimiento/columnas-en-todos-los-cursos` recibe
+`{"nombre": "..."}`, **sin curso en la ruta**: no actua sobre un curso sino
+sobre todos. Crea la columna en cada curso activo que aun no la tenga y
+responde `{"creadas": 9, "omitidas": 16, "total": 25}`.
+
+Tres cosas que no son evidentes:
+
+- **Responde 200, no 201**, al contrario que el alta de una sola columna. Que
+  no cree ninguna es un resultado valido y frecuente -pasa siempre que todos
+  los cursos ya la tenian-, y un 201 fijo estaria mintiendo la mitad de las
+  veces.
+- **Los cursos que ya la tienen se saltan en silencio**, no dan error. Eso
+  vuelve el endpoint repetible: un curso creado despues se rellena volviendo
+  a llamarlo con el mismo nombre.
+- **"Activo" significa lo mismo que en `GET /cursos`**:
+  `COALESCE(LOWER(estado), 'activo') = 'activo'`, o sea que un curso con
+  `estado` nulo **si** cuenta. Asi los cursos sobre los que actua son
+  exactamente los que el admin ve en su selector.
+
+Nacen columnas **independientes**, una por curso, no una compartida: son
+copias con el mismo nombre y a partir de ahi cada una va por su lado. No hay
+tablas nuevas. El `409` de este endpoint no es "ya existe esa columna" sino la
+carrera entre dos peticiones simultaneas, y reintentar funciona.
 
 ## Auth SaaS
 

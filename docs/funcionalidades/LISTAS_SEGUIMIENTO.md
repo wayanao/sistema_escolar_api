@@ -7,9 +7,9 @@
   endpoints en pie con 96 pruebas propias más un ensayo del SQL contra
   PostgreSQL real, y la pantalla probada a mano en el navegador. Ver
   `frontend-react/docs/funcionalidades/LISTAS_SEGUIMIENTO.md`.
-- **Hay una ampliación en diseño, sin código todavía:** crear una columna en
-  todos los cursos de una vez. Ver la sección "Ampliación" más abajo. No
-  toca las tablas ni lo ya construido.
+- **La ampliación "crear una columna en todos los cursos" está terminada**
+  (2026-09-22): las seis fases, en los dos repos. No tocó las tablas ni nada
+  de lo ya construido. Ver la sección "Ampliación" más abajo.
 - Tipo: Función nueva de producto. No es una capa del programa de
   modularización de `docs/modularizacion/` y no debe confundirse con una.
 - Repos afectados: este repo (`sistema_escolar_api`) y `frontend-react`. Ver
@@ -498,7 +498,19 @@ Backend primero, como siempre:
    página, con pruebas de integración. **Hecho (2026-09-22).** La página no
    necesitó ningún cambio, como se esperaba. Detalle en el documento del
    frontend.
-6. Documentación transversal de los dos repos. **Pendiente.**
+6. Documentación transversal de los dos repos. **Hecho (2026-09-22).**
+   Backend: `docs/API_ENDPOINTS.md` (el endpoint nuevo y las tres cosas que no
+   son evidentes) y `docs/CAMBIOS_BACKEND.md`. Frontend: `docs/API_CLIENT.md`,
+   `docs/RUTAS_FRONTEND.md` (la nota de que la casilla no se desmarca sola) y
+   `docs/CAMBIOS_FRONTEND.md`. No hizo falta tocar
+   `docs/ROLES_PERMISOS_BACKEND.md` ni `docs/ROLES_UI.md`: el router ya
+   figuraba como admin-only y no hay entrada de menú nueva.
+
+**Con esto la ampliación está terminada.** Lo único que queda es una prueba de
+humo en el navegador: marcar la casilla, crear una columna y comprobar que
+aparece en varios cursos. Es lo mismo que cerró la funcionalidad original, y
+es lo único que las pruebas automáticas no pueden dar: todas doblan el
+servicio.
 
 ## Preguntas abiertas
 

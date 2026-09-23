@@ -6,6 +6,55 @@ Ultima revision documental: 2026-09-22.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
+## 2026-09-22 - Crear una columna de seguimiento en todos los cursos
+
+Ampliacion de la funcionalidad de abajo. El administrador pidio poder crear la
+misma columna en todos sus cursos sin teclearla una por una. Se aclaro primero
+el alcance -sus cursos, no los dos colegios de la plataforma- y eligio copiar
+al crear frente a una columna compartida de verdad.
+
+### Sin migracion, y eso no es casualidad
+
+Se crean N columnas **independientes**, una por curso, en la tabla que ya
+existe. Ninguna tabla cambia. Importaba el doble porque
+`20260921_listas_seguimiento.sql` ya estaba aplicada y su checksum guardado,
+asi que no se podia editar.
+
+Esto matiza, sin romperla, la decision "cada curso tiene su propia lista
+independiente": lo que se crea son copias, no una fila compartida.
+
+### Una sentencia, no un bucle
+
+`INSERT ... SELECT ... WHERE NOT EXISTS` sobre `cursos`. Medido:
+`tenant_colegio_1` tiene 25 cursos, asi que el camino ingenuo -leerlos,
+preguntar por cada uno si ya la tiene, insertar- serian 51 idas y vueltas,
+unos 9 s contra Neon.
+
+### El detalle que decide el comportamiento
+
+**Los cursos que ya la tienen se saltan en silencio.** Eso vuelve repetible el
+boton, y con eso se cubre el caso del curso creado despues: se vuelve a pulsar
+con el mismo nombre y solo se crea donde falta. De ahi salen dos consecuencias:
+
+- que no se cree ninguna **no es un error**: es el resultado normal de volver a
+  pulsar, y el endpoint responde 200;
+- el `409` de este endpoint no es "ya existe" sino la carrera entre dos
+  peticiones, con mensaje propio que invita a reintentar.
+
+### "Activo" se copio, no se invento
+
+`COALESCE(LOWER(estado), 'activo') = 'activo'`, la misma expresion que decide
+que devuelve `GET /cursos`. Ojo al detalle: `cursos.estado` admite nulos y un
+**NULL cuenta como activo**. Hay prueba que lee `curso_controller.py` y falla
+si las dos reglas se separan.
+
+### Ensayado contra PostgreSQL real
+
+En `tenant_colegio_1`, con una transaccion que termina en ROLLBACK y no deja
+ninguna fila. Once comprobaciones. Tres no las puede dar ninguna prueba con
+dobles: repetir el alta no duplica nada, una variante con otras mayusculas y
+espacios tampoco crea nada, y rellenar un solo hueco crea exactamente una.
+
 ## 2026-09-22 - Listas de Seguimiento por Curso
 
 El administrador no tenia donde llevar registros propios por curso -quien fue a

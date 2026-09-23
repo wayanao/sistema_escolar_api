@@ -32,6 +32,9 @@ from app.repositories import listas_seguimiento_repository as repositorio
 CURSO_NO_ENCONTRADO = "Ese curso no existe."
 COLUMNA_DUPLICADA = "Ya existe una columna con ese nombre en este curso."
 COLUMNA_NO_ENCONTRADA = "Esa columna ya no existe."
+ALTA_MASIVA_EN_CARRERA = (
+    "Otra persona estaba creando esa misma columna. Vuelve a intentarlo."
+)
 MARCAS_FUERA_DEL_CURSO = (
     "El lote incluye una columna o un estudiante que no son de este curso."
 )
@@ -143,6 +146,48 @@ def crear_columna_controller(curso_id, nombre):
             return repositorio.crear_columna(cursor, curso_id, nombre)
     except IntegrityError as exc:
         raise ColumnaDuplicadaError(COLUMNA_DUPLICADA) from exc
+
+
+def crear_columna_en_todos_los_cursos_controller(nombre):
+    """Crea la columna en los cursos activos que aun no la tengan.
+
+    Devuelve `{"creadas", "omitidas", "total"}`, que es lo que la pantalla
+    necesita para decir algo honesto: "Creada en 9 cursos. 2 ya la tenian."
+
+    **Crear que no crea nada NO es un error.** Si todos los cursos ya la
+    tenian, `creadas` vale 0 y la respuesta es un exito. Es la consecuencia de
+    que el alta salte en silencio los que ya la tienen, que es justo lo que
+    vuelve repetible el boton. Un colegio sin cursos activos tampoco falla:
+    devuelve todo a cero.
+
+    **El orden importa: primero se crea y despues se cuenta.** Al reves, un
+    curso creado por otra persona entre las dos consultas entraria en el alta
+    pero no en el conteo, `creadas` podria superar a `total` y la pantalla
+    mostraria un numero **negativo** de omitidas. Haciendolo en este orden,
+    todo curso en el que se inserto existe y esta activo cuando se cuenta, asi
+    que `creadas` nunca pasa de `total`. El `max(..., 0)` cubre el ultimo
+    resquicio -que alguien borre un curso justo en medio-: no arregla ninguna
+    logica, solo impide que salga un numero imposible en pantalla.
+
+    **La carrera del indice se trata aparte.** Si dos peticiones entran a la
+    vez, el `NOT EXISTS` de las dos puede decir que falta y quien rechaza es el
+    indice unico. Eso no es "ya existe esa columna" -el usuario pidio
+    rellenar, no crear una sola-, asi que lleva su propio mensaje y su propia
+    salida: reintentar funciona, porque a la segunda el `NOT EXISTS` ya la ve.
+    Sin este `except` seria un 500.
+    """
+    try:
+        with get_cursor(commit=True) as cursor:
+            creadas = repositorio.crear_columna_en_cursos_activos(cursor, nombre)
+            total = repositorio.contar_cursos_activos(cursor)
+
+            return {
+                "creadas": creadas,
+                "omitidas": max(total - creadas, 0),
+                "total": total,
+            }
+    except IntegrityError as exc:
+        raise ColumnaDuplicadaError(ALTA_MASIVA_EN_CARRERA) from exc
 
 
 def eliminar_columna_controller(curso_id, columna_id):

@@ -461,7 +461,23 @@ Backend primero, como siempre:
      ve el selector de la pantalla. Hay prueba que lee el controlador y falla
      si las dos se separan.
 2. `crear_columna_en_todos_los_cursos_controller` en el controlador, con sus
-   pruebas. **Pendiente.**
+   pruebas. **Hecho (2026-09-22).** Devuelve
+   `{creadas, omitidas, total}`. Ocho pruebas nuevas. Tres decisiones:
+   - **Crear que no crea nada no es un error.** Si todos los cursos ya la
+     tenían, `creadas` vale 0 y la respuesta es un éxito. Es la consecuencia
+     de que el alta salte en silencio los que ya la tienen, que es lo que
+     vuelve repetible el botón. Un colegio sin cursos activos tampoco falla.
+   - **Primero se crea y después se cuenta**, no al revés. Si se contara
+     antes, un curso creado por otra persona entre las dos consultas entraría
+     en el alta pero no en el conteo, `creadas` podría superar a `total` y la
+     pantalla mostraría un número **negativo** de omitidas. En este orden todo
+     curso en el que se insertó existe y está activo al contar. El
+     `max(..., 0)` cubre el último resquicio —que borren un curso justo en
+     medio— y solo impide un número imposible en pantalla.
+   - **La carrera del índice lleva mensaje propio**, no el de "ya existe esa
+     columna": el usuario pidió rellenar los cursos que faltaran, no crear
+     una sola. Reintentar funciona, porque a la segunda el `NOT EXISTS` ya la
+     ve. Sin ese `except` sería un 500.
 3. La ruta nueva en `app/routes/listas_seguimiento.py` —el router ya existe y
    ya es admin-only—, con sus pruebas. **Pendiente.**
 4. Frontend: servicio y hook de comando, con sus pruebas. **Pendiente.**

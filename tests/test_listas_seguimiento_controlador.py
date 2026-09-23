@@ -12,7 +12,7 @@ sin que nadie lo note:
   se degrada en silencio.
 
 El repositorio se sustituye por uno falso: el de verdad ya tiene sus propias
-27 pruebas, y aqui lo que se mira es la logica del controlador.
+35 pruebas, y aqui lo que se mira es la logica del controlador.
 """
 from contextlib import contextmanager
 
@@ -56,7 +56,11 @@ class RepositorioFalso:
         borro=True,
         guardadas=0,
         error_al_crear=None,
+        cursos_activos=25,
+        creadas_masivas=0,
     ):
+        self.cursos_activos = cursos_activos
+        self.creadas_masivas = creadas_masivas
         self.curso_existe = curso_existe
         self.columnas = list(columnas)
         self.estudiantes = list(estudiantes)
@@ -99,6 +103,16 @@ class RepositorioFalso:
         if self.error_al_crear:
             raise self.error_al_crear
         return 7
+
+    def contar_cursos_activos(self, cursor):
+        self._anotar("contar_cursos_activos")
+        return self.cursos_activos
+
+    def crear_columna_en_cursos_activos(self, cursor, nombre):
+        self._anotar("crear_columna_en_cursos_activos", nombre)
+        if self.error_al_crear:
+            raise self.error_al_crear
+        return self.creadas_masivas
 
     def eliminar_columna(self, cursor, curso_id, columna_id):
         self._anotar("eliminar_columna", curso_id, columna_id)
@@ -489,3 +503,99 @@ def test_devolver_desde_dentro_del_with_confirma_la_transaccion(monkeypatch):
     assert devuelve_desde_dentro() == "listo"
     assert espia.commits == 1
     assert espia.rollbacks == 0
+
+
+# ---------------------------------------------------------------------------
+# Ampliacion: crear la columna en todos los cursos.
+#
+# Ver docs/funcionalidades/LISTAS_SEGUIMIENTO.md, seccion "Ampliacion".
+# ---------------------------------------------------------------------------
+
+
+def test_el_alta_masiva_devuelve_creadas_omitidas_y_total(entorno):
+    repo, conexiones = entorno(cursos_activos=25, creadas_masivas=9)
+
+    assert controlador.crear_columna_en_todos_los_cursos_controller("Excursion") == {
+        "creadas": 9,
+        "omitidas": 16,
+        "total": 25,
+    }
+    assert conexiones.abiertas == 1
+    assert conexiones.commits == [True]
+
+
+def test_el_alta_masiva_crea_antes_de_contar(entorno):
+    """Al reves, un curso creado por otra persona entre las dos consultas
+    entraria en el alta pero no en el conteo, `creadas` podria superar a
+    `total` y la pantalla mostraria un numero negativo de omitidas."""
+    repo, _ = entorno(cursos_activos=25, creadas_masivas=9)
+
+    controlador.crear_columna_en_todos_los_cursos_controller("Excursion")
+
+    assert repo.nombres_llamados == [
+        "crear_columna_en_cursos_activos",
+        "contar_cursos_activos",
+    ]
+
+
+def test_las_omitidas_nunca_salen_en_negativo(entorno):
+    """Ultimo resquicio: que alguien borre un curso justo entre las dos
+    consultas. No arregla ninguna logica, impide un numero imposible."""
+    entorno(cursos_activos=3, creadas_masivas=5)
+
+    resultado = controlador.crear_columna_en_todos_los_cursos_controller("Excursion")
+
+    assert resultado["omitidas"] == 0
+
+
+def test_no_crear_ninguna_no_es_un_error(entorno):
+    """Si todos los cursos ya la tenian, `creadas` vale 0 y la respuesta es un
+    exito. Es la consecuencia de que el alta salte en silencio los que ya la
+    tienen, que es lo que vuelve repetible el boton."""
+    entorno(cursos_activos=25, creadas_masivas=0)
+
+    resultado = controlador.crear_columna_en_todos_los_cursos_controller("Excursion")
+
+    assert resultado == {"creadas": 0, "omitidas": 25, "total": 25}
+
+
+def test_un_colegio_sin_cursos_activos_no_revienta(entorno):
+    entorno(cursos_activos=0, creadas_masivas=0)
+
+    assert controlador.crear_columna_en_todos_los_cursos_controller("Excursion") == {
+        "creadas": 0,
+        "omitidas": 0,
+        "total": 0,
+    }
+
+
+def test_el_nombre_llega_tal_cual_al_repositorio(entorno):
+    repo, _ = entorno(creadas_masivas=1)
+
+    controlador.crear_columna_en_todos_los_cursos_controller("Pago la excursion")
+
+    assert repo.llamadas[0] == ("crear_columna_en_cursos_activos", "Pago la excursion")
+
+
+def test_la_carrera_del_indice_no_sale_como_500(entorno):
+    """Dos peticiones a la vez: el NOT EXISTS de las dos dice que falta y quien
+    rechaza es el indice unico. Reintentar funciona, porque a la segunda el
+    NOT EXISTS ya la ve."""
+    entorno(error_al_crear=IntegrityError("llave duplicada"))
+
+    with pytest.raises(ColumnaDuplicadaError) as error:
+        controlador.crear_columna_en_todos_los_cursos_controller("Excursion")
+
+    assert str(error.value) == controlador.ALTA_MASIVA_EN_CARRERA
+
+
+def test_la_carrera_lleva_su_propio_mensaje_no_el_de_ya_existe(entorno):
+    """El usuario pidio rellenar los cursos que faltaran, no crear una sola
+    columna: decirle "ya existe" no describe lo que paso."""
+    entorno(error_al_crear=IntegrityError("llave duplicada"))
+
+    with pytest.raises(ColumnaDuplicadaError) as error:
+        controlador.crear_columna_en_todos_los_cursos_controller("Excursion")
+
+    assert str(error.value) != controlador.COLUMNA_DUPLICADA
+    assert "duplicada" not in str(error.value)

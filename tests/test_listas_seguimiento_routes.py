@@ -396,7 +396,7 @@ def test_el_router_esta_registrado_en_la_aplicacion():
     """Sin esto el modulo existe, pasa sus pruebas y no responde a nadie."""
     from app.main import app
 
-    caminos = {getattr(ruta, "path", "") for ruta in app.routes}
+    caminos = set(app.openapi()["paths"])
 
     assert "/listas-seguimiento/{curso_id}" in caminos
 

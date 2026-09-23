@@ -90,6 +90,8 @@ def test_no_es_dueno_de_la_conexion():
         "crear_columna",
         "eliminar_columna",
         "guardar_marcas",
+        "contar_cursos_activos",
+        "crear_columna_en_cursos_activos",
     ],
 )
 def test_toda_funcion_recibe_el_cursor_como_primer_argumento(nombre):
@@ -315,3 +317,112 @@ def test_la_nota_se_guarda_tal_cual_sin_convertir_vacio_en_nulo():
     repo.guardar_marcas(cursor, [(5, 101, False, ""), (5, 102, False, None)])
 
     assert params_de(cursor)[3] == ["", None]
+
+
+# ---------------------------------------------------------------------------
+# Ampliacion: crear la columna en todos los cursos activos.
+#
+# Ver docs/funcionalidades/LISTAS_SEGUIMIENTO.md, seccion "Ampliacion". No hay
+# tablas nuevas: son N columnas independientes, una por curso.
+# ---------------------------------------------------------------------------
+
+
+CURSO_ACTIVO_EN_EL_RESTO_DEL_SISTEMA = "COALESCE(LOWER(estado), 'activo') = %s"
+
+
+def test_el_alta_masiva_cuesta_una_sola_sentencia():
+    """Es el motivo de que sea un INSERT ... SELECT y no un bucle.
+
+    Con once cursos, leer los cursos, preguntar por cada uno si ya la tiene e
+    insertar serian 23 idas y vueltas: unos 4 s contra Neon.
+    """
+    cursor = CursorFalso(rowcount=9)
+
+    assert repo.crear_columna_en_cursos_activos(cursor, "Pago la excursion") == 9
+    assert len(cursor.calls) == 1
+
+
+def test_el_alta_masiva_inserta_leyendo_de_cursos():
+    cursor = CursorFalso(rowcount=9)
+
+    repo.crear_columna_en_cursos_activos(cursor, "Pago la excursion")
+
+    sql = sql_de(cursor)
+    assert "INSERT INTO listas_seguimiento_columnas (curso_id, nombre)" in sql
+    assert "FROM cursos c" in sql
+    assert params_de(cursor) == ("Pago la excursion", "Pago la excursion")
+
+
+def test_el_alta_masiva_salta_los_cursos_que_ya_la_tienen():
+    """Saltarlos en vez de fallar es lo que vuelve repetible el boton: un curso
+    creado despues se rellena volviendo a pulsarlo."""
+    cursor = CursorFalso(rowcount=1)
+
+    repo.crear_columna_en_cursos_activos(cursor, "Pago la excursion")
+
+    sql = sql_de(cursor)
+    assert "NOT EXISTS" in sql
+    assert "existente.curso_id = c.id" in sql
+
+
+def test_el_alta_masiva_compara_el_nombre_como_el_indice():
+    """Si comparara distinto que el indice unico, crearia duplicados que la
+    base despues rechaza, y el lote entero se caeria."""
+    cursor = CursorFalso(rowcount=1)
+
+    repo.crear_columna_en_cursos_activos(cursor, "Pago la excursion")
+
+    sql = sql_de(cursor)
+    assert NORMALIZACION.replace("nombre", "existente.nombre") in sql
+    assert NORMALIZACION in MIGRACION.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    "consulta",
+    ["crear_columna_en_cursos_activos", "contar_cursos_activos"],
+)
+def test_activo_significa_lo_mismo_que_en_el_resto_del_sistema(consulta):
+    """`cursos.estado` es nulable y un NULL vale por activo.
+
+    Es la regla que usa `_agregar_filtro_estado` en `curso_controller`, que
+    decide que cursos devuelve `GET /cursos` y, con ello, cuales ve el selector
+    de esta pantalla. Si las dos se separan, "todos los cursos" deja de
+    significar lo que el usuario tiene delante.
+
+    La unica diferencia con la del controlador es el alias de la tabla.
+    """
+    fuente_del_controlador = (
+        Path(__file__).resolve().parents[1]
+        / "app"
+        / "controllers"
+        / "curso_controller.py"
+    ).read_text(encoding="utf-8")
+    assert CURSO_ACTIVO_EN_EL_RESTO_DEL_SISTEMA in fuente_del_controlador
+
+    cursor = CursorFalso(fila=(11,), rowcount=1)
+    if consulta.startswith("crear"):
+        getattr(repo, consulta)(cursor, "Pago la excursion")
+    else:
+        getattr(repo, consulta)(cursor)
+
+    assert "COALESCE(LOWER(c.estado), 'activo') = 'activo'" in sql_de(cursor)
+
+
+def test_contar_cursos_activos_devuelve_el_numero():
+    cursor = CursorFalso(fila=(11,))
+
+    assert repo.contar_cursos_activos(cursor) == 11
+    assert "SELECT COUNT(*) FROM cursos c" in sql_de(cursor)
+    assert len(cursor.calls) == 1
+
+
+def test_el_alta_masiva_no_crea_tablas_ni_columnas_nuevas():
+    """La ampliacion no lleva migracion: son N filas independientes en la tabla
+    que ya existe. Si alguien mete aqui un ALTER o una tabla nueva, se entera."""
+    cursor = CursorFalso(rowcount=1)
+
+    repo.crear_columna_en_cursos_activos(cursor, "Pago la excursion")
+
+    sql = sql_de(cursor).upper()
+    assert "ALTER TABLE" not in sql
+    assert "CREATE TABLE" not in sql

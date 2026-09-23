@@ -18,6 +18,9 @@ Por eso, de este modulo:
   `asistencia_repository`. Con `UNNEST` es una, cueste lo que cueste el lote.
 - `leer_marcas_de_columnas` y `guardar_marcas` **no consultan nada** si reciben
   una lista vacia: devuelven el vacio sin gastar el viaje.
+- `crear_columna_en_cursos_activos` crea la columna en todos los cursos que le
+  falten **en una sentencia**, no una por curso. Con once cursos, el camino
+  ingenuo serian 23 idas y vueltas.
 
 Ninguna funcion valida: el curso, el lote y el nombre los valida el
 controlador. Lo unico que este modulo garantiza es que la comprobacion de
@@ -26,6 +29,32 @@ la migracion, porque si las dos se separan el 409 deja de coincidir con lo que
 la base acepta. `tests/test_listas_seguimiento_repositorio.py` lo comprueba
 leyendo el propio archivo .sql.
 """
+
+
+def _nombre_normalizado(expresion):
+    """La regla que iguala dos nombres de columna, aplicada a lo que se le pase.
+
+    Es **la misma** del indice unico
+    `idx_listas_seguimiento_columnas_nombre_unico`: mayusculas fuera, espacios
+    de los extremos fuera, y los interiores repetidos colapsados a uno.
+
+    Vive en una funcion y no copiada en cada consulta porque ya son dos las que
+    la necesitan -el chequeo de duplicado y el alta en todos los cursos-, y una
+    tercera copia seria una tercera cosa que puede separarse del indice sin que
+    nadie lo note.
+
+    **No recibe nada del usuario**: solo nombres de columna escritos aqui, en
+    este archivo. Los valores siguen viajando como parametros.
+    """
+    return f"UPPER(REGEXP_REPLACE(TRIM({expresion}), '[[:space:]]+', ' ', 'g'))"
+
+
+# Que cuenta como curso activo. `cursos.estado` es nulable y un NULL vale por
+# activo: es la misma expresion que `_agregar_filtro_estado` en
+# `curso_controller`, que es la que decide que cursos devuelve `GET /cursos` y,
+# con ello, cuales ve el selector de esta pantalla. Si las dos se separan,
+# "todos los cursos" dejaria de significar lo que el usuario tiene delante.
+_CURSO_ACTIVO = "COALESCE(LOWER(c.estado), 'activo') = 'activo'"
 
 
 def existe_curso(cursor, curso_id):
@@ -138,12 +167,12 @@ def existe_columna_con_ese_nombre(cursor, curso_id, nombre):
     `True`.
     """
     cursor.execute(
-        """
+        f"""
         SELECT 1
         FROM listas_seguimiento_columnas
         WHERE curso_id = %s
-          AND UPPER(REGEXP_REPLACE(TRIM(nombre), '[[:space:]]+', ' ', 'g'))
-            = UPPER(REGEXP_REPLACE(TRIM(%s), '[[:space:]]+', ' ', 'g'))
+          AND {_nombre_normalizado("nombre")}
+            = {_nombre_normalizado("%s")}
         """,
         (curso_id, nombre),
     )
@@ -168,6 +197,63 @@ def crear_columna(cursor, curso_id, nombre):
         (curso_id, nombre),
     )
     return cursor.fetchone()[0]
+
+
+def contar_cursos_activos(cursor):
+    """Cuantos cursos activos hay.
+
+    Solo alimenta el mensaje de la pantalla -"creada en 9 de 11 cursos"-; no
+    decide nada. Quien decide en que cursos se crea es la propia sentencia de
+    `crear_columna_en_cursos_activos`, con el mismo filtro y en un solo paso,
+    asi que no hay ventana entre mirar y escribir.
+    """
+    cursor.execute(f"SELECT COUNT(*) FROM cursos c WHERE {_CURSO_ACTIVO}")
+    return cursor.fetchone()[0]
+
+
+# El alta en todos los cursos, en UNA sentencia. Con once cursos, el camino
+# ingenuo -leer los cursos, preguntar por cada uno si ya la tiene, insertar-
+# serian 23 idas y vueltas, unos 4 s contra Neon. Aqui el `NOT EXISTS` hace el
+# filtro dentro del mismo `INSERT ... SELECT`.
+#
+# El `%s` del SELECT y el del NOT EXISTS son el mismo nombre, y van en ese
+# orden: psycopg2 sustituye segun aparecen en el texto.
+_CREAR_EN_CURSOS_ACTIVOS = f"""
+    INSERT INTO listas_seguimiento_columnas (curso_id, nombre)
+    SELECT c.id, %s
+    FROM cursos c
+    WHERE {_CURSO_ACTIVO}
+      AND NOT EXISTS (
+          SELECT 1
+          FROM listas_seguimiento_columnas existente
+          WHERE existente.curso_id = c.id
+            AND {_nombre_normalizado("existente.nombre")}
+              = {_nombre_normalizado("%s")}
+      )
+"""
+
+
+def crear_columna_en_cursos_activos(cursor, nombre):
+    """Crea la columna en los cursos activos que aun no la tengan. Devuelve cuantas.
+
+    Los cursos que ya tenian una columna con ese nombre **se saltan en
+    silencio**, no dan error. Es lo que vuelve repetible el boton de la
+    pantalla: un curso creado despues se rellena volviendo a pulsarlo, en vez
+    de quedarse sin la columna para siempre.
+
+    Nacen columnas **independientes**, una por curso, no una compartida: son
+    copias con el mismo nombre y a partir de ahi cada una va por su lado. El
+    modelo de datos no cambia y esta funcion no necesita ninguna migracion.
+
+    El `NOT EXISTS` evita el choque en el caso normal; la garantia real sigue
+    siendo el indice unico, igual que en el alta suelta.
+
+    `nombre` llega ya recortado por `ColumnaSeguimientoCreate`.
+
+    El `commit` es de quien llama.
+    """
+    cursor.execute(_CREAR_EN_CURSOS_ACTIVOS, (nombre, nombre))
+    return cursor.rowcount
 
 
 def eliminar_columna(cursor, curso_id, columna_id):

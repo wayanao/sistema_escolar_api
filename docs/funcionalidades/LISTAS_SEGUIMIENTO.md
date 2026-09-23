@@ -428,7 +428,23 @@ Backend primero, como siempre:
 
 1. `crear_columna_en_cursos_activos` en
    `app/repositories/listas_seguimiento_repository.py`, con sus pruebas.
-   **Pendiente.**
+   **Hecho (2026-09-22).** Se agregaron dos funciones, no una:
+   `crear_columna_en_cursos_activos` y `contar_cursos_activos`, esta última
+   solo para que el mensaje de la pantalla pueda decir "9 de 11" sin decidir
+   nada. Diez pruebas nuevas.
+   - **Se extrajo `_nombre_normalizado(expresion)`**, un cambio pequeño al
+     código del paso 2 original. La regla que iguala dos nombres ya la
+     necesitan dos consultas, y una tercera copia literal sería una tercera
+     cosa capaz de separarse del índice sin que nadie lo note. Las pruebas
+     que ya existían pasaron sin tocarlas, que es lo que confirma que el
+     cambio no altera el SQL que se envía.
+   - **La regla de "curso activo" se copió tal cual del resto del sistema**:
+     `COALESCE(LOWER(estado), 'activo') = 'activo'`. Ojo al detalle, que no
+     es evidente: `cursos.estado` admite nulos y un NULL **cuenta como
+     activo**. Es la misma expresión que usa `_agregar_filtro_estado` en
+     `curso_controller`, que decide qué devuelve `GET /cursos` y con ello qué
+     ve el selector de la pantalla. Hay prueba que lee el controlador y falla
+     si las dos se separan.
 2. `crear_columna_en_todos_los_cursos_controller` en el controlador, con sus
    pruebas. **Pendiente.**
 3. La ruta nueva en `app/routes/listas_seguimiento.py` —el router ya existe y

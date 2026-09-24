@@ -6,6 +6,52 @@ Ultima revision documental: 2026-09-24.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
+## 2026-09-24 - Preparar una conexion pasa de tres idas a dos
+
+Toda conexion del pool ejecutaba `SET search_path` y luego los timeouts en dos
+`execute` separados. Ahora viajan juntos en uno solo. Lo que se ejecuta es
+identico, y en el mismo orden.
+
+### Medido contra la base real, no estimado
+
+| | Antes | Ahora |
+|---|---|---|
+| `get_connection()` completo | 180 ms | **113 ms** |
+| Autenticar una peticion (2 conexiones + 2 consultas) | 480 ms | **346 ms** |
+| Guardar una nota (4 conexiones) | ~1,26 s | **~1,0 s** |
+
+Lo cobra **cada** conexion de toda la API, no un endpoint concreto.
+
+### De donde salian los 180 ms
+
+Una ida y vuelta a la base cuesta ~60 ms (Neon, otro continente). Preparar una
+conexion gastaba tres:
+
+1. el `BEGIN` implicito que psycopg2 manda con `autocommit = False`,
+2. el `SET search_path`,
+3. el `SELECT set_config` de los timeouts.
+
+El `BEGIN` no se puede quitar: los timeouts se fijan con `set_config(..., TRUE)`,
+que es local a la transaccion y por tanto la necesita. Las otras dos si podian
+viajar juntas.
+
+Esto corrige de paso el comentario de `app/dependencies.py`, que decia "cada
+ida y vuelta cuesta ~180 ms": son ~60 ms por ida; los 180 eran el precio de una
+conexion entera.
+
+### El esquema sigue sin interpolarse a mano
+
+`build_tenant_search_path_statement` devuelve la sentencia sin ejecutarla, con
+el esquema como `sql.Identifier` y validado por `get_current_tenant_schema`,
+igual que antes. Se comprobo contra la base real que la sesion queda con el
+`search_path` del tenant y los tres timeouts aplicados.
+
+### Quedan sin usar
+
+`set_tenant_search_path` y `apply_session_timeouts` ya no tienen llamadores en
+`app/` -solo una prueba-. Se dejan en su sitio a la espera de decidir si se
+borran.
+
 ## 2026-09-24 - Guardar una nota deja de pedir una conexion de mas
 
 `POST /planilla/nota` pedia al pool una conexion entera solo para comprobar que

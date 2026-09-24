@@ -17,9 +17,22 @@ def get_current_tenant_schema() -> str:
     return tenant_schema
 
 
-def set_tenant_search_path(cursor) -> str:
+def build_tenant_search_path_statement() -> tuple[sql.Composed, str]:
+    """Sentencia que fija el tenant, sin ejecutarla.
+
+    Existe para que quien prepara una conexion pueda mandarla junto a los
+    timeouts en una sola ida a la base. El esquema sigue pasando por
+    `get_current_tenant_schema`, que lo valida contra el patron antes de
+    interpolarlo con `sql.Identifier`.
+    """
     tenant_schema = get_current_tenant_schema()
-    cursor.execute(
-        sql.SQL("SET search_path TO {}, public").format(sql.Identifier(tenant_schema))
+    sentencia = sql.SQL("SET search_path TO {}, public").format(
+        sql.Identifier(tenant_schema)
     )
+    return sentencia, tenant_schema
+
+
+def set_tenant_search_path(cursor) -> str:
+    sentencia, tenant_schema = build_tenant_search_path_statement()
+    cursor.execute(sentencia)
     return tenant_schema

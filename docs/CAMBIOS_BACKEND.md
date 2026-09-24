@@ -1,10 +1,51 @@
 # Cambios Backend
 
-Ultima revision documental: 2026-09-23.
+Ultima revision documental: 2026-09-24.
 
 ## Proposito
 
 Bitacora de cambios documentales y tecnicos observables del backend.
+
+## 2026-09-24 - Guardar una nota deja de pedir una conexion de mas
+
+`POST /planilla/nota` pedia al pool una conexion entera solo para comprobar que
+el estudiante pertenece a la asignacion, y justo despues abria otra para hacer
+el trabajo. Ahora esa comprobacion viaja en el cursor que el controlador ya
+abre.
+
+| | Antes | Ahora |
+|---|---|---|
+| Conexiones (admin) | 2 | **1** |
+| Conexiones (profesor) | 3 | **2** |
+| Consultas | 6 | 6 |
+
+Las consultas **no bajan**: se hacen las mismas preguntas. Lo que desaparece
+son los dos viajes de preparacion (`SET search_path` y los timeouts) que paga
+cada conexion antes de consultar nada. Contra Neon eso es lo caro.
+
+### El patron ya estaba en el repo
+
+`validar_estudiante_asignacion` gana un `cursor=None` opcional, calcado del que
+ya aceptan las tres funciones de `app/core/permissions.py`, con su mismo
+contrato: con cursor lo usa, sin cursor abre el suyo. Ningun otro llamador
+existe, y quien llame sin cursor se comporta como siempre.
+
+### Lo que NO se movio, y por que
+
+El permiso de la asignacion **sigue comprobandose en la ruta**. Moverlo al
+controlador ahorraria otra conexion, pero
+`test_las_tres_entradas_delegan_el_mismo_permiso_y_su_controlador` fija a
+proposito que las tres entradas del router comprueban igual, y romper esa
+simetria deja al POST pareciendo que se olvido el permiso. Ademas hoy no hay
+prueba de extremo a extremo del 403 del POST -solo la del GET-, asi que se
+moveria sin red. Queda para una decision propia.
+
+### El rechazo cambia por dentro, no por fuera
+
+"El estudiante no pertenece" ahora ocurre dentro del bloque transaccional, asi
+que se pide un cursor donde antes se pedian dos conexiones. Sigue sin ejecutar
+ningun DELETE ni INSERT y responde lo mismo, 200 con `{"error": ...}`. Las dos
+pruebas que lo fijaban se actualizaron con esa explicacion.
 
 ## 2026-09-23 - Planilla: columnas en orden de creacion, no alfabetico
 

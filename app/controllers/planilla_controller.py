@@ -11,11 +11,17 @@ from app.services.planilla_service import validar_estudiante_asignacion
 # 🎯 Registrar nota desde planilla
 def registrar_nota_planilla_controller(data):
 
-    # 🔥 VALIDACIÓN
-    if not validar_estudiante_asignacion(data.estudiante_id, data.asignacion_id):
-        return {"error": "El estudiante no pertenece a esta asignación"}
-
     with get_cursor(commit=True) as cursor:
+        # 🔥 VALIDACIÓN
+        # Sobre el cursor que este bloque ya abrio: antes pedia una conexion
+        # propia al pool solo para esta consulta.
+        if not validar_estudiante_asignacion(
+            data.estudiante_id,
+            data.asignacion_id,
+            cursor=cursor,
+        ):
+            return {"error": "El estudiante no pertenece a esta asignación"}
+
         asignacion_id = resolver_asignacion_academica_id_cursor(cursor, data.asignacion_id)
         nivel_curso = resolver_nivel_curso_cursor(cursor, asignacion_id)
         tipo_evaluacion = resolver_tipo_evaluacion(

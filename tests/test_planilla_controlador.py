@@ -72,7 +72,9 @@ def _instalador(modulo, monkeypatch):
 @pytest.fixture
 def cursor_planilla(monkeypatch):
     monkeypatch.setattr(
-        planilla_controller, "validar_estudiante_asignacion", lambda _e, _a: True
+        planilla_controller,
+        "validar_estudiante_asignacion",
+        lambda _e, _a, cursor=None: True,
     )
     return _instalador(planilla_controller, monkeypatch)
 
@@ -189,17 +191,22 @@ def test_registrar_nota_sin_nivel_definido_mantiene_comportamiento_actual(
     assert niveles == [77]
 
 
-def test_registrar_nota_rechaza_estudiante_ajeno_sin_pedir_conexion(cursor_planilla, monkeypatch):
+def test_registrar_nota_rechaza_estudiante_ajeno_sin_escribir_nada(cursor_planilla, monkeypatch):
     cursor, commits, _, _ = cursor_planilla()
     monkeypatch.setattr(
-        planilla_controller, "validar_estudiante_asignacion", lambda _e, _a: False
+        planilla_controller,
+        "validar_estudiante_asignacion",
+        lambda _e, _a, cursor=None: False,
     )
 
     respuesta = planilla_controller.registrar_nota_planilla_controller(DATOS)
 
     assert respuesta == {"error": "El estudiante no pertenece a esta asignación"}
+    # La validacion ahora ocurre dentro del bloque que ya abria el controlador,
+    # asi que se pide un cursor -antes eran dos conexiones-, pero el rechazo
+    # sigue sin ejecutar ni un DELETE ni un INSERT.
     assert cursor.calls == []
-    assert commits == []
+    assert commits == [True]
 
 
 def test_eliminar_tipo_borra_la_columna_del_periodo(cursor_planilla):

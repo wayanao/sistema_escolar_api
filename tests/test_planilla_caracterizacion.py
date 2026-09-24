@@ -428,39 +428,44 @@ def test_el_esquema_permite_periodo_nulo_textos_vacios_y_tipo_desconocido():
 # ---------------------------------------------------------------------------
 
 
-def test_post_como_admin_cuesta_cinco_consultas_y_dos_conexiones(
+def test_post_como_admin_cuesta_cinco_consultas_y_una_conexion(
     instrumentado,
 ):
     """La funcionalidad de nivel academico agrega una consulta de solo lectura
     dentro de la MISMA conexion/transaccion ya abierta -no abre una conexion
     nueva- para saber si el curso es preescolar o primaria. El conteo sube de
-    cuatro a cinco; las conexiones no cambian."""
+    cuatro a cinco; las conexiones no cambian.
+
+    Desde el 2026-09-24 la validacion del estudiante tambien viaja en esa
+    conexion: eran dos, ahora es una. Las cinco consultas son las mismas."""
     registro = instrumentado(filas=[(11,), (77,), (None,), (901,)])
 
     respuesta = ruta_planilla.registrar_nota(DATOS, ADMIN)
 
-    assert registro.cursores == [False, True]
+    assert registro.cursores == [True]
     assert registro.conexiones_permiso == 0
     assert len(registro.consultas) == 5
-    assert len(registro.cursores) + registro.conexiones_permiso == 2
+    assert len(registro.cursores) + registro.conexiones_permiso == 1
     assert respuesta == {
         "mensaje": "Nota registrada correctamente",
         "nota_id": 901,
     }
 
 
-def test_post_como_profesor_cuesta_seis_consultas_y_tres_conexiones(
+def test_post_como_profesor_cuesta_seis_consultas_y_dos_conexiones(
     instrumentado,
 ):
+    """La segunda conexion es la del permiso de la asignacion, que sigue
+    comprobandose en la ruta como en las otras dos entradas del router."""
     registro = instrumentado(filas=[(11,), (77,), (None,), (901,)])
 
     ruta_planilla.registrar_nota(DATOS, PROFESOR)
 
-    assert registro.cursores == [False, True]
+    assert registro.cursores == [True]
     assert registro.conexiones_permiso == 1
     assert len(registro.consultas) == 5
     assert len(registro.consultas_permiso) == 1
-    assert len(registro.cursores) + registro.conexiones_permiso == 3
+    assert len(registro.cursores) + registro.conexiones_permiso == 2
 
 
 def test_post_rechazado_abre_una_conexion_y_responde_error_con_200_logico(
@@ -470,7 +475,7 @@ def test_post_rechazado_abre_una_conexion_y_responde_error_con_200_logico(
 
     respuesta = ruta_planilla.registrar_nota(DATOS, ADMIN)
 
-    assert registro.cursores == [False]
+    assert registro.cursores == [True]
     assert len(registro.consultas) == 1
     assert respuesta == {"error": "El estudiante no pertenece a esta asignación"}
 

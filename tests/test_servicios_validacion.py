@@ -102,3 +102,35 @@ def test_validar_estudiante_asignacion_devuelve_false_si_no_pertenece(cursor_de)
     cursor_de(planilla_service, None)
 
     assert planilla_service.validar_estudiante_asignacion(3, 7) is False
+
+
+def test_validar_estudiante_asignacion_usa_el_cursor_prestado_sin_pedir_conexion(
+    monkeypatch,
+):
+    """Con cursor prestado hace la misma consulta y no toca el pool.
+
+    Es lo que deja el POST de planilla en una sola conexion: quien ya tiene
+    una abierta presta su cursor en vez de pedir otra solo para esta
+    comprobacion.
+    """
+    class CursorPrestado:
+        def __init__(self):
+            self.ejecutados = []
+
+        def execute(self, sentencia, parametros=None):
+            self.ejecutados.append((sentencia, parametros))
+
+        def fetchone(self):
+            return (3,)
+
+    def get_cursor_prohibido(*_args, **_kwargs):
+        raise AssertionError("con cursor prestado no debe pedirse otra conexion")
+
+    monkeypatch.setattr(planilla_service, "get_cursor", get_cursor_prohibido)
+    cursor = CursorPrestado()
+
+    assert planilla_service.validar_estudiante_asignacion(3, 7, cursor=cursor) is True
+
+    sentencia, parametros = cursor.ejecutados[0]
+    assert "JOIN asignaciones a ON e.curso_id = a.curso_id" in sentencia
+    assert parametros == (3, 7)

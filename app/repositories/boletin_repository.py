@@ -149,6 +149,12 @@ def leer_materias_del_estudiante(cursor, estudiante_id, periodo, nombre_materia_
     preescolar (nivel academico): esa asignacion existe para tomar
     asistencia una vez al dia, no es una materia real y no debe aparecer en
     el boletin. Ver app.core.nivel_academico.NOMBRE_MATERIA_ASISTENCIA_JORNADA.
+
+    Una materia inactiva no sale, **tampoco en los periodos ya calificados**.
+    Es la misma regla que ya aplicaba `a.activo` para la asignacion, y la que
+    usan las ocho consultas de `asignaciones_repository`. El filtro faltaba
+    aqui desde que se anadio `materias.estado` (20260604_materias_estado.sql):
+    la asignatura desaparecia de todas las pantallas menos del boletin.
     """
     cursor.execute('''
             WITH asignaciones_academicas AS (
@@ -189,6 +195,7 @@ def leer_materias_del_estudiante(cursor, estudiante_id, periodo, nombre_materia_
             ) nd_prom ON TRUE
             WHERE e.id = %s
               AND m.nombre <> %s
+              AND COALESCE(LOWER(m.estado), 'activo') = 'activo'
             ORDER BY asig.orden_boletin, m.nombre
         ''', (periodo, periodo, estudiante_id, nombre_materia_excluida))
     return cursor.fetchall()
@@ -302,7 +309,8 @@ def leer_planilla_vigente(cursor, estudiante_id, periodo, nombre_materia_excluid
     boletin guardado. Es la fotografia que sostiene el reporte parcial.
 
     `nombre_materia_excluida`: ver el mismo parametro en
-    `leer_materias_del_estudiante`.
+    `leer_materias_del_estudiante`. El filtro de materia inactiva tambien se
+    explica alli: las dos consultas del boletin siguen la misma regla.
     """
     cursor.execute('''
             WITH asignaciones_academicas AS (
@@ -341,6 +349,7 @@ def leer_planilla_vigente(cursor, estudiante_id, periodo, nombre_materia_excluid
                 AND nd.periodo = %s
             WHERE e.id = %s
               AND m.nombre <> %s
+              AND COALESCE(LOWER(m.estado), 'activo') = 'activo'
             ORDER BY asig.orden_boletin, m.nombre, nd.id
         ''', (periodo, estudiante_id, nombre_materia_excluida))
     return cursor.fetchall()

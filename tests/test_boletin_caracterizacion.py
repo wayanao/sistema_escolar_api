@@ -437,6 +437,24 @@ def test_reporte_parcial_excluye_la_asignacion_de_jornada(monkeypatch):
     assert params_planilla[-1] == NOMBRE_MATERIA_ASISTENCIA_JORNADA
 
 
+def test_las_dos_consultas_del_boletin_dejan_fuera_las_materias_inactivas():
+    """Una asignatura inactiva no aparece en el boletin ni en el parcial.
+
+    El filtro llego tarde: `materias.estado` se anadio en
+    20260604_materias_estado.sql y las ocho consultas de
+    `asignaciones_repository` lo adoptaron, pero estas dos se quedaron sin el.
+    El resultado era que una asignatura desactivada desaparecia de todas las
+    pantallas menos del boletin, que es justo donde mas se nota.
+    """
+    sql_repositorio = _sql_del_modulo("app/repositories/boletin_repository.py")
+    filtro = "COALESCE(LOWER(m.estado), 'activo') = 'activo'"
+
+    con_filtro = [sentencia for sentencia in sql_repositorio if filtro in sentencia]
+
+    assert len(con_filtro) == 2
+    assert all("FROM estudiantes e" in sentencia for sentencia in con_filtro)
+
+
 def test_guardar_boletin_sin_detalles_borra_y_no_inserta_ninguno(monkeypatch):
     """El reemplazo parcial borra siempre, aunque el lote venga vacio."""
     cursor = CursorFalso(secuencia_fetchone=[(77,)])

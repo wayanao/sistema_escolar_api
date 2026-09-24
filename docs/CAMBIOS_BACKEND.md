@@ -6,6 +6,36 @@ Ultima revision documental: 2026-09-24.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
+## 2026-09-24 - Una asignatura inactiva ya no aparece en el boletin
+
+El administrador desactivo unas asignaturas y siguieron saliendo en Gestion
+Boletines. Desaparecian de todas las demas pantallas, pero no de esa.
+
+### Un filtro que llego tarde a dos consultas
+
+`materias.estado` se anadio en `20260604_materias_estado.sql`. Las **ocho**
+consultas de `asignaciones_repository` adoptaron entonces el filtro
+`COALESCE(LOWER(m.estado), 'activo') = 'activo'`. Las dos del boletin se
+quedaron sin el:
+
+- `leer_materias_del_estudiante` -el boletin oficial del admin-,
+- `leer_planilla_vigente` -el reporte parcial-.
+
+Las dos si filtraban por `a.activo`, la marca de la **asignacion**. Por eso el
+sintoma solo aparecia al desactivar la **asignatura**: son dos interruptores
+distintos y el boletin solo miraba uno.
+
+### Desaparece tambien de los periodos ya calificados
+
+Decision explicita del usuario, sobre la alternativa de conservar la materia
+donde ya hubiera notas. El motivo: es exactamente lo que ya hacia desactivar la
+asignacion, y tener dos interruptores con dos comportamientos distintos es peor
+que la perdida de historico.
+
+Quedan fuera de este cambio otras tres consultas que unen `materias` sin el
+filtro -el dashboard de rendimiento y dos de la ficha del estudiante-, no
+revisadas todavia.
+
 ## 2026-09-24 - Preparar una conexion pasa de tres idas a dos
 
 Toda conexion del pool ejecutaba `SET search_path` y luego los timeouts en dos

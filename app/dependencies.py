@@ -15,17 +15,23 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login", auto_error=False)
 #
 # `_columnas_tabla` se ejecutaba en CADA peticion autenticada de toda la API.
 #
-# Medido contra la base real el 2026-09-03: la consulta tarda ~178 ms, que es
-# **lo mismo que cualquier otra**. No es cara por si misma; es cara porque la
-# base esta en otro continente -Neon, us-east-1- y cada ida y vuelta cuesta
-# ~180 ms se consulte lo que se consulte. Lo que ahorra el cache es por tanto
-# una ida y vuelta por peticion, ni mas ni menos.
+# Medido contra la base real el 2026-09-03: la consulta tarda lo mismo que
+# cualquier otra. No es cara por si misma; es cara porque la base esta en otro
+# continente -Neon, us-east-1- y lo que se paga es el numero de idas y vueltas,
+# se consulte lo que se consulte. Lo que ahorra el cache es por tanto una ida y
+# vuelta por peticion, ni mas ni menos.
 #
-# Se deja esta medicion escrita porque la primera version de este comentario
+# Vuelto a medir el 2026-09-24, porque la cifra escrita aqui estaba mal: una
+# ida y vuelta cuesta ~60 ms, no ~180. Los ~180 ms eran el precio de **una
+# conexion entera**, que gasta tres idas antes de consultar nada (el BEGIN
+# implicito, el search_path y los timeouts). El cache sigue ahorrando una sola
+# ida: ~60 ms por peticion.
+#
+# Se deja esta historia escrita porque la primera version de este comentario
 # afirmaba que `information_schema` era "de las lecturas mas caras de
-# PostgreSQL". Sonaba plausible y era falso. El ahorro real es modesto y el
-# cache cuesta una busqueda en un dict: sigue mereciendo la pena, pero por el
-# motivo correcto.
+# PostgreSQL". Sonaba plausible y era falso. Dos veces ya: el ahorro real es
+# modesto y el cache cuesta una busqueda en un dict. Sigue mereciendo la pena,
+# pero por el motivo correcto y por la cifra correcta.
 #
 # Lo que cachea es **metadata de esquema**, no datos: solo cambia cuando una
 # migracion anade o quita una columna. Cada despliegue reinicia el proceso y

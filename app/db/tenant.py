@@ -30,9 +30,3 @@ def build_tenant_search_path_statement() -> tuple[sql.Composed, str]:
         sql.Identifier(tenant_schema)
     )
     return sentencia, tenant_schema
-
-
-def set_tenant_search_path(cursor) -> str:
-    sentencia, tenant_schema = build_tenant_search_path_statement()
-    cursor.execute(sentencia)
-    return tenant_schema

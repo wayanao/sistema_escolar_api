@@ -46,11 +46,19 @@ el esquema como `sql.Identifier` y validado por `get_current_tenant_schema`,
 igual que antes. Se comprobo contra la base real que la sesion queda con el
 `search_path` del tenant y los tres timeouts aplicados.
 
-### Quedan sin usar
+### Se borraron dos funciones que quedaron huerfanas
 
-`set_tenant_search_path` y `apply_session_timeouts` ya no tienen llamadores en
-`app/` -solo una prueba-. Se dejan en su sitio a la espera de decidir si se
-borran.
+`set_tenant_search_path` y `apply_session_timeouts` eran los dos envoltorios que
+`get_connection` llamaba uno detras de otro. Su trabajo no se perdio -es lo que
+hace ahora `apply_session_setup` en una sola sentencia-, pero sin llamadores
+`set_tenant_search_path` era una trampa: un nombre convincente en el archivo del
+tenant que habria dejado una conexion con el esquema puesto y **sin timeouts**,
+a medio preparar y sin avisar.
+
+Con ellas se fue `test_apply_session_timeouts_no_consulta_si_no_hay_nada_que_fijar`.
+Lo que protegia -que sin timeouts configurados no se ejecute nada de timeouts-
+lo cubre `test_sin_timeouts_configurados_solo_se_fija_el_tenant`, que ademas lo
+comprueba sobre el camino que de verdad se usa.
 
 ## 2026-09-24 - Guardar una nota deja de pedir una conexion de mas
 

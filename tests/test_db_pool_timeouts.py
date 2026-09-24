@@ -206,17 +206,6 @@ def test_sin_ningun_timeout_no_se_ejecuta_nada(monkeypatch):
     assert session.build_timeout_statement() is None
 
 
-def test_apply_session_timeouts_no_consulta_si_no_hay_nada_que_fijar(monkeypatch):
-    ejecutados = []
-    monkeypatch.setattr(session, "build_timeout_statement", lambda: None)
-
-    session.apply_session_timeouts(
-        type("Cursor", (), {"execute": lambda _s, *a: ejecutados.append(a)})()
-    )
-
-    assert ejecutados == []
-
-
 # --- Bloque 3: los timeouts se aplican al tomar una conexion ---
 
 

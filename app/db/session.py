@@ -81,13 +81,6 @@ def build_timeout_statement() -> tuple[str, tuple[str, ...]] | None:
     return f"SELECT {llamadas}", tuple(parametros)
 
 
-def apply_session_timeouts(cursor) -> None:
-    sentencia = build_timeout_statement()
-    if sentencia is None:
-        return
-    cursor.execute(*sentencia)
-
-
 def apply_session_setup(cursor) -> str:
     """Deja la conexion lista para consultar en una sola ida a la base.
 

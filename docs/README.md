@@ -36,6 +36,10 @@ continuacion para retomarla en otro chat u otro LLM.
   curso para que el administrador marque alumnos (ej. asistencia a un
   evento, compra de un libro) fuera de notas y pagos. **Disenado, nada
   implementado.**
+- `funcionalidades/ANIO_LECTIVO.md`: años lectivos (cursos por año,
+  matriculas, cobros por año, consulta de años cerrados, preparar y activar
+  el año siguiente). Incluye un error de cobros que aparece el 2027-01-01.
+  **Disenado, nada implementado. Fecha limite: noviembre de 2026.**
 
 ## Estado actual resumido
 

@@ -451,9 +451,10 @@ que no exista todavía.
    materias se desactivaron para sacarlas del boletín de 2026. Si es así, la
    decisión 13 necesita un ajuste antes de la fase 3.
 
-   Además, se le pregunta al usuario si ya registró en el sistema algún
-   estudiante o pago **para 2027**. Si hay alguno, se lista aquí para que la
-   fase 1 lo asigne a 2027 y no a 2026.
+   ¿Hay estudiantes o pagos registrados **para 2027**? **Respondida el
+   2026-09-30: no**, todavía no se ha registrado ninguna matrícula para 2027.
+   Si antes de la fase 1 se registra alguna (contra la regla operativa del
+   Control), se lista aquí para que la fase 1 la asigne a 2027.
 2. **Pruebas de caracterización** (fijan cómo funciona hoy, antes de
    cambiar nada):
    - Cobros dentro del año activo: estado de cuenta, cuotas vencidas,
@@ -706,9 +707,9 @@ cuando los profesores empiezan a ver sus clases nuevas.
 ## Preguntas abiertas
 
 - Ninguna bloquea la fase 0.
-- Antes de la fase 1: ¿ya se registró en el sistema algún estudiante o pago
-  para 2027? (Se pregunta en la fase 0.) Si hay alguno, la fase 1 lo asigna
-  a 2027 en vez de a 2026.
+- ~~Antes de la fase 1: ¿ya se registró algún estudiante o pago para
+  2027?~~ **Respondida el 2026-09-30: no.** Ver la regla operativa del
+  Control.
 - Antes de la fase 2: ¿se corrige primero el hallazgo de conceptos
   desactivados que ocultan deuda?
 - Antes de la fase 6: ¿un estudiante del último grado que termina se marca

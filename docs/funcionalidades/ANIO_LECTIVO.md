@@ -2,9 +2,10 @@
 
 ## Control
 
-- Estado: **Fase 0 en curso.** Pruebas de caracterización de cobros hechas
-  (2026-09-30); faltan las de listados y los números de producción. Ningún
-  cambio de comportamiento todavía.
+- Estado: **Fase 0 en curso.** Hechos el 2026-09-30: pruebas de
+  caracterización de cobros y números de producción de `tenant_2005`, que
+  trajeron la decisión 17 y el reemplazo de la 13. Faltan las pruebas de
+  listados. Ningún cambio de comportamiento todavía.
 - Tipo: Función nueva de producto. No es una capa del programa de
   modularización de `docs/modularizacion/` y no debe confundirse con una.
 - Repos afectados: este repo (`sistema_escolar_api`) y `frontend-react`. Ver
@@ -168,12 +169,15 @@ Agregadas el 2026-09-30:
     boletines y certificados de ese otro año, y ofrece dos caminos: cambiarlo
     igual (sirve para corregir un error de escritura) o crear una materia
     nueva para el año nuevo.
-13. **Desactivar una materia no borra la historia.** En un año que no es el
-    activo, el boletín muestra las materias que se dictaron ese año aunque
-    hoy estén inactivas. La regla de ocultar inactivas queda solo para el año
-    activo. Propuesto por el asistente y sin objeción del usuario; la fase 0
-    comprueba que en 2026 nadie desactivó una materia justamente para sacarla
-    del boletín.
+13. **Un año cerrado se ve como se veía el día que se cerró.** *Reemplazada
+    el 2026-09-30* tras los números de la fase 0. La versión anterior
+    ("en años cerrados mostrar todas las materias dictadas") habría hecho
+    reaparecer en los boletines de 2026 tres materias que el colegio ocultó
+    a propósito (ver resultados de la fase 0). Regla nueva: al cerrar un año
+    por primera vez, el sistema guarda qué materias estaban inactivas en ese
+    momento. Los boletines de ese año ocultan exactamente esas, sin importar
+    lo que se active o desactive después. En el año activo y en el de
+    preparación sigue la regla de hoy: se ocultan las inactivas.
 14. **Planeador anual: lo trae el profesor, con un botón.** En su planeador
     de 2027, si está vacío, aparece "Traer el planeador del año pasado".
     Nunca sobrescribe lo que ya haya escrito.
@@ -193,6 +197,17 @@ recibe contenido de 2026, pero no navega 2026. El backend deduce el origen a
 partir de la asignación de 2027 del profesor; el profesor nunca manda ids de
 2026 para listar.
 
+17. **Los conceptos de pago también son por año, copiados como los
+    cursos.** Agregada el 2026-09-30 tras los números de la fase 0: en
+    `tenant_2005` la mensualidad va de julio a noviembre (empezaron a usar el
+    sistema en julio) y la matrícula está desactivada. Para 2027 se querrá
+    la mensualidad desde febrero y la matrícula activa. Con un concepto
+    único para todos los años, cambiar el mes inicial habría creado en 2026
+    cinco cuotas falsas (febrero a junio) para 174 estudiantes, y activar la
+    matrícula habría puesto a todos a "deber" la de 2026. Al preparar 2027
+    se copian los conceptos de 2026 con toda su configuración, y se ajustan
+    en 2027 sin tocar 2026.
+
 ## La idea central: el año cuelga del curso
 
 Casi todo lo académico ya depende de un curso. Si el curso pertenece a un
@@ -207,10 +222,13 @@ anios_lectivos            (2026 activo, 2027 en preparación...)
  │    ├── tipos_pagos_cursos (precios por curso: cada año tiene los suyos)
  │    ├── listas_seguimiento_columnas → marcas
  │    └── director_grupo_id (cada año tiene su director)
+ ├── tipos_de_pagos.anio_lectivo_id          ← conceptos de pago por año (decisión 17)
+ │    ├── tipos_pagos_cursos (también cuelga del curso del mismo año)
+ │    ├── tipos_pagos_estudiantes (becas y valores especiales: por año sin columna nueva)
+ │    └── pagos_aplicaciones.tipo_pago_id
  ├── matriculas (estudiante, curso, año)     ← en qué curso estuvo cada estudiante cada año
  ├── pagos.anio_lectivo_id                   ← a qué año pertenece cada pago
- ├── observador_anotaciones.anio_lectivo_id  ← no cuelga de un curso
- └── tipos_pagos_estudiantes.anio_lectivo_id ← valores especiales por año (fase 5)
+ └── observador_anotaciones.anio_lectivo_id  ← no cuelga de un curso
 ```
 
 Por qué así:
@@ -227,9 +245,6 @@ No llevan año, a propósito:
 - `estudiantes`, `profesor`, `usuarios`, `materias`: son personas o
   catálogos que viven a través de los años. Para que editar una materia no
   altere la historia, ver decisiones 12 y 13.
-- `tipos_de_pagos`: es el concepto (nombre, tipo de cobro, meses). Su precio
-  por año ya queda en `tipos_pagos_cursos`, porque cada año tiene sus
-  cursos.
 - `inventario`, `ventas`, `egresos`, `nomina`, `prestamos`: se rigen por
   fecha, no por año lectivo; los reportes financieros ya filtran por fechas.
 
@@ -348,11 +363,36 @@ No cuelga de un curso (es estudiante + profesor + periodo), así que necesita
 su propio año. Columna nueva, clave foránea, índice `(estudiante_id,
 anio_lectivo_id)`; las existentes se asignan a 2026.
 
-### `tipos_pagos_estudiantes.anio_lectivo_id` (fase 5, no fase 1)
+### `tipos_de_pagos.anio_lectivo_id` (decisión 17)
 
-Se agrega en la fase 5 junto con la copia "en espera" de la decisión 8. La
-restricción única pasa de `(tipo_pago_id, estudiante_id)` a `(tipo_pago_id,
-estudiante_id, anio_lectivo_id)`. Hasta entonces se comportan como hoy.
+- Columna nueva, clave foránea, índice. Los conceptos existentes se asignan
+  a 2026.
+- La restricción `tipos_de_pagos_nombre_key UNIQUE (nombre)` se reemplaza
+  por `UNIQUE (nombre, anio_lectivo_id)`: "MENSUALIDAD" puede existir una vez
+  **por año**.
+- Los pagos guardan el **nombre** del concepto como texto (`pagos.tipo_pago`)
+  y `cobros.py` los empareja por nombre. Dentro de un año el nombre sigue
+  siendo único, así que con `pagos.anio_lectivo_id` ese emparejamiento sigue
+  funcionando sin cambiar cómo se guarda un pago.
+- Lo que cuelga del concepto queda por año sin columnas nuevas:
+  - `tipos_pagos_cursos` (precio por curso): concepto y curso tienen que ser
+    del mismo año, y el código lo valida al guardar.
+  - `tipos_pagos_estudiantes` (becas y valores especiales): la copia "en
+    espera" de la decisión 8 pasa las filas del concepto de 2026 a su copia
+    de 2027 cuando el estudiante se matricula.
+  - `pagos_aplicaciones.tipo_pago_id`: el concepto debe ser del año del pago
+    (se valida en la fase 2).
+- Para saber de qué concepto de 2026 salió cada uno de 2027, la fase 5
+  agrega `tipos_de_pagos.tipo_pago_origen_id`, igual que
+  `cursos.curso_origen_id`.
+
+### `anios_lectivos_materias_ocultas` (fase 6, decisión 13)
+
+Tabla nueva `(anio_lectivo_id, materia_id)`, con clave primaria compuesta.
+Se llena al cerrar un año **por primera vez** con las materias inactivas en
+ese momento. Reabrir y volver a cerrar no la cambia. El boletín de un año
+cerrado o reabierto oculta las materias de esta lista, en vez de mirar el
+estado actual de la materia.
 
 ### Lo que no se toca
 
@@ -449,14 +489,48 @@ que no exista todavía.
    plan** y se diseña su relleno aparte: la fase 1 asume que todo lo
    existente es de 2026.
 
-   Si la última consulta devuelve filas, se le pregunta al usuario si esas
-   materias se desactivaron para sacarlas del boletín de 2026. Si es así, la
-   decisión 13 necesita un ajuste antes de la fase 3.
-
    ¿Hay estudiantes o pagos registrados **para 2027**? **Respondida el
    2026-09-30: no**, todavía no se ha registrado ninguna matrícula para 2027.
    Si antes de la fase 1 se registra alguna (contra la regla operativa del
    Control), se lista aquí para que la fase 1 la asigne a 2027.
+
+   **Resultados del 2026-09-30, `tenant_2005`** (corridos por el usuario en el
+   SQL Editor de Neon, en una sola consulta equivalente, sin montos):
+
+   | Dato | Valor |
+   |---|---|
+   | `matriculas` | 0 |
+   | Estudiantes con `anio_escolar` | 0 |
+   | Estudiantes total / con curso | 174 / 174 |
+   | Estudiantes por estado | activo: 170, retirado: 4 |
+   | Cursos | 12 |
+   | Asignaciones | 267 |
+   | Pagos por año (cantidad) | año 8: 1; 2026: 545 |
+   | Asistencia (primera / última) | 2026-07-13 / 2026-09-30 |
+   | `notas_detalle.fecha` (primera / última) | vacía (`NULL`): las notas existen pero no guardan fecha |
+   | Observador (primera / última) | 2026-09-11 / 2026-09-28 |
+   | Adelantos (primer / último mes) | 2026-07-01 / 2026-11-01 |
+   | Conceptos de pago | MENSUALIDAD (mensual, activo, meses 7–11); MATRICULA (anual, **inactivo**, meses 2–12) |
+   | Materias inactivas con notas | GEOMETRÍA (103 notas, 34 boletines); ORTOCALIGRAFÍA (58, 15); PROYECTO (11, 0) |
+
+   Qué se concluyó:
+
+   - **Todo es de 2026.** El colegio empezó a usar el sistema en julio de
+     2026. No hay año lectivo anterior: el plan sigue, y la fase 1 puede
+     asignar todo a 2026.
+   - El pago del "año 8" es un error de digitación de fecha, no un año
+     lectivo. La fase 1 lo asigna a 2026 como al resto. El usuario decidió
+     **dejarlo así** (ver "Hallazgos fuera de alcance").
+   - La fase 1 creará 174 matrículas de 2026, una por estudiante (los 4
+     retirados incluidos, con su curso actual).
+   - Mensualidad de julio a noviembre y matrícula inactiva → **decisión 17**
+     (conceptos por año).
+   - Las tres materias inactivas se ocultaron a propósito (commit `add69c1`
+     del 2026-09-24, "no mostrar asignaturas inactivas") → **decisión 13
+     reemplazada** ("como se veía al cerrar").
+   - No hay conceptos de tipo "único" hoy.
+   - `tenant_colegio_1` (demo, sin usuarios reales) no se midió: no hace
+     falta para decidir. La migración se le aplica igual.
 2. **Pruebas de caracterización** (fijan cómo funciona hoy, antes de
    cambiar nada):
    - Cobros dentro del año activo: estado de cuenta, cuotas vencidas,
@@ -466,8 +540,8 @@ que no exista todavía.
      pruebas que documentan el error actual. En la fase 2 se invierten para
      exigir el resultado correcto.
    - Listados que la fase 3 va a tocar: cursos, estudiantes, boletín,
-     asignaciones del profesor. Deben devolver lo mismo después de la fase 3
-     cuando se pide el año activo.
+     asignaciones del profesor y conceptos de pago. Deben devolver lo mismo
+     después de la fase 3 cuando se pide el año activo.
 3. Terminado cuando: las pruebas nuevas pasan, `python scripts/verify.py`
    pasa y los números están pegados aquí.
 
@@ -498,13 +572,15 @@ Nada cambia en pantalla ni en ninguna respuesta de la API.
 
 1. **Migración A** `migrations/AAAAMMDD_anios_lectivos.sql`: crea
    `anios_lectivos`, inserta 2026 como `activo`, agrega las columnas de
-   `cursos`, `matriculas`, `pagos` y `observador_anotaciones` **admitiendo
-   nulos**, las rellena con 2026, llena `matriculas` y rehace el índice único
-   de cursos. El año va escrito como `2026`, no calculado con la fecha del
+   `cursos`, `tipos_de_pagos`, `matriculas`, `pagos` y
+   `observador_anotaciones` **admitiendo nulos**, las rellena con 2026, llena
+   `matriculas` y rehace los índices únicos de cursos (nombre + jornada) y de
+   conceptos (nombre), ahora con el año incluido. El año va escrito como `2026`, no calculado con la fecha del
    día: dice "todo lo existente es de 2026" aunque la migración se aplique
    tarde.
 2. **Código que escribe el año** en toda fila nueva: crear curso
-   (`curso_controller.py:71`), crear pago (`pagos_repository.py:23` y `:37`),
+   (`curso_controller.py:71`), crear concepto de pago
+   (`tipos_pagos_controller.py:24`), crear pago (`pagos_repository.py:23` y `:37`),
    crear anotación (`observador_repository.py:187`), crear y editar
    estudiante (matrícula del año activo + `sincronizar_curso_vigente`). Más
    el alta de colegios nuevos. Nuevo: `app/services/anio_lectivo.py` con
@@ -535,23 +611,27 @@ con las pruebas de la fase 0 como red.
    (ninguna mensualidad vencida todavía; la matrícula sí se debe completa).
 3. `pagado` solo suma pagos con `anio_lectivo_id` del año calculado; las
    aplicaciones, solo las de meses de ese año.
-4. El precio sale del curso de la **matrícula de ese año**, no de
+4. Conceptos del año (decisión 17): `obtener_tipos_pago` (`cobros.py`)
+   devuelve solo los conceptos del año calculado, con su configuración de
+   ese año (activo, meses, día límite, mora). Al registrar una aplicación se
+   valida que su concepto sea del año del pago.
+5. El precio sale del curso de la **matrícula de ese año**, no de
    `estudiantes.curso_id`. Así 2027 cobra con los precios de los cursos de
    2027.
-5. Concepto **único** (decisión 7): se calcula por año como el anual, con el
+6. Concepto **único** (decisión 7): se calcula por año como el anual, con el
    curso de ese año. Lo que quede sin pagar pasa a "deuda de años
    anteriores" y sigue ahí hasta que se pague. Si el admin lo reactiva en
    otro año, se cobra de nuevo en ese año. Límite conocido, igual que hoy:
    reactivarlo dentro del **mismo** año no genera un cobro nuevo.
-6. **Deuda de años anteriores** (decisión 2): la respuesta de deudas del
+7. **Deuda de años anteriores** (decisión 2): la respuesta de deudas del
    estudiante y la de cartera ganan un campo **nuevo** con la deuda de cada
    año anterior en que el estudiante tuvo matrícula, calculada con la misma
    función. Es un campo agregado: el frontend actual lo ignora sin romperse.
-7. Registrar pago: el cuerpo acepta `anio_lectivo_id` opcional; si no llega,
+8. Registrar pago: el cuerpo acepta `anio_lectivo_id` opcional; si no llega,
    el año activo. Se valida que el año exista; el admin puede usar un año
    cerrado (decisión 6). `_periodos_programados` ofrece los meses del año
    del pago, lo que habilita adelantos de 2027 en diciembre.
-8. Terminado cuando: las caracterizaciones de la fase 0 siguen iguales; los
+9. Terminado cuando: las caracterizaciones de la fase 0 siguen iguales; los
    casos A y B dan el resultado correcto (A: debe matrícula 2027 + febrero y
    marzo; B: $400.000 de 2026 visibles como deuda anterior); hay pruebas de
    pago a año cerrado, pago a año en preparación y precio del curso de
@@ -583,9 +663,14 @@ profesores verían las clases de 2027.
      curso (lo exige la caracterización).
    - Boletín, certificados y puesto en el curso (`boletin_repository.py`):
      el curso sale de la matrícula del año pedido, no de `e.curso_id`. Esto
-     arregla el punto 3 del diagnóstico. Además, el filtro de materias
-     inactivas (`boletin_repository.py:198` y `:352`) se aplica solo cuando
-     el año pedido es el activo (decisión 13).
+     arregla el punto 3 del diagnóstico. El filtro de materias inactivas
+     (`boletin_repository.py:198` y `:352`) queda igual para el año activo y
+     el de preparación. Para un año cerrado o reabierto oculta las materias
+     de `anios_lectivos_materias_ocultas` de ese año (decisión 13). Mientras
+     no exista ningún año cerrado, el resultado es idéntico al de hoy.
+   - Conceptos de pago (decisión 17): `listar_tipos_pagos` y
+     `listar_tipos_pagos_detallado` (`tipos_pagos_controller.py`) y los cursos
+     ofrecidos para asignar precios, filtrados por año.
    - Observador: anotaciones filtradas por `anio_lectivo_id`.
 3. **Aviso al renombrar una materia** (decisión 12). En
    `actualizar_materia_controller` (`materia_controller.py:151`): si cambia
@@ -598,7 +683,7 @@ profesores verían las clases de 2027.
 4. Guardia `exigir_anio_editable` en toda ruta que escribe datos
    académicos: notas, planilla, boletín, asistencia, observador y
    observaciones, planeador anual, plan de clases, listas de seguimiento,
-   asignaciones, cursos, precios por curso. El inventario exacto de rutas se
+   asignaciones, cursos, conceptos de pago, precios por curso. El inventario exacto de rutas se
    hace al empezar la fase y se pega aquí. Una prueba por módulo: escribir
    en un año cerrado → 409.
 5. Terminado cuando: con el año activo, todas las respuestas son idénticas a
@@ -626,17 +711,24 @@ propuestos bajo `/anios-lectivos`:
    en una columna nueva, `cursos.curso_origen_id` (clave foránea a `cursos`,
    admite nulos: un curso creado desde cero no tiene origen). La fase 7 la
    necesita para saber de dónde traer el planeador y los planes.
+   **Los conceptos de pago se copian siempre** (decisión 17), con toda su
+   configuración (tipo, activo, meses, día límite, gracia, mora, valor
+   base), y cada copia guarda su origen en `tipos_de_pagos.tipo_pago_origen_id`.
+   Los precios por curso copiados apuntan al concepto **y** al curso de
+   2027. Después, el admin ajusta 2027 en la pantalla de Tipos de pago (por
+   ejemplo, mensualidad desde febrero y matrícula activa) sin tocar 2026.
 3. **Matricular**:
    - Promoción por curso: el admin elige "Primero A 2026 → Segundo A 2027",
      ve la lista y desmarca a quien no pasa con ese grupo.
    - Estudiantes nuevos: se crean con un curso del año en preparación; solo
      reciben matrícula, con `curso_id = NULL` hasta activar (ver regla del
      curso vigente).
-4. **Valores especiales en espera** (decisión 8): migración que agrega
-   `anio_lectivo_id` a `tipos_pagos_estudiantes`, con los existentes en
-   2026. Al crear la matrícula de 2027 de un estudiante, se copian sus
-   valores de 2026 a 2027 y la respuesta los devuelve marcados "copiados,
-   revisar". Si no se matricula, no se copia nada.
+4. **Valores especiales en espera** (decisión 8): al crear la matrícula de
+   2027 de un estudiante, sus filas de `tipos_pagos_estudiantes` de los
+   conceptos de 2026 se copian a las copias de esos conceptos en 2027
+   (usando `tipo_pago_origen_id`). La respuesta las devuelve marcadas
+   "copiados, revisar". Si no se matricula, no se copia nada. No hace falta
+   columna nueva en `tipos_pagos_estudiantes`: el año viene del concepto.
 5. **Pagos al año en preparación**: ya habilitados por la fase 2; aquí se
    prueba el flujo completo de una matrícula 2027 pagada en noviembre de
    2026.
@@ -645,14 +737,16 @@ propuestos bajo `/anios-lectivos`:
 
 ### Fase 6 — Activar el año nuevo, cerrar y reabrir (antes de iniciar clases 2027)
 
-1. Migración: marca "no continúa" en `matriculas` (decisión 9).
+1. Migración: marca "no continúa" en `matriculas` (decisión 9) y tabla
+   `anios_lectivos_materias_ocultas` (decisión 13).
 2. **Vista previa de activación**: cuántos estudiantes pasan, cuántos
    quedan retirados por "no continúa" y **cuántos están sin decidir**. Si
    hay alguno sin decidir, la activación se rechaza con la lista.
 3. **Activar**, en una sola transacción: el año activo pasa a `cerrado`,
    el de preparación a `activo`; `sincronizar_curso_vigente` para todos; los
-   marcados "no continúa" pasan a retirados. Se guarda `activado_en` y
-   `cerrado_en`.
+   marcados "no continúa" pasan a retirados; se guardan las materias
+   inactivas en ese momento como ocultas del año que se cierra. Se guarda
+   `activado_en` y `cerrado_en`.
 4. **Reabrir / volver a cerrar** un año pasado (`cerrado` ↔ `reabierto`),
    solo admin, para correcciones puntuales.
 5. Terminado cuando: el ensayo completo de activación en una rama de Neon
@@ -726,6 +820,12 @@ cuando los profesores empiezan a ver sus clases nuevas.
 - **Reusar un concepto "único" dentro del mismo año** no genera un cobro
   nuevo: el sistema no distingue una activación de otra. Si hace falta,
   requiere su propio diseño (por ejemplo, "ocurrencias" de un cobro).
+- **La fecha de un pago no se valida.** `PagoCreate.fecha`
+  (`app/schemas/pago.py:22`) acepta cualquier fecha, y en `tenant_2005` hay
+  un pago con fecha del año 8 (fase 0). Ese pago no aparece en los reportes
+  que filtran por fecha. **El usuario decidió dejarlo así (2026-09-30).**
+  Validar un rango razonable de fecha al registrar pagos sería un cambio
+  aparte, pequeño, si se quiere evitar que se repita.
 
 ## Preguntas abiertas
 
@@ -744,11 +844,12 @@ cuando los profesores empiezan a ver sus clases nuevas.
   ampliado el 2026-09-30 con las materias (decisiones 12 y 13) y la fase 7
   (decisiones 14 a 16). Ninguna fase iniciada; no hay código ni migraciones
   de esta funcionalidad.
-- Fase 0, avance del 2026-09-30: caracterización de cobros terminada (ver
-  "Avance" en la fase 0).
+- Fase 0, avance del 2026-09-30: caracterización de cobros terminada y
+  números de `tenant_2005` registrados (ver "Avance" y "Resultados" en la
+  fase 0). De esos números salieron la decisión 17 (conceptos por año) y el
+  reemplazo de la decisión 13 (un año cerrado se ve como al cerrarse).
 - Siguiente acción exacta: **fase 0, punto 2, tercer punto**: pruebas de
   caracterización de los listados que tocará la fase 3 (cursos, estudiantes,
-  boletín, asignaciones del profesor). En paralelo, el usuario corre las
-  consultas de solo lectura del punto 1 en los dos tenants y pega los
-  números aquí.
+  boletín, asignaciones del profesor y conceptos de pago). Con eso termina
+  la fase 0.
 - Prompt para retomar: `docs/funcionalidades/PROMPT_CONTINUACION_ANIO_LECTIVO.md`.

@@ -11,7 +11,10 @@ Fase 0 de `docs/funcionalidades/ANIO_LECTIVO.md`. Dos grupos:
    de hoy. La fase 2 las invierte paso a paso para exigir el resultado
    correcto; no se "arreglan" antes. Ya invertidas en el paso 2.1 (las
    cuotas se cuentan en el año del concepto): el caso B y los meses vencidos
-   de 2026 en enero.
+   de 2026 en enero. En el paso 2.2 (cada año cuenta solo sus pagos): la
+   matricula del año siguiente, el caso A y los meses vencidos de 2027. Esas
+   tres pasan por una base de pagos simulada (`BaseDePagos`), porque el
+   filtro por año vive en el SQL.
 
 Los montos son los del diagnostico del documento (matricula de $300.000,
 mensualidad de $200.000 de febrero a noviembre con dia limite 5).
@@ -94,6 +97,90 @@ def _deudas(hoy, pagos=None, tipos=None, precios=None):
     )
     por_concepto = {deuda["concepto"]: deuda for deuda in resultado["deudas"]}
     return por_concepto, resultado["total_deuda"]
+
+
+ANIO_2026, ANIO_2027 = 1, 2  # ids de anios_lectivos
+
+
+class BaseDePagos:
+    """Pagos de varios años, como los devolveria PostgreSQL.
+
+    Responde las consultas de `cobros.obtener_pagos_por_concepto_estudiantes`:
+    suma por estudiante y concepto, y se queda solo con los pagos del año
+    activo si la consulta trae ese filtro, igual que la base real. Cada pago
+    es `(estudiante_id, tipo_pago, descripcion, monto, anio_lectivo_id)`;
+    no hay adelantos (aplicaciones).
+    """
+
+    FILTRO_ANIO_ACTIVO = (
+        "pagos.anio_lectivo_id = (select id from anios_lectivos where estado = 'activo')"
+    )
+
+    def __init__(self, pagos, anio_activo_id):
+        self.pagos = list(pagos)
+        self.anio_activo_id = anio_activo_id
+        self.filas = []
+
+    def execute(self, query, params=None):
+        consulta = " ".join(str(query).lower().split())
+        if "from information_schema.tables" in consulta:
+            self.filas = [(1,)]
+        elif "lower(coalesce(tipo_pago, ''))" in consulta:
+            self.filas = self._sumar(consulta, params, campo=1)
+        elif "lower(coalesce(descripcion, ''))" in consulta:
+            self.filas = self._sumar(consulta, params, campo=2)
+        elif "from pagos_aplicaciones pa" in consulta:
+            self.filas = []
+        else:
+            raise AssertionError(f"Consulta no caracterizada: {consulta}")
+
+    def _sumar(self, consulta, params, campo):
+        estudiantes = set(params[0])
+        solo_anio_activo = self.FILTRO_ANIO_ACTIVO in consulta
+        sumas = {}
+        for pago in self.pagos:
+            estudiante_id, monto, anio_lectivo_id = pago[0], pago[3], pago[4]
+            concepto = pago[campo]
+            if estudiante_id not in estudiantes or concepto is None:
+                continue
+            if solo_anio_activo and anio_lectivo_id != self.anio_activo_id:
+                continue
+            clave = (estudiante_id, concepto.lower())
+            sumas[clave] = sumas.get(clave, 0.0) + monto
+        return [(est, concepto, total) for (est, concepto), total in sumas.items()]
+
+    def fetchall(self):
+        return list(self.filas)
+
+    def fetchone(self):
+        return self.filas[0] if self.filas else None
+
+
+def _deudas_desde_la_base(hoy, base, tipos):
+    """Deuda por concepto con lo pagado que devuelve la base simulada."""
+    pagos_nombre, pagos_descripcion, pagos_aplicados = (
+        cobros.obtener_pagos_por_concepto_estudiantes(base, (7,), hoy=hoy)
+    )
+    resultado = cobros.calcular_deudas_desde_contexto(
+        tipos_pago=tipos,
+        asignaciones_curso=PRECIOS_DEL_CURSO,
+        pagos_nombre=pagos_nombre.get(7, {}),
+        pagos_descripcion=pagos_descripcion.get(7, {}),
+        pagos_aplicados=pagos_aplicados.get(7, {}),
+        hoy=hoy,
+    )
+    por_concepto = {deuda["concepto"]: deuda for deuda in resultado["deudas"]}
+    return por_concepto, resultado["total_deuda"]
+
+
+def _todo_2026_pagado():
+    """Pagos de 2026 como los guarda hoy el sistema: el concepto en la
+    descripcion y el metodo en `tipo_pago`."""
+    return [
+        (7, "Efectivo", "Matricula", MATRICULA, ANIO_2026),
+        (7, "Efectivo", "Mensualidad", 10 * MENSUALIDAD, ANIO_2026),
+        (7, "Efectivo", "Salida pedagogica", ACTIVIDAD, ANIO_2026),
+    ]
 
 
 def _mensualidad_para_meses_vencidos(anio=None):
@@ -199,20 +286,30 @@ def test_concepto_inactivo_no_genera_deuda_aunque_nunca_se_haya_pagado():
 # ---------------------------------------------------------------------------
 
 
-def test_error_actual_caso_a_lo_pagado_en_2026_cubre_2027():
-    """Correcto: en marzo de 2027 debe la matricula 2027 + febrero y marzo."""
-    pagado_todo_2026 = {
-        "matricula": MATRICULA,
-        "mensualidad": 10 * MENSUALIDAD,
-        "salida pedagogica": ACTIVIDAD,
-    }
+def test_caso_a_lo_pagado_en_2026_no_cubre_2027():
+    """Invertida en el paso 2.2. Antes, en marzo de 2027 lo pagado en 2026
+    cubria 2027 y no debia nada. Ahora, con 2027 activo, solo cuentan los
+    pagos de 2027: debe la matricula 2027, febrero y marzo, y la salida
+    pedagogica de 2027 (los conceptos se copian cada año, decision 17). Lo
+    que quede de 2026 se muestra aparte en el paso 2.4."""
+    con_2026_activo = BaseDePagos(_todo_2026_pagado(), anio_activo_id=ANIO_2026)
+    con_2027_activo = BaseDePagos(_todo_2026_pagado(), anio_activo_id=ANIO_2027)
 
-    deudas, total = _deudas(datetime.date(2027, 3, 15), pagos=pagado_todo_2026)
+    _, total_2026 = _deudas_desde_la_base(
+        datetime.date(2026, 12, 15), con_2026_activo, _conceptos_del_colegio(anio=2026),
+    )
+    deudas, total = _deudas_desde_la_base(
+        datetime.date(2027, 3, 15), con_2027_activo, _conceptos_del_colegio(anio=2027),
+    )
 
-    assert deudas["Matricula"]["deuda"] == 0
+    # En diciembre de 2026, con 2026 activo, todo estaba pagado.
+    assert total_2026 == 0
+    assert deudas["Matricula"]["pagado"] == 0
+    assert deudas["Matricula"]["deuda"] == MATRICULA
     assert deudas["Mensualidad"]["cuotas_vencidas"] == 2
-    assert deudas["Mensualidad"]["deuda"] == 0
-    assert total == 0
+    assert deudas["Mensualidad"]["deuda"] == 2 * MENSUALIDAD
+    assert deudas["Salida pedagogica"]["deuda"] == ACTIVIDAD
+    assert total == MATRICULA + 2 * MENSUALIDAD + ACTIVIDAD
 
 
 def test_caso_b_la_deuda_de_2026_sigue_en_enero_mientras_2026_es_el_activo():
@@ -240,19 +337,29 @@ def test_caso_b_la_deuda_de_2026_sigue_en_enero_mientras_2026_es_el_activo():
     assert total_enero == 2 * MENSUALIDAD
 
 
-def test_error_actual_matricula_del_anio_siguiente_se_suma_a_la_del_anio_en_curso():
-    """Correcto: la segunda matricula pertenece a 2027 y no toca la de 2026."""
-    tipos = [_concepto(1, "Matricula", "anual", MATRICULA)]
+def test_la_matricula_del_anio_siguiente_no_se_suma_a_la_del_anio_en_curso():
+    """Invertida en el paso 2.2. Antes, la matricula 2027 pagada en noviembre
+    de 2026 se sumaba a la de 2026. Ahora cada pago cuenta en su año."""
+    pagos = [
+        (7, "Efectivo", "Matricula", MATRICULA, ANIO_2026),
+        (7, "Transferencia", "Matricula", MATRICULA, ANIO_2027),
+    ]
 
-    deudas, _ = _deudas(
+    deudas_2026, _ = _deudas_desde_la_base(
         datetime.date(2026, 11, 20),
-        pagos={"matricula": 2 * MATRICULA},
-        tipos=tipos,
-        precios={1: MATRICULA},
+        BaseDePagos(pagos, anio_activo_id=ANIO_2026),
+        [_concepto(1, "Matricula", "anual", MATRICULA, anio=2026)],
+    )
+    deudas_2027, _ = _deudas_desde_la_base(
+        datetime.date(2027, 2, 10),
+        BaseDePagos(pagos, anio_activo_id=ANIO_2027),
+        [_concepto(1, "Matricula", "anual", MATRICULA, anio=2027)],
     )
 
-    assert deudas["Matricula"]["pagado"] == 2 * MATRICULA
-    assert deudas["Matricula"]["deuda"] == 0
+    assert deudas_2026["Matricula"]["pagado"] == MATRICULA
+    assert deudas_2026["Matricula"]["deuda"] == 0
+    assert deudas_2027["Matricula"]["pagado"] == MATRICULA
+    assert deudas_2027["Matricula"]["deuda"] == 0
 
 
 def test_meses_vencidos_de_2026_siguen_en_enero_mientras_2026_es_el_activo(monkeypatch):
@@ -274,13 +381,26 @@ def test_meses_vencidos_de_2026_siguen_en_enero_mientras_2026_es_el_activo(monke
         ]
 
 
-def test_error_actual_meses_vencidos_de_2027_se_cubren_con_pagos_de_2026(monkeypatch):
-    """Correcto: en marzo de 2027 debe febrero y marzo de 2027."""
-    opciones = _meses_vencidos(
-        monkeypatch, datetime.date(2027, 3, 15), pagado_mensualidad=10 * MENSUALIDAD,
+def test_meses_vencidos_de_2027_no_se_cubren_con_pagos_de_2026(monkeypatch):
+    """Pantalla "pagar meses vencidos". Invertida en el paso 2.2: antes, en
+    marzo de 2027 los pagos de 2026 cubrian 2027 y la lista quedaba vacia.
+    Ahora debe febrero y marzo de 2027."""
+    monkeypatch.setattr(
+        cobros,
+        "obtener_conceptos_mensuales_estudiante",
+        lambda _cursor, _estudiante_id: [_mensualidad_para_meses_vencidos(2027)],
+    )
+    base = BaseDePagos(_todo_2026_pagado(), anio_activo_id=ANIO_2027)
+
+    opciones = cobros.obtener_cuotas_vencidas_estudiante(
+        base, 7, hoy=datetime.date(2027, 3, 15),
     )
 
-    assert opciones == []
+    assert [cuota["periodo"] for cuota in opciones[0]["cuotas"]] == [
+        "2027-02-01",
+        "2027-03-01",
+    ]
+    assert [cuota["saldo"] for cuota in opciones[0]["cuotas"]] == [MENSUALIDAD, MENSUALIDAD]
 
 
 def test_error_actual_adelantos_de_diciembre_no_ofrecen_meses_del_anio_siguiente():

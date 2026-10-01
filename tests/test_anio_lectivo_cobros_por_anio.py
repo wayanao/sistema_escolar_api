@@ -5,13 +5,16 @@ Paso 2.1: las cuotas se cuentan en el año lectivo del concepto, no en el año
 del calendario. Asi, el 1 de enero las cuotas del año que sigue activo no
 desaparecen.
 
-Dos grupos:
+Tres grupos:
 
 1. Hoy no cambia nada. Se compara el codigo nuevo con una copia literal del
    anterior (commit 47c61c2) en miles de combinaciones de fecha y
    configuracion: con el año del calendario, el resultado es identico.
-2. Lo nuevo: un año que ya termino, uno que no ha empezado, los dias de
-   gracia que pasan de diciembre, y los conceptos que traen su año.
+2. Lo nuevo del paso 2.1: un año que ya termino, uno que no ha empezado, los
+   dias de gracia que pasan de diciembre, y los conceptos que traen su año.
+3. Paso 2.2: cada año cuenta solo sus pagos, y el curso que fija los precios
+   sale de la matricula del año. El año va como subconsulta, sin parametros
+   ni consultas nuevas.
 
 Los casos A y B del diagnostico estan en
 tests/test_anio_lectivo_cobros_caracterizacion.py.
@@ -21,7 +24,8 @@ from calendar import monthrange
 from datetime import date, timedelta
 from itertools import product
 
-from app.controllers import pagos_controller
+from app.controllers import estado_cuenta_controller, pagos_controller
+from app.repositories import reportes_repository
 from app.services import cartera, cobros
 
 
@@ -359,3 +363,82 @@ def test_adelantos_de_un_anio_que_termino_no_ofrecen_nada():
     concepto = {"mes_inicial": 2, "mes_final": 11, "frecuencia_meses": 1, "anio": 2026}
 
     assert pagos_controller._periodos_programados(concepto, date(2027, 1, 15)) == []
+
+
+# ---------------------------------------------------------------------------
+# 3. Paso 2.2: cada año cuenta solo sus pagos.
+# ---------------------------------------------------------------------------
+
+FILTRO_PAGOS_DEL_ANIO = (
+    "AND pagos.anio_lectivo_id = (SELECT id FROM anios_lectivos WHERE estado = 'activo')"
+)
+
+
+class CursorQueAnota:
+    """Anota cada SQL, normalizado, con sus parametros; devuelve filas fijas."""
+
+    def __init__(self, fila=None):
+        self.consultas = []
+        self.fila = fila
+
+    def execute(self, query, params=None):
+        self.consultas.append((" ".join(str(query).split()), params))
+
+    def fetchall(self):
+        return []
+
+    def fetchone(self):
+        return self.fila
+
+
+def test_lo_pagado_cuenta_solo_pagos_y_aplicaciones_del_anio_activo():
+    cursor = CursorQueAnota(fila=(1,))  # existe pagos_aplicaciones
+
+    cobros.obtener_pagos_por_concepto_estudiantes(cursor, (7, 8), hoy=date(2026, 10, 15))
+
+    _tabla, por_nombre, por_descripcion, aplicaciones = cursor.consultas
+    assert FILTRO_PAGOS_DEL_ANIO in por_nombre[0]
+    assert FILTRO_PAGOS_DEL_ANIO in por_descripcion[0]
+    assert (
+        "AND tp.anio_lectivo_id = (SELECT id FROM anios_lectivos WHERE estado = 'activo')"
+        in aplicaciones[0]
+    )
+    # Sin parametros nuevos: el año va como subconsulta.
+    assert por_nombre[1] == ((7, 8),)
+    assert por_descripcion[1] == ((7, 8),)
+    assert aplicaciones[1] == ((7, 8), date(2026, 10, 1))
+
+
+def test_el_curso_del_precio_sale_de_la_matricula_del_anio_activo():
+    cursor = CursorQueAnota(fila=(3,))
+
+    assert cobros.obtener_curso_estudiante(cursor, 7) == (3,)
+    consulta, params = cursor.consultas[0]
+    assert consulta == (
+        "SELECT m.curso_id FROM matriculas m "
+        "JOIN anios_lectivos al ON al.id = m.anio_lectivo_id "
+        "WHERE m.estudiante_id = %s AND al.estado = 'activo'"
+    )
+    assert params == (7,)
+
+
+def test_el_estado_de_cuenta_suma_solo_pagos_del_anio_activo():
+    cursor = CursorQueAnota(fila=(0, None))
+
+    estado_cuenta_controller._resumen_pagos_estudiante(cursor, 7)
+
+    consulta, params = cursor.consultas[0]
+    assert FILTRO_PAGOS_DEL_ANIO in consulta
+    assert params == (7,)
+
+
+def test_los_reportes_de_estado_de_cuenta_cuentan_solo_pagos_del_anio_activo():
+    cursor = CursorQueAnota()
+
+    reportes_repository.consultar_pagos_estado_cuenta_por_estudiantes(cursor, (7, 8), True)
+    reportes_repository.consultar_otros_pagos_por_estudiantes(cursor, (7, 8), True)
+
+    assert len(cursor.consultas) == 3
+    for consulta, params in cursor.consultas:
+        assert FILTRO_PAGOS_DEL_ANIO in consulta
+        assert params == ((7, 8),)

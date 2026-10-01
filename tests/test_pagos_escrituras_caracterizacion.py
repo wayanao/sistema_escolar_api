@@ -156,7 +156,9 @@ class CursorFalso:
             return []
         if "from tipos_de_pagos" in query:
             return [(4,)]
-        if "select c.id" in query and "where e.id" in query:
+        # El curso que fija los precios sale de la matricula del año activo
+        # (fase 2 del año lectivo, paso 2.2).
+        if "from matriculas m" in query and "where m.estudiante_id" in query:
             return [(3,)]
         if "from estudiantes" in query:
             return [{"curso_id": 3}]

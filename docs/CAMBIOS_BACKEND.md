@@ -6,6 +6,34 @@ Ultima revision documental: 2026-10-01.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
+## 2026-10-01 - Año lectivo: cada año cuenta solo sus pagos
+
+Fase 2, paso 2.2, de `docs/funcionalidades/ANIO_LECTIVO.md`. Prepara el
+cobro de la matricula 2027 en noviembre: sin esto, ese pago se sumaria a la
+matricula de 2026.
+
+### Que cambia
+
+- `cobros.py`: lo pagado por concepto cuenta solo los pagos del año activo, y
+  las aplicaciones solo de conceptos de ese año. El curso que fija los precios
+  sale de la matricula del año activo.
+- `estado_cuenta_controller.py` y `reportes_repository.py`: lo pagado en el
+  estado de cuenta cuenta solo el año activo.
+
+El año va como la subconsulta `ANIO_ACTIVO_ID_SQL`: sin parametros ni
+consultas nuevas, y los conteos de `tests/test_reportes_query_counts.py`
+siguen iguales. Con un solo año, nada cambia: todo pago tiene año y la
+matricula del año activo es el curso del estudiante.
+
+### Pruebas
+
+Cuatro pruebas nuevas en `tests/test_anio_lectivo_cobros_por_anio.py`. En
+`tests/test_anio_lectivo_cobros_caracterizacion.py` se invirtieron la
+matricula del año siguiente, el caso A y los meses vencidos de 2027, con una
+base de pagos simulada que filtra por año como la real. Dos simulaciones de la
+consulta del curso se ajustaron a su forma nueva. `scripts/verify.py`: 1516
+pasan, 0 fallan.
+
 ## 2026-10-01 - Año lectivo: las cuotas se cuentan en el año del concepto
 
 Fase 2, paso 2.1, de `docs/funcionalidades/ANIO_LECTIVO.md`. Arregla el error

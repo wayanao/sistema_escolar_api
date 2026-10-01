@@ -80,7 +80,9 @@ class QueryCountingCursor:
             return self.students
         if "select id, nombre, apellido" in query and "where curso_id" in query:
             return self.students
-        if "select c.id" in query and "where e.id" in query:
+        # El curso que fija los precios sale de la matricula del año activo
+        # (fase 2 del año lectivo, paso 2.2); el conteo no cambia.
+        if "from matriculas m" in query and "where m.estudiante_id" in query:
             return [(3,)]
         if "string_agg(distinct descripcion" in query:
             return [(0, None)]

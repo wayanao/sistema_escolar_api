@@ -1,3 +1,6 @@
+from app.repositories.anios_lectivos_repository import ANIO_ACTIVO_ID_SQL
+
+
 def consultar_reporte_general(cursor):
     cursor.execute("""
             SELECT
@@ -230,6 +233,7 @@ def consultar_pagos_estado_cuenta_por_estudiantes(
               WHERE pa.pago_id = pagos.id
           )
     """ if tiene_aplicaciones else ""
+    # Solo los pagos del año activo, el mismo año de los conceptos.
     cursor.execute(
         f"""
         SELECT estudiante_id, descripcion, COALESCE(SUM(monto), 0)
@@ -238,6 +242,7 @@ def consultar_pagos_estado_cuenta_por_estudiantes(
           AND venta_id IS NULL
           AND descripcion IS NOT NULL
           AND COALESCE(estado, 'Pagado') <> 'Anulado'
+          AND pagos.anio_lectivo_id = {ANIO_ACTIVO_ID_SQL}
           {excluir_aplicaciones}
         GROUP BY estudiante_id, descripcion
         """,
@@ -252,6 +257,7 @@ def consultar_pagos_estado_cuenta_por_estudiantes(
         WHERE estudiante_id IN %s
           AND venta_id IS NULL
           AND COALESCE(estado, 'Pagado') <> 'Anulado'
+          AND pagos.anio_lectivo_id = {ANIO_ACTIVO_ID_SQL}
           {excluir_aplicaciones}
         GROUP BY estudiante_id, tipo_pago
         """,
@@ -299,6 +305,7 @@ def consultar_otros_pagos_por_estudiantes(
               )
           )
           AND COALESCE(estado, 'Pagado') <> 'Anulado'
+          AND pagos.anio_lectivo_id = {ANIO_ACTIVO_ID_SQL}
           {excluir_adelantos}
         GROUP BY estudiante_id
         """,

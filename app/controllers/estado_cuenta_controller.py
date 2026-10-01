@@ -1,15 +1,18 @@
 from app.database import get_connection
+from app.repositories.anios_lectivos_repository import ANIO_ACTIVO_ID_SQL
 from app.services.cobros import calcular_deudas_estudiante
 
 
 def _resumen_pagos_estudiante(cursor, estudiante_id):
+    # Lo pagado en el año activo, el mismo año con que se calcula la deuda.
     cursor.execute(
-        """
+        f"""
         SELECT COALESCE(SUM(monto), 0),
                STRING_AGG(DISTINCT descripcion, ', ')
         FROM pagos
         WHERE estudiante_id = %s
           AND COALESCE(estado, 'Pagado') <> 'Anulado'
+          AND pagos.anio_lectivo_id = {ANIO_ACTIVO_ID_SQL}
         """,
         (estudiante_id,),
     )

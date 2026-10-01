@@ -9,6 +9,7 @@ from datetime import date
 from typing import Optional
 
 from app.core.fechas import hoy_en_colombia
+from app.repositories.anios_lectivos_repository import ANIO_ACTIVO_ID_SQL
 from app.services.cartera import calcular_deuda_concepto, listar_cuotas_vencidas
 
 
@@ -169,12 +170,19 @@ def obtener_valores_personalizados_por_estudiantes(
 
 
 def obtener_curso_estudiante(cursor, estudiante_id: int):
+    """El curso del estudiante en el año activo, que fija sus precios.
+
+    Sale de su matricula de ese año: cada año cobra con los precios de sus
+    propios cursos. Con un solo año es el mismo curso de
+    `estudiantes.curso_id` (la consulta de control del curso vigente da 0).
+    """
     cursor.execute(
         """
-        SELECT c.id
-        FROM estudiantes e
-        JOIN cursos c ON e.curso_id = c.id
-        WHERE e.id = %s
+        SELECT m.curso_id
+        FROM matriculas m
+        JOIN anios_lectivos al ON al.id = m.anio_lectivo_id
+        WHERE m.estudiante_id = %s
+          AND al.estado = 'activo'
         """,
         (estudiante_id,),
     )
@@ -187,6 +195,13 @@ def obtener_pagos_por_concepto_estudiantes(
     *,
     hoy: Optional[date] = None,
 ) -> tuple[dict[int, dict[str, float]], dict[int, dict[str, float]], dict[int, dict[str, float]]]:
+    """Lo pagado por concepto en el año activo: por nombre, por descripcion y
+    por meses aplicados.
+
+    Solo cuentan los pagos de ese año y las aplicaciones de sus conceptos. Asi
+    una matricula del año siguiente, pagada antes, no se suma a la del año en
+    curso. Con un solo año, todos los pagos son de el y nada cambia.
+    """
     if not estudiante_ids:
         return {}, {}, {}
 
@@ -204,6 +219,7 @@ def obtener_pagos_por_concepto_estudiantes(
         FROM pagos
         WHERE estudiante_id IN %s
           AND COALESCE(estado, 'Pagado') <> 'Anulado'
+          AND pagos.anio_lectivo_id = {ANIO_ACTIVO_ID_SQL}
           {excluir_adelantos}
         GROUP BY estudiante_id, LOWER(COALESCE(tipo_pago, ''))
         """,
@@ -220,6 +236,7 @@ def obtener_pagos_por_concepto_estudiantes(
         WHERE estudiante_id IN %s
           AND descripcion IS NOT NULL
           AND COALESCE(estado, 'Pagado') <> 'Anulado'
+          AND pagos.anio_lectivo_id = {ANIO_ACTIVO_ID_SQL}
           {excluir_adelantos}
         GROUP BY estudiante_id, LOWER(COALESCE(descripcion, ''))
         """,
@@ -233,7 +250,7 @@ def obtener_pagos_por_concepto_estudiantes(
     if tiene_aplicaciones:
         mes_actual = (hoy or hoy_en_colombia()).replace(day=1)
         cursor.execute(
-            """
+            f"""
             SELECT pa.estudiante_id, LOWER(TRIM(tp.nombre)), COALESCE(SUM(pa.monto), 0)
             FROM pagos_aplicaciones pa
             JOIN pagos p ON p.id = pa.pago_id
@@ -242,6 +259,7 @@ def obtener_pagos_por_concepto_estudiantes(
               AND pa.activo = TRUE
               AND pa.periodo <= %s
               AND COALESCE(p.estado, 'Pagado') <> 'Anulado'
+              AND tp.anio_lectivo_id = {ANIO_ACTIVO_ID_SQL}
             GROUP BY pa.estudiante_id, LOWER(TRIM(tp.nombre))
             """,
             (estudiante_ids, mes_actual),

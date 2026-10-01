@@ -41,9 +41,22 @@ def _ultimo_dia_del_mes(anio: int, mes: int) -> int:
     return monthrange(anio, mes)[1]
 
 
+def _mes_de_referencia(hoy: date, anio: int) -> int:
+    """El "mes actual" de `anio`, visto desde `hoy`.
+
+    Es el mes que se cobra cuando el concepto no tiene `mes_inicial`. En el
+    año de `hoy`, el mes de hoy, como siempre. En un año que ya terminó,
+    diciembre. En uno que no ha empezado, enero, que todavía no vence.
+    """
+    if anio == hoy.year:
+        return hoy.month
+    return 12 if anio < hoy.year else 1
+
+
 def listar_cuotas_vencidas(
     hoy: Optional[date] = None,
     *,
+    anio: Optional[int] = None,
     mes_inicial: Optional[int] = None,
     mes_final: int = 12,
     frecuencia_meses: int = 1,
@@ -51,15 +64,23 @@ def listar_cuotas_vencidas(
     dias_gracia: int = 0,
     max_cuotas: int = 10,
 ) -> list[CuotaVencida]:
-    """Devuelve las cuotas vencidas con su periodo y fecha limite real."""
+    """Devuelve las cuotas vencidas con su periodo y fecha limite real.
+
+    `anio` es el año lectivo cuyas cuotas se listan; sin el, el de `hoy`. El
+    corte siempre es `hoy`: un año que ya termino tiene todas sus cuotas
+    vencidas, y uno que no ha empezado, ninguna. Asi, el 1 de enero las
+    cuotas del año que sigue activo no desaparecen.
+    """
     if hoy is None:
         hoy = hoy_en_colombia()
+    anio_cuotas = int(anio) if anio else hoy.year
+    mes_referencia = _mes_de_referencia(hoy, anio_cuotas)
 
     frecuencia = max(1, int(frecuencia_meses or 1))
     gracia = max(0, int(dias_gracia or 0))
-    mes_inicio = int(mes_inicial) if mes_inicial else hoy.month
+    mes_inicio = int(mes_inicial) if mes_inicial else mes_referencia
     if not (1 <= mes_inicio <= 12):
-        mes_inicio = hoy.month
+        mes_inicio = mes_referencia
     mes_fin = int(mes_final) if mes_final is not None else 12
     if not (1 <= mes_fin <= 12):
         mes_fin = 12
@@ -70,16 +91,16 @@ def listar_cuotas_vencidas(
         if mes_cuota < 1 or mes_cuota > mes_fin:
             break
 
-        ultimo_dia = _ultimo_dia_del_mes(hoy.year, mes_cuota)
+        ultimo_dia = _ultimo_dia_del_mes(anio_cuotas, mes_cuota)
         dia = int(dia_limite_mes) if dia_limite_mes else ultimo_dia
         dia = min(dia, ultimo_dia)
-        fecha_vencimiento = date(hoy.year, mes_cuota, dia)
+        fecha_vencimiento = date(anio_cuotas, mes_cuota, dia)
         fecha_efectiva = fecha_vencimiento + timedelta(days=gracia)
         if hoy < fecha_efectiva:
             break
 
         cuotas.append(CuotaVencida(
-            periodo=date(hoy.year, mes_cuota, 1),
+            periodo=date(anio_cuotas, mes_cuota, 1),
             fecha_vencimiento=fecha_vencimiento,
             fecha_efectiva=fecha_efectiva,
         ))
@@ -90,6 +111,7 @@ def listar_cuotas_vencidas(
 def calcular_cuotas_vencidas(
     hoy: Optional[date] = None,
     *,
+    anio: Optional[int] = None,
     mes_inicial: Optional[int] = None,
     mes_final: int = 12,
     frecuencia_meses: int = 1,
@@ -100,12 +122,16 @@ def calcular_cuotas_vencidas(
     """Calcula cuántas cuotas mensuales están vencidas hasta `hoy`.
 
     Una cuota se considera vencida cuando `hoy >= fecha_vencimiento + dias_gracia`.
+    `anio` es el año de las cuotas, como en `listar_cuotas_vencidas`.
     """
     if hoy is None:
         hoy = hoy_en_colombia()
+    anio_cuotas = int(anio) if anio else hoy.year
+    mes_referencia = _mes_de_referencia(hoy, anio_cuotas)
 
     cuotas_vencidas = listar_cuotas_vencidas(
         hoy=hoy,
+        anio=anio_cuotas,
         mes_inicial=mes_inicial,
         mes_final=mes_final,
         frecuencia_meses=frecuencia_meses,
@@ -115,18 +141,18 @@ def calcular_cuotas_vencidas(
     )
 
     frecuencia = max(1, int(frecuencia_meses or 1))
-    mes_inicio = int(mes_inicial) if mes_inicial else hoy.month
+    mes_inicio = int(mes_inicial) if mes_inicial else mes_referencia
     if not (1 <= mes_inicio <= 12):
-        mes_inicio = hoy.month
+        mes_inicio = mes_referencia
     mes_fin = int(mes_final) if mes_final is not None else 12
     if not (1 <= mes_fin <= 12):
         mes_fin = 12
     siguiente_mes = mes_inicio + len(cuotas_vencidas) * frecuencia
     proxima_fecha: Optional[date] = None
     if 1 <= siguiente_mes <= mes_fin:
-        ultimo_dia = _ultimo_dia_del_mes(hoy.year, siguiente_mes)
+        ultimo_dia = _ultimo_dia_del_mes(anio_cuotas, siguiente_mes)
         dia = int(dia_limite_mes) if dia_limite_mes else ultimo_dia
-        proxima_fecha = date(hoy.year, siguiente_mes, min(dia, ultimo_dia))
+        proxima_fecha = date(anio_cuotas, siguiente_mes, min(dia, ultimo_dia))
 
     return ResultadoCuotas(
         cuotas_vencidas=len(cuotas_vencidas),
@@ -168,6 +194,7 @@ def calcular_deuda_concepto(
     tipo_cobro: str,
     pagado: float,
     hoy: Optional[date] = None,
+    anio: Optional[int] = None,
     mes_inicial: Optional[int] = None,
     mes_final: int = 12,
     frecuencia_meses: int = 1,
@@ -179,6 +206,9 @@ def calcular_deuda_concepto(
     es_legacy_mensualidad: bool = False,
 ) -> dict:
     """Calcula la deuda de un concepto para un estudiante.
+
+    `anio` es el año lectivo del concepto: sus cuotas se cuentan en ese año
+    (ver `listar_cuotas_vencidas`). Sin el, el de `hoy`.
 
     Devuelve un dict con:
         valor_total: lo que debería haber pagado a la fecha (sin contar mora)
@@ -193,6 +223,7 @@ def calcular_deuda_concepto(
     if es_recurrente:
         res = calcular_cuotas_vencidas(
             hoy=hoy,
+            anio=anio,
             mes_inicial=mes_inicial,
             mes_final=mes_final,
             frecuencia_meses=frecuencia_meses,

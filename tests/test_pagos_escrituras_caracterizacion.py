@@ -48,8 +48,12 @@ COLUMNAS_TIPOS_PAGO = [
 ]
 
 def fila_tipo_pago(tipo_cobro):
-    """Un unico concepto de 100 asignado al curso 3 del estudiante 1."""
-    return (4, "Pension", 100, tipo_cobro, True, None, 12, 1, None, 0, None, 0)
+    """Un unico concepto de 100 asignado al curso 3 del estudiante 1.
+
+    La ultima columna es el año del concepto (fase 2 del año lectivo): la
+    consulta de conceptos lo trae junto con ellos.
+    """
+    return (4, "Pension", 100, tipo_cobro, True, None, 12, 1, None, 0, None, 0, 2026)
 
 
 class CursorFalso:
@@ -131,7 +135,7 @@ class CursorFalso:
             return [(True,)]
 
         # --- catalogo y asignaciones ---
-        if "from tipos_de_pagos" in query and "order by id" in query:
+        if "from tipos_de_pagos tp" in query and "order by tp.id" in query:
             return [fila_tipo_pago(self.tipo_cobro)]
         if "from tipos_de_pagos" in query and "lower(trim(nombre))" in query:
             return [(4,)] if self.nombre_duplicado else []

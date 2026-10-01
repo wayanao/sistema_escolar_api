@@ -6,10 +6,12 @@ Fase 0 de `docs/funcionalidades/ANIO_LECTIVO.md`. Dos grupos:
    concepto. La fase 2 debe dejar estas pruebas iguales.
 2. Al cambiar de año: documenta el error actual. Los pagos de todos los años
    se suman juntos (`obtener_pagos_por_concepto_estudiantes`) y solo existen
-   las cuotas del año calendario de `hoy` (`listar_cuotas_vencidas`). Los
-   valores que se afirman en ese grupo son los INCORRECTOS de hoy. La fase 2
-   invierte estas pruebas para exigir el resultado correcto; no se
-   "arreglan" antes.
+   las cuotas del año calendario de `hoy` (`listar_cuotas_vencidas`). Las
+   pruebas con prefijo `test_error_actual_` afirman los valores INCORRECTOS
+   de hoy. La fase 2 las invierte paso a paso para exigir el resultado
+   correcto; no se "arreglan" antes. Ya invertidas en el paso 2.1 (las
+   cuotas se cuentan en el año del concepto): el caso B y los meses vencidos
+   de 2026 en enero.
 
 Los montos son los del diagnostico del documento (matricula de $300.000,
 mensualidad de $200.000 de febrero a noviembre con dia limite 5).
@@ -59,9 +61,13 @@ def _concepto(id_, nombre, tipo_cobro, valor, **extra):
     return concepto
 
 
-def _conceptos_del_colegio():
-    """Un concepto de cada tipo, configurado como un colegio de calendario A."""
-    return [
+def _conceptos_del_colegio(anio=None):
+    """Un concepto de cada tipo, configurado como un colegio de calendario A.
+
+    Con `anio`, cada concepto trae su año lectivo, como los devuelve
+    `cobros.obtener_tipos_pago` desde la fase 2. Sin el, la forma de antes.
+    """
+    conceptos = [
         _concepto(1, "Matricula", "anual", MATRICULA),
         _concepto(
             2, "Mensualidad", "mensual", MENSUALIDAD,
@@ -70,6 +76,10 @@ def _conceptos_del_colegio():
         _concepto(3, "Salida pedagogica", "unico", ACTIVIDAD),
         _concepto(4, "Seguro", "opcional", SEGURO),
     ]
+    if anio is not None:
+        for concepto in conceptos:
+            concepto["anio"] = anio
+    return conceptos
 
 
 def _deudas(hoy, pagos=None, tipos=None, precios=None):
@@ -86,9 +96,12 @@ def _deudas(hoy, pagos=None, tipos=None, precios=None):
     return por_concepto, resultado["total_deuda"]
 
 
-def _mensualidad_para_meses_vencidos():
-    """Forma que devuelve `obtener_conceptos_mensuales_estudiante`."""
-    return {
+def _mensualidad_para_meses_vencidos(anio=None):
+    """Forma que devuelve `obtener_conceptos_mensuales_estudiante`.
+
+    Con `anio`, el concepto trae su año lectivo, como desde la fase 2.
+    """
+    concepto = {
         "id": 2,
         "nombre": "Mensualidad",
         "valor_unitario": MENSUALIDAD,
@@ -99,14 +112,17 @@ def _mensualidad_para_meses_vencidos():
         "dia_limite_mes": 5,
         "dias_gracia": 0,
     }
+    if anio is not None:
+        concepto["anio"] = anio
+    return concepto
 
 
-def _meses_vencidos(monkeypatch, hoy, pagado_mensualidad):
+def _meses_vencidos(monkeypatch, hoy, pagado_mensualidad, anio=None):
     """Opciones de "pagar meses vencidos" con pagos legacy (sin aplicaciones)."""
     monkeypatch.setattr(
         cobros,
         "obtener_conceptos_mensuales_estudiante",
-        lambda _cursor, _estudiante_id: [_mensualidad_para_meses_vencidos()],
+        lambda _cursor, _estudiante_id: [_mensualidad_para_meses_vencidos(anio)],
     )
     monkeypatch.setattr(
         cobros,
@@ -199,26 +215,29 @@ def test_error_actual_caso_a_lo_pagado_en_2026_cubre_2027():
     assert total == 0
 
 
-def test_error_actual_caso_b_la_deuda_de_2026_desaparece_en_enero():
-    """Correcto: el 15 de enero de 2027 sigue debiendo octubre y noviembre."""
+def test_caso_b_la_deuda_de_2026_sigue_en_enero_mientras_2026_es_el_activo():
+    """Invertida en el paso 2.1. Antes, el 15 de enero de 2027 la deuda de
+    octubre y noviembre desaparecia: solo existian cuotas de 2027. Ahora cada
+    concepto trae su año y sus cuotas se cuentan en el."""
     debe_octubre_y_noviembre = {
         "matricula": MATRICULA,
         "mensualidad": 8 * MENSUALIDAD,
         "salida pedagogica": ACTIVIDAD,
     }
+    conceptos_2026 = _conceptos_del_colegio(anio=2026)
 
     deudas_diciembre, total_diciembre = _deudas(
-        datetime.date(2026, 12, 15), pagos=debe_octubre_y_noviembre,
+        datetime.date(2026, 12, 15), pagos=debe_octubre_y_noviembre, tipos=conceptos_2026,
     )
     deudas_enero, total_enero = _deudas(
-        datetime.date(2027, 1, 15), pagos=debe_octubre_y_noviembre,
+        datetime.date(2027, 1, 15), pagos=debe_octubre_y_noviembre, tipos=conceptos_2026,
     )
 
     assert deudas_diciembre["Mensualidad"]["deuda"] == 2 * MENSUALIDAD
     assert total_diciembre == 2 * MENSUALIDAD
-    assert deudas_enero["Mensualidad"]["cuotas_vencidas"] == 0
-    assert deudas_enero["Mensualidad"]["deuda"] == 0
-    assert total_enero == 0
+    assert deudas_enero["Mensualidad"]["cuotas_vencidas"] == 10
+    assert deudas_enero["Mensualidad"]["deuda"] == 2 * MENSUALIDAD
+    assert total_enero == 2 * MENSUALIDAD
 
 
 def test_error_actual_matricula_del_anio_siguiente_se_suma_a_la_del_anio_en_curso():
@@ -236,20 +255,23 @@ def test_error_actual_matricula_del_anio_siguiente_se_suma_a_la_del_anio_en_curs
     assert deudas["Matricula"]["deuda"] == 0
 
 
-def test_error_actual_meses_vencidos_de_2026_desaparecen_en_enero(monkeypatch):
-    """Pantalla "pagar meses vencidos". Correcto: en enero siguen oct y nov."""
+def test_meses_vencidos_de_2026_siguen_en_enero_mientras_2026_es_el_activo(monkeypatch):
+    """Pantalla "pagar meses vencidos". Invertida en el paso 2.1: antes, en
+    enero la lista quedaba vacia; ahora siguen octubre y noviembre de 2026."""
     en_diciembre = _meses_vencidos(
         monkeypatch, datetime.date(2026, 12, 15), pagado_mensualidad=8 * MENSUALIDAD,
+        anio=2026,
     )
     en_enero = _meses_vencidos(
         monkeypatch, datetime.date(2027, 1, 15), pagado_mensualidad=8 * MENSUALIDAD,
+        anio=2026,
     )
 
-    assert [cuota["periodo"] for cuota in en_diciembre[0]["cuotas"]] == [
-        "2026-10-01",
-        "2026-11-01",
-    ]
-    assert en_enero == []
+    for opciones in (en_diciembre, en_enero):
+        assert [cuota["periodo"] for cuota in opciones[0]["cuotas"]] == [
+            "2026-10-01",
+            "2026-11-01",
+        ]
 
 
 def test_error_actual_meses_vencidos_de_2027_se_cubren_con_pagos_de_2026(monkeypatch):

@@ -2,12 +2,12 @@
 
 ## Control
 
-- Estado: **Fase 1 terminada el 2026-10-01.** Fase 0 terminada el
-  2026-09-30. Migración A aplicada en producción el 2026-09-30; código que
-  escribe el año desplegado en Render (`67b2d4b`, Live, confirmado por el
-  usuario el 2026-10-01); migración B aplicada en producción el
-  2026-10-01, tras probarla en una rama de Neon. Esquema base regenerado.
-  Ningún cambio de comportamiento visible. Siguiente: fase 2.
+- Estado: **Fase 2 en curso.** Paso 2.1 (las cuotas se cuentan en el año
+  del concepto) escrito y probado el 2026-10-01, sin desplegar. Fase 1
+  terminada el 2026-10-01: migración A (2026-09-30) y migración B
+  (2026-10-01) aplicadas en producción, código que escribe el año
+  desplegado en Render (`67b2d4b`, Live), esquema base regenerado. Fase 0
+  terminada el 2026-09-30. Ningún cambio de comportamiento visible.
 - Tipo: Función nueva de producto. No es una capa del programa de
   modularización de `docs/modularizacion/` y no debe confundirse con una.
 - Repos afectados: este repo (`sistema_escolar_api`) y `frontend-react`. Ver
@@ -1075,6 +1075,146 @@ con las pruebas de la fase 0 como red.
    pago a año cerrado, pago a año en preparación y precio del curso de
    2027; `verify.py` pasa.
 
+**Plan por pasos (propuesto el 2026-10-01; cada paso, con el visto bueno
+del usuario):**
+
+Principios:
+
+- Con un solo año, como hoy, cada respuesta queda idéntica. Las
+  caracterizaciones de la fase 0 y las de conteo de consultas
+  (`tests/test_reportes_query_counts.py`: estado de cuenta del curso en
+  reportes 6/15/15, cartera 5/12/12, estado de cuenta por estudiante 12 por
+  estudiante) no cambian. El año viaja como subconsulta o junto con los
+  conceptos, sin idas extra a la base.
+- La pieza clave ya existe: cada concepto es de un año (decisión 17).
+  `obtener_tipos_pago` devuelve los conceptos de un año, cada uno con su
+  `anio`, y de ahí salen las cuotas, los pagos que cuentan y los precios.
+- El frontend no cambia en esta fase: sus peticiones no mandan año y
+  obtienen el año activo.
+- Supuesto: todo colegio operativo tiene las migraciones A y B (hoy, los
+  dos).
+
+Paso 2.1 — Las cuotas se cuentan en el año activo, no en el año del
+calendario. Arregla el error del 1 de enero (caso B) aunque no se haga
+nada más.
+
+- `app/services/cartera.py`: `listar_cuotas_vencidas`,
+  `calcular_cuotas_vencidas` y `calcular_deuda_concepto` reciben `anio`
+  opcional, el año cuyas cuotas se listan; sin él, `hoy.year`, como hoy. El
+  corte sigue siendo `hoy`: un año pasado tiene todas sus cuotas vencidas y
+  uno futuro, ninguna. Reemplaza la regla del punto 2 ("cerrado → 31 de
+  diciembre") por una equivalente y más simple, que además respeta los días
+  de gracia que pasan de diciembre. Un concepto sin `mes_inicial` ("solo la
+  cuota del mes actual") toma diciembre como mes de referencia en un año
+  pasado.
+- `app/services/cobros.py`: `obtener_tipos_pago` devuelve solo los
+  conceptos del año activo, cada uno con su `anio` (JOIN a
+  `anios_lectivos` en la misma consulta). `_calcular_deudas` y
+  `obtener_cuotas_vencidas_estudiante` pasan el `anio` del concepto.
+- `app/controllers/pagos_controller.py`: `_periodos_programados` usa el
+  año del concepto. En el año en curso, los meses que faltan, como hoy; en
+  un año futuro, todos sus meses; en uno pasado, ninguno.
+- Alcance, sin cambio visible hoy: Pagos (deudas, meses vencidos,
+  adelantos, registrar), detalle de Estudiantes, Cartera vencida y los
+  indicadores del inicio del admin. También `/estado-cuenta/...` y
+  `/reportes/estado-cuenta/{curso_id}`, que ninguna pantalla usa hoy.
+- Pruebas: se invierten "caso B" y "meses vencidos de 2026 desaparecen en
+  enero". Las demás de la fase 0 y las de conteo quedan iguales.
+
+Paso 2.2 — Cada año cobra con sus propios pagos, precios y estudiantes.
+
+- Pagos y aplicaciones filtrados por año en `obtener_pagos_por_concepto_estudiantes`
+  (pagos del año; aplicaciones de conceptos del año), en el estado de
+  cuenta (`estado_cuenta_controller.py`, `reportes_repository.py`) y en
+  cartera.
+- El curso del precio sale de la matrícula del año
+  (`obtener_curso_estudiante`). Los estudiantes de cartera y del estado de
+  cuenta por curso salen de las matrículas, y el estado de cuenta de un
+  curso usa el año de ese curso.
+- Hoy queda idéntico: un solo año y el control del curso vigente en 0.
+- Pruebas: se invierte "la matrícula del año siguiente se suma a la del año
+  en curso".
+
+Paso 2.3 — Registrar un pago en otro año y adelantar meses del año
+siguiente.
+
+- `PagoCreate` y `PagoAdelantadoCreate` aceptan `anio_lectivo_id`
+  opcional; sin él, el año activo. Se valida que exista, y cualquier estado
+  vale (decisión 6; las rutas de pagos ya son solo de admin). El pago se
+  guarda con ese año.
+- La validación "no exceder la deuda", los meses vencidos y los adelantos
+  se calculan con los conceptos de ese año. Una aplicación tiene que ser de
+  un concepto de ese año.
+- `GET /estudiantes/{id}/deudas`, `/pagos/vencidos/opciones/{id}` y
+  `/pagos/adelanto/opciones/{id}` aceptan `?anio_lectivo_id=` opcional:
+  lo necesita el selector "Año del pago" de la fase 5 del frontend.
+- Pruebas: pago a un año cerrado, pago a uno en preparación, precio del
+  curso de 2027, adelantos de 2027 en diciembre, y año inexistente → 400.
+  Se invierte "adelantos de diciembre".
+
+Paso 2.4 — Deuda de años anteriores (decisión 2).
+
+- `GET /estudiantes/{id}/deudas` y `/cartera/mora` ganan un campo nuevo con
+  la deuda de cada año anterior en que el estudiante tuvo matrícula,
+  calculada con la misma función. Queda vacío mientras haya un solo año.
+  Antes de escribirlo se mide cuántas consultas agrega, y el usuario decide
+  si se acepta.
+- Pruebas: caso A completo con dos años (2027 activo: matrícula 2027 +
+  febrero y marzo; 2026 en "años anteriores") y caso B después de activar
+  2027.
+
+En cada paso: caracterización primero, cambio mínimo, `verify.py`,
+documento y mensaje de commit. El usuario aprueba el siguiente. Cada paso
+se puede desplegar solo, porque con un año no cambia nada.
+
+Orden por urgencia: 2.1 arregla el error del 1 de enero. 2.2 y 2.3 hacen
+falta antes del primer pago de matrícula 2027 (fase 5). 2.4 hace falta
+antes de activar 2027 (fase 6), y para entonces el frontend tiene que
+mostrar ese campo.
+
+**Avance del 2026-10-01 — paso 2.1, las cuotas se cuentan en el año del
+concepto (sin desplegar):**
+
+- Código:
+  - `app/services/cartera.py`: `listar_cuotas_vencidas`,
+    `calcular_cuotas_vencidas` y `calcular_deuda_concepto` reciben `anio`
+    opcional; sin él, `hoy.year`. Nuevo `_mes_de_referencia` para los
+    conceptos sin `mes_inicial`: el mes de hoy en el año en curso,
+    diciembre en un año que terminó y enero en uno que no ha empezado.
+  - `app/services/cobros.py`: `obtener_tipos_pago` trae solo los conceptos
+    del año activo, cada uno con su `anio` (JOIN a `anios_lectivos` en la
+    misma consulta, columnas con el alias `tp.`). `_calcular_deudas` y
+    `obtener_cuotas_vencidas_estudiante` pasan ese `anio`.
+  - `app/controllers/pagos_controller.py`: `_periodos_programados` ofrece
+    meses del año del concepto.
+- No cambió: pagos, aplicaciones, precios y cursos (paso 2.2), ni ninguna
+  ruta, esquema o respuesta. El frontend no se tocó.
+- Pruebas:
+  - Nuevo `tests/test_anio_lectivo_cobros_por_anio.py` (12). Dos comparan
+    el código nuevo con una copia literal del anterior en 10.368
+    combinaciones de fecha de 2026 y configuración de cuotas, y en 2.700 de
+    adelantos: con el año del calendario, el resultado es idéntico. Las
+    otras diez fijan lo nuevo: año que terminó, año que no ha empezado,
+    días de gracia que pasan de diciembre, concepto sin mes inicial,
+    conceptos que traen su año, y adelantos de un año futuro y de uno
+    pasado.
+  - Invertidas en `test_anio_lectivo_cobros_caracterizacion.py`: el caso B
+    y los meses vencidos de 2026 en enero. Las cinco de "dentro del año" y
+    las otras cuatro de "error actual" siguen iguales.
+  - Ajustadas a propósito, solo en la fila simulada (13 columnas) y el
+    texto que reconocen (`order by tp.id`): `test_reportes_query_counts.py`,
+    `test_pagos_escrituras_caracterizacion.py` y
+    `test_tipos_pagos_mes_final.py`. Lo que vigilan no cambió: los conteos
+    siguen en 6/15/15, 1/13/37 y 5/12/12.
+  - Corridas contra una copia del código anterior, sacada de git a una
+    carpeta temporal: las 12 que exigen lo nuevo fallan y las de "dentro
+    del año" pasan. No son pruebas vacías.
+- Verificación: `scripts/verify.py` → **1512 pasan, 0 fallan**; ruff y
+  `pip check` limpios; `git diff --check` limpio.
+- Efecto al desplegar: ninguno visible mientras el año activo sea el del
+  calendario (2026). Desde el 1 de enero de 2027, mientras 2026 siga
+  activo, sus cuotas siguen contando (caso B).
+
 ### Fase 3 — Lecturas por año y guardia de escritura
 
 Tiene que estar en producción **antes de crear el primer curso de 2027**.
@@ -1260,8 +1400,9 @@ cuando los profesores empiezan a ver sus clases nuevas.
   FALSE`. Esto choca con la decisión 7 ("si el estudiante debe, la deuda le
   queda hasta que la pague"): hoy, al desactivar una actividad "única"
   después de cobrarla, los que no pagaron dejan de aparecer como deudores.
-  No lo causa ni lo arregla el año lectivo; conviene decidir si se corrige
-  como cambio aparte, antes o después de la fase 2.
+  No lo causa ni lo arregla el año lectivo. **Decidido el 2026-10-01:** se
+  corrige después de la fase 2, como cambio aparte (ver "Preguntas
+  abiertas").
 - **Reusar un concepto "único" dentro del mismo año** no genera un cobro
   nuevo: el sistema no distingue una activación de otra. Si hace falta,
   requiere su propio diseño (por ejemplo, "ocurrencias" de un cobro).
@@ -1314,15 +1455,21 @@ cuando los profesores empiezan a ver sus clases nuevas.
 - ~~Antes de la fase 1: ¿ya se registró algún estudiante o pago para
   2027?~~ **Respondida el 2026-09-30: no.** Ver la regla operativa del
   Control.
-- Antes de la fase 2: ¿se corrige primero el hallazgo de conceptos
-  desactivados que ocultan deuda? Explicado al usuario el 2026-09-30, sin
-  decidir todavía. **Trampa a tener en cuenta:** en `tenant_2005` la
-  MATRICULA está inactiva y nadie la tiene pagada en el sistema (se cobró
-  por fuera antes de julio). Si desactivar dejara de borrar la deuda, los
-  174 estudiantes aparecerían debiendo la matrícula de 2026. Idea
-  planteada: "desactivar" deja de cobrar desde ese día, lo ya vencido se
-  conserva, y una acción aparte y explícita de "anular deuda" sirve para
-  casos como esa matrícula.
+- ~~Antes de la fase 2: ¿se corrige primero el hallazgo de conceptos
+  desactivados que ocultan deuda?~~ **Respondida el 2026-10-01: no.** El
+  usuario decidió que la regla quede como está durante la fase 2 y se
+  corrija después, como cambio aparte. Motivos que se le dieron: hoy no hay
+  conceptos "único" en `tenant_2005`, así que no afecta a nadie todavía;
+  la fase 2 es zona de dinero con fecha límite; y con conceptos por año la
+  fase 2 funciona bien con la regla actual. **Trampa a tener en cuenta
+  cuando se corrija:** en `tenant_2005` la MATRICULA está inactiva y nadie
+  la tiene pagada en el sistema (se cobró por fuera antes de julio). Si
+  desactivar dejara de borrar la deuda, los 174 estudiantes aparecerían
+  debiendo la matrícula de 2026. Idea planteada: "desactivar" deja de
+  cobrar desde ese día, lo ya vencido se conserva, y una acción aparte y
+  explícita de "anular deuda" sirve para casos como esa matrícula.
+  Precaución operativa mientras tanto: no desactivar un concepto que
+  todavía tenga deudas pendientes.
 - Antes de la fase 4 (frontend): en las pantallas que no dependen del año,
   ¿el selector se esconde o se muestra desactivado?
 - Antes de la fase 6: ¿un estudiante del último grado que termina se marca
@@ -1334,23 +1481,25 @@ Estado al 2026-10-01. Si `git status` o el historial de git dicen otra
 cosa, gana lo que se pueda verificar.
 
 - **Hecho:** fase 0 y **fase 1 completas**. Migración A (2026-09-30) y
-  migración B (2026-10-01) aplicadas en producción en `tenant_colegio_1` y
-  `tenant_2005`; el código que escribe el año (`df53299`) está desplegado
-  en Render (`67b2d4b`, Live); esquema base regenerado tras cada una.
-  Detalle y verificación de cada paso en los "Avance" de las fases 0 y 1.
+  migración B (2026-10-01, commit `47c61c2`) aplicadas en producción en
+  `tenant_colegio_1` y `tenant_2005`; el código que escribe el año
+  (`df53299`) está desplegado en Render (`67b2d4b`, Live); esquema base
+  regenerado tras cada una. Detalle y verificación de cada paso en los
+  "Avance" de las fases 0 y 1.
+- **Fase 2:** la pregunta de los conceptos desactivados quedó respondida
+  (se deja como está y se corrige después, aparte), el plan por pasos (2.1
+  a 2.4) está escrito en la fase 2, y el **paso 2.1** está escrito y
+  probado, sin commit ni despliegue. Ver su "Avance".
 - **Hecho aparte, la noche del 2026-09-30:** el arreglo de la hora
   (`2e77634` en este repo, `033c042` en el frontend). Cobros, cartera y
   alta de colegios usan la fecha de Colombia (`app/core/fechas.py`), y el
   frontend propone fechas de Colombia (`src/utils/fechaColombia.js`). Ver
   el hallazgo correspondiente y `docs/CAMBIOS_BACKEND.md`.
 - **Pendiente del usuario:**
-  - Commit y push de la migración B: migración, pruebas, esquema base y
-    documentos, en un solo commit. El push despliega, pero no cambia el
-    funcionamiento: no trae código nuevo de la app.
-  - Commit del documento del frontend.
-  - Devolver el `DATABASE_URL` del `.env` local al endpoint `-pooler` y
-    cerrar la terminal que tiene `$env:DATABASE_URL` de producción (ver el
-    "Ojo" de la migración B, en la fase 1).
+  - Paso 2.1: revisarlo en local (Cartera vencida y la pantalla de Pagos
+    deben mostrar los mismos números que producción), y después commit y
+    push. El push despliega; no cambia nada visible mientras 2026 sea el
+    año del calendario.
   - Borrar la rama `prueba-anio-lectivo-b` de Neon, si no se borró sola.
   - Si no se hizo todavía, **rotar la contraseña** de `neondb_owner` (ver
     el punto siguiente).
@@ -1369,11 +1518,9 @@ cosa, gana lo que se pueda verificar.
   correr si falta `$env:DATABASE_URL`. Antes de probar la app contra una
   rama, detener el backend local que esté corriendo; si no, el frontend
   sigue hablando con el que apunta a producción.
-- **Siguiente acción exacta:** **fase 2, cobros por año** (zona sensible:
-  dinero), con fecha límite antes del 1 de noviembre y, en todo caso,
-  antes del 1 de enero de 2027. Antes de empezarla, el usuario tiene que
-  responder la pregunta abierta de los conceptos desactivados que ocultan
-  deuda (ver "Preguntas abiertas", con su trampa de la matrícula de
-  `tenant_2005`). No se infiere ni se elige por él, y la fase no se empieza
-  sin su autorización explícita.
+- **Siguiente acción exacta:** **paso 2.2 de la fase 2** (cada año cobra
+  con sus propios pagos, precios y estudiantes; ver el plan en la fase 2),
+  solo con la autorización explícita del usuario para ese paso. Zona
+  sensible: dinero. La fase 2 completa tiene fecha límite antes del 1 de
+  noviembre y, en todo caso, antes del 1 de enero de 2027.
 - Prompt para retomar: `docs/funcionalidades/PROMPT_CONTINUACION_ANIO_LECTIVO.md`.

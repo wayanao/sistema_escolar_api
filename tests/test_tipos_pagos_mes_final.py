@@ -88,7 +88,8 @@ class CursorCobros:
                 ("mora_tipo",),
                 ("mora_valor",),
             ]
-        return [(4, "Pension", 100, "mensual", True, 2, 12, 1, 5, 0, None, 0)]
+        # La ultima columna es el año del concepto (fase 2 del año lectivo).
+        return [(4, "Pension", 100, "mensual", True, 2, 12, 1, 5, 0, None, 0, 2026)]
 
 
 def test_schema_usa_diciembre_por_defecto_y_valida_el_rango():

@@ -121,21 +121,31 @@ def _bloquear_registro_de_pagos(cursor, estudiante_id):
 
 
 def _periodos_programados(concepto, hoy):
+    """Meses que todavia se pueden adelantar de un concepto mensual.
+
+    Son meses del año del concepto (su año lectivo), no del calendario: en el
+    año en curso, los que faltan despues del de hoy; en un año que no ha
+    empezado, todos; en uno que ya termino, ninguno.
+    """
     frecuencia = max(1, int(concepto.get("frecuencia_meses") or 1))
     mes_inicial = concepto.get("mes_inicial")
     mes_final = int(concepto.get("mes_final") or 12)
     if not 1 <= mes_final <= 12:
         mes_final = 12
+    anio = int(concepto.get("anio") or hoy.year)
+    if anio < hoy.year:
+        return []
+    primer_mes = hoy.month + 1 if anio == hoy.year else 1
     periodos = []
 
-    for mes in range(hoy.month + 1, mes_final + 1):
+    for mes in range(primer_mes, mes_final + 1):
         if mes_inicial:
             inicio = int(mes_inicial)
             if mes < inicio or (mes - inicio) % frecuencia != 0:
                 continue
-        elif (mes - (hoy.month + 1)) % frecuencia != 0:
+        elif (mes - primer_mes) % frecuencia != 0:
             continue
-        periodos.append(datetime.date(hoy.year, mes, 1))
+        periodos.append(datetime.date(anio, mes, 1))
 
     return periodos
 

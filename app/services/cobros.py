@@ -20,10 +20,19 @@ def normalizar_concepto(texto) -> str:
 
 
 def _col_or_default(columnas, nombre, default_sql):
-    return nombre if nombre in columnas else default_sql
+    # `tp` es el alias de tipos_de_pagos en `obtener_tipos_pago`.
+    return f"tp.{nombre}" if nombre in columnas else default_sql
 
 
 def obtener_tipos_pago(cursor) -> list[dict]:
+    """Los conceptos de pago del año activo, cada uno con su `anio`.
+
+    Los conceptos son por año (decision 17 de
+    docs/funcionalidades/ANIO_LECTIVO.md): cobros, cartera y estado de cuenta
+    calculan con los del año activo. El `anio` viaja con cada concepto para
+    contar sus cuotas en ese año y no en el del calendario, y sale de la misma
+    consulta de siempre, sin una ida extra a la base.
+    """
     cursor.execute(
         """
         SELECT column_name FROM information_schema.columns
@@ -36,7 +45,7 @@ def obtener_tipos_pago(cursor) -> list[dict]:
 
     cursor.execute(
         f"""
-        SELECT id, nombre, valor,
+        SELECT tp.id, tp.nombre, tp.valor,
             {col(columnas, 'tipo_cobro', "'unico'")} AS tipo_cobro,
             {col(columnas, 'activo', 'TRUE')} AS activo,
             {col(columnas, 'mes_inicial', 'NULL')} AS mes_inicial,
@@ -45,9 +54,12 @@ def obtener_tipos_pago(cursor) -> list[dict]:
             {col(columnas, 'dia_limite_mes', 'NULL')} AS dia_limite_mes,
             {col(columnas, 'dias_gracia', '0')} AS dias_gracia,
             {col(columnas, 'mora_tipo', 'NULL')} AS mora_tipo,
-            {col(columnas, 'mora_valor', '0')} AS mora_valor
-        FROM tipos_de_pagos
-        ORDER BY id
+            {col(columnas, 'mora_valor', '0')} AS mora_valor,
+            al.anio
+        FROM tipos_de_pagos tp
+        JOIN anios_lectivos al ON al.id = tp.anio_lectivo_id
+        WHERE al.estado = 'activo'
+        ORDER BY tp.id
         """
     )
 
@@ -65,6 +77,7 @@ def obtener_tipos_pago(cursor) -> list[dict]:
             "dias_gracia": int(row[9]) if row[9] is not None else 0,
             "mora_tipo": row[10],
             "mora_valor": float(row[11] or 0),
+            "anio": int(row[12]),
         }
         for row in cursor.fetchall()
     ]
@@ -353,6 +366,7 @@ def obtener_cuotas_vencidas_estudiante(
         cuotas = []
         for cuota in listar_cuotas_vencidas(
             hoy=fecha_referencia,
+            anio=concepto.get("anio"),
             mes_inicial=concepto.get("mes_inicial"),
             mes_final=concepto.get("mes_final", 12),
             frecuencia_meses=concepto.get("frecuencia_meses", 1),
@@ -429,6 +443,7 @@ def _calcular_deudas(
             tipo_cobro=tipo_cobro,
             pagado=pagado,
             hoy=hoy,
+            anio=tipo_pago.get("anio"),
             mes_inicial=tipo_pago.get("mes_inicial"),
             mes_final=tipo_pago.get("mes_final", 12),
             frecuencia_meses=tipo_pago.get("frecuencia_meses", 1),

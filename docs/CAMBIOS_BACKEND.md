@@ -6,6 +6,35 @@ Ultima revision documental: 2026-10-01.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
+## 2026-10-01 - Año lectivo: las cuotas se cuentan en el año del concepto
+
+Fase 2, paso 2.1, de `docs/funcionalidades/ANIO_LECTIVO.md`. Arregla el error
+que llegaba el 1 de enero de 2027: el calculo usaba el año del calendario, asi
+que ese dia solo existian cuotas de 2027 y la deuda de 2026 desaparecia.
+
+### Que cambia
+
+- `cartera.py`: el calculo de cuotas recibe el año (`anio`); sin el, el de
+  `hoy`, como antes. Un año que termino tiene todas sus cuotas vencidas, y
+  uno que no ha empezado, ninguna.
+- `cobros.py`: `obtener_tipos_pago` trae los conceptos del año activo, cada
+  uno con su año, en la misma consulta de siempre. Deudas, cartera y meses
+  vencidos cuentan las cuotas en ese año.
+- `pagos_controller.py`: los adelantos ofrecen meses del año del concepto.
+
+Ningun cambio visible mientras el año activo sea el del calendario. Ninguna
+ruta, esquema ni respuesta cambia, y no hay consultas nuevas: los conteos de
+`tests/test_reportes_query_counts.py` siguen iguales.
+
+### Pruebas
+
+`tests/test_anio_lectivo_cobros_por_anio.py` (12), dos de ellas comparan con
+una copia literal del codigo anterior en miles de combinaciones. Se
+invirtieron el caso B y los meses vencidos de enero en
+`tests/test_anio_lectivo_cobros_caracterizacion.py`. Tres pruebas que simulan
+la consulta de conceptos se ajustaron a su forma nueva. `scripts/verify.py`:
+1512 pasan, 0 fallan.
+
 ## 2026-10-01 - Año lectivo: el año pasa a ser obligatorio (migracion B)
 
 Fase 1, punto 3, de `docs/funcionalidades/ANIO_LECTIVO.md`. Con ella termina

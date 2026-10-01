@@ -58,8 +58,10 @@ class QueryCountingCursor:
             return [(column,) for column in TIPOS_PAGO_COLUMNS]
         if "from information_schema.tables" in query:
             return [(1,)]
-        if "from tipos_de_pagos" in query and "order by id" in query:
-            return [(4, "Pensión", 100, "unico", True, None, 12, 1, None, 0, None, 0)]
+        # Fase 2 del año lectivo: los conceptos del año activo traen su año
+        # en la misma consulta, asi que el conteo no cambia.
+        if "from tipos_de_pagos tp" in query and "order by tp.id" in query:
+            return [(4, "Pensión", 100, "unico", True, None, 12, 1, None, 0, None, 0, 2026)]
         if "select curso_id, tipo_pago_id, valor" in query:
             return [(3, 4, 100)]
         if "from tipos_pagos_cursos" in query:

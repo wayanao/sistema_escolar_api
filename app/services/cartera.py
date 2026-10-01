@@ -20,6 +20,8 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Optional
 
+from app.core.fechas import hoy_en_colombia
+
 
 @dataclass
 class ResultadoCuotas:
@@ -51,7 +53,7 @@ def listar_cuotas_vencidas(
 ) -> list[CuotaVencida]:
     """Devuelve las cuotas vencidas con su periodo y fecha limite real."""
     if hoy is None:
-        hoy = date.today()
+        hoy = hoy_en_colombia()
 
     frecuencia = max(1, int(frecuencia_meses or 1))
     gracia = max(0, int(dias_gracia or 0))
@@ -100,7 +102,7 @@ def calcular_cuotas_vencidas(
     Una cuota se considera vencida cuando `hoy >= fecha_vencimiento + dias_gracia`.
     """
     if hoy is None:
-        hoy = date.today()
+        hoy = hoy_en_colombia()
 
     cuotas_vencidas = listar_cuotas_vencidas(
         hoy=hoy,

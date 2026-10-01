@@ -1,13 +1,13 @@
 import re
-from datetime import date, datetime
+from datetime import date
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 import psycopg2
 from fastapi import HTTPException, status
 from psycopg2 import sql
 
 from app.config import settings
+from app.core.fechas import hoy_en_colombia
 from app.core.tenant_status import (
     TENANT_STATUSES,
     calculate_effective_tenant_status,
@@ -265,10 +265,10 @@ def crear_tenant_controller(data: dict, super_admin_id: int | None = None) -> di
         )
         super_admin_repository.crear_branding_inicial(cursor)
         # Año lectivo: el esquema base trae la tabla pero no la fila. El año
-        # sale de la hora de Bogota y no de la del servidor (UTC): un alta el
-        # 31 de diciembre por la noche ya seria del año siguiente en UTC.
+        # sale de la fecha de Colombia y no de la del servidor (UTC): un alta
+        # el 31 de diciembre por la noche ya seria del año siguiente en UTC.
         anios_lectivos_repository.crear_anio_activo_inicial(
-            cursor, datetime.now(ZoneInfo("America/Bogota")).year
+            cursor, hoy_en_colombia().year
         )
         super_admin_repository.copiar_plantillas_predefinidas(
             cursor,

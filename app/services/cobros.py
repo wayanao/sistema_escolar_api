@@ -8,6 +8,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Optional
 
+from app.core.fechas import hoy_en_colombia
 from app.services.cartera import calcular_deuda_concepto, listar_cuotas_vencidas
 
 
@@ -217,7 +218,7 @@ def obtener_pagos_por_concepto_estudiantes(
 
     pagos_aplicados = {}
     if tiene_aplicaciones:
-        mes_actual = (hoy or date.today()).replace(day=1)
+        mes_actual = (hoy or hoy_en_colombia()).replace(day=1)
         cursor.execute(
             """
             SELECT pa.estudiante_id, LOWER(TRIM(tp.nombre)), COALESCE(SUM(pa.monto), 0)
@@ -314,7 +315,7 @@ def obtener_cuotas_vencidas_estudiante(
     hoy: Optional[date] = None,
 ) -> list[dict]:
     """Lista saldos de cuotas mensuales aplicando pagos antiguos por FIFO."""
-    fecha_referencia = hoy or date.today()
+    fecha_referencia = hoy or hoy_en_colombia()
     conceptos = obtener_conceptos_mensuales_estudiante(cursor, estudiante_id)
     if not conceptos:
         return []

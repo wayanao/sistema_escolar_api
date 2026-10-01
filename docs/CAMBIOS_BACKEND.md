@@ -6,6 +6,41 @@ Ultima revision documental: 2026-09-30.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
+## 2026-09-30 - La deuda se calcula con la fecha de Colombia
+
+El usuario vio a las 22:50 de Bogota una deuda en el backend local y otra en
+produccion, que ya contaba vencida la cuota de octubre. Render corre en UTC:
+alli ya era 2026-10-01 03:50.
+
+### Causa
+
+`cartera.py` (dos sitios) y `cobros.py` (dos sitios) tomaban "hoy" de
+`date.today()`, la fecha del servidor. Cada noche, desde las 7 p. m. de
+Bogota, produccion calculaba deudas, cartera, mora y meses vencidos como si ya
+fuera el dia siguiente. Pagos si usaba la hora de Bogota, asi que las dos
+partes del sistema no coincidian.
+
+### Cambio
+
+- `app/core/fechas.py` (nuevo): `hoy_en_colombia()`, la unica fuente de "hoy"
+  para reglas del colegio. El reloj va en `_ahora_utc()` para poder fijarlo
+  en pruebas.
+- `cartera.py` y `cobros.py` lo usan en los cuatro sitios. Quien pasa `hoy`
+  explicito (pagos, pruebas) no cambia.
+- El alta de colegios usa la misma funcion para el año activo inicial.
+
+Fuera de este cambio, anotados en `docs/funcionalidades/ANIO_LECTIVO.md`: la
+fecha por defecto de egresos y prestamos, el estado SaaS del colegio y los
+`CURRENT_DATE` de la base.
+
+### Pruebas
+
+`tests/test_fechas_colombia.py` (10) fija el reloj a las 11 p. m. del 30 de
+septiembre en Bogota y exige 3 cuotas, no 4. Ademas cubre el cambio de dia a
+medianoche, el 31 de diciembre y una guardia para que cobros y cartera no
+vuelvan a usar el reloj del servidor. Se comprobo que la prueba falla con el
+comportamiento viejo. `scripts/verify.py`: 1488 pasan, 0 fallan.
+
 ## 2026-09-30 - Año lectivo: lo nuevo nace con su año
 
 Fase 1, punto 2, de `docs/funcionalidades/ANIO_LECTIVO.md`. Cierra la ventana

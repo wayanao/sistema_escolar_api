@@ -11,7 +11,6 @@ import re
 from datetime import date, datetime, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
-from zoneinfo import ZoneInfo
 
 import psycopg2
 import pytest
@@ -20,6 +19,7 @@ from fastapi.routing import APIRoute
 
 from app import main
 from app.controllers import auth_controller, super_admin_controller
+from app.core.fechas import hoy_en_colombia
 from app.core import super_admin
 from app.globals import tenant_schema_var
 from app.routes import super_admin as super_admin_routes
@@ -841,7 +841,7 @@ def test_alta_http_con_historial_y_auditoria_usa_catorce_operaciones_constantes(
         "tenant_nuevo",
         super_admin_controller.settings.DEFAULT_TENANT_SCHEMA,
     )
-    assert cursor.calls[8][1] == (datetime.now(ZoneInfo("America/Bogota")).year,)
+    assert cursor.calls[8][1] == (hoy_en_colombia().year,)
     assert cursor.calls[10][1] == (
         "Admin Nuevo",
         "admin@colegio.com",

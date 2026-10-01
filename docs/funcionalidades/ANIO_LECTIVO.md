@@ -1092,9 +1092,25 @@ cuando los profesores empiezan a ver sus clases nuevas.
   defecto de egresos y préstamos (`egreso_controller.py:54`,
   `prestamo_controller.py:46`, `routes/egresos.py:28`), el estado SaaS del
   colegio (`core/tenant_status.py:63`) y los `CURRENT_DATE` y
-  `CURRENT_TIMESTAMP` de la base, que en Neon corren en UTC. Arreglo
-  propuesto: una sola función "hoy en Colombia" para cobros y cartera,
-  antes o al empezar la fase 2. Pendiente del visto bueno del usuario.
+  `CURRENT_TIMESTAMP` de la base, que en Neon corren en UTC. **Corregido el
+  2026-09-30, con el visto bueno del usuario, en cobros, cartera y alta de
+  colegios** (`app/core/fechas.py: hoy_en_colombia`, con
+  `tests/test_fechas_colombia.py`) y, en el frontend, en el plan de clases,
+  préstamos, alta de colegio y nombre del CSV de cartera
+  (`frontend-react/src/utils/fechaColombia.js`). Siguen pendientes, de
+  menor impacto: la fecha por defecto de egresos y préstamos **en el
+  backend**, `core/tenant_status.py` y los `CURRENT_DATE` de la base.
+  Revisado también para profesores (2026-09-30): asistencia y planilla usan
+  la fecha que elige el profesor; el inicio del profesor ya calcula en
+  Bogotá (`dashboard_repository.py:34`); las horas de envío, revisión y
+  observador son `timestamptz` y el navegador las muestra en hora local. Sí
+  falla, en el frontend, **la fecha por defecto de un plan de clases nuevo**
+  (`frontend-react/src/pages/PlanDeClases.jsx:74`, `new
+  Date().toISOString()`): después de las 7 p. m. propone la fecha de mañana.
+  Mismo patrón en admin: `utils/nominaEgresosPrestamos/prestamos.js:22`
+  (fecha por defecto de un préstamo), `utils/dashboards/superAdmin.js:40` y
+  el nombre del CSV de `CarteraVencidaAdmin.jsx:50`. Pagos, egresos y
+  reportes ya calculan la fecha local bien (`utils/pagos/formatos.js`).
 - **La fecha de un pago no se valida.** `PagoCreate.fecha`
   (`app/schemas/pago.py:22`) acepta cualquier fecha, y en `tenant_2005` hay
   un pago con fecha del año 8 (fase 0). Ese pago no aparece en los reportes

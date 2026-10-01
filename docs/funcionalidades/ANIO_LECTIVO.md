@@ -1125,51 +1125,56 @@ cuando los profesores empiezan a ver sus clases nuevas.
   2027?~~ **Respondida el 2026-09-30: no.** Ver la regla operativa del
   Control.
 - Antes de la fase 2: ¿se corrige primero el hallazgo de conceptos
-  desactivados que ocultan deuda?
+  desactivados que ocultan deuda? Explicado al usuario el 2026-09-30, sin
+  decidir todavía. **Trampa a tener en cuenta:** en `tenant_2005` la
+  MATRICULA está inactiva y nadie la tiene pagada en el sistema (se cobró
+  por fuera antes de julio). Si desactivar dejara de borrar la deuda, los
+  174 estudiantes aparecerían debiendo la matrícula de 2026. Idea
+  planteada: "desactivar" deja de cobrar desde ese día, lo ya vencido se
+  conserva, y una acción aparte y explícita de "anular deuda" sirve para
+  casos como esa matrícula.
+- Antes de la fase 4 (frontend): en las pantallas que no dependen del año,
+  ¿el selector se esconde o se muestra desactivado?
 - Antes de la fase 6: ¿un estudiante del último grado que termina se marca
   "no continúa" (retirado) o hace falta un estado distinto como "egresado"?
 
 ## Entrega para el siguiente chat
 
-- Última acción terminada: **diseño y documentación**, 2026-09-29,
-  ampliado el 2026-09-30 con las materias (decisiones 12 y 13) y la fase 7
-  (decisiones 14 a 16). Ninguna fase iniciada; no hay código ni migraciones
-  de esta funcionalidad.
-- Fase 0, avance del 2026-09-30: caracterización de cobros terminada y
-  números de `tenant_2005` registrados (ver "Avance" y "Resultados" en la
-  fase 0). De esos números salieron la decisión 17 (conceptos por año) y el
-  reemplazo de la decisión 13 (un año cerrado se ve como al cerrarse).
-- **Fase 0 terminada el 2026-09-30**, con las pruebas de listados (ver el
-  segundo "Avance" en la fase 0). `verify.py`: 1451 pruebas pasan.
-- Fase 1, avance del 2026-09-30: migración A escrita con sus 17 pruebas
-  (ver "Avance" en la fase 1). `verify.py`: 1467 pasan y 1 falla esperada
-  (`test_esquema_base.py`).
-- Migración A probada en la rama de Neon el 2026-09-30: todo igual a lo
-  esperado (ver "Prueba en la rama de Neon" en la fase 1).
-- Producción confirmada intacta (0). El punto 5 se omitió por decisión del
-  usuario.
-- Migración A **aplicada en producción** el 2026-09-30 y esquema base
-  regenerado; `verify.py` en verde (1468). Ver "Aplicada en producción" en
-  la fase 1.
-- Fase 1, punto 2 (código que escribe el año) hecho el 2026-09-30 y
-  probado por el usuario en la rama de Neon, sin desplegar. `verify.py`:
-  1478 pasan.
-- Pendiente operativo, aparte de esta funcionalidad: el 2026-09-30 la cadena
-  de conexión de la rama, con su contraseña, quedó pegada en la
-  conversación. Las ramas de Neon heredan las contraseñas de la rama madre,
-  así que se recomendó al usuario rotar la de `neondb_owner` en producción
-  (Neon → Roles → Reset password, y enseguida actualizar `DATABASE_URL` en
-  Render y en el `.env` local). La rama `prueba-anio-lectivo` la **borró el
-  usuario el 2026-09-30**, con sus datos de prueba. Eso inutiliza esa cadena,
-  pero no la contraseña heredada de producción: la rotación sigue
-  pendiente.
-- Estado de git al 2026-09-30 (noche): 6 commits locales sin push (desde
-  la fase 0 hasta la migración A) y el código del punto 2 sin commit.
-  Producción (Render) sigue con el código anterior, que funciona con la
-  migración A porque sus columnas admiten nulos.
-- Siguiente acción exacta: el usuario hace commit y **push** del punto 2
-  (despliega el backend). Con eso se cierra la ventana: lo nuevo nace con
-  año. Después, **fase 1, punto 3: la migración B**, que se escribe, se
-  prueba en una rama de Neon y se aplica **solo después** de ese
-  despliegue.
+Estado al 2026-09-30, al cerrar el chat de origen. Si `git status` o el
+historial de git dicen otra cosa, gana lo que se pueda verificar.
+
+- **Hecho:** fase 0 completa; fase 1, puntos 1 y 2 (migración A aplicada en
+  producción en `tenant_colegio_1` y `tenant_2005`, esquema base
+  regenerado, y el código que escribe el año en todo lo nuevo, commit
+  `df53299`). Detalle y verificación de cada paso en los "Avance" de las
+  fases 0 y 1.
+- **Hecho aparte, misma noche:** el arreglo de la hora. Cobros, cartera y
+  alta de colegios usan la fecha de Colombia (`app/core/fechas.py`), y el
+  frontend propone fechas de Colombia (`src/utils/fechaColombia.js`). Ver
+  el hallazgo correspondiente y `docs/CAMBIOS_BACKEND.md`. Quedó listo para
+  commit en los dos repos.
+- **Pendiente del usuario:** commit del arreglo de la hora y **push** de los
+  dos repos. En el backend, el push despliega a producción los commits
+  acumulados (fase 0, migración A, código del año, hora). Es seguro, porque
+  la migración A ya está en producción. Además, **rotar la contraseña** de
+  `neondb_owner` (ver el punto siguiente).
+- Contraseña: la cadena de conexión de una rama, con su contraseña
+  heredada de producción, quedó pegada en el chat de origen. La rama ya se
+  borró, pero la contraseña de producción sigue siendo la misma: rotarla en
+  Neon (Roles → Reset password) y enseguida actualizar `DATABASE_URL` en
+  Render y en el `.env` local, a una hora tranquila.
+- Ojo operativo: el `.env` del backend local apunta a la rama `production`
+  de Neon. El backend local escribe en la base real. Las pruebas que crean
+  datos, y las migraciones, se hacen en una rama de Neon, con
+  `$env:DATABASE_URL` en esa terminal (gana sobre el `.env`). Para ver a
+  dónde apunta sin mostrar la contraseña: `([uri]$env:DATABASE_URL).Host`.
+  No pedirle al usuario que pegue cadenas de conexión.
+- **Siguiente acción exacta:** cuando el push del backend esté funcionando
+  en producción, **fase 1, punto 3: la migración B** (ver su descripción en
+  la fase 1: rellenar lo que quedó sin año, insertar el año activo si falta,
+  re-sincronizar matrículas y poner `NOT NULL`). Se escribe, se prueba en
+  una rama de Neon nueva y se aplica **solo después** del despliegue.
+  Luego, regenerar el esquema base.
+- Después: fase 2 (antes del 1 de noviembre), con la pregunta abierta de
+  conceptos desactivados resuelta antes de empezar.
 - Prompt para retomar: `docs/funcionalidades/PROMPT_CONTINUACION_ANIO_LECTIVO.md`.

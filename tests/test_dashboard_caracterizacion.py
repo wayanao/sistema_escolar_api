@@ -238,6 +238,7 @@ def test_el_dominio_tiene_su_repositorio():
     }
     assert "dashboard_repository" in repositorios
     assert repositorios == {
+        "anios_lectivos_repository",
         "asignaciones_repository",
         "asistencia_repository",
         "boletin_repository",

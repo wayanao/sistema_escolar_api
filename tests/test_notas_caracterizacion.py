@@ -171,6 +171,7 @@ def test_el_repositorio_de_notas_es_el_septimo():
     repositorios = {p.stem for p in (RAIZ / "app" / "repositories").glob("*_repository.py")}
 
     assert repositorios == {
+        "anios_lectivos_repository",
         "asignaciones_repository",
         "asistencia_repository",
         "boletin_repository",

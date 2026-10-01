@@ -1,4 +1,5 @@
 from app.database import get_connection
+from app.repositories.anios_lectivos_repository import ANIO_ACTIVO_ID_SQL
 from psycopg2 import IntegrityError
 
 ESTADOS_CURSO = {"activo", "inactivo"}
@@ -67,9 +68,10 @@ def crear_curso_controller(curso):
         _validar_nombre_obligatorio(nombre)
         _validar_curso_unico(cursor, nombre, jornada)
 
-        cursor.execute("""
-            INSERT INTO cursos (nombre, jornada, estado, nivel, director_grupo_id)
-            VALUES (%s, %s, %s, %s, %s)
+        # Fase 1 del año lectivo: el curso nace en el año activo.
+        cursor.execute(f"""
+            INSERT INTO cursos (nombre, jornada, estado, nivel, director_grupo_id, anio_lectivo_id)
+            VALUES (%s, %s, %s, %s, %s, {ANIO_ACTIVO_ID_SQL})
             RETURNING id
         """, (
             nombre,

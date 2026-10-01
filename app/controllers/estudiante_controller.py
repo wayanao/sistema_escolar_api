@@ -1,7 +1,7 @@
 import logging
 
 from app.database import get_connection, get_cursor
-from app.repositories import estudiantes_repository
+from app.repositories import anios_lectivos_repository, estudiantes_repository
 from app.services.cobros import calcular_deudas_estudiante
 
 logger = logging.getLogger(__name__)
@@ -69,6 +69,11 @@ def crear_estudiante_controller(est):
             est.condicion_diagnostico,
             estado
         ))
+        # Fase 1 del año lectivo: su matricula del año activo, en la misma
+        # transaccion.
+        anios_lectivos_repository.sincronizar_matricula_del_anio_activo(
+            cursor, estudiante_id
+        )
 
     return {
     "mensaje": "Estudiante creado correctamente",
@@ -198,6 +203,12 @@ def actualizar_estudiante_controller(est_id, est):
             estado,
             est_id
         ))
+        # Fase 1 del año lectivo: si cambio el curso, la matricula del año
+        # activo lo sigue, en la misma transaccion.
+        if resultado:
+            anios_lectivos_repository.sincronizar_matricula_del_anio_activo(
+                cursor, est_id
+            )
 
     if resultado:
         return {"mensaje": "Estudiante actualizado correctamente", "id": resultado[0]}

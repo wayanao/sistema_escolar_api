@@ -191,6 +191,7 @@ def test_el_repositorio_de_ventas_es_el_octavo():
     }
 
     assert repositorios == {
+        "anios_lectivos_repository",
         "asignaciones_repository",
         "asistencia_repository",
         "boletin_repository",

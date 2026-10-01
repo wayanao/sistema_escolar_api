@@ -149,10 +149,13 @@ def test_registrar_adelanto_crea_un_pago_y_una_aplicacion_por_mes(monkeypatch):
     inserts_aplicacion = [item for item in cursor.executed if "INSERT INTO pagos_aplicaciones" in item[0]]
     assert len(inserts_pago) == 1
     insert_pago_sql, insert_pago_params = inserts_pago[0]
+    # Fase 1 del año lectivo: el pago nace en el año activo, sin parametro nuevo.
     assert (
-        "INSERT INTO pagos (estudiante_id, monto, descripcion, fecha, tipo_pago)"
+        "INSERT INTO pagos (estudiante_id, monto, descripcion, fecha, tipo_pago, anio_lectivo_id)"
         in insert_pago_sql
     )
+    assert "(SELECT id FROM anios_lectivos WHERE estado = 'activo')" in insert_pago_sql
+    assert len(insert_pago_params) == 5
     assert "concepto_id" not in insert_pago_sql
     assert inserts_pago[0][1][1] == 600000.0
     assert insert_pago_params[2].startswith("Pensión · Pago adelantado:")

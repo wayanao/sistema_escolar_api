@@ -707,7 +707,13 @@ def test_el_pago_normal_persiste_concepto_en_descripcion_y_medio_en_tipo_pago(co
     query, params = next(
         (q, p) for q, p in cursor.escrituras if q.startswith("insert into pagos ")
     )
-    assert "(estudiante_id, venta_id, monto, descripcion, fecha, tipo_pago)" in query
+    # Fase 1 del año lectivo: el pago nace en el año activo, sin parametro nuevo.
+    assert (
+        "(estudiante_id, venta_id, monto, descripcion, fecha, tipo_pago, anio_lectivo_id)"
+        in query
+    )
+    assert "(select id from anios_lectivos where estado = 'activo')" in query.lower()
+    assert len(params) == 6
     assert params[3] == "Pension"
     assert params[5] == "Efectivo"
 

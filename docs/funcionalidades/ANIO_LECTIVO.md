@@ -4,8 +4,9 @@
 
 - Estado: **Fase 1 en curso.** Fase 0 terminada el 2026-09-30. Migración A
   **aplicada en producción** el 2026-09-30, tras probarla en una rama de
-  Neon; esquema base regenerado. Falta el código que escribe el año (punto
-  2) y la migración B. Ningún cambio de comportamiento visible.
+  Neon; esquema base regenerado. Código que escribe el año (punto 2)
+  **escrito y probado el 2026-09-30, sin desplegar**. Falta desplegarlo y la
+  migración B. Ningún cambio de comportamiento visible.
 - Tipo: Función nueva de producto. No es una capa del programa de
   modularización de `docs/modularizacion/` y no debe confundirse con una.
 - Repos afectados: este repo (`sistema_escolar_api`) y `frontend-react`. Ver
@@ -266,6 +267,15 @@ activo.
   `app/services/anio_lectivo.py`. La llaman crear y editar estudiante,
   matricular y activar el año. Ningún otro código hace
   `UPDATE estudiantes SET curso_id`.
+- **Mientras no exista un segundo año (fases 1 a 4), la copia va al revés**,
+  y así quedó implementado el 2026-09-30: el formulario de estudiantes sigue
+  editando `estudiantes.curso_id`, y
+  `sincronizar_matricula_del_anio_activo`
+  (`app/repositories/anios_lectivos_repository.py`) deja la matrícula del
+  año activo igual a ese curso. Con un solo año las dos direcciones dan lo
+  mismo. La dirección definitiva (matrícula → `estudiantes.curso_id`, con
+  `sincronizar_curso_vigente`) entra en la fase 5, cuando se pueda
+  matricular en un año distinto del activo.
 - Un estudiante nuevo matriculado solo en el año en preparación queda con
   `curso_id = NULL` hasta que ese año se active. Así no aparece en las
   pantallas de los profesores del año actual, y un profesor con clases
@@ -615,6 +625,8 @@ Nada cambia en pantalla ni en ninguna respuesta de la API.
    estudiante (matrícula del año activo + `sincronizar_curso_vigente`). Más
    el alta de colegios nuevos. Nuevo: `app/services/anio_lectivo.py` con
    `obtener_anio_activo` y `sincronizar_curso_vigente`, más sus pruebas.
+   **Hecho el 2026-09-30**, con un diseño más simple que este: ver el
+   "Avance" del punto 2 más abajo.
 3. **Migración B** `migrations/AAAAMMDD_anios_lectivos_obligatorio.sql`:
    vuelve a rellenar lo que se haya creado entre la migración A y el
    despliegue del código, y pone `NOT NULL` en las columnas nuevas. Debe
@@ -625,7 +637,14 @@ Nada cambia en pantalla ni en ninguna respuesta de la API.
    el código de hoy crea estudiantes sin matrícula y cambia cursos sin tocar
    la matrícula. B inserta las que faltan y corrige las que no coinciden
    (en esa ventana `estudiantes.curso_id` es la fuente de verdad). Al
-   terminar, la consulta de control del curso vigente debe dar 0.
+   terminar, la consulta de control del curso vigente debe dar 0. **B se
+   aplica después de desplegar el código del punto 2, nunca antes**: con
+   `NOT NULL`, el código viejo, que no escribe el año, fallaría al crear
+   cualquier curso, concepto, pago o anotación. Fuera de `app/` quedan dos
+   scripts que insertan sin año y fallarían después de B:
+   `scripts/copiar_observaciones_al_observador.py` (copia histórica ya
+   hecha) y `scripts/seed_tenant_performance.py` (datos de prueba). No se
+   tocan; si alguno se vuelve a usar, habrá que darle el año.
 4. Orden seguro, el de `docs/MIGRACIONES.md`: probar en rama de Neon →
    `apply_migration.py --dry-run` → aplicar A → regenerar el esquema base
    desde `tenant_colegio_1` → desplegar el código → aplicar B → regenerar el
@@ -769,10 +788,63 @@ usuario):
   desaparecen las dos reglas viejas.
 - `scripts/verify.py`: **1468 pasan, 0 fallan**. Se apagó la falla esperada
   de `test_esquema_base.py`. Ruff y `pip check` limpios.
+- **Confirmado después** (2026-09-30, por el usuario en el SQL Editor de
+  Neon con `production` elegido): `schema_migrations` registra la migración
+  en los **2** tenants. Además, el servidor de la rama `production` es el
+  mismo al que apunta el `.env` del backend. Ojo: eso quiere decir que el
+  backend local escribe en la base real; las pruebas que crean datos se
+  hacen en una rama.
 - Desde aquí la migración A **no se puede editar** (el runner guarda su
   checksum). Se abre la ventana descrita en el punto 3: hasta desplegar el
   código del punto 2, lo nuevo queda sin año y las matrículas pueden
   desincronizarse. Conviene cerrarla pronto.
+
+**Avance del 2026-09-30 — punto 2, código que escribe el año (sin
+desplegar):**
+
+- Diseño final, más simple que el planeado: en vez de un servicio que
+  primero lee el año activo y luego lo escribe, cada `INSERT` lleva la
+  subconsulta `(SELECT id FROM anios_lectivos WHERE estado = 'activo')`
+  como valor de `anio_lectivo_id`. Ni una consulta ni un parámetro más:
+  ninguna escritura hace un viaje extra a la base. Vive en una sola
+  constante, `ANIO_ACTIVO_ID_SQL`, de
+  `app/repositories/anios_lectivos_repository.py` (archivo nuevo), para no
+  repetir la regla en cuatro sitios.
+- Escrituras cambiadas: crear curso (`curso_controller.py`), crear concepto
+  de pago (`tipos_pagos_controller.py`), los dos `INSERT` de pagos
+  (`pagos_repository.py`, con nota en su docstring: la regla de "SQL
+  intacto" era para la refactorización y esto es un cambio de
+  comportamiento autorizado) y crear anotación del observador
+  (`observador_repository.py`).
+- Estudiantes: después de crear o editar (si existía),
+  `sincronizar_matricula_del_anio_activo` crea o corrige la matrícula del
+  año activo **en la misma transacción**. Es un solo `INSERT ... ON
+  CONFLICT DO UPDATE`. Nunca borra: el curso es obligatorio en el
+  formulario (`curso_id: int`). La dirección es estudiante → matrícula
+  mientras haya un solo año (ver "La regla del curso vigente").
+- Alta de colegios: `crear_anio_activo_inicial` siembra el año en curso como
+  `activo`, justo después del branding inicial. El año sale de la hora de
+  Bogotá, no de la del servidor (UTC).
+- No se tocó: las validaciones de nombre repetido (van en la fase 3), el
+  SQL del `INSERT`/`UPDATE` de `estudiantes` (la sincronización es una
+  llamada aparte) ni ninguna lectura.
+- Pruebas: archivo nuevo `tests/test_anio_lectivo_escrituras.py` (10). Se
+  ajustaron a propósito 9 pruebas que fijan comportamiento: cinco listas
+  exactas de repositorios (reconocen el archivo nuevo, como piden sus
+  propios comentarios), los dos `INSERT` de pagos (ahora además comprueban
+  la subconsulta y que los parámetros no cambiaron) y dos del alta de
+  colegios (de 13 a 14 operaciones, con el año en la octava, y el número de
+  líneas del controlador, de 330 a 337).
+- Verificación: `scripts/verify.py` → **1478 pasan, 0 fallan**; ruff y
+  `pip check` limpios; `git diff --check` limpio.
+- Límite de las pruebas automáticas: usan dobles de cursor. Por eso se
+  probó además contra una base real (siguiente punto).
+- **Probado en la rama de Neon el 2026-09-30** (la probó el usuario): con
+  el backend local apuntando a `prueba-anio-lectivo` (se comprobó que el
+  servidor no era el del `.env`) y el frontend local, crear y guardar
+  funcionó sin errores. Según el usuario, "está bien". No se pegó el
+  resultado de la consulta de años y matrículas; si quedara alguna
+  matrícula desincronizada, la migración B la corrige igual.
 
 ### Fase 2 — Cobros por año (dinero; antes del 1 de noviembre)
 
@@ -1003,6 +1075,26 @@ cuando los profesores empiezan a ver sus clases nuevas.
 - **Reusar un concepto "único" dentro del mismo año** no genera un cobro
   nuevo: el sistema no distingue una activación de otra. Si hace falta,
   requiere su propio diseño (por ejemplo, "ocurrencias" de un cobro).
+- **La deuda se calcula con la fecha del servidor (UTC), no con la de
+  Colombia.** Lo vio el usuario el 2026-09-30 a las 22:50 de Bogotá: el
+  backend local mostraba una deuda y producción otra, con la cuota de
+  octubre ya vencida. En Render ya era 2026-10-01 03:50 UTC. `cartera.py`
+  (líneas 54 y 103) y `cobros.py` (220 y 317) usan `date.today()`, que es
+  la fecha del servidor, mientras `pagos_controller.py` usa la hora de
+  Bogotá. Simulado con las funciones reales y la mensualidad de
+  `tenant_2005` (julio a noviembre), suponiendo vencimiento el día 1: el
+  30-sep da 3 cuotas ($600.000) y el 1-oct da 4 ($800.000). Efecto: **cada
+  noche desde las 7 p. m. de Bogotá**, producción calcula deudas, cartera y
+  mora como si ya fuera mañana. En el cambio de mes, la cuota siguiente
+  aparece vencida unas 5 horas antes. Para el año lectivo importa más: el
+  31 de diciembre desde las 7 p. m., producción calcularía como si fuera
+  2027. La misma familia de errores, con menos impacto: la fecha por
+  defecto de egresos y préstamos (`egreso_controller.py:54`,
+  `prestamo_controller.py:46`, `routes/egresos.py:28`), el estado SaaS del
+  colegio (`core/tenant_status.py:63`) y los `CURRENT_DATE` y
+  `CURRENT_TIMESTAMP` de la base, que en Neon corren en UTC. Arreglo
+  propuesto: una sola función "hoy en Colombia" para cobros y cartera,
+  antes o al empezar la fase 2. Pendiente del visto bueno del usuario.
 - **La fecha de un pago no se valida.** `PagoCreate.fecha`
   (`app/schemas/pago.py:22`) acepta cualquier fecha, y en `tenant_2005` hay
   un pago con fecha del año 8 (fase 0). Ese pago no aparece en los reportes
@@ -1043,11 +1135,25 @@ cuando los profesores empiezan a ver sus clases nuevas.
 - Migración A **aplicada en producción** el 2026-09-30 y esquema base
   regenerado; `verify.py` en verde (1468). Ver "Aplicada en producción" en
   la fase 1.
-- Siguiente acción exacta: **fase 1, punto 2**: el código que escribe el año
-  en toda fila nueva (curso, concepto de pago, pago, anotación del
-  observador, matrícula al crear o editar un estudiante) más el alta de
-  colegios nuevos, con `app/services/anio_lectivo.py`
-  (`obtener_anio_activo`, `sincronizar_curso_vigente`) y sus pruebas. Hay
-  una ventana abierta en producción (lo nuevo queda sin año) que conviene
-  cerrar pronto.
+- Fase 1, punto 2 (código que escribe el año) hecho el 2026-09-30 y
+  probado por el usuario en la rama de Neon, sin desplegar. `verify.py`:
+  1478 pasan.
+- Pendiente operativo, aparte de esta funcionalidad: el 2026-09-30 la cadena
+  de conexión de la rama, con su contraseña, quedó pegada en la
+  conversación. Las ramas de Neon heredan las contraseñas de la rama madre,
+  así que se recomendó al usuario rotar la de `neondb_owner` en producción
+  (Neon → Roles → Reset password, y enseguida actualizar `DATABASE_URL` en
+  Render y en el `.env` local). La rama `prueba-anio-lectivo` la **borró el
+  usuario el 2026-09-30**, con sus datos de prueba. Eso inutiliza esa cadena,
+  pero no la contraseña heredada de producción: la rotación sigue
+  pendiente.
+- Estado de git al 2026-09-30 (noche): 6 commits locales sin push (desde
+  la fase 0 hasta la migración A) y el código del punto 2 sin commit.
+  Producción (Render) sigue con el código anterior, que funciona con la
+  migración A porque sus columnas admiten nulos.
+- Siguiente acción exacta: el usuario hace commit y **push** del punto 2
+  (despliega el backend). Con eso se cierra la ventana: lo nuevo nace con
+  año. Después, **fase 1, punto 3: la migración B**, que se escribe, se
+  prueba en una rama de Neon y se aplica **solo después** de ese
+  despliegue.
 - Prompt para retomar: `docs/funcionalidades/PROMPT_CONTINUACION_ANIO_LECTIVO.md`.

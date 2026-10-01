@@ -8,7 +8,14 @@ validaciones y la traduccion de errores sigue siendo del controlador.
 Las cadenas SQL se conservan con su texto original, incluida la sangria, para
 que lo que recibe PostgreSQL no cambie. La unica excepcion autorizada esta
 anotada en `insertar_pago`.
+
+Cambio de comportamiento autorizado aparte, que no es una refactorizacion: la
+fase 1 del año lectivo (docs/funcionalidades/ANIO_LECTIVO.md) agrega a los dos
+INSERT de `pagos` la columna `anio_lectivo_id` con el año activo. Los
+parametros no cambian.
 """
+
+from app.repositories.anios_lectivos_repository import ANIO_ACTIVO_ID_SQL
 
 
 def insertar_pago(cursor, estudiante_id, venta_id, monto, descripcion, fecha, tipo_pago):
@@ -19,9 +26,9 @@ def insertar_pago(cursor, estudiante_id, venta_id, monto, descripcion, fecha, ti
     5.1 los unifico con autorizacion explicita del usuario. El flujo de tokens
     que recibe PostgreSQL es el mismo.
     """
-    cursor.execute("""
-                INSERT INTO pagos (estudiante_id, venta_id, monto, descripcion, fecha, tipo_pago)
-                VALUES (%s, %s, %s, %s, %s, %s)
+    cursor.execute(f"""
+                INSERT INTO pagos (estudiante_id, venta_id, monto, descripcion, fecha, tipo_pago, anio_lectivo_id)
+                VALUES (%s, %s, %s, %s, %s, %s, {ANIO_ACTIVO_ID_SQL})
                 RETURNING id
             """, (estudiante_id, venta_id, monto, descripcion, fecha, tipo_pago))
     return cursor.fetchone()[0]
@@ -33,9 +40,9 @@ def insertar_pago_adelantado(cursor, estudiante_id, monto, descripcion, fecha, t
     No admite `venta_id`: un adelanto no puede ser un cargo de inventario.
     """
     cursor.execute(
-        """
-            INSERT INTO pagos (estudiante_id, monto, descripcion, fecha, tipo_pago)
-            VALUES (%s, %s, %s, %s, %s)
+        f"""
+            INSERT INTO pagos (estudiante_id, monto, descripcion, fecha, tipo_pago, anio_lectivo_id)
+            VALUES (%s, %s, %s, %s, %s, {ANIO_ACTIVO_ID_SQL})
             RETURNING id
             """,
         (estudiante_id, monto, descripcion, fecha, tipo_pago),

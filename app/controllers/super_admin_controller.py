@@ -1,6 +1,7 @@
 import re
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import psycopg2
 from fastapi import HTTPException, status
@@ -14,7 +15,7 @@ from app.core.tenant_status import (
 )
 from app.database import get_connection
 from app.globals import tenant_schema_var
-from app.repositories import super_admin_repository
+from app.repositories import anios_lectivos_repository, super_admin_repository
 from app.security import get_password_hash, password_policy_errors
 
 
@@ -263,6 +264,12 @@ def crear_tenant_controller(data: dict, super_admin_id: int | None = None) -> di
             ),
         )
         super_admin_repository.crear_branding_inicial(cursor)
+        # Año lectivo: el esquema base trae la tabla pero no la fila. El año
+        # sale de la hora de Bogota y no de la del servidor (UTC): un alta el
+        # 31 de diciembre por la noche ya seria del año siguiente en UTC.
+        anios_lectivos_repository.crear_anio_activo_inicial(
+            cursor, datetime.now(ZoneInfo("America/Bogota")).year
+        )
         super_admin_repository.copiar_plantillas_predefinidas(
             cursor,
             sql.SQL(

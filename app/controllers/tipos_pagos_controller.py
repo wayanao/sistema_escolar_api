@@ -1,6 +1,7 @@
 import logging
 
 from app.database import get_connection
+from app.repositories.anios_lectivos_repository import ANIO_ACTIVO_ID_SQL
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +34,11 @@ def crear_tipo_pago(nombre, valor=0):
         if cursor.fetchone():
             raise TipoPagoDuplicadoError(f"Ya existe un tipo de pago llamado '{nombre_limpio}'.")
 
-        cursor.execute('INSERT INTO tipos_de_pagos (nombre, valor) VALUES (%s, %s) RETURNING id', (nombre, valor))
+        # Fase 1 del año lectivo: el concepto nace en el año activo.
+        cursor.execute(
+            f'INSERT INTO tipos_de_pagos (nombre, valor, anio_lectivo_id) VALUES (%s, %s, {ANIO_ACTIVO_ID_SQL}) RETURNING id',
+            (nombre, valor),
+        )
         data = cursor.fetchone()[0]
         conn.commit()
         return {'id': data, 'nombre': nombre, 'valor': valor}

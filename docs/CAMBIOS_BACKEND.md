@@ -6,6 +6,35 @@ Ultima revision documental: 2026-09-30.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
+## 2026-09-30 - Año lectivo: lo nuevo nace con su año
+
+Fase 1, punto 2, de `docs/funcionalidades/ANIO_LECTIVO.md`. Cierra la ventana
+abierta por la migracion A. Invisible: ninguna respuesta de la API cambia.
+
+### Que cambia
+
+- Crear un curso, un concepto de pago, un pago (normal o adelantado) o una
+  anotacion del observador escribe `anio_lectivo_id` con el año activo,
+  dentro del mismo `INSERT`, con la subconsulta
+  `ANIO_ACTIVO_ID_SQL` de `app/repositories/anios_lectivos_repository.py`.
+  Sin consultas ni parametros nuevos.
+- Crear o editar un estudiante deja su matricula del año activo igual a su
+  curso, en la misma transaccion (`sincronizar_matricula_del_anio_activo`).
+- Un colegio nuevo nace con el año en curso como activo (hora de Bogota).
+
+### Pruebas
+
+`scripts/verify.py`: 1478 pasan, 0 fallan; ruff y `pip check` limpios. Nuevo
+`tests/test_anio_lectivo_escrituras.py` (10). Nueve pruebas de
+caracterizacion se ajustaron a proposito: cinco listas exactas de
+repositorios, los dos `INSERT` de pagos y dos del alta de colegios (13 → 14
+operaciones; lineas del controlador 330 → 337).
+
+### Orden de despliegue
+
+Este codigo va **antes** de la migracion B, que vuelve obligatorio el año: el
+codigo anterior no lo escribe y fallaria con `NOT NULL`.
+
 ## 2026-09-30 - Año lectivo: fundacion en la base de datos (migracion A)
 
 Primer paso de la funcionalidad "Año lectivo"

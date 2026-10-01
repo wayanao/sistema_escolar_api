@@ -11,6 +11,7 @@ import re
 from datetime import date, datetime, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
+from zoneinfo import ZoneInfo
 
 import psycopg2
 import pytest
@@ -27,7 +28,7 @@ from app.routes import super_admin as super_admin_routes
 ROOT = Path(__file__).resolve().parents[1]
 OWN_PRODUCT_FILES = {
     "app/routes/super_admin.py": 64,
-    "app/controllers/super_admin_controller.py": 330,
+    "app/controllers/super_admin_controller.py": 337,
     "app/core/super_admin.py": 100,
     "app/repositories/super_admin_repository.py": 232,
 }
@@ -776,7 +777,7 @@ def test_estado_modificado_conserva_tres_consultas_orden_y_auditoria(monkeypatch
     assert (cursor.closed, connection.closed) == (1, 1)
 
 
-def test_alta_http_con_historial_y_auditoria_usa_trece_operaciones_constantes(
+def test_alta_http_con_historial_y_auditoria_usa_catorce_operaciones_constantes(
     monkeypatch,
 ):
     cursor = ProvisioningCursor()
@@ -815,7 +816,9 @@ def test_alta_http_con_historial_y_auditoria_usa_trece_operaciones_constantes(
     }
     assert contexts == ["public"]
     assert context_after == "tenant_outer"
-    assert len(cursor.calls) == 13
+    # Catorce desde la fase 1 del año lectivo: la octava siembra el año activo,
+    # dentro del schema nuevo (despues del SET search_path de la sexta).
+    assert len(cursor.calls) == 14
     assert "INSERT INTO public.colegios" in cursor.calls[0][0]
     assert "CREATE SCHEMA" in cursor.calls[1][0]
     assert "SET LOCAL search_path" in cursor.calls[2][0]
@@ -826,29 +829,32 @@ def test_alta_http_con_historial_y_auditoria_usa_trece_operaciones_constantes(
     assert "INSERT INTO public.schema_migrations" in cursor.calls[5][0]
     assert "SET search_path TO" in cursor.calls[6][0]
     assert "INSERT INTO institucion_branding" in cursor.calls[7][0]
-    assert "INSERT INTO plantilla_impresion" in cursor.calls[8][0]
-    assert "INSERT INTO usuarios" in cursor.calls[9][0]
-    assert cursor.calls[10][0] == "SET search_path TO public"
-    assert "INSERT INTO public.tenant_suscripciones" in cursor.calls[11][0]
-    assert "INSERT INTO public.tenant_eventos_auditoria" in cursor.calls[12][0]
+    assert "INSERT INTO anios_lectivos" in cursor.calls[8][0]
+    assert "'activo'" in cursor.calls[8][0]
+    assert "INSERT INTO plantilla_impresion" in cursor.calls[9][0]
+    assert "INSERT INTO usuarios" in cursor.calls[10][0]
+    assert cursor.calls[11][0] == "SET search_path TO public"
+    assert "INSERT INTO public.tenant_suscripciones" in cursor.calls[12][0]
+    assert "INSERT INTO public.tenant_eventos_auditoria" in cursor.calls[13][0]
     assert cursor.calls[0][1] == ("Colegio Nuevo", "nuevo", "tenant_nuevo")
     assert cursor.calls[5][1] == (
         "tenant_nuevo",
         super_admin_controller.settings.DEFAULT_TENANT_SCHEMA,
     )
-    assert cursor.calls[9][1] == (
+    assert cursor.calls[8][1] == (datetime.now(ZoneInfo("America/Bogota")).year,)
+    assert cursor.calls[10][1] == (
         "Admin Nuevo",
         "admin@colegio.com",
         "hash:Temporal123",
     )
-    assert cursor.calls[11][1] == (
+    assert cursor.calls[12][1] == (
         9,
         date(2026, 6, 1),
         date(2026, 7, 1),
         5,
         "Plan mensual",
     )
-    assert cursor.calls[12][1] == (
+    assert cursor.calls[13][1] == (
         9,
         "tenant_creado",
         "Colegio creado con admin inicial admin@colegio.com",

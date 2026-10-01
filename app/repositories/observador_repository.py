@@ -23,6 +23,8 @@ La materia es una **etiqueta copiada** en la propia fila, no una union con
 texto. Tambien ahorra la union.
 """
 
+from app.repositories.anios_lectivos_repository import ANIO_ACTIVO_ID_SQL
+
 # La consulta arranca en `estudiantes`, no en las anotaciones, y eso es lo unico
 # que hay que entender de este modulo.
 #
@@ -182,13 +184,14 @@ def crear_anotacion(
 
     El `commit` es de quien llama, como en los demas repositorios.
     """
+    # Fase 1 del año lectivo: la anotacion nace en el año activo.
     cursor.execute(
-        """
+        f"""
         INSERT INTO observador_anotaciones (
             estudiante_id, profesor_id, periodo,
-            conductual, cognitivo, lenguaje
+            conductual, cognitivo, lenguaje, anio_lectivo_id
         )
-        VALUES (%s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, {ANIO_ACTIVO_ID_SQL})
         RETURNING id
         """,
         (estudiante_id, profesor_id, periodo, conductual, cognitivo, lenguaje),

@@ -1,6 +1,6 @@
 # Migraciones
 
-Ultima revision documental: 2026-09-22.
+Ultima revision documental: 2026-10-01.
 
 ## Carpeta de migraciones
 
@@ -48,6 +48,8 @@ Archivos actuales:
 - `20260910_tipos_pagos_mes_final.sql`
 - `20260915_cursos_director_grupo.sql`
 - `20260921_listas_seguimiento.sql`
+- `20260930_anios_lectivos.sql`
+- `20261001_anios_lectivos_obligatorio.sql`
 - `README.md`
 
 Migraciones globales `public`:
@@ -675,3 +677,60 @@ Estado:
   de `test_esquema_base.py`.
 - A partir de aqui el archivo **no se puede editar**: el runner guarda su
   checksum. Cualquier cambio va en una migracion nueva (la B).
+
+## Migracion 20261001_anios_lectivos_obligatorio.sql
+
+Objetivo:
+
+- Año lectivo, fase 1, migracion B: cerrar la ventana que abrio la A. Rellena
+  lo que quedo sin año, pone al dia las matriculas del año activo y vuelve
+  obligatorio `anio_lectivo_id` en `cursos`, `tipos_de_pagos`, `matriculas`,
+  `pagos` y `observador_anotaciones`. Invisible: ninguna respuesta de la API
+  cambia.
+
+Que hace, en orden:
+
+- Freno: se detiene si hay matriculas sin año.
+- Inserta 2026 como año activo si el tenant no tiene ninguno (un colegio dado
+  de alta entre la A y el despliegue del codigo). Freno si aun asi no hay.
+- Rellena con el año activo las filas sin año de `cursos`, `tipos_de_pagos`,
+  `pagos` y `observador_anotaciones`, con la misma subconsulta que usa el
+  codigo (`ANIO_ACTIVO_ID_SQL`).
+- Pone al dia las matriculas del año activo con `estudiantes.curso_id`: crea
+  las que faltan y corrige las que no coinciden. No borra ninguna.
+- Freno: la consulta de control del curso vigente debe dar 0.
+- `SET NOT NULL` en las cinco columnas. No crea tablas, indices ni reglas.
+
+Orden de despliegue (obligatorio):
+
+- **Despues** de desplegar el codigo que escribe el año (commit `df53299`,
+  fase 1, punto 2), nunca antes: con `NOT NULL`, el codigo anterior fallaria
+  al crear cursos, conceptos, pagos o anotaciones.
+- Fuera de `app/`, `scripts/copiar_observaciones_al_observador.py` y
+  `scripts/seed_tenant_performance.py` insertan sin año y fallaran despues de
+  esta migracion. No se tocan; si se vuelven a usar, hay que darles el año.
+
+Detalle completo y lista de comprobacion (rama de Neon, Render, produccion):
+
+- `docs/funcionalidades/ANIO_LECTIVO.md`, fase 1, punto 3.
+
+Estado:
+
+- Escrita el 2026-10-01, con `tests/test_migracion_anios_lectivos_obligatorio.py`
+  (12 pruebas: 11 sobre el texto del SQL y 1 que exige que todo `INSERT` de
+  `app/` en esas cinco tablas escriba el año).
+- **Probada con exito el 2026-10-01 en una rama de Neon**
+  (`prueba-anio-lectivo-b`, copia de `production` con datos): OK en los dos
+  tenants, ningun freno salto, y la app local contra la rama creo y edito
+  sin errores.
+- **Aplicada en produccion el 2026-10-01** a `tenant_colegio_1` y
+  `tenant_2005` (OK en los dos), despues de confirmar en Render el
+  despliegue del codigo (`67b2d4b`, Live). Comprobacion en `tenant_2005`:
+  nada sin año, control del curso vigente en 0, las cinco columnas
+  `NOT NULL`. En la ventana no habia quedado nada sin año: B solo puso las
+  reglas.
+- Esquema base regenerado el mismo dia desde `tenant_colegio_1`: 34 tablas.
+  Solo cambian las cinco columnas a `NOT NULL` y la lista de incorporadas.
+- `scripts/verify.py`: **1500 pasan, 0 fallan**.
+- A partir de aqui el archivo **no se puede editar**: el runner guarda su
+  checksum.

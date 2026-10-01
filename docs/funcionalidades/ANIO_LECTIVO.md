@@ -2,11 +2,12 @@
 
 ## Control
 
-- Estado: **Fase 1 en curso.** Fase 0 terminada el 2026-09-30. Migración A
-  **aplicada en producción** el 2026-09-30, tras probarla en una rama de
-  Neon; esquema base regenerado. Código que escribe el año (punto 2)
-  **escrito y probado el 2026-09-30, sin desplegar**. Falta desplegarlo y la
-  migración B. Ningún cambio de comportamiento visible.
+- Estado: **Fase 1 terminada el 2026-10-01.** Fase 0 terminada el
+  2026-09-30. Migración A aplicada en producción el 2026-09-30; código que
+  escribe el año desplegado en Render (`67b2d4b`, Live, confirmado por el
+  usuario el 2026-10-01); migración B aplicada en producción el
+  2026-10-01, tras probarla en una rama de Neon. Esquema base regenerado.
+  Ningún cambio de comportamiento visible. Siguiente: fase 2.
 - Tipo: Función nueva de producto. No es una capa del programa de
   modularización de `docs/modularizacion/` y no debe confundirse con una.
 - Repos afectados: este repo (`sistema_escolar_api`) y `frontend-react`. Ver
@@ -31,7 +32,7 @@
   fase 1, el relleno los marcaría como 2026; entre la fase 1 y la 5 no existe
   todavía un año 2027 donde ponerlos. Al 2026-09-30 no hay ninguno
   registrado (confirmado por el usuario).
-- Última actualización: 2026-09-30.
+- Última actualización: 2026-10-01.
 
 ## Objetivo
 
@@ -645,6 +646,8 @@ Nada cambia en pantalla ni en ninguna respuesta de la API.
    `scripts/copiar_observaciones_al_observador.py` (copia histórica ya
    hecha) y `scripts/seed_tenant_performance.py` (datos de prueba). No se
    tocan; si alguno se vuelve a usar, habrá que darle el año.
+   **Aplicada en producción el 2026-10-01**: ver el "Avance" del punto 3
+   más abajo, con su lista de comprobación y los resultados.
 4. Orden seguro, el de `docs/MIGRACIONES.md`: probar en rama de Neon →
    `apply_migration.py --dry-run` → aplicar A → regenerar el esquema base
    desde `tenant_colegio_1` → desplegar el código → aplicar B → regenerar el
@@ -845,6 +848,193 @@ desplegar):**
   funcionó sin errores. Según el usuario, "está bien". No se pegó el
   resultado de la consulta de años y matrículas; si quedara alguna
   matrícula desincronizada, la migración B la corrige igual.
+
+**Avance del 2026-10-01 — punto 3, migración B escrita (sin aplicar):**
+
+- Antes de escribirla se confirmó con `git fetch` que el código del punto 2
+  ya está en `main` en GitHub (`df53299`, subido junto con `67b2d4b`). Que
+  Render lo haya desplegado no se ve desde el repo: lo confirma el usuario
+  antes de aplicar B en producción (punto 7 de la lista de abajo).
+- `migrations/20261001_anios_lectivos_obligatorio.sql`, en este orden:
+  1. Freno: si hay matrículas sin año, se detiene. Ningún camino del sistema
+     las crea; si aparece una, no se adivina su año.
+  2. Si el colegio no tiene año activo, inserta 2026 como activo (escrito,
+     no calculado, como en A). Freno si aun así no queda ninguno activo.
+  3. Rellena con el año activo lo que quedó sin año en `cursos`,
+     `tipos_de_pagos`, `pagos` y `observador_anotaciones`. Usa la misma
+     subconsulta que el código (`ANIO_ACTIVO_ID_SQL`): lo que el código
+     nuevo habría escrito.
+  4. Pone al día las matrículas del año activo con `estudiantes.curso_id`:
+     la misma sentencia de `sincronizar_matricula_del_anio_activo`, para
+     todos a la vez (retirados incluidos) y después de dar año a los cursos.
+     Crea las que faltan y corrige las que no coinciden; no borra ninguna ni
+     toca `estudiantes`.
+  5. Freno final: la consulta de control del curso vigente debe dar 0.
+  6. `SET NOT NULL` en `anio_lectivo_id` de las cinco tablas. Ninguna otra
+     columna cambia, y no se crean tablas, índices ni reglas.
+- Revisión previa del código, para que el `NOT NULL` no rompa nada: los
+  seis `INSERT` de `app/` en esas tablas (curso, concepto, los dos de pagos,
+  anotación y matrícula) ya escriben el año; `app/` nunca borra estudiantes,
+  cursos, conceptos, pagos ni anotaciones (eliminar es cambiar de estado), y
+  la app no aplica migraciones al arrancar.
+- `tests/test_migracion_anios_lectivos_obligatorio.py`, 12 pruebas. Once
+  leen el SQL, una por decisión: las cinco columnas y ninguna más, el mismo
+  año que escribe el código, 2026 escrito, el orden de los pasos, la
+  consulta de control como freno, nada borrado, ninguna estructura nueva y
+  reejecución. La duodécima lee el código: **todo `INSERT` de `app/` en esas
+  cinco tablas incluye `anio_lectivo_id`**. Es la que hace segura la
+  migración: si mañana alguien agrega una inserción sin año, falla en CI y
+  no en producción. Se comprobó que no son pruebas vacías: 16 versiones
+  dañadas de la migración y del código las hacen fallar, y
+  `pagos_aplicaciones` no se confunde con `pagos`.
+- Verificación: `scripts/verify.py` → **1499 pasan, 1 falla esperada**
+  (`test_esquema_base.py`, hasta aplicar B y regenerar la base, igual que
+  con A). Ruff y `pip check` limpios. `git diff --check` limpio. Corrido con
+  un `DATABASE_URL` inventado, como en CI, para que ninguna prueba pudiera
+  tocar la base real.
+- Límite: como con A, el SQL no se ha ejecutado nunca. Su validez se
+  comprueba en una rama de Neon (lista de abajo).
+- Bloqueo: `SET NOT NULL` bloquea cada tabla mientras revisa sus filas. Son
+  tablas chicas (la mayor, `pagos`, con unas 550 filas en `tenant_2005`) y
+  dura un momento, pero conviene aplicarla en producción a una hora en que
+  nadie esté registrando pagos.
+
+**Lista de comprobación de la migración B** (la hace el usuario; el
+asistente no se conecta a Neon ni a producción). Las cadenas de conexión
+llevan la contraseña: se escriben solo en la terminal, nunca en el chat.
+
+En una rama de Neon:
+
+1. En console.neon.tech → Branches → **Create branch** desde `production`,
+   con los datos actuales. Nombre sugerido: `prueba-anio-lectivo-b`.
+2. En la rama nueva → **Connect**: copiar la cadena de conexión **directa**
+   (con "Connection pooling" apagado; el host no debe tener `-pooler`).
+3. En el SQL Editor de Neon, **con la rama de prueba elegida**, correr la
+   consulta de abajo. Es el "antes": cuenta lo que quedó sin año en la
+   ventana. Para el colegio demo es opcional: la misma consulta cambiando
+   `tenant_2005` por `tenant_colegio_1`.
+4. En una terminal de PowerShell, en la carpeta del backend:
+
+   ```powershell
+   $env:DATABASE_URL = '<cadena directa de la rama>'
+   ([uri]$env:DATABASE_URL).Host
+   .\venv\Scripts\python.exe apply_migration.py migrations/20261001_anios_lectivos_obligatorio.sql --dry-run
+   .\venv\Scripts\python.exe apply_migration.py migrations/20261001_anios_lectivos_obligatorio.sql
+   ```
+
+   Van comillas simples: con dobles, PowerShell alteraría un `$` de la
+   contraseña. La segunda línea muestra el servidor sin la contraseña: debe
+   ser el de la rama. El `--dry-run` debe listar `tenant_colegio_1` y `tenant_2005` como
+   `PENDIENTE`, y la aplicación debe decir `OK` en los dos. Si un tenant
+   dice `FALLO` con el mensaje de un freno, ese tenant quedó como estaba:
+   copiar el mensaje aquí y no seguir.
+5. La misma consulta del punto 3, otra vez en la rama. Es el "después".
+6. Muy recomendado: probar la app local contra la rama. **Primero detener
+   el backend local que ya esté corriendo** (Ctrl+C en su terminal): si
+   sigue abierto, ocupa el puerto 8000, el nuevo no arranca y el frontend
+   seguiría hablando con el viejo, que usa el `.env` y escribe en
+   producción. Luego, en la terminal de la rama,
+   `.\venv\Scripts\python.exe -m uvicorn app.main:app --reload`, y
+   comprobar que dice `Uvicorn running on http://127.0.0.1:8000` sin
+   errores. La variable de la terminal gana sobre el `.env`
+   (`pydantic-settings` lee primero el entorno). En la app local: crear un
+   curso, un concepto de pago y un pago, y crear y editar un estudiante; con
+   un profesor de prueba, si lo hay, una anotación del observador (solo los
+   profesores pueden crearlas). Todo debe funcionar sin errores. Es la
+   única prueba real de que el código de hoy convive con la regla nueva. Al
+   terminar, Ctrl+C y cerrar la terminal.
+
+En producción, solo si todo lo anterior salió bien:
+
+7. En Render, comprobar que el último despliegue del backend está **Live**
+   con el commit `67b2d4b` o uno posterior. Si no, **no seguir**: con el
+   código viejo, crear cursos, conceptos, pagos o anotaciones fallaría.
+8. A una hora tranquila, en una terminal nueva, con la cadena **directa** de
+   `production`: el mismo `--dry-run` (debe decir `PENDIENTE` en los dos
+   tenants; si dijera `OMITIDA`, la terminal apunta a la rama) y luego la
+   aplicación.
+9. La consulta del punto 3 con `production` elegido en el SQL Editor.
+10. En esa misma terminal, regenerar el esquema base:
+    `.\venv\Scripts\python.exe scripts\generar_esquema_base.py --schema tenant_colegio_1`.
+    En su diff solo deben cambiar las cinco columnas, que pasan a `NOT
+    NULL`, y la lista de migraciones incorporadas, que suma la B. Luego
+    `scripts/verify.py` debe dar **0 fallas**, y se hace un solo commit con
+    migración, esquema base, pruebas y documentos.
+11. Pegar aquí los resultados de los puntos 3, 5 y 9.
+
+Consulta para los puntos 3, 5 y 9 (solo lectura):
+
+```sql
+SELECT 'años lectivos' AS dato, string_agg(anio || ' ' || estado, ', ') AS valor FROM tenant_2005.anios_lectivos
+UNION ALL SELECT 'cursos sin año / total', COUNT(*) FILTER (WHERE anio_lectivo_id IS NULL) || ' / ' || COUNT(*) FROM tenant_2005.cursos
+UNION ALL SELECT 'conceptos sin año / total', COUNT(*) FILTER (WHERE anio_lectivo_id IS NULL) || ' / ' || COUNT(*) FROM tenant_2005.tipos_de_pagos
+UNION ALL SELECT 'pagos sin año / total', COUNT(*) FILTER (WHERE anio_lectivo_id IS NULL) || ' / ' || COUNT(*) FROM tenant_2005.pagos
+UNION ALL SELECT 'observador sin año / total', COUNT(*) FILTER (WHERE anio_lectivo_id IS NULL) || ' / ' || COUNT(*) FROM tenant_2005.observador_anotaciones
+UNION ALL SELECT 'matrículas sin año / total', COUNT(*) FILTER (WHERE anio_lectivo_id IS NULL) || ' / ' || COUNT(*) FROM tenant_2005.matriculas
+UNION ALL SELECT 'estudiantes con curso', COUNT(curso_id)::text FROM tenant_2005.estudiantes
+UNION ALL SELECT 'control curso vigente (debe ser 0)', COUNT(*)::text FROM tenant_2005.estudiantes e LEFT JOIN tenant_2005.matriculas m ON m.estudiante_id = e.id AND m.anio_lectivo_id = (SELECT id FROM tenant_2005.anios_lectivos WHERE estado = 'activo') WHERE e.curso_id IS DISTINCT FROM m.curso_id
+UNION ALL SELECT 'columnas de año obligatorias', COUNT(*) FILTER (WHERE is_nullable = 'NO') || ' de 5' FROM information_schema.columns WHERE table_schema = 'tenant_2005' AND column_name = 'anio_lectivo_id' AND table_name IN ('cursos', 'tipos_de_pagos', 'matriculas', 'pagos', 'observador_anotaciones')
+UNION ALL SELECT 'migración B registrada en', COALESCE(string_agg(target_schema, ', '), 'ninguno') FROM public.schema_migrations WHERE migration_name = '20261001_anios_lectivos_obligatorio.sql';
+```
+
+Esperado **después** de B, en cada tenant: `2026 activo`; `0 / <total>` en
+cursos, conceptos, pagos, observador y matrículas; el total de matrículas
+igual a "estudiantes con curso"; control `0`; columnas obligatorias
+`5 de 5`; migración registrada en los dos tenants. **Antes** de B, lo normal
+es `0 de 5` y `ninguno`; los "sin año" y el control pueden no ser 0 si en la
+ventana se crearon cosas o se editaron estudiantes, y eso es justo lo que B
+corrige.
+
+**Probada y aplicada el 2026-10-01** (la corrió el usuario, paso a paso):
+
+- Rama de Neon `prueba-anio-lectivo-b`, copia de `production` con datos.
+  Su servidor (`ep-super-hall-...`) se comprobó distinto del de producción
+  (`ep-late-smoke-aip41j6x`) y sin `-pooler`.
+- "Antes", en la rama: nada sin año en ninguna tabla (12 cursos, 2
+  conceptos, 552 pagos, 209 anotaciones, 174 matrículas para 174
+  estudiantes con curso), control 0, `0 de 5`, B en `ninguno`. Los 6 pagos
+  nuevos desde la migración A (546 → 552) ya tenían año: los escribió el
+  código nuevo. La ventana no dejó nada que rellenar, y B solo volvió
+  obligatorias las columnas.
+- En la rama: `--dry-run` `PENDIENTE` en los dos tenants; aplicación `OK`
+  en los dos, sin que saltara ningún freno. Fue la primera ejecución real
+  del SQL. "Después": los mismos números, `5 de 5` y B registrada en
+  `tenant_colegio_1` y `tenant_2005`.
+- App local contra la rama, con el backend viejo detenido antes (se
+  comprobó el puerto 8000 libre y luego ocupado por el nuevo): el usuario
+  creó un curso, un concepto y un pago, y creó y editó un estudiante, sin
+  errores. Consulta de comprobación: en la rama, `PRUEBA B` existe (1
+  curso, 1 concepto, 1 estudiante en `tenant_2005`), los pagos pasaron a
+  553 y el control siguió en 0 en los dos tenants. En `production`,
+  `PRUEBA B` no existe y los pagos siguen en 552: nada de la prueba llegó
+  a producción. La anotación del observador (opcional, necesita un
+  profesor) no se comprobó con consulta.
+- Render: el último despliegue es `67b2d4b`, Auto-Deploy, 1m01s, **Live**.
+- Producción (`ep-late-smoke-aip41j6x`, endpoint directo): `--dry-run`
+  `PENDIENTE` en los dos tenants; aplicación `OK` en los dos. Comprobación
+  en `tenant_2005`: `2026 activo`, nada sin año (12 / 2 / 552 / 209 / 174),
+  control 0, `5 de 5`, B registrada en los dos tenants.
+- Esquema base regenerado desde `tenant_colegio_1`: 34 tablas, 1 función,
+  1 disparador. Revisado el diff: solo las cinco columnas pasan a `NOT
+  NULL`, la B entra en la lista de incorporadas (39 → 40) y cambia la
+  fecha.
+- `scripts/verify.py`: **1500 pasan, 0 fallan**. Se apagó la falla
+  esperada de `test_esquema_base.py`. Ruff y `pip check` limpios; `git
+  diff --check` limpio.
+- Desde aquí la migración B **no se puede editar**: el runner guarda su
+  checksum.
+- Ojo: para aplicarla, el usuario cambió el `DATABASE_URL` del `.env` local
+  al endpoint directo, sin `-pooler`. Conviene devolverlo a `-pooler`: así
+  `apply_migration.py` se niega a correr si alguien olvida poner
+  `$env:DATABASE_URL` en la terminal, en vez de aplicar directo en
+  producción.
+
+Con esto la **fase 1 queda terminada**:
+- El control da 0 en los dos tenants: lo exige el freno final de B, que
+  pasó en los dos, y lo confirma la consulta de `tenant_2005`.
+- Las pruebas de la fase 0 siguen iguales y `verify.py` pasa.
+- La app local se usó contra la rama con B aplicada, sin errores ni
+  cambios visibles reportados.
 
 ### Fase 2 — Cobros por año (dinero; antes del 1 de noviembre)
 
@@ -1140,24 +1330,30 @@ cuando los profesores empiezan a ver sus clases nuevas.
 
 ## Entrega para el siguiente chat
 
-Estado al 2026-09-30, al cerrar el chat de origen. Si `git status` o el
-historial de git dicen otra cosa, gana lo que se pueda verificar.
+Estado al 2026-10-01. Si `git status` o el historial de git dicen otra
+cosa, gana lo que se pueda verificar.
 
-- **Hecho:** fase 0 completa; fase 1, puntos 1 y 2 (migración A aplicada en
-  producción en `tenant_colegio_1` y `tenant_2005`, esquema base
-  regenerado, y el código que escribe el año en todo lo nuevo, commit
-  `df53299`). Detalle y verificación de cada paso en los "Avance" de las
-  fases 0 y 1.
-- **Hecho aparte, misma noche:** el arreglo de la hora. Cobros, cartera y
+- **Hecho:** fase 0 y **fase 1 completas**. Migración A (2026-09-30) y
+  migración B (2026-10-01) aplicadas en producción en `tenant_colegio_1` y
+  `tenant_2005`; el código que escribe el año (`df53299`) está desplegado
+  en Render (`67b2d4b`, Live); esquema base regenerado tras cada una.
+  Detalle y verificación de cada paso en los "Avance" de las fases 0 y 1.
+- **Hecho aparte, la noche del 2026-09-30:** el arreglo de la hora
+  (`2e77634` en este repo, `033c042` en el frontend). Cobros, cartera y
   alta de colegios usan la fecha de Colombia (`app/core/fechas.py`), y el
   frontend propone fechas de Colombia (`src/utils/fechaColombia.js`). Ver
-  el hallazgo correspondiente y `docs/CAMBIOS_BACKEND.md`. Quedó listo para
-  commit en los dos repos.
-- **Pendiente del usuario:** commit del arreglo de la hora y **push** de los
-  dos repos. En el backend, el push despliega a producción los commits
-  acumulados (fase 0, migración A, código del año, hora). Es seguro, porque
-  la migración A ya está en producción. Además, **rotar la contraseña** de
-  `neondb_owner` (ver el punto siguiente).
+  el hallazgo correspondiente y `docs/CAMBIOS_BACKEND.md`.
+- **Pendiente del usuario:**
+  - Commit y push de la migración B: migración, pruebas, esquema base y
+    documentos, en un solo commit. El push despliega, pero no cambia el
+    funcionamiento: no trae código nuevo de la app.
+  - Commit del documento del frontend.
+  - Devolver el `DATABASE_URL` del `.env` local al endpoint `-pooler` y
+    cerrar la terminal que tiene `$env:DATABASE_URL` de producción (ver el
+    "Ojo" de la migración B, en la fase 1).
+  - Borrar la rama `prueba-anio-lectivo-b` de Neon, si no se borró sola.
+  - Si no se hizo todavía, **rotar la contraseña** de `neondb_owner` (ver
+    el punto siguiente).
 - Contraseña: la cadena de conexión de una rama, con su contraseña
   heredada de producción, quedó pegada en el chat de origen. La rama ya se
   borró, pero la contraseña de producción sigue siendo la misma: rotarla en
@@ -1168,13 +1364,16 @@ historial de git dicen otra cosa, gana lo que se pueda verificar.
   datos, y las migraciones, se hacen en una rama de Neon, con
   `$env:DATABASE_URL` en esa terminal (gana sobre el `.env`). Para ver a
   dónde apunta sin mostrar la contraseña: `([uri]$env:DATABASE_URL).Host`.
-  No pedirle al usuario que pegue cadenas de conexión.
-- **Siguiente acción exacta:** cuando el push del backend esté funcionando
-  en producción, **fase 1, punto 3: la migración B** (ver su descripción en
-  la fase 1: rellenar lo que quedó sin año, insertar el año activo si falta,
-  re-sincronizar matrículas y poner `NOT NULL`). Se escribe, se prueba en
-  una rama de Neon nueva y se aplica **solo después** del despliegue.
-  Luego, regenerar el esquema base.
-- Después: fase 2 (antes del 1 de noviembre), con la pregunta abierta de
-  conceptos desactivados resuelta antes de empezar.
+  No pedirle al usuario que pegue cadenas de conexión. El `.env` debe
+  quedar en el endpoint `-pooler`: así `apply_migration.py` se niega a
+  correr si falta `$env:DATABASE_URL`. Antes de probar la app contra una
+  rama, detener el backend local que esté corriendo; si no, el frontend
+  sigue hablando con el que apunta a producción.
+- **Siguiente acción exacta:** **fase 2, cobros por año** (zona sensible:
+  dinero), con fecha límite antes del 1 de noviembre y, en todo caso,
+  antes del 1 de enero de 2027. Antes de empezarla, el usuario tiene que
+  responder la pregunta abierta de los conceptos desactivados que ocultan
+  deuda (ver "Preguntas abiertas", con su trampa de la matrícula de
+  `tenant_2005`). No se infiere ni se elige por él, y la fase no se empieza
+  sin su autorización explícita.
 - Prompt para retomar: `docs/funcionalidades/PROMPT_CONTINUACION_ANIO_LECTIVO.md`.

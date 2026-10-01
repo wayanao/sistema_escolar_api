@@ -1,10 +1,39 @@
 # Cambios Backend
 
-Ultima revision documental: 2026-09-30.
+Ultima revision documental: 2026-10-01.
 
 ## Proposito
 
 Bitacora de cambios documentales y tecnicos observables del backend.
+
+## 2026-10-01 - Año lectivo: el año pasa a ser obligatorio (migracion B)
+
+Fase 1, punto 3, de `docs/funcionalidades/ANIO_LECTIVO.md`. Con ella termina
+la fase 1. Invisible: ninguna pantalla ni respuesta de la API cambia.
+
+### Que se aplico
+
+`migrations/20261001_anios_lectivos_obligatorio.sql`, aplicada en produccion
+a `tenant_colegio_1` y `tenant_2005` despues de probarla en una rama de Neon,
+tambien con la app local. Rellena con el año activo lo que quedo sin año
+entre la migracion A y el despliegue del codigo (no habia nada), pone al dia
+las matriculas del año activo con el curso de cada estudiante y vuelve
+obligatorio `anio_lectivo_id` en `cursos`, `tipos_de_pagos`, `matriculas`,
+`pagos` y `observador_anotaciones`. Tres frenos revierten el tenant si algo
+no cuadra; ninguno salto. No borra nada. Esquema base regenerado.
+
+### Pruebas
+
+`tests/test_migracion_anios_lectivos_obligatorio.py` (12), incluida una que
+exige que todo `INSERT` de `app/` en esas tablas escriba el año. Se
+comprobaron con 16 versiones dañadas de la migracion y del codigo.
+`scripts/verify.py`: 1500 pasan, 0 fallan.
+
+### Orden de despliegue
+
+Se aplico despues de confirmar en Render el despliegue del codigo que escribe
+el año (`67b2d4b`, Live). El detalle de la prueba en la rama y en produccion
+esta en el documento de la funcionalidad, fase 1.
 
 ## 2026-09-30 - La deuda se calcula con la fecha de Colombia
 

@@ -1,6 +1,6 @@
 -- Esquema base de un tenant. ARCHIVO GENERADO, no editar a mano.
 --
--- Extraido de tenant_colegio_1 el 2026-09-30 con
+-- Extraido de tenant_colegio_1 el 2026-10-01 con
 -- scripts/generar_esquema_base.py. Para rehacerlo, aplica antes la
 -- migracion nueva a ese schema y vuelve a ejecutar el script.
 --
@@ -11,7 +11,7 @@
 -- No usar apply_migration.py con este archivo: es para dar de alta un
 -- tenant nuevo, no para los existentes, que ya tienen estas tablas.
 --
--- MIGRACIONES INCORPORADAS (39):
+-- MIGRACIONES INCORPORADAS (40):
 --   20260429_pagos_tipo_pago_largo.sql
 --   20260429_plan_de_clases_reportes.sql
 --   20260509_branding_plantillas_impresion.sql
@@ -51,6 +51,7 @@
 --   20260915_cursos_director_grupo.sql
 --   20260921_listas_seguimiento.sql
 --   20260930_anios_lectivos.sql
+--   20261001_anios_lectivos_obligatorio.sql
 -- FIN MIGRACIONES INCORPORADAS
 
 CREATE TABLE IF NOT EXISTS anios_lectivos (
@@ -119,7 +120,7 @@ CREATE TABLE IF NOT EXISTS cursos (
     estado character varying(30),
     nivel character varying(20),
     director_grupo_id integer,
-    anio_lectivo_id integer,
+    anio_lectivo_id integer NOT NULL,
     CONSTRAINT chk_cursos_nivel CHECK (((nivel IS NULL) OR ((nivel)::text = ANY ((ARRAY['preescolar'::character varying, 'primaria'::character varying])::text[])))),
     CONSTRAINT cursos_pkey PRIMARY KEY (id),
     CONSTRAINT cursos_id_anio_lectivo_key UNIQUE (id, anio_lectivo_id)
@@ -244,7 +245,7 @@ CREATE TABLE IF NOT EXISTS matriculas (
     estudiante_id integer,
     curso_id integer,
     anio integer,
-    anio_lectivo_id integer,
+    anio_lectivo_id integer NOT NULL,
     CONSTRAINT matriculas_pkey PRIMARY KEY (id)
 );
 
@@ -309,7 +310,7 @@ CREATE TABLE IF NOT EXISTS observador_anotaciones (
     editada_por integer,
     materia character varying(100) DEFAULT ''::character varying NOT NULL,
     observacion_origen_id integer,
-    anio_lectivo_id integer,
+    anio_lectivo_id integer NOT NULL,
     CONSTRAINT observador_anotaciones_periodo_check CHECK (((periodo >= 1) AND (periodo <= 4))),
     CONSTRAINT observador_anotaciones_pkey PRIMARY KEY (id),
     CONSTRAINT observador_anotaciones_observacion_origen_id_key UNIQUE (observacion_origen_id)
@@ -329,7 +330,7 @@ CREATE TABLE IF NOT EXISTS pagos (
     fecha_anulacion timestamp without time zone,
     anulado_por integer,
     venta_id integer,
-    anio_lectivo_id integer,
+    anio_lectivo_id integer NOT NULL,
     CONSTRAINT pagos_pkey PRIMARY KEY (id)
 );
 
@@ -474,7 +475,7 @@ CREATE TABLE IF NOT EXISTS tipos_de_pagos (
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     mes_final smallint DEFAULT 12 NOT NULL,
-    anio_lectivo_id integer,
+    anio_lectivo_id integer NOT NULL,
     CONSTRAINT chk_dia_limite_mes CHECK (((dia_limite_mes IS NULL) OR ((dia_limite_mes >= 1) AND (dia_limite_mes <= 31)))),
     CONSTRAINT chk_mes_final CHECK (((mes_final >= 1) AND (mes_final <= 12))),
     CONSTRAINT chk_mes_inicial CHECK (((mes_inicial IS NULL) OR ((mes_inicial >= 1) AND (mes_inicial <= 12)))),

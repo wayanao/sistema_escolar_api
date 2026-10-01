@@ -1,10 +1,52 @@
 # Cambios Backend
 
-Ultima revision documental: 2026-09-24.
+Ultima revision documental: 2026-09-30.
 
 ## Proposito
 
 Bitacora de cambios documentales y tecnicos observables del backend.
+
+## 2026-09-30 - Año lectivo: fundacion en la base de datos (migracion A)
+
+Primer paso de la funcionalidad "Año lectivo"
+(`docs/funcionalidades/ANIO_LECTIVO.md`, fase 1). Invisible: ninguna pantalla
+ni respuesta de la API cambia.
+
+### Que se aplico
+
+`migrations/20260930_anios_lectivos.sql`, aplicada en produccion a
+`tenant_colegio_1` y `tenant_2005` despues de probarla en una rama de Neon:
+
+- tabla `anios_lectivos`, con 2026 como año activo;
+- `anio_lectivo_id` en `cursos`, `tipos_de_pagos`, `matriculas`, `pagos` y
+  `observador_anotaciones`, relleno con 2026 y todavia nullable;
+- 174 matriculas de 2026 en `tenant_2005`, una por estudiante con curso;
+- las reglas de nombre unico de cursos y conceptos de pago pasan a ser por
+  año.
+
+Esquema base regenerado desde `tenant_colegio_1` (34 tablas).
+
+### Por que asi
+
+El año cuelga del curso: notas, asistencia, boletines y horarios ya dependen
+de un curso, asi que no se tocan. Llevan año solo los cursos y lo que no
+depende de un curso. Detalle de cada decision en el documento de la
+funcionalidad y en `docs/MIGRACIONES.md`.
+
+### Ventana abierta hasta desplegar el codigo de la fase 1
+
+El codigo actual no escribe el año. Hasta desplegar el codigo nuevo, los
+cursos, conceptos, pagos y anotaciones que se creen quedan sin año, y crear un
+estudiante o cambiarle el curso no actualiza su matricula. No se nota en
+pantalla, porque nada lee esas columnas todavia. La migracion B los corrige
+antes de volver obligatorio el año.
+
+### Pruebas
+
+`scripts/verify.py`: 1468 pasan, 0 fallan; ruff y `pip check` limpios.
+Nuevas: `tests/test_migracion_anios_lectivos.py` (17, sobre el texto del SQL)
+y, de la fase 0, `test_anio_lectivo_cobros_caracterizacion.py` (11) y
+`test_anio_lectivo_listados_caracterizacion.py` (6).
 
 ## 2026-09-24 - Una asignatura inactiva ya no aparece en el boletin
 

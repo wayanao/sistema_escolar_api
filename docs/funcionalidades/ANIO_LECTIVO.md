@@ -2,10 +2,10 @@
 
 ## Control
 
-- Estado: **Fase 0 terminada (2026-09-30).** Pruebas de caracterización de
-  cobros y de listados, y números de producción de `tenant_2005` (de ahí
-  salieron la decisión 17 y el reemplazo de la 13). Ningún cambio de
-  comportamiento todavía. Siguiente: fase 1, con visto bueno del usuario.
+- Estado: **Fase 1 en curso.** Fase 0 terminada el 2026-09-30. Migración A
+  **aplicada en producción** el 2026-09-30, tras probarla en una rama de
+  Neon; esquema base regenerado. Falta el código que escribe el año (punto
+  2) y la migración B. Ningún cambio de comportamiento visible.
 - Tipo: Función nueva de producto. No es una capa del programa de
   modularización de `docs/modularizacion/` y no debe confundirse con una.
 - Repos afectados: este repo (`sistema_escolar_api`) y `frontend-react`. Ver
@@ -617,7 +617,15 @@ Nada cambia en pantalla ni en ninguna respuesta de la API.
    `obtener_anio_activo` y `sincronizar_curso_vigente`, más sus pruebas.
 3. **Migración B** `migrations/AAAAMMDD_anios_lectivos_obligatorio.sql`:
    vuelve a rellenar lo que se haya creado entre la migración A y el
-   despliegue del código, y pone `NOT NULL` en las columnas nuevas.
+   despliegue del código, y pone `NOT NULL` en las columnas nuevas. Debe
+   cubrir también un colegio dado de alta en esa ventana: el esquema base
+   trae la tabla pero no la fila del año (es solo estructura), así que B
+   inserta el año activo si falta antes de rellenar. Y debe **re-sincronizar
+   las matrículas del año activo** con `estudiantes.curso_id`: en la ventana,
+   el código de hoy crea estudiantes sin matrícula y cambia cursos sin tocar
+   la matrícula. B inserta las que faltan y corrige las que no coinciden
+   (en esa ventana `estudiantes.curso_id` es la fuente de verdad). Al
+   terminar, la consulta de control del curso vigente debe dar 0.
 4. Orden seguro, el de `docs/MIGRACIONES.md`: probar en rama de Neon →
    `apply_migration.py --dry-run` → aplicar A → regenerar el esquema base
    desde `tenant_colegio_1` → desplegar el código → aplicar B → regenerar el
@@ -627,6 +635,144 @@ Nada cambia en pantalla ni en ninguna respuesta de la API.
    los dos tenants, todas las pruebas de la fase 0 siguen iguales,
    `verify.py` pasa y el usuario confirma en local que no cambió nada
    visible.
+
+**Avance del 2026-09-30 — migración A escrita (punto 1), no aplicada:**
+
+- `migrations/20260930_anios_lectivos.sql`. Hace lo descrito en "Diseño de
+  datos" para la fase 1, con dos frenos al estilo de
+  `20260825_observaciones_claves_foraneas.sql`: al inicio, si `matriculas`
+  tiene filas viejas sin año; al final, si queda en `cursos` o
+  `tipos_de_pagos` una regla de unicidad sin año (por si un tenant viejo la
+  tiene con otro nombre y el `DROP ... IF EXISTS` no la encuentra). En los
+  dos casos el runner revierte ese tenant entero.
+- Antes de escribirla se verificó en el código que nada depende de lo que
+  cambia: ningún código usa por nombre los dos índices reemplazados; los
+  `ON CONFLICT` son de otras tablas; el único `SELECT *` sobre una tabla
+  tocada (`tipos_de_pagos`) arma su JSON solo con columnas conocidas.
+- `tests/test_migracion_anios_lectivos.py`, 17 pruebas sobre el texto del
+  SQL, una por decisión: año 2026 literal, las cinco tablas exactas, ninguna
+  tabla académica tocada, `estudiantes.curso_id` intacto, columnas que
+  admiten nulos, nada borrado, solo las dos reglas reemplazadas, la expresión
+  original de cursos conservada, matrículas con clave compuesta, frenos y
+  reejecución. Más una que confirma que la respuesta de tipos de pago no
+  expone la columna nueva. Se comprobó que no son pruebas vacías:
+  mutaciones del SQL (poner `NOT NULL`, calcular el año con la fecha, tocar
+  `notas_detalle`) las hacen fallar.
+- Límite: el SQL **no se ha ejecutado nunca**. En el equipo no hay
+  PostgreSQL, y el `.env` apunta a una base remota. Su validez se comprueba
+  en la rama de Neon (lista de abajo).
+- Verificación: `scripts/verify.py` → **1467 pasan, 1 falla esperada**
+  (`test_esquema_base.py`, hasta aplicar y regenerar la base, igual que en
+  listas de seguimiento). Ruff y `pip check` limpios. Registrada en
+  `docs/MIGRACIONES.md`.
+- Encontrado de paso, para la fase 3: las validaciones de nombre repetido
+  del código, `_validar_curso_unico` (`curso_controller.py:25`) y la de
+  `crear_tipo_pago` (`tipos_pagos_controller.py:24`), buscan por nombre en
+  todo el colegio, sin año. Con un solo año da igual. Hay que limitarlas al
+  año antes de la fase 5, porque si no la copia de cursos y conceptos a 2027
+  fallaría como "repetido".
+
+**Lista de comprobación en una rama de Neon** (la hace el usuario; el
+asistente no se conecta a Neon):
+
+1. En console.neon.tech → Branches → **Create branch** desde la rama
+   principal, con los datos actuales. Nombre sugerido: `prueba-anio-lectivo`.
+2. En la rama nueva → **Connect**: copiar la cadena de conexión **directa**
+   (con "Connection pooling" apagado; el host no debe tener `-pooler`).
+   Comprobar que el host (`ep-...`) es distinto al de producción.
+3. En una terminal de PowerShell, en la carpeta del backend. La variable
+   solo vive en esa ventana y gana sobre el `.env`, porque `load_dotenv` no
+   la pisa:
+
+   ```powershell
+   $env:DATABASE_URL = "<cadena directa de la rama>"
+   .\venv\Scripts\python.exe apply_migration.py migrations/20260930_anios_lectivos.sql --dry-run
+   .\venv\Scripts\python.exe apply_migration.py migrations/20260930_anios_lectivos.sql
+   ```
+
+   El `--dry-run` debe listar `tenant_colegio_1` y `tenant_2005` como
+   pendientes. Al terminar, cerrar esa terminal.
+4. En el SQL Editor de Neon, **con la rama de prueba elegida arriba**,
+   correr esta consulta (y otra vez cambiando `tenant_2005` por
+   `tenant_colegio_1`):
+
+   ```sql
+   SELECT 'años lectivos' AS dato, string_agg(anio || ' ' || estado, ', ') AS valor FROM tenant_2005.anios_lectivos
+   UNION ALL SELECT 'cursos sin año / total', COUNT(*) FILTER (WHERE anio_lectivo_id IS NULL) || ' / ' || COUNT(*) FROM tenant_2005.cursos
+   UNION ALL SELECT 'conceptos sin año / total', COUNT(*) FILTER (WHERE anio_lectivo_id IS NULL) || ' / ' || COUNT(*) FROM tenant_2005.tipos_de_pagos
+   UNION ALL SELECT 'pagos sin año / total', COUNT(*) FILTER (WHERE anio_lectivo_id IS NULL) || ' / ' || COUNT(*) FROM tenant_2005.pagos
+   UNION ALL SELECT 'observador sin año / total', COUNT(*) FILTER (WHERE anio_lectivo_id IS NULL) || ' / ' || COUNT(*) FROM tenant_2005.observador_anotaciones
+   UNION ALL SELECT 'matrículas / estudiantes con curso', (SELECT COUNT(*) FROM tenant_2005.matriculas) || ' / ' || (SELECT COUNT(curso_id) FROM tenant_2005.estudiantes)
+   UNION ALL SELECT 'control curso vigente (debe ser 0)', COUNT(*)::text FROM tenant_2005.estudiantes e LEFT JOIN tenant_2005.matriculas m ON m.estudiante_id = e.id AND m.anio_lectivo_id = (SELECT id FROM tenant_2005.anios_lectivos WHERE estado = 'activo') WHERE e.curso_id IS DISTINCT FROM m.curso_id
+   UNION ALL SELECT 'reglas únicas en cursos', string_agg(indexname, ', ') FROM pg_indexes WHERE schemaname = 'tenant_2005' AND tablename = 'cursos' AND indexdef LIKE 'CREATE UNIQUE%'
+   UNION ALL SELECT 'reglas únicas en conceptos', string_agg(indexname, ', ') FROM pg_indexes WHERE schemaname = 'tenant_2005' AND tablename = 'tipos_de_pagos' AND indexdef LIKE 'CREATE UNIQUE%'
+   UNION ALL SELECT 'migración registrada en', string_agg(target_schema, ', ') FROM public.schema_migrations WHERE migration_name = '20260930_anios_lectivos.sql';
+   ```
+
+   Esperado en `tenant_2005`: `2026 activo`; `0 / 12` cursos, `0 / 2`
+   conceptos, `0 / 546` pagos y `0 / <total>` observador; `174 / 174`
+   matrículas; control `0`; en cursos `cursos_pkey`,
+   `cursos_id_anio_lectivo_key` e `idx_cursos_anio_nombre_jornada_unico`
+   (y **no** `idx_cursos_nombre_jornada_unico`); en conceptos
+   `tipos_de_pagos_pkey` y `tipos_de_pagos_anio_nombre_key` (y **no**
+   `tipos_de_pagos_nombre_key`); migración registrada en los dos tenants.
+5. Recomendado: levantar el backend y el frontend **en local** apuntando a
+   la rama (`$env:DATABASE_URL` igual que arriba, en la terminal del
+   backend) y comprobar que Cursos, Tipos de pago, Pagos, Estudiantes y un
+   boletín se ven igual que en producción, y que crear un curso de prueba
+   funciona. Eso ensaya justo el estado intermedio de producción: migración
+   A aplicada con el código de hoy.
+6. Pegar el resultado del punto 4 en este documento. La rama se puede
+   conservar para probar el código del punto 2, o borrarla.
+
+**Prueba en la rama de Neon, 2026-09-30** (rama `prueba-anio-lectivo`, copia
+de `production` con datos, borrado automático a 1 día; la corrió el
+usuario):
+
+- `--dry-run`: `tenant_colegio_1` y `tenant_2005` PENDIENTE. Aplicación: OK
+  en los dos. Ningún freno saltó: `matriculas` estaba vacía en los dos y no
+  quedó ninguna regla de unicidad sin año. Con esto el SQL quedó ejecutado y
+  válido por primera vez.
+- Consulta de comprobación en `tenant_2005`, todo igual a lo esperado:
+
+  | Dato | Valor |
+  |---|---|
+  | Años lectivos | 2026 activo |
+  | Cursos sin año / total | 0 / 12 |
+  | Conceptos sin año / total | 0 / 2 |
+  | Pagos sin año / total | 0 / 546 |
+  | Observador sin año / total | 0 / 209 |
+  | Matrículas / estudiantes con curso | 174 / 174 |
+  | Control del curso vigente | 0 |
+  | Reglas únicas en cursos | `idx_cursos_anio_nombre_jornada_unico`, `cursos_id_anio_lectivo_key`, `cursos_pkey` |
+  | Reglas únicas en conceptos | `tipos_de_pagos_anio_nombre_key`, `tipos_de_pagos_pkey` |
+  | Migración registrada en | `tenant_colegio_1`, `tenant_2005` |
+
+- En `production`, la migración **no** quedó registrada (`COUNT(*)` = 0):
+  la prueba solo tocó la rama.
+- El punto 5 (la app en local contra la rama) **no se hizo, por decisión del
+  usuario** (2026-09-30). Lo que lo cubre en parte: la revisión del código
+  antes de escribir la migración (nada lee las columnas nuevas, el único
+  `SELECT *` no las expone) y la prueba
+  `test_la_respuesta_de_tipos_de_pago_no_expone_la_columna_nueva`. Lo que
+  queda sin comprobar a ojo es que las pantallas se vean igual; si algo se
+  viera distinto tras aplicar en producción, es la primera pista.
+
+**Aplicada en producción el 2026-09-30** (la aplicó el usuario):
+
+- `--dry-run`: PENDIENTE en los dos tenants (eso confirmó que la terminal
+  apuntaba a producción y no a la rama, donde habría dicho "OMITIDA").
+  Aplicación: OK en `tenant_colegio_1` y `tenant_2005`.
+- Esquema base regenerado desde `tenant_colegio_1`: 34 tablas. Revisado el
+  diff: coincide exactamente con la migración (tabla nueva, columna en las
+  cinco tablas, reglas e índices nuevos, claves foráneas) y solo
+  desaparecen las dos reglas viejas.
+- `scripts/verify.py`: **1468 pasan, 0 fallan**. Se apagó la falla esperada
+  de `test_esquema_base.py`. Ruff y `pip check` limpios.
+- Desde aquí la migración A **no se puede editar** (el runner guarda su
+  checksum). Se abre la ventana descrita en el punto 3: hasta desplegar el
+  código del punto 2, lo nuevo queda sin año y las matrículas pueden
+  desincronizarse. Conviene cerrarla pronto.
 
 ### Fase 2 — Cobros por año (dinero; antes del 1 de noviembre)
 
@@ -703,6 +849,11 @@ profesores verían las clases de 2027.
    - Conceptos de pago (decisión 17): `listar_tipos_pagos` y
      `listar_tipos_pagos_detallado` (`tipos_pagos_controller.py`) y los cursos
      ofrecidos para asignar precios, filtrados por año.
+   - Validaciones de nombre repetido limitadas al año:
+     `_validar_curso_unico` (`curso_controller.py:25`) y la de
+     `crear_tipo_pago` (`tipos_pagos_controller.py:24`). Sin esto, la copia
+     de la fase 5 fallaría como "repetido". La base de datos ya lo permite
+     desde la migración A.
    - Observador: anotaciones filtradas por `anio_lectivo_id`.
 3. **Aviso al renombrar una materia** (decisión 12). En
    `actualizar_materia_controller` (`materia_controller.py:151`): si cambia
@@ -882,9 +1033,21 @@ cuando los profesores empiezan a ver sus clases nuevas.
   reemplazo de la decisión 13 (un año cerrado se ve como al cerrarse).
 - **Fase 0 terminada el 2026-09-30**, con las pruebas de listados (ver el
   segundo "Avance" en la fase 0). `verify.py`: 1451 pruebas pasan.
-- Siguiente acción exacta: **fase 1, punto 1**: escribir la migración A
-  (`migrations/AAAAMMDD_anios_lectivos.sql`) y sus pruebas. Es zona sensible
-  (migraciones de todos los tenants): antes de escribirla, explicarle al
-  usuario qué crea y qué rellena, y pedir su visto bueno. La migración se
-  prueba en una rama de Neon; **no** se aplica a producción en ese paso.
+- Fase 1, avance del 2026-09-30: migración A escrita con sus 17 pruebas
+  (ver "Avance" en la fase 1). `verify.py`: 1467 pasan y 1 falla esperada
+  (`test_esquema_base.py`).
+- Migración A probada en la rama de Neon el 2026-09-30: todo igual a lo
+  esperado (ver "Prueba en la rama de Neon" en la fase 1).
+- Producción confirmada intacta (0). El punto 5 se omitió por decisión del
+  usuario.
+- Migración A **aplicada en producción** el 2026-09-30 y esquema base
+  regenerado; `verify.py` en verde (1468). Ver "Aplicada en producción" en
+  la fase 1.
+- Siguiente acción exacta: **fase 1, punto 2**: el código que escribe el año
+  en toda fila nueva (curso, concepto de pago, pago, anotación del
+  observador, matrícula al crear o editar un estudiante) más el alta de
+  colegios nuevos, con `app/services/anio_lectivo.py`
+  (`obtener_anio_activo`, `sincronizar_curso_vigente`) y sus pruebas. Hay
+  una ventana abierta en producción (lo nuevo queda sin año) que conviene
+  cerrar pronto.
 - Prompt para retomar: `docs/funcionalidades/PROMPT_CONTINUACION_ANIO_LECTIVO.md`.

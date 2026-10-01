@@ -597,3 +597,81 @@ Estado:
 - A partir de aqui el archivo **no se puede editar**: el runner guarda su
   checksum y rechazaria una version distinta con el mismo nombre. Cualquier
   cambio posterior va en una migracion nueva.
+
+## Migracion 20260930_anios_lectivos.sql
+
+Objetivo:
+
+- Fundacion del año lectivo (fase 1, migracion A): crear la tabla de años,
+  registrar 2026 como activo y marcar con 2026 todo lo existente. Invisible:
+  ningun endpoint actual lee las columnas nuevas.
+
+Tabla creada:
+
+- `anios_lectivos`: `anio SMALLINT UNIQUE`, `estado` en `preparacion`,
+  `activo`, `cerrado` o `reabierto`, con indices unicos parciales que impiden
+  dos años activos o dos en preparacion. Se inserta 2026 como `activo`,
+  escrito como literal y no calculado con la fecha del dia.
+
+Columnas agregadas (`anio_lectivo_id`, clave foranea a `anios_lectivos`,
+**admiten NULL** hasta la migracion B), rellenas con 2026:
+
+- `cursos`, `tipos_de_pagos`, `matriculas`, `pagos`,
+  `observador_anotaciones`.
+
+Reglas de unicidad reemplazadas por su version con año:
+
+- `idx_cursos_nombre_jornada_unico` → `idx_cursos_anio_nombre_jornada_unico`
+  (misma expresion, con `anio_lectivo_id` delante).
+- `tipos_de_pagos_nombre_key` → `tipos_de_pagos_anio_nombre_key`
+  `UNIQUE (anio_lectivo_id, nombre)`.
+
+Matriculas:
+
+- Una fila por estudiante con curso, en el año de su curso.
+- `idx_matriculas_estudiante_anio_unico`: un curso por estudiante y año.
+- `cursos_id_anio_lectivo_key UNIQUE (id, anio_lectivo_id)` y la clave
+  foranea compuesta `matriculas_curso_anio_lectivo_fkey`: el curso de una
+  matricula es siempre del mismo año.
+
+Indices creados:
+
+- `idx_cursos_anio_lectivo`, `idx_tipos_de_pagos_anio_lectivo`,
+  `idx_pagos_estudiante_anio_lectivo`,
+  `idx_observador_anotaciones_estudiante_anio`. No estan en la lista fija de
+  `scripts/apply_tenant_indexes.py`, asi que no se duplican.
+
+Frenos (abortan el tenant sin tocar nada):
+
+- Al inicio: si `matriculas` tiene filas antiguas sin año.
+- Al final: si queda en `cursos` o `tipos_de_pagos` una regla de unicidad
+  sin el año (por ejemplo, con otro nombre en un tenant viejo).
+
+Detalle completo (motivacion, decisiones, orden de despliegue y la lista de
+comprobacion para la rama de Neon):
+
+- `docs/funcionalidades/ANIO_LECTIVO.md`, fase 1.
+
+Estado:
+
+- Escrita el 2026-09-30, con `tests/test_migracion_anios_lectivos.py` (17
+  pruebas sobre el texto del SQL). `scripts/verify.py`: 1467 pasan, **1
+  falla esperada** de `test_esquema_base.py` hasta aplicar la migracion real
+  y regenerar el esquema base.
+- **Probada con exito el 2026-09-30 en una rama de Neon** (`prueba-anio-lectivo`,
+  copia de `production` con datos): OK en `tenant_colegio_1` y `tenant_2005`,
+  ningun freno salto, y la comprobacion de `tenant_2005` dio lo esperado
+  (2026 activo, 0 filas sin año en las cinco tablas, 174/174 matriculas,
+  control del curso vigente en 0, solo las reglas unicas nuevas). Detalle en
+  `docs/funcionalidades/ANIO_LECTIVO.md`, fase 1.
+- **Aplicada en produccion el 2026-09-30** con `apply_migration.py` a
+  `tenant_colegio_1` y `tenant_2005` (OK en los dos). Registrada en
+  `public.schema_migrations`.
+- Esquema base regenerado el mismo dia desde `tenant_colegio_1`: 34 tablas.
+  El cambio coincide con la migracion y nada mas. Ojo: el esquema base es
+  solo estructura y no trae la fila del año; un colegio nuevo nace sin año
+  activo hasta que el alta lo inserte (codigo de la fase 1).
+- `scripts/verify.py`: **1468 pasan, 0 fallan**; se apago la falla esperada
+  de `test_esquema_base.py`.
+- A partir de aqui el archivo **no se puede editar**: el runner guarda su
+  checksum. Cualquier cambio va en una migracion nueva (la B).

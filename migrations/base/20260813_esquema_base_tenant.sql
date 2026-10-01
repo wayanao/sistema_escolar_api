@@ -1,6 +1,6 @@
 -- Esquema base de un tenant. ARCHIVO GENERADO, no editar a mano.
 --
--- Extraido de tenant_colegio_1 el 2026-09-22 con
+-- Extraido de tenant_colegio_1 el 2026-09-30 con
 -- scripts/generar_esquema_base.py. Para rehacerlo, aplica antes la
 -- migracion nueva a ese schema y vuelve a ejecutar el script.
 --
@@ -11,7 +11,7 @@
 -- No usar apply_migration.py con este archivo: es para dar de alta un
 -- tenant nuevo, no para los existentes, que ya tienen estas tablas.
 --
--- MIGRACIONES INCORPORADAS (38):
+-- MIGRACIONES INCORPORADAS (39):
 --   20260429_pagos_tipo_pago_largo.sql
 --   20260429_plan_de_clases_reportes.sql
 --   20260509_branding_plantillas_impresion.sql
@@ -50,7 +50,21 @@
 --   20260910_tipos_pagos_mes_final.sql
 --   20260915_cursos_director_grupo.sql
 --   20260921_listas_seguimiento.sql
+--   20260930_anios_lectivos.sql
 -- FIN MIGRACIONES INCORPORADAS
+
+CREATE TABLE IF NOT EXISTS anios_lectivos (
+    id SERIAL,
+    anio smallint NOT NULL,
+    estado character varying(20) DEFAULT 'preparacion'::character varying NOT NULL,
+    creado_en timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    activado_en timestamp without time zone,
+    cerrado_en timestamp without time zone,
+    CONSTRAINT chk_anios_lectivos_anio CHECK (((anio >= 2000) AND (anio <= 2100))),
+    CONSTRAINT chk_anios_lectivos_estado CHECK (((estado)::text = ANY ((ARRAY['preparacion'::character varying, 'activo'::character varying, 'cerrado'::character varying, 'reabierto'::character varying])::text[]))),
+    CONSTRAINT anios_lectivos_pkey PRIMARY KEY (id),
+    CONSTRAINT anios_lectivos_anio_key UNIQUE (anio)
+);
 
 CREATE TABLE IF NOT EXISTS asignaciones (
     id SERIAL,
@@ -105,8 +119,10 @@ CREATE TABLE IF NOT EXISTS cursos (
     estado character varying(30),
     nivel character varying(20),
     director_grupo_id integer,
+    anio_lectivo_id integer,
     CONSTRAINT chk_cursos_nivel CHECK (((nivel IS NULL) OR ((nivel)::text = ANY ((ARRAY['preescolar'::character varying, 'primaria'::character varying])::text[])))),
-    CONSTRAINT cursos_pkey PRIMARY KEY (id)
+    CONSTRAINT cursos_pkey PRIMARY KEY (id),
+    CONSTRAINT cursos_id_anio_lectivo_key UNIQUE (id, anio_lectivo_id)
 );
 
 CREATE TABLE IF NOT EXISTS egresos (
@@ -228,6 +244,7 @@ CREATE TABLE IF NOT EXISTS matriculas (
     estudiante_id integer,
     curso_id integer,
     anio integer,
+    anio_lectivo_id integer,
     CONSTRAINT matriculas_pkey PRIMARY KEY (id)
 );
 
@@ -292,6 +309,7 @@ CREATE TABLE IF NOT EXISTS observador_anotaciones (
     editada_por integer,
     materia character varying(100) DEFAULT ''::character varying NOT NULL,
     observacion_origen_id integer,
+    anio_lectivo_id integer,
     CONSTRAINT observador_anotaciones_periodo_check CHECK (((periodo >= 1) AND (periodo <= 4))),
     CONSTRAINT observador_anotaciones_pkey PRIMARY KEY (id),
     CONSTRAINT observador_anotaciones_observacion_origen_id_key UNIQUE (observacion_origen_id)
@@ -311,6 +329,7 @@ CREATE TABLE IF NOT EXISTS pagos (
     fecha_anulacion timestamp without time zone,
     anulado_por integer,
     venta_id integer,
+    anio_lectivo_id integer,
     CONSTRAINT pagos_pkey PRIMARY KEY (id)
 );
 
@@ -455,6 +474,7 @@ CREATE TABLE IF NOT EXISTS tipos_de_pagos (
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     mes_final smallint DEFAULT 12 NOT NULL,
+    anio_lectivo_id integer,
     CONSTRAINT chk_dia_limite_mes CHECK (((dia_limite_mes IS NULL) OR ((dia_limite_mes >= 1) AND (dia_limite_mes <= 31)))),
     CONSTRAINT chk_mes_final CHECK (((mes_final >= 1) AND (mes_final <= 12))),
     CONSTRAINT chk_mes_inicial CHECK (((mes_inicial IS NULL) OR ((mes_inicial >= 1) AND (mes_inicial <= 12)))),
@@ -462,7 +482,7 @@ CREATE TABLE IF NOT EXISTS tipos_de_pagos (
     CONSTRAINT chk_rango_meses_recurrencia CHECK ((((tipo_cobro)::text <> 'mensual'::text) OR (mes_inicial IS NULL) OR (mes_final >= mes_inicial))),
     CONSTRAINT chk_tipo_cobro CHECK (((tipo_cobro)::text = ANY ((ARRAY['unico'::character varying, 'mensual'::character varying, 'anual'::character varying, 'opcional'::character varying])::text[]))),
     CONSTRAINT tipos_de_pagos_pkey PRIMARY KEY (id),
-    CONSTRAINT tipos_de_pagos_nombre_key UNIQUE (nombre)
+    CONSTRAINT tipos_de_pagos_anio_nombre_key UNIQUE (anio_lectivo_id, nombre)
 );
 
 CREATE TABLE IF NOT EXISTS tipos_pagos_cursos (
@@ -529,6 +549,8 @@ CREATE TABLE IF NOT EXISTS ventas_detalle (
 );
 
 -- Indices que no respaldan restricciones
+CREATE UNIQUE INDEX IF NOT EXISTS idx_anios_lectivos_un_activo ON anios_lectivos USING btree (estado) WHERE ((estado)::text = 'activo'::text);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_anios_lectivos_una_preparacion ON anios_lectivos USING btree (estado) WHERE ((estado)::text = 'preparacion'::text);
 CREATE INDEX IF NOT EXISTS idx_asignaciones_academica_id ON asignaciones USING btree (asignacion_academica_id);
 CREATE INDEX IF NOT EXISTS idx_asignaciones_activo ON asignaciones USING btree (activo);
 CREATE INDEX IF NOT EXISTS idx_asignaciones_curso_dia_activo ON asignaciones USING btree (curso_id, dia, activo);
@@ -540,10 +562,11 @@ CREATE INDEX IF NOT EXISTS tenant_colegio_1_idx_asignaciones_profesor_id ON asig
 CREATE INDEX IF NOT EXISTS tenant_colegio_1_idx_asistencia_asignacion_periodo ON asistencia USING btree (asignacion_id, periodo);
 CREATE INDEX IF NOT EXISTS tenant_colegio_1_idx_asistencia_estudiante_fecha ON asistencia USING btree (estudiante_id, fecha);
 CREATE INDEX IF NOT EXISTS tenant_colegio_1_idx_boletin_cabecera_lookup ON boletin_cabecera USING btree (estudiante_id, asignacion_id, periodo);
+CREATE INDEX IF NOT EXISTS idx_cursos_anio_lectivo ON cursos USING btree (anio_lectivo_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_cursos_anio_nombre_jornada_unico ON cursos USING btree (anio_lectivo_id, upper(regexp_replace(TRIM(BOTH FROM nombre), '[[:space:]]+'::text, ' '::text, 'g'::text)), lower(COALESCE(NULLIF(TRIM(BOTH FROM jornada), ''::text), 'Mañana'::text))) WHERE (NULLIF(TRIM(BOTH FROM COALESCE(nombre, ''::character varying)), ''::text) IS NOT NULL);
 CREATE INDEX IF NOT EXISTS idx_cursos_director_grupo ON cursos USING btree (director_grupo_id);
 CREATE INDEX IF NOT EXISTS idx_cursos_estado ON cursos USING btree (estado);
 CREATE INDEX IF NOT EXISTS idx_cursos_nivel ON cursos USING btree (nivel);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_cursos_nombre_jornada_unico ON cursos USING btree (upper(regexp_replace(TRIM(BOTH FROM nombre), '[[:space:]]+'::text, ' '::text, 'g'::text)), lower(COALESCE(NULLIF(TRIM(BOTH FROM jornada), ''::text), 'Mañana'::text))) WHERE (NULLIF(TRIM(BOTH FROM COALESCE(nombre, ''::character varying)), ''::text) IS NOT NULL);
 CREATE INDEX IF NOT EXISTS idx_egresos_origen ON egresos USING btree (origen);
 CREATE INDEX IF NOT EXISTS tenant_colegio_1_idx_estudiantes_curso_id ON estudiantes USING btree (curso_id);
 CREATE INDEX IF NOT EXISTS idx_inventario_estado ON inventario USING btree (estado);
@@ -553,9 +576,12 @@ CREATE INDEX IF NOT EXISTS idx_listas_seguimiento_marcas_columna ON listas_segui
 CREATE INDEX IF NOT EXISTS idx_listas_seguimiento_marcas_estudiante ON listas_seguimiento_marcas USING btree (estudiante_id);
 CREATE INDEX IF NOT EXISTS idx_materias_estado ON materias USING btree (estado);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_materias_nombre_unico ON materias USING btree (upper(regexp_replace(TRIM(BOTH FROM nombre), '[[:space:]]+'::text, ' '::text, 'g'::text))) WHERE (NULLIF(TRIM(BOTH FROM COALESCE(nombre, ''::character varying)), ''::text) IS NOT NULL);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_matriculas_estudiante_anio_unico ON matriculas USING btree (estudiante_id, anio_lectivo_id);
 CREATE INDEX IF NOT EXISTS tenant_colegio_1_idx_notas_detalle_estudiante_asignacion_period ON notas_detalle USING btree (estudiante_id, asignacion_id, periodo);
+CREATE INDEX IF NOT EXISTS idx_observador_anotaciones_estudiante_anio ON observador_anotaciones USING btree (estudiante_id, anio_lectivo_id);
 CREATE INDEX IF NOT EXISTS tenant_colegio_1_idx_observador_anotaciones_estudiante ON observador_anotaciones USING btree (estudiante_id, creada_en);
 CREATE INDEX IF NOT EXISTS idx_pagos_estado ON pagos USING btree (estado);
+CREATE INDEX IF NOT EXISTS idx_pagos_estudiante_anio_lectivo ON pagos USING btree (estudiante_id, anio_lectivo_id);
 CREATE INDEX IF NOT EXISTS idx_pagos_venta_id ON pagos USING btree (venta_id);
 CREATE INDEX IF NOT EXISTS tenant_colegio_1_idx_pagos_estudiante_id ON pagos USING btree (estudiante_id);
 CREATE INDEX IF NOT EXISTS tenant_colegio_1_idx_pagos_fecha ON pagos USING btree (fecha);
@@ -579,6 +605,7 @@ CREATE INDEX IF NOT EXISTS idx_plantilla_tipo ON plantilla_impresion USING btree
 CREATE UNIQUE INDEX IF NOT EXISTS idx_profesor_documento_unico ON profesor USING btree (TRIM(BOTH FROM documento_identidad)) WHERE (NULLIF(TRIM(BOTH FROM COALESCE(documento_identidad, ''::character varying)), ''::text) IS NOT NULL);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_profesor_email_unico ON profesor USING btree (lower(TRIM(BOTH FROM email))) WHERE (NULLIF(TRIM(BOTH FROM COALESCE(email, ''::character varying)), ''::text) IS NOT NULL);
 CREATE INDEX IF NOT EXISTS idx_profesor_estado ON profesor USING btree (estado);
+CREATE INDEX IF NOT EXISTS idx_tipos_de_pagos_anio_lectivo ON tipos_de_pagos USING btree (anio_lectivo_id);
 CREATE INDEX IF NOT EXISTS idx_tipos_pagos_cursos_curso ON tipos_pagos_cursos USING btree (curso_id);
 CREATE INDEX IF NOT EXISTS idx_tipos_pagos_cursos_tipo ON tipos_pagos_cursos USING btree (tipo_pago_id);
 CREATE INDEX IF NOT EXISTS idx_tipos_pagos_estudiantes_activo ON tipos_pagos_estudiantes USING btree (activo);
@@ -597,11 +624,14 @@ ALTER TABLE asistencia ADD CONSTRAINT asistencia_estudiante_id_fkey FOREIGN KEY 
 ALTER TABLE boletin_cabecera ADD CONSTRAINT boletin_cabecera_asignacion_id_fkey FOREIGN KEY (asignacion_id) REFERENCES asignaciones(id) ON DELETE CASCADE;
 ALTER TABLE boletin_cabecera ADD CONSTRAINT boletin_cabecera_estudiante_id_fkey FOREIGN KEY (estudiante_id) REFERENCES estudiantes(id) ON DELETE CASCADE;
 ALTER TABLE boletin_detalles ADD CONSTRAINT boletin_detalles_boletin_id_fkey FOREIGN KEY (boletin_id) REFERENCES boletin_cabecera(id) ON DELETE CASCADE;
+ALTER TABLE cursos ADD CONSTRAINT cursos_anio_lectivo_id_fkey FOREIGN KEY (anio_lectivo_id) REFERENCES anios_lectivos(id);
 ALTER TABLE cursos ADD CONSTRAINT cursos_director_grupo_id_fkey FOREIGN KEY (director_grupo_id) REFERENCES profesor(id) ON DELETE SET NULL;
 ALTER TABLE estudiantes ADD CONSTRAINT estudiantes_curso_id_fkey FOREIGN KEY (curso_id) REFERENCES cursos(id);
 ALTER TABLE listas_seguimiento_columnas ADD CONSTRAINT listas_seguimiento_columnas_curso_id_fkey FOREIGN KEY (curso_id) REFERENCES cursos(id) ON DELETE CASCADE;
 ALTER TABLE listas_seguimiento_marcas ADD CONSTRAINT listas_seguimiento_marcas_columna_id_fkey FOREIGN KEY (columna_id) REFERENCES listas_seguimiento_columnas(id) ON DELETE CASCADE;
 ALTER TABLE listas_seguimiento_marcas ADD CONSTRAINT listas_seguimiento_marcas_estudiante_id_fkey FOREIGN KEY (estudiante_id) REFERENCES estudiantes(id) ON DELETE CASCADE;
+ALTER TABLE matriculas ADD CONSTRAINT matriculas_anio_lectivo_id_fkey FOREIGN KEY (anio_lectivo_id) REFERENCES anios_lectivos(id);
+ALTER TABLE matriculas ADD CONSTRAINT matriculas_curso_anio_lectivo_fkey FOREIGN KEY (curso_id, anio_lectivo_id) REFERENCES cursos(id, anio_lectivo_id);
 ALTER TABLE matriculas ADD CONSTRAINT matriculas_curso_id_fkey FOREIGN KEY (curso_id) REFERENCES cursos(id);
 ALTER TABLE matriculas ADD CONSTRAINT matriculas_estudiante_id_fkey FOREIGN KEY (estudiante_id) REFERENCES estudiantes(id);
 ALTER TABLE nomina ADD CONSTRAINT nomina_profesor_id_fkey FOREIGN KEY (profesor_id) REFERENCES profesor(id) ON DELETE CASCADE;
@@ -611,9 +641,11 @@ ALTER TABLE notas_detalle ADD CONSTRAINT notas_detalle_asignacion_id_fkey FOREIG
 ALTER TABLE notas_detalle ADD CONSTRAINT notas_detalle_estudiante_id_fkey FOREIGN KEY (estudiante_id) REFERENCES estudiantes(id);
 ALTER TABLE observaciones ADD CONSTRAINT observaciones_asignacion_id_fkey FOREIGN KEY (asignacion_id) REFERENCES asignaciones(id) ON DELETE CASCADE;
 ALTER TABLE observaciones ADD CONSTRAINT observaciones_estudiante_id_fkey FOREIGN KEY (estudiante_id) REFERENCES estudiantes(id);
+ALTER TABLE observador_anotaciones ADD CONSTRAINT observador_anotaciones_anio_lectivo_id_fkey FOREIGN KEY (anio_lectivo_id) REFERENCES anios_lectivos(id);
 ALTER TABLE observador_anotaciones ADD CONSTRAINT observador_anotaciones_editada_por_fkey FOREIGN KEY (editada_por) REFERENCES profesor(id);
 ALTER TABLE observador_anotaciones ADD CONSTRAINT observador_anotaciones_estudiante_id_fkey FOREIGN KEY (estudiante_id) REFERENCES estudiantes(id);
 ALTER TABLE observador_anotaciones ADD CONSTRAINT observador_anotaciones_profesor_id_fkey FOREIGN KEY (profesor_id) REFERENCES profesor(id);
+ALTER TABLE pagos ADD CONSTRAINT pagos_anio_lectivo_id_fkey FOREIGN KEY (anio_lectivo_id) REFERENCES anios_lectivos(id);
 ALTER TABLE pagos ADD CONSTRAINT pagos_estudiante_id_fkey FOREIGN KEY (estudiante_id) REFERENCES estudiantes(id);
 ALTER TABLE pagos ADD CONSTRAINT pagos_venta_id_fkey FOREIGN KEY (venta_id) REFERENCES ventas(id);
 ALTER TABLE pagos_aplicaciones ADD CONSTRAINT pagos_aplicaciones_estudiante_id_fkey FOREIGN KEY (estudiante_id) REFERENCES estudiantes(id);
@@ -627,6 +659,7 @@ ALTER TABLE plan_de_clases_observaciones ADD CONSTRAINT plan_de_clases_observaci
 ALTER TABLE plan_de_clases_observaciones ADD CONSTRAINT plan_de_clases_observaciones_plan_id_fkey FOREIGN KEY (plan_id) REFERENCES plan_de_clases(id) ON DELETE CASCADE;
 ALTER TABLE planeador_anual ADD CONSTRAINT planeador_anual_asignacion_id_fkey FOREIGN KEY (asignacion_id) REFERENCES asignaciones(id) ON DELETE CASCADE;
 ALTER TABLE prestamos ADD CONSTRAINT prestamos_profesor_id_fkey FOREIGN KEY (profesor_id) REFERENCES profesor(id) ON DELETE CASCADE;
+ALTER TABLE tipos_de_pagos ADD CONSTRAINT tipos_de_pagos_anio_lectivo_id_fkey FOREIGN KEY (anio_lectivo_id) REFERENCES anios_lectivos(id);
 ALTER TABLE tipos_pagos_cursos ADD CONSTRAINT tipos_pagos_cursos_curso_id_fkey FOREIGN KEY (curso_id) REFERENCES cursos(id) ON DELETE CASCADE;
 ALTER TABLE tipos_pagos_cursos ADD CONSTRAINT tipos_pagos_cursos_tipo_pago_id_fkey FOREIGN KEY (tipo_pago_id) REFERENCES tipos_de_pagos(id) ON DELETE CASCADE;
 ALTER TABLE tipos_pagos_estudiantes ADD CONSTRAINT tipos_pagos_estudiantes_estudiante_id_fkey FOREIGN KEY (estudiante_id) REFERENCES estudiantes(id) ON DELETE CASCADE;

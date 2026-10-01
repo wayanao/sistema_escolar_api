@@ -2,7 +2,9 @@
 
 ## Control
 
-- Estado: **Diseñado, nada implementado.** Ninguna fase iniciada.
+- Estado: **Fase 0 en curso.** Pruebas de caracterización de cobros hechas
+  (2026-09-30); faltan las de listados y los números de producción. Ningún
+  cambio de comportamiento todavía.
 - Tipo: Función nueva de producto. No es una capa del programa de
   modularización de `docs/modularizacion/` y no debe confundirse con una.
 - Repos afectados: este repo (`sistema_escolar_api`) y `frontend-react`. Ver
@@ -469,6 +471,27 @@ que no exista todavía.
 3. Terminado cuando: las pruebas nuevas pasan, `python scripts/verify.py`
    pasa y los números están pegados aquí.
 
+**Avance del 2026-09-30 — cobros (los dos primeros puntos de 2):**
+
+- Archivo nuevo `tests/test_anio_lectivo_cobros_caracterizacion.py`, 11
+  pruebas, sin base de datos (funciones puras y `monkeypatch`, como el resto
+  de pruebas de cobros):
+  - **Dentro del año** (la fase 2 debe dejarlas iguales): deuda sin pagos
+    por tipo de concepto (anual, mensual, único; opcional no genera deuda),
+    pagos restados por concepto, diciembre cuenta las 10 cuotas hasta
+    noviembre, concepto sin precio en el curso no genera deuda, y concepto
+    inactivo no genera deuda (fija el hallazgo fuera de alcance).
+  - **Error actual al cambiar de año** (prefijo `test_error_actual_`; la fase
+    2 las invierte): caso A, caso B, segunda matrícula sumada a la del año en
+    curso, meses vencidos de 2026 que desaparecen en enero, meses vencidos de
+    2027 cubiertos con pagos de 2026, y adelantos de diciembre sin meses del
+    año siguiente.
+- Ya existían, y también sirven de red para la fase 2:
+  `test_pagos_meses_vencidos.py`, `test_pagos_adelantados.py`,
+  `test_tipos_pagos_mes_final.py` y `test_reportes_estado_cuenta.py`.
+- Verificación: `python scripts/verify.py` → **1445 pruebas pasan** (antes
+  1434), ruff y `pip check` limpios. `git diff --check` limpio.
+
 ### Fase 1 — Fundación de datos (invisible)
 
 Nada cambia en pantalla ni en ninguna respuesta de la API.
@@ -721,8 +744,11 @@ cuando los profesores empiezan a ver sus clases nuevas.
   ampliado el 2026-09-30 con las materias (decisiones 12 y 13) y la fase 7
   (decisiones 14 a 16). Ninguna fase iniciada; no hay código ni migraciones
   de esta funcionalidad.
-- Siguiente acción exacta: **fase 0, punto 1**. El usuario corre las
-  consultas de solo lectura en los dos tenants y pega los números aquí. En
-  paralelo se pueden escribir las pruebas de caracterización (punto 2), que
-  no necesitan producción.
+- Fase 0, avance del 2026-09-30: caracterización de cobros terminada (ver
+  "Avance" en la fase 0).
+- Siguiente acción exacta: **fase 0, punto 2, tercer punto**: pruebas de
+  caracterización de los listados que tocará la fase 3 (cursos, estudiantes,
+  boletín, asignaciones del profesor). En paralelo, el usuario corre las
+  consultas de solo lectura del punto 1 en los dos tenants y pega los
+  números aquí.
 - Prompt para retomar: `docs/funcionalidades/PROMPT_CONTINUACION_ANIO_LECTIVO.md`.

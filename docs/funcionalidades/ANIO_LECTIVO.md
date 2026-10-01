@@ -2,10 +2,10 @@
 
 ## Control
 
-- Estado: **Fase 0 en curso.** Hechos el 2026-09-30: pruebas de
-  caracterización de cobros y números de producción de `tenant_2005`, que
-  trajeron la decisión 17 y el reemplazo de la 13. Faltan las pruebas de
-  listados. Ningún cambio de comportamiento todavía.
+- Estado: **Fase 0 terminada (2026-09-30).** Pruebas de caracterización de
+  cobros y de listados, y números de producción de `tenant_2005` (de ahí
+  salieron la decisión 17 y el reemplazo de la 13). Ningún cambio de
+  comportamiento todavía. Siguiente: fase 1, con visto bueno del usuario.
 - Tipo: Función nueva de producto. No es una capa del programa de
   modularización de `docs/modularizacion/` y no debe confundirse con una.
 - Repos afectados: este repo (`sistema_escolar_api`) y `frontend-react`. Ver
@@ -566,6 +566,36 @@ que no exista todavía.
 - Verificación: `python scripts/verify.py` → **1445 pruebas pasan** (antes
   1434), ruff y `pip check` limpios. `git diff --check` limpio.
 
+**Avance del 2026-09-30 — listados (tercer punto de 2). Con esto la fase 0
+queda terminada:**
+
+- Revisión previa de lo que ya existía. Estos listados ya tenían fijada la
+  respuesta completa y sus parámetros, y sirven tal cual para la fase 3:
+  estudiantes (`test_asignaciones_estudiantes_caracterizacion.py`), "mis
+  clases" del profesor (`test_asignaciones_pagination.py`), boletín
+  (`test_boletin_caracterizacion.py`, que además fija el conjunto exacto de
+  SQL del dominio y fallará a propósito cuando la fase 3 lo cambie) y el
+  conteo y alta de listas de seguimiento en todos los cursos
+  (`test_listas_seguimiento_repositorio.py`).
+- Archivo nuevo `tests/test_anio_lectivo_listados_caracterizacion.py`, 6
+  pruebas, solo para lo que faltaba:
+  - Cursos: respuesta completa del listado (con el filtro `activo` por
+    defecto y con `todos`) y del paginado, con el orden exacto de los
+    parámetros. Antes solo se revisaban campos sueltos.
+  - Conceptos de pago, que no tenían ninguna prueba: `/tipos-pagos`,
+    `/tipos-pagos/detallado` (configuración completa y cursos por concepto)
+    y `/tipos-pagos/{id}/cursos`. Los datos imitan a `tenant_2005`:
+    mensualidad de julio a noviembre y matrícula inactiva.
+- Límite conocido: son dobles de cursor, sin base de datos. Fijan el
+  contrato de la respuesta, no que el SQL filtre bien por año; eso se
+  comprueba en la fase 3 contra una rama de Neon.
+- Corrección del inventario de la fase 3: `asignaciones_repository.py:181` y
+  `:238` sí filtran por id (el `WHERE id = %s` está en otra línea y la
+  búsqueda del 2026-09-29 no lo vio). No necesitan filtro por año y salen
+  del inventario.
+- Verificación: `python scripts/verify.py` → **1451 pruebas pasan** (antes
+  1445), ruff y `pip check` limpios. `git diff --check` limpio.
+
 ### Fase 1 — Fundación de datos (invisible)
 
 Nada cambia en pantalla ni en ninguna respuesta de la API.
@@ -650,9 +680,11 @@ profesores verían las clases de 2027.
    recorre cursos, estudiantes o asignaciones sin partir de un id. Inventario
    del 2026-09-29 (volver a confirmar con `grep` al empezar):
    - `FROM cursos` sin `WHERE id =`: `curso_controller.py` (listado y
-     conteo), `asignaciones_repository.py:181` y `:238`,
-     `listas_seguimiento_repository.py:211` y `:226`,
-     `reportes_repository.py:6` y `:28`.
+     conteo), `listas_seguimiento_repository.py:211` y `:226` (contar y
+     crear una columna "en todos los cursos activos": debe limitarse a los
+     cursos del año que se está mirando), `reportes_repository.py:6` y
+     `:28`. (Corregido el 2026-09-30: `asignaciones_repository.py:181` y
+     `:238` filtran por id y no van aquí.)
    - Asignaciones por profesor (mis clases, horarios, dashboard del
      profesor): `asignaciones_repository.py`, `dashboard_repository.py`,
      `profesor_controller.py`, `app/routes/asignaciones.py`. Se limitan al
@@ -848,8 +880,11 @@ cuando los profesores empiezan a ver sus clases nuevas.
   números de `tenant_2005` registrados (ver "Avance" y "Resultados" en la
   fase 0). De esos números salieron la decisión 17 (conceptos por año) y el
   reemplazo de la decisión 13 (un año cerrado se ve como al cerrarse).
-- Siguiente acción exacta: **fase 0, punto 2, tercer punto**: pruebas de
-  caracterización de los listados que tocará la fase 3 (cursos, estudiantes,
-  boletín, asignaciones del profesor y conceptos de pago). Con eso termina
-  la fase 0.
+- **Fase 0 terminada el 2026-09-30**, con las pruebas de listados (ver el
+  segundo "Avance" en la fase 0). `verify.py`: 1451 pruebas pasan.
+- Siguiente acción exacta: **fase 1, punto 1**: escribir la migración A
+  (`migrations/AAAAMMDD_anios_lectivos.sql`) y sus pruebas. Es zona sensible
+  (migraciones de todos los tenants): antes de escribirla, explicarle al
+  usuario qué crea y qué rellena, y pedir su visto bueno. La migración se
+  prueba en una rama de Neon; **no** se aplica a producción en ese paso.
 - Prompt para retomar: `docs/funcionalidades/PROMPT_CONTINUACION_ANIO_LECTIVO.md`.

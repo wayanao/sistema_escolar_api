@@ -1776,3 +1776,304 @@ def test_las_rutas_del_paso_34_responden_404_si_el_anio_no_existe(app_admin_34, 
 
     assert status == 404
     assert cuerpo == {"detail": "El año lectivo seleccionado no existe."}
+
+
+# ===========================================================================
+# Paso 3.5a: boletin, reporte parcial y puesto por año.
+# ===========================================================================
+
+CURSO_DE_LA_MATRICULA = _normalizar(
+    "(SELECT m.curso_id FROM matriculas m"
+    " WHERE m.estudiante_id = e.id AND m.anio_lectivo_id = %s)"
+)
+
+# funcion del repositorio -> (argumentos, parametros de siempre)
+LECTURAS_DEL_CURSO = {
+    "leer_materias_del_estudiante": ((8, 2, "ASISTENCIA"), (2, 2, 8, "ASISTENCIA")),
+    "leer_datos_del_estudiante": ((8,), (8,)),
+    "leer_datos_basicos_del_estudiante": ((8,), (8,)),
+    "leer_planilla_vigente": ((8, 2, "ASISTENCIA"), (2, 8, "ASISTENCIA")),
+}
+
+
+@pytest.mark.parametrize("nombre", sorted(LECTURAS_DEL_CURSO))
+def test_sin_anio_las_lecturas_del_boletin_usan_el_curso_actual_como_siempre(nombre):
+    """Comparadas el 2026-10-02 contra el commit anterior: texto y parametros
+    identicos. Aqui se fija lo esencial: el curso es `e.curso_id`, sin
+    matriculas, y los parametros son los de siempre."""
+    from app.repositories import boletin_repository
+
+    argumentos, params = LECTURAS_DEL_CURSO[nombre]
+    cursor = CursorQueAnota()
+
+    getattr(boletin_repository, nombre)(cursor, *argumentos)
+
+    [(sql, recibidos)] = cursor.consultas
+    assert "e.curso_id" in sql
+    assert "matriculas" not in sql
+    assert recibidos == params
+
+
+@pytest.mark.parametrize("nombre", sorted(LECTURAS_DEL_CURSO))
+def test_con_anio_las_lecturas_del_boletin_usan_el_curso_de_la_matricula(nombre):
+    from app.repositories import boletin_repository
+
+    argumentos, params = LECTURAS_DEL_CURSO[nombre]
+    cursor = CursorQueAnota()
+
+    getattr(boletin_repository, nombre)(cursor, *argumentos, anio_lectivo_id=1)
+
+    [(sql, recibidos)] = cursor.consultas
+    assert CURSO_DE_LA_MATRICULA in sql
+    assert "e.curso_id" not in sql
+    # El año va primero: el curso aparece en el FROM, antes que los demas.
+    assert recibidos == (1, *params)
+
+
+class BaseDePuesto:
+    """Definitivas del periodo 1 de dos años, contestadas como PostgreSQL.
+
+    2026 es el año 1 (curso 3, asignacion 300); 2027 el 2 y activo (curso 30,
+    asignacion 3000). Ana (7) saco 2,0 en 2026 y 4,5 en 2027; Beto (8), 5,0 y
+    4,0. Los dos estan hoy en el curso 30.
+
+    Solo separa por año si la consulta trae el filtro de año; si no, mezcla
+    las definitivas de los dos, como la consulta de antes.
+    """
+
+    CURSO_ACTUAL = {7: 30, 8: 30}
+    MATRICULA = {(7, 1): 3, (8, 1): 3, (7, 2): 30, (8, 2): 30}
+    ANIO_DEL_CURSO = {3: 1, 30: 2}
+    CURSO_DE_ASIGNACION = {300: 3, 3000: 30}
+    DEFINITIVAS = [  # (estudiante, asignacion, periodo, definitiva)
+        (7, 300, 1, 2.0), (8, 300, 1, 5.0),
+        (7, 3000, 1, 4.5), (8, 3000, 1, 4.0),
+    ]
+
+    def __init__(self):
+        self.consultas = []
+        self._fila = None
+
+    def execute(self, sql, params=None):
+        sql = _normalizar(sql)
+        self.consultas.append((sql, params))
+        params = list(params)
+        if CURSO_DE_LA_MATRICULA in sql:
+            anio = params[0]
+            curso_de = {e: self.MATRICULA.get((e, anio)) for e in self.CURSO_ACTUAL}
+            pedido, anio_filtro, periodo = params[1], params[3], params[4]
+        else:
+            curso_de = dict(self.CURSO_ACTUAL)
+            pedido, periodo = params[0], params[1]
+            anio_filtro = 2 if _normalizar(ANIO_ACTIVO_ID_SQL) in sql else None
+        if "c.anio_lectivo_id" not in sql:
+            anio_filtro = None
+        promedios = {}
+        for estudiante, asignacion, p, definitiva in self.DEFINITIVAS:
+            curso_asignacion = self.CURSO_DE_ASIGNACION[asignacion]
+            if p != periodo or curso_de[estudiante] != curso_de[pedido]:
+                continue
+            if anio_filtro is not None and self.ANIO_DEL_CURSO[curso_asignacion] != anio_filtro:
+                continue
+            promedios.setdefault(estudiante, []).append(definitiva)
+        medias = {e: sum(v) / len(v) for e, v in promedios.items()}
+        orden = sorted(medias, key=lambda e: -medias[e])
+        puesto = orden.index(params[-1]) + 1 if params[-1] in medias else None
+        self._fila = {"puesto": puesto, "total": len(medias)}
+
+    def fetchone(self):
+        return self._fila
+
+
+def test_el_puesto_del_anio_activo_no_mezcla_las_notas_de_2026():
+    """El cambio de comportamiento del paso: con 2027 activo, Ana es primera
+    en el periodo 1 (4,5 frente a 4,0). Mezclando 2026 seria segunda (3,25
+    frente a 4,5)."""
+    from app.repositories import boletin_repository
+
+    base = BaseDePuesto()
+
+    fila = boletin_repository.leer_puesto_en_el_curso(base, 7, 1)
+
+    assert fila == {"puesto": 1, "total": 2}
+    [(_sql, params)] = base.consultas
+    assert params == (7, 1, 7)
+
+
+def test_el_puesto_de_2026_es_con_las_notas_de_2026():
+    from app.repositories import boletin_repository
+
+    base = BaseDePuesto()
+
+    fila = boletin_repository.leer_puesto_en_el_curso(base, 7, 1, anio_lectivo_id=1)
+
+    assert fila == {"puesto": 2, "total": 2}
+    [(_sql, params)] = base.consultas
+    assert params == (1, 7, 1, 1, 1, 7)
+
+
+class CursorDeBoletin:
+    """Un cursor de diccionarios, como el `RealDictCursor` del boletin."""
+
+    ANIOS = {1: {"id": 1, "anio": 2026, "estado": "cerrado"},
+             2: {"id": 2, "anio": 2027, "estado": "activo"}}
+
+    def __init__(self):
+        self.consultas = []
+        self._filas = []
+
+    def execute(self, sql, params=None):
+        sql = _normalizar(sql)
+        self.consultas.append((sql, params))
+        if sql == SQL_POR_ID:
+            self._filas = [self.ANIOS[params[0]]] if params[0] in self.ANIOS else []
+        elif "estudiante_nombre" in sql and "curso_nombre" in sql:
+            self._filas = [{
+                "estudiante_nombre": "Ana", "estudiante_apellido": "Rios",
+                "curso_nombre": "PRIMERO A", "jornada": "Mañana",
+                "director_grupo_nombre": None, "director_grupo_apellido": None,
+            }]
+        elif "AS puesto" in sql:
+            self._filas = [{"puesto": 1, "total": 2}]
+        else:
+            self._filas = []
+
+    def fetchone(self):
+        return self._filas[0] if self._filas else None
+
+    def fetchall(self):
+        return list(self._filas)
+
+    def close(self):
+        pass
+
+
+class ConexionDeBoletin(ConexionFalsa):
+    def cursor(self, *args, **kwargs):
+        return self._cursor
+
+
+def _boletin(monkeypatch, funcion, **kwargs):
+    from app.controllers import boletin_controller
+
+    cursor = CursorDeBoletin()
+    monkeypatch.setattr(
+        boletin_controller, "get_connection", lambda: ConexionDeBoletin(cursor)
+    )
+    respuesta = getattr(boletin_controller, funcion)(7, 1, **kwargs)
+    return respuesta, cursor.consultas
+
+
+@pytest.mark.parametrize(
+    ("funcion", "consultas_de_siempre"),
+    [("obtener_boletin_admin_controller", 3), ("obtener_reporte_parcial_admin_controller", 2)],
+)
+def test_el_boletin_sin_anio_hace_las_consultas_de_siempre(
+    monkeypatch, funcion, consultas_de_siempre
+):
+    """Sin materias, el boletin hace 3 (materias, datos, puesto): la linea base
+    de 4 cuenta tambien los detalles, que aqui no hay."""
+    _, consultas = _boletin(monkeypatch, funcion)
+
+    assert len(consultas) == consultas_de_siempre
+    assert not any("matriculas" in sql for sql, _ in consultas)
+
+
+@pytest.mark.parametrize(
+    "funcion", ["obtener_boletin_admin_controller", "obtener_reporte_parcial_admin_controller"]
+)
+def test_el_boletin_con_el_id_del_activo_es_el_de_siempre_mas_la_validacion(monkeypatch, funcion):
+    _, consultas = _boletin(monkeypatch, funcion, anio_lectivo_id=2)
+
+    assert consultas[0] == (SQL_POR_ID, (2,))
+    assert not any("matriculas" in sql for sql, _ in consultas[1:])
+
+
+@pytest.mark.parametrize(
+    "funcion", ["obtener_boletin_admin_controller", "obtener_reporte_parcial_admin_controller"]
+)
+def test_el_boletin_de_2026_lee_el_curso_de_la_matricula_de_2026(monkeypatch, funcion):
+    respuesta, consultas = _boletin(monkeypatch, funcion, anio_lectivo_id=1)
+
+    assert respuesta["curso"] == "PRIMERO A"
+    assert consultas[0] == (SQL_POR_ID, (1,))
+    for sql, params in consultas[1:]:
+        assert CURSO_DE_LA_MATRICULA in sql
+        assert params[0] == 1
+
+
+@pytest.mark.parametrize(
+    "funcion", ["obtener_boletin_admin_controller", "obtener_reporte_parcial_admin_controller"]
+)
+def test_el_boletin_de_un_anio_que_no_existe_no_lee_nada(monkeypatch, funcion):
+    from app.services.anio_lectivo import AnioLectivoInexistenteError
+
+    with pytest.raises(AnioLectivoInexistenteError):
+        _boletin(monkeypatch, funcion, anio_lectivo_id=99)
+
+
+RUTAS_DEL_BOLETIN = {
+    "/boletines/admin/generar/7/1": "obtener_boletin_admin_controller",
+    "/boletines/admin/reporte-parcial/7/1": "obtener_reporte_parcial_admin_controller",
+}
+
+
+@pytest.fixture
+def app_admin_boletin(monkeypatch):
+    from app.dependencies import get_current_user
+    from app.main import app
+    from app.routes import boletines
+
+    recibido = []
+
+    def doblar(ruta, error=None):
+        def falso(*args, **kwargs):
+            recibido.append(kwargs.get("anio_lectivo_id"))
+            if error is not None:
+                raise error
+            return {"estudiante_id": 7}
+
+        monkeypatch.setattr(boletines, RUTAS_DEL_BOLETIN[ruta], falso)
+
+    app.dependency_overrides[get_current_user] = lambda: ADMIN
+    try:
+        yield app, doblar, recibido
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+
+
+@pytest.mark.parametrize("ruta", sorted(RUTAS_DEL_BOLETIN))
+def test_las_rutas_del_boletin_pasan_el_anio(app_admin_boletin, ruta):
+    app, doblar, recibido = app_admin_boletin
+    doblar(ruta)
+
+    assert peticion_get(app, ruta)[0] == 200
+    assert peticion_get(app, _con_anio(ruta, 5))[0] == 200
+    assert peticion_get(app, _con_anio(ruta, 0))[0] == 422
+    assert recibido == [None, 5]
+
+
+@pytest.mark.parametrize("ruta", sorted(RUTAS_DEL_BOLETIN))
+def test_las_rutas_del_boletin_responden_404_si_el_anio_no_existe(app_admin_boletin, ruta):
+    from app.services.anio_lectivo import AnioLectivoInexistenteError
+
+    app, doblar, _ = app_admin_boletin
+    doblar(ruta, error=AnioLectivoInexistenteError("El año lectivo seleccionado no existe."))
+
+    status, cuerpo = peticion_get(app, _con_anio(ruta, 99))
+
+    assert status == 404
+    assert cuerpo == {"detail": "El año lectivo seleccionado no existe."}
+
+
+@pytest.mark.parametrize("ruta", sorted(RUTAS_DEL_BOLETIN))
+def test_otro_valueerror_del_boletin_sigue_siendo_500_sin_su_texto(app_admin_boletin, ruta):
+    """Por eso se atrapa el error del año por su nombre: un fallo cualquiera
+    no debe salir como 404 ni ensenar su mensaje."""
+    app, doblar, _ = app_admin_boletin
+    doblar(ruta, error=ValueError("detalle interno"))
+
+    status, cuerpo = peticion_get(app, ruta)
+
+    assert status == 500
+    assert "detalle interno" not in cuerpo["detail"]

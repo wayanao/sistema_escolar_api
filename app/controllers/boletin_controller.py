@@ -4,6 +4,7 @@ from app.core.nivel_academico import (
 )
 from app.database import get_connection
 from app.repositories import boletin_repository
+from app.services.anio_lectivo import anio_distinto_del_activo
 from app.services.asignacion_academica import (
     resolver_asignacion_academica_id_cursor,
     resolver_nivel_curso_cursor,
@@ -147,13 +148,21 @@ def obtener_boletin_para_profesor_controller(asignacion_id: int, periodo: int):
         cursor.close()
         conn.close()
 
-def obtener_boletin_admin_controller(estudiante_id: int, periodo: int):
+def obtener_boletin_admin_controller(estudiante_id: int, periodo: int, anio_lectivo_id=None):
+    """Boletin de un año; sin `anio_lectivo_id`, o con el activo, el de siempre.
+
+    Un año que no existe lanza `AnioLectivoInexistenteError`.
+    """
     conn = get_connection()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
 
+        # Año lectivo, fase 3 (paso 3.5a): `None` es el camino de siempre.
+        anio = anio_distinto_del_activo(cur, anio_lectivo_id)
+
         materias_res = boletin_repository.leer_materias_del_estudiante(
-            cur, estudiante_id, periodo, NOMBRE_MATERIA_ASISTENCIA_JORNADA
+            cur, estudiante_id, periodo, NOMBRE_MATERIA_ASISTENCIA_JORNADA,
+            anio_lectivo_id=anio,
         )
 
         asignacion_ids = [row['asignacion_id'] for row in materias_res]
@@ -186,7 +195,9 @@ def obtener_boletin_admin_controller(estudiante_id: int, periodo: int):
                 if det['valoracion']:
                     detalle['valoraciones_por_periodo'][str(det['periodo'])] = det['valoracion']
 
-        est_info = boletin_repository.leer_datos_del_estudiante(cur, estudiante_id)
+        est_info = boletin_repository.leer_datos_del_estudiante(
+            cur, estudiante_id, anio_lectivo_id=anio
+        )
 
         if not est_info:
             return None
@@ -194,7 +205,7 @@ def obtener_boletin_admin_controller(estudiante_id: int, periodo: int):
         # Puesto del estudiante en el curso para el periodo (solo numericas).
         # Promedia las definitivas no nulas por estudiante y rankea descendente.
         ranking_row = boletin_repository.leer_puesto_en_el_curso(
-            cur, estudiante_id, periodo
+            cur, estudiante_id, periodo, anio_lectivo_id=anio
         ) or {}
 
         resultado = {
@@ -250,17 +261,27 @@ def obtener_boletin_admin_controller(estudiante_id: int, periodo: int):
         conn.close()
 
 
-def obtener_reporte_parcial_admin_controller(estudiante_id: int, periodo: int):
-    """Construye una fotografía de la planilla vigente, sin usar el boletín enviado."""
+def obtener_reporte_parcial_admin_controller(estudiante_id: int, periodo: int, anio_lectivo_id=None):
+    """Construye una fotografía de la planilla vigente, sin usar el boletín enviado.
+
+    De un año; sin `anio_lectivo_id`, o con el activo, la de siempre. Un año
+    que no existe lanza `AnioLectivoInexistenteError`.
+    """
     conn = get_connection()
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
-        est_info = boletin_repository.leer_datos_basicos_del_estudiante(cur, estudiante_id)
+        # Año lectivo, fase 3 (paso 3.5a): `None` es el camino de siempre.
+        anio = anio_distinto_del_activo(cur, anio_lectivo_id)
+
+        est_info = boletin_repository.leer_datos_basicos_del_estudiante(
+            cur, estudiante_id, anio_lectivo_id=anio
+        )
         if not est_info:
             return None
 
         filas = boletin_repository.leer_planilla_vigente(
-            cur, estudiante_id, periodo, NOMBRE_MATERIA_ASISTENCIA_JORNADA
+            cur, estudiante_id, periodo, NOMBRE_MATERIA_ASISTENCIA_JORNADA,
+            anio_lectivo_id=anio,
         )
 
         materias = {}

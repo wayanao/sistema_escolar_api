@@ -112,6 +112,15 @@ def _sql_del_modulo(ruta_relativa):
             valor = nodo.args[0].value
             if isinstance(valor, str):
                 literales.append(valor)
+        elif nodo.args and isinstance(nodo.args[0], ast.JoinedStr):
+            # Año lectivo, fase 3 (paso 3.5a): cinco consultas llevan un hueco
+            # para el curso del estudiante (`e.curso_id` o el de su matricula
+            # de un año). Siguen siendo una sentencia cada una; se cuentan con
+            # su texto fijo y el hueco marcado.
+            literales.append("".join(
+                parte.value if isinstance(parte, ast.Constant) else "{...}"
+                for parte in nodo.args[0].values
+            ))
     return literales
 
 
@@ -928,11 +937,12 @@ def test_las_cuatro_entradas_mapean_el_fallo_a_500_sin_filtrar_el_texto(monkeypa
 
 
 def test_las_dos_entradas_admin_responden_404_con_resultado_vacio(monkeypatch):
+    # Año lectivo, fase 3 (paso 3.5a): los controladores reciben el año.
     monkeypatch.setattr(
-        boletines, "obtener_boletin_admin_controller", lambda *_a: None
+        boletines, "obtener_boletin_admin_controller", lambda *_a, **_k: None
     )
     monkeypatch.setattr(
-        boletines, "obtener_reporte_parcial_admin_controller", lambda *_a: None
+        boletines, "obtener_reporte_parcial_admin_controller", lambda *_a, **_k: None
     )
 
     for funcion in (boletines.generar_boletin_admin,

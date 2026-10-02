@@ -35,7 +35,31 @@ Lo que **no** vive aqui, y es deliberado:
 - **El emparejamiento por posicion de las observaciones guardadas** sigue en el
   controlador. Es el hallazgo 1 de 7.0, el mas grave del dominio, y 7.1 **no lo
   corrige**: moverlo o arreglarlo cambiaria comportamiento.
+
+Año lectivo, fase 3 (paso 3.5a, ver `docs/funcionalidades/ANIO_LECTIVO.md`):
+las lecturas del boletin de administracion y del reporte parcial aceptan
+`anio_lectivo_id`, un año que **no** es el activo. Sin el, el curso del
+estudiante sigue siendo `e.curso_id` y el texto que recibe PostgreSQL es el de
+siempre; con el, el curso es el de su matricula de ese año. La excepcion es el
+puesto, que cambia tambien sin año: ver `leer_puesto_en_el_curso`.
 """
+
+from app.repositories.anios_lectivos_repository import ANIO_ACTIVO_ID_SQL
+
+
+def _curso_del_estudiante(anio_lectivo_id):
+    """El curso del estudiante `e` dentro de una consulta, y sus parametros.
+
+    Sin año, `e.curso_id`: el curso del año activo, con el texto de siempre.
+    Con año, el de su matricula de ese año, o `NULL` si no estuvo matriculado.
+    """
+    if anio_lectivo_id is None:
+        return "e.curso_id", ()
+    return (
+        "(SELECT m.curso_id FROM matriculas m"
+        " WHERE m.estudiante_id = e.id AND m.anio_lectivo_id = %s)",
+        (anio_lectivo_id,),
+    )
 
 
 # --------------------------------------------------------------------------
@@ -137,7 +161,9 @@ def leer_boletines_guardados_de_estudiantes(cursor, asignacion_id, periodo, estu
 # Lectura: boletin de administracion
 # --------------------------------------------------------------------------
 
-def leer_materias_del_estudiante(cursor, estudiante_id, periodo, nombre_materia_excluida):
+def leer_materias_del_estudiante(
+    cursor, estudiante_id, periodo, nombre_materia_excluida, anio_lectivo_id=None
+):
     """Materias del curso con su definitiva.
 
     `COALESCE(NULLIF(bc.definitiva, 0), ...)` trata una definitiva guardada como
@@ -155,8 +181,11 @@ def leer_materias_del_estudiante(cursor, estudiante_id, periodo, nombre_materia_
     usan las ocho consultas de `asignaciones_repository`. El filtro faltaba
     aqui desde que se anadio `materias.estado` (20260604_materias_estado.sql):
     la asignatura desaparecia de todas las pantallas menos del boletin.
+
+    Con `anio_lectivo_id`, las materias del curso de su matricula de ese año.
     """
-    cursor.execute('''
+    curso, params_curso = _curso_del_estudiante(anio_lectivo_id)
+    cursor.execute(f'''
             WITH asignaciones_academicas AS (
                 SELECT DISTINCT ON (COALESCE(a.asignacion_academica_id, a.id))
                     COALESCE(a.asignacion_academica_id, a.id) AS id,
@@ -178,7 +207,7 @@ def leer_materias_del_estudiante(cursor, estudiante_id, periodo, nombre_materia_
                 bc.id as boletin_id,
                 asig.orden_boletin
             FROM estudiantes e
-            JOIN asignaciones_academicas asig ON e.curso_id = asig.curso_id
+            JOIN asignaciones_academicas asig ON {curso} = asig.curso_id
             JOIN materias m ON asig.materia_id = m.id
             JOIN profesor p ON asig.profesor_id = p.id
             LEFT JOIN boletin_cabecera bc ON bc.asignacion_id = asig.id
@@ -197,7 +226,7 @@ def leer_materias_del_estudiante(cursor, estudiante_id, periodo, nombre_materia_
               AND m.nombre <> %s
               AND COALESCE(LOWER(m.estado), 'activo') = 'activo'
             ORDER BY asig.orden_boletin, m.nombre
-        ''', (periodo, periodo, estudiante_id, nombre_materia_excluida))
+        ''', (*params_curso, periodo, periodo, estudiante_id, nombre_materia_excluida))
     return cursor.fetchall()
 
 
@@ -229,36 +258,59 @@ def leer_detalles_por_asignaciones(cursor, periodo, estudiante_id, asignacion_id
     return cursor.fetchall()
 
 
-def leer_datos_del_estudiante(cursor, estudiante_id):
+def leer_datos_del_estudiante(cursor, estudiante_id, anio_lectivo_id=None):
     """Nombre, apellido, curso, jornada y director de grupo del curso. Devuelve
     `None` si el estudiante no existe, y eso es lo que acaba siendo el **404**
-    de la ruta."""
-    cursor.execute('''
+    de la ruta. Con `anio_lectivo_id`, el curso de su matricula de ese año."""
+    curso, params_curso = _curso_del_estudiante(anio_lectivo_id)
+    cursor.execute(f'''
             SELECT e.nombre as estudiante_nombre, e.apellido as estudiante_apellido,
                    c.nombre as curso_nombre, c.jornada as jornada,
                    dg.nombre as director_grupo_nombre, dg.apellido as director_grupo_apellido
             FROM estudiantes e
-            LEFT JOIN cursos c ON e.curso_id = c.id
+            LEFT JOIN cursos c ON {curso} = c.id
             LEFT JOIN profesor dg ON dg.id = c.director_grupo_id
             WHERE e.id = %s
-        ''', (estudiante_id,))
+        ''', (*params_curso, estudiante_id))
     return cursor.fetchone()
 
 
-def leer_puesto_en_el_curso(cursor, estudiante_id, periodo):
+def leer_puesto_en_el_curso(cursor, estudiante_id, periodo, anio_lectivo_id=None):
     """Puesto del estudiante en su curso y total de rankeados.
 
     Promedia las definitivas no nulas por estudiante y rankea descendente. Solo
     entran las numericas, porque una definitiva `NULL` queda fuera del `AVG`.
+
+    Año lectivo (fase 3, paso 3.5a): solo cuentan las definitivas de cursos
+    del año que se mira, **tambien sin año**. El periodo 1 existe en todos los
+    años; sin este filtro, con 2027 activo, el puesto del periodo 1 promediaria
+    tambien las definitivas del periodo 1 de 2026 de quien estuvo los dos años.
+    Mientras haya un solo año, el resultado es el mismo de antes. Con
+    `anio_lectivo_id`, los compañeros son los matriculados en el mismo curso
+    ese año.
     """
-    cursor.execute('''
+    curso, params_curso = _curso_del_estudiante(anio_lectivo_id)
+    if anio_lectivo_id is None:
+        curso_del_pedido = "(SELECT curso_id FROM estudiantes WHERE id = %s)"
+        params_pedido = (estudiante_id,)
+        anio_sql, params_anio = ANIO_ACTIVO_ID_SQL, ()
+    else:
+        curso_del_pedido = (
+            "(SELECT curso_id FROM matriculas WHERE estudiante_id = %s AND anio_lectivo_id = %s)"
+        )
+        params_pedido = (estudiante_id, anio_lectivo_id)
+        anio_sql, params_anio = "%s", (anio_lectivo_id,)
+    cursor.execute(f'''
             WITH promedios AS (
                 SELECT
                     bc.estudiante_id,
                     AVG(bc.definitiva) AS promedio
                 FROM boletin_cabecera bc
                 JOIN estudiantes e ON e.id = bc.estudiante_id
-                WHERE e.curso_id = (SELECT curso_id FROM estudiantes WHERE id = %s)
+                JOIN asignaciones a ON a.id = bc.asignacion_id
+                JOIN cursos c ON c.id = a.curso_id
+                WHERE {curso} = {curso_del_pedido}
+                  AND c.anio_lectivo_id = {anio_sql}
                   AND bc.periodo = %s
                   AND bc.definitiva IS NOT NULL
                 GROUP BY bc.estudiante_id
@@ -273,7 +325,7 @@ def leer_puesto_en_el_curso(cursor, estudiante_id, periodo):
             SELECT
                 (SELECT puesto FROM ranked WHERE estudiante_id = %s) AS puesto,
                 (SELECT COUNT(*) FROM promedios) AS total
-        ''', (estudiante_id, periodo, estudiante_id))
+        ''', (*params_curso, *params_pedido, *params_anio, periodo, estudiante_id))
     return cursor.fetchone()
 
 
@@ -281,14 +333,17 @@ def leer_puesto_en_el_curso(cursor, estudiante_id, periodo):
 # Lectura: reporte parcial
 # --------------------------------------------------------------------------
 
-def leer_datos_basicos_del_estudiante(cursor, estudiante_id):
+def leer_datos_basicos_del_estudiante(cursor, estudiante_id, anio_lectivo_id=None):
     """Mismo resultado que `leer_datos_del_estudiante` con **otro SQL**.
 
     Cambian el orden del `LEFT JOIN` y el formato de las columnas. Se conservan
     las dos por separado: unificarlas cambiaria el SQL observable de uno de los
     dos caminos y esta capa no lo autoriza.
+
+    Con `anio_lectivo_id`, el curso de su matricula de ese año.
     """
-    cursor.execute('''
+    curso, params_curso = _curso_del_estudiante(anio_lectivo_id)
+    cursor.execute(f'''
             SELECT
                 e.nombre AS estudiante_nombre,
                 e.apellido AS estudiante_apellido,
@@ -297,22 +352,27 @@ def leer_datos_basicos_del_estudiante(cursor, estudiante_id):
                 dg.nombre AS director_grupo_nombre,
                 dg.apellido AS director_grupo_apellido
             FROM estudiantes e
-            LEFT JOIN cursos c ON c.id = e.curso_id
+            LEFT JOIN cursos c ON c.id = {curso}
             LEFT JOIN profesor dg ON dg.id = c.director_grupo_id
             WHERE e.id = %s
-        ''', (estudiante_id,))
+        ''', (*params_curso, estudiante_id))
     return cursor.fetchone()
 
 
-def leer_planilla_vigente(cursor, estudiante_id, periodo, nombre_materia_excluida):
+def leer_planilla_vigente(
+    cursor, estudiante_id, periodo, nombre_materia_excluida, anio_lectivo_id=None
+):
     """Planilla vigente del estudiante: materias y notas sin pasar por el
     boletin guardado. Es la fotografia que sostiene el reporte parcial.
 
     `nombre_materia_excluida`: ver el mismo parametro en
     `leer_materias_del_estudiante`. El filtro de materia inactiva tambien se
     explica alli: las dos consultas del boletin siguen la misma regla.
+
+    Con `anio_lectivo_id`, las materias del curso de su matricula de ese año.
     """
-    cursor.execute('''
+    curso, params_curso = _curso_del_estudiante(anio_lectivo_id)
+    cursor.execute(f'''
             WITH asignaciones_academicas AS (
                 SELECT DISTINCT ON (COALESCE(a.asignacion_academica_id, a.id))
                     COALESCE(a.asignacion_academica_id, a.id) AS id,
@@ -340,7 +400,7 @@ def leer_planilla_vigente(cursor, estudiante_id, periodo, nombre_materia_excluid
                 COALESCE(nd.tipo_evaluacion, 'numerica') AS tipo_evaluacion,
                 nd.valoracion
             FROM estudiantes e
-            JOIN asignaciones_academicas asig ON asig.curso_id = e.curso_id
+            JOIN asignaciones_academicas asig ON asig.curso_id = {curso}
             JOIN materias m ON m.id = asig.materia_id
             JOIN profesor p ON p.id = asig.profesor_id
             LEFT JOIN notas_detalle nd
@@ -351,5 +411,5 @@ def leer_planilla_vigente(cursor, estudiante_id, periodo, nombre_materia_excluid
               AND m.nombre <> %s
               AND COALESCE(LOWER(m.estado), 'activo') = 'activo'
             ORDER BY asig.orden_boletin, m.nombre, nd.id
-        ''', (periodo, estudiante_id, nombre_materia_excluida))
+        ''', (*params_curso, periodo, estudiante_id, nombre_materia_excluida))
     return cursor.fetchall()

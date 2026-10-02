@@ -63,12 +63,20 @@ def sincronizar_matricula_del_anio_activo(cursor, estudiante_id):
 
 
 def leer_anio_lectivo(cursor, anio_lectivo_id):
-    """El año lectivo pedido como `(id, anio, estado)`, o `None` si no existe."""
+    """El año lectivo pedido como `(id, anio, estado)`, o `None` si no existe.
+
+    Siempre como tupla, tambien con un cursor de diccionarios
+    (`RealDictCursor`, el que usan boletin y conceptos de pago), igual que
+    `_columnas_existentes` de `tipos_pagos_controller`.
+    """
     cursor.execute(
         "SELECT id, anio, estado FROM anios_lectivos WHERE id = %s",
         (anio_lectivo_id,),
     )
-    return cursor.fetchone()
+    fila = cursor.fetchone()
+    if isinstance(fila, dict):
+        return (fila["id"], fila["anio"], fila["estado"])
+    return fila
 
 
 def leer_anio_de_curso(cursor, curso_id):

@@ -841,6 +841,18 @@ Notas:
   asignado como director de grupo del curso del estudiante, o `null` si el
   curso no tiene uno asignado (`cursos.director_grupo_id`). Ver
   `docs/funcionalidades/DIRECTOR_GRUPO.md`.
+- Año lectivo (fase 3, paso 3.5a): los dos endpoints de admin aceptan
+  `?anio_lectivo_id=`. Sin el, o con el del año activo, el boletin y el
+  reporte de siempre (mismas consultas). Con otro año, el curso es el de la
+  matricula del estudiante ese año (materias, curso, jornada, director y
+  compañeros del puesto). Un año que no existe da `404` con `El año lectivo
+  seleccionado no existe.`
+- El `puesto` cuenta solo las definitivas de cursos del año que se mira,
+  tambien sin el parametro: el periodo 1 existe todos los años y, sin ese
+  filtro, con dos años se mezclarian. Mientras haya un solo año, el puesto
+  es el mismo de antes.
+- Las materias inactivas se ocultan como hoy en cualquier año. La regla de un
+  año cerrado ("como estaba al cerrar", decision 13) llega en la fase 6.
 
 ## Branding
 

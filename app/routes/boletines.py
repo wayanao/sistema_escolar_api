@@ -1,6 +1,7 @@
 import logging
+from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.core.permissions import require_asignacion_access, require_estudiante_in_asignacion
 from app.dependencies import get_current_active_admin, get_current_user
@@ -11,6 +12,7 @@ from app.controllers.boletin_controller import (
     obtener_boletin_para_profesor_controller,
     obtener_reporte_parcial_admin_controller,
 )
+from app.services.anio_lectivo import AnioLectivoInexistenteError
 
 logger = logging.getLogger(__name__)
 
@@ -55,14 +57,21 @@ def generar_boletin_admin(
     estudiante_id: int,
     periodo: int,
     _admin: dict = Depends(get_current_active_admin),
+    anio_lectivo_id: Annotated[Optional[int], Query(gt=0)] = None,
 ):
+    """Sin `anio_lectivo_id`, o con el activo, el boletin de siempre; con otro
+    año, el del curso de su matricula de ese año."""
     try:
-        resultado = obtener_boletin_admin_controller(estudiante_id, periodo)
+        resultado = obtener_boletin_admin_controller(
+            estudiante_id, periodo, anio_lectivo_id=anio_lectivo_id
+        )
         if not resultado:
             raise HTTPException(status_code=404, detail="Estudiante no encontrado")
         return resultado
     except HTTPException:
         raise
+    except AnioLectivoInexistenteError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
     except Exception as e:
         logger.exception("Error generando boletin admin")
         raise HTTPException(status_code=500, detail="No se pudo generar el boletin") from e
@@ -73,14 +82,21 @@ def generar_reporte_parcial_admin(
     estudiante_id: int,
     periodo: int,
     _admin: dict = Depends(get_current_active_admin),
+    anio_lectivo_id: Annotated[Optional[int], Query(gt=0)] = None,
 ):
+    """Sin `anio_lectivo_id`, o con el activo, el reporte de siempre; con otro
+    año, el del curso de su matricula de ese año."""
     try:
-        resultado = obtener_reporte_parcial_admin_controller(estudiante_id, periodo)
+        resultado = obtener_reporte_parcial_admin_controller(
+            estudiante_id, periodo, anio_lectivo_id=anio_lectivo_id
+        )
         if not resultado:
             raise HTTPException(status_code=404, detail="Estudiante no encontrado")
         return resultado
     except HTTPException:
         raise
+    except AnioLectivoInexistenteError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
     except Exception as e:
         logger.exception("Error generando reporte parcial admin")
         raise HTTPException(status_code=500, detail="No se pudo generar el reporte parcial") from e

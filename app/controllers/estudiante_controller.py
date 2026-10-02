@@ -2,7 +2,7 @@ import logging
 
 from app.database import get_connection, get_cursor
 from app.repositories import anios_lectivos_repository, estudiantes_repository
-from app.services.anio_lectivo import exigir_anio_lectivo
+from app.services.anio_lectivo import anio_distinto_del_activo, exigir_anio_lectivo
 from app.services.cobros import (
     calcular_deudas_anios_anteriores,
     calcular_deudas_estudiante,
@@ -105,10 +105,7 @@ def _anio_de_la_lista(cursor, anio_lectivo_id):
     Sin año, o con el activo, `None`: la lista de hoy, con todos los
     estudiantes. Con otro año, su id. Un año que no existe lanza `ValueError`.
     """
-    if anio_lectivo_id is None:
-        return None
-    anio = exigir_anio_lectivo(cursor, anio_lectivo_id)
-    return None if anio[2] == "activo" else anio_lectivo_id
+    return anio_distinto_del_activo(cursor, anio_lectivo_id)
 
 
 # 🎯 Obtener todos los estudiantes

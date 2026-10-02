@@ -2,9 +2,9 @@
 
 ## Control
 
-- Estado: **Fase 3 en curso: inventario y plan del 2026-10-02; pasos 3.1,
-  3.2 y 3.3 en los commits `fea2e83`, `43764f2` y `da4da87`; paso 3.4
-  (estudiantes y cartera desde las matrículas) escrito y probado, sin
+- Estado: **Fase 3 en curso: inventario y plan del 2026-10-02; pasos 3.1 a
+  3.4 en los commits `fea2e83`, `43764f2`, `da4da87` y `c9554af`; paso 3.5a
+  (boletín, reporte parcial y puesto por año) escrito y probado, sin
   commit.**
   **Fase 2 con el código completo el
   2026-10-01, sin desplegar.**
@@ -1586,7 +1586,9 @@ consultas extra en las lecturas; un paso se puede desplegar solo.
 - **3.5 — Boletín, certificados y consultas del admin por año.** Boletín,
   reporte parcial y puesto desde la matrícula del año pedido; observador
   del admin; detalle del estudiante (hallazgo 3); planes de clase del admin
-  (hallazgo 5).
+  (hallazgo 5). *Partido en dos al hacerlo (2026-10-02), para revisarlo
+  mejor:* **3.5a** boletín, reporte parcial y puesto; **3.5b** observador,
+  detalle del estudiante y planes de clase del admin.
 - **3.6 — Aviso al renombrar una materia** (punto 3, decisión 12).
 - **3.7 — Guardia de escritura** en las 33 rutas (punto 4). Antes de
   escribirla se mide cuántas consultas agrega a cada guardado, y el usuario
@@ -1846,6 +1848,67 @@ matrículas (sin desplegar):**
   en local recomendada (solo lectura): Estudiantes, el buscador de
   estudiantes de Pagos, Cartera vencida (lista, filtro por curso y el
   resumen del inicio), iguales que en producción.
+- Commit `c9554af` (hecho por el usuario el 2026-10-02).
+
+**Avance del 2026-10-02 — paso 3.5a, boletín, reporte parcial y puesto por
+año (sin desplegar):**
+
+- Antes de empezar se le hizo al usuario la pregunta de las materias
+  ocultas: la regla de años cerrados va en la fase 6 (ver "Preguntas
+  abiertas"). Al revisar el código, el 3.5 resultó grande y se partió en dos
+  (3.5a y 3.5b).
+- Hallazgo al revisar: el **puesto en el curso** promediaba todas las
+  definitivas del estudiante en el periodo, de cualquier año. Con 2027
+  activo, el periodo 1 de 2027 se habría mezclado con el periodo 1 de 2026.
+  Se corrige también para el año activo.
+- Código:
+  - `app/services/anio_lectivo.py`: `anio_distinto_del_activo(cursor,
+    anio_lectivo_id)` (sin año o con el activo, `None`: el camino de
+    siempre; con otro, su id; valida que exista) y
+    `AnioLectivoInexistenteError`, subclase de `ValueError` (quien ya
+    atrapaba `ValueError` sigue igual). La lista de estudiantes del 3.4 usa
+    ahora esta misma regla en vez de su copia.
+  - `leer_anio_lectivo` devuelve siempre una tupla, también con un cursor de
+    diccionarios (el del boletín).
+  - `app/repositories/boletin_repository.py`: materias, datos del estudiante
+    (boletín y reporte parcial) y planilla vigente reciben el año, con
+    `_curso_del_estudiante`: sin año, `e.curso_id`, y el texto que recibe
+    PostgreSQL es **idéntico al del commit anterior** (comparado letra por
+    letra, con sus parámetros); con año, el curso de su matrícula de ese
+    año. El puesto suma `c.anio_lectivo_id = <año que se mira>` (el activo
+    sin año) y, con año, los compañeros son los matriculados en el mismo
+    curso ese año; sin año, los parámetros son los mismos de antes.
+  - `boletin_controller.py` y `routes/boletines.py`: `?anio_lectivo_id=` en
+    `/boletines/admin/generar/...` y `/admin/reporte-parcial/...`. La ruta
+    atrapa `AnioLectivoInexistenteError` por su nombre → 404; cualquier otro
+    `ValueError` sigue saliendo como 500 sin su texto. El parámetro va
+    después del usuario en la firma, para que quien llama a la ruta por
+    posición no cambie.
+- Consultas: sin año, las mismas (boletín 4 con materias, reporte parcial
+  2); con año, una más para validarlo.
+- Pruebas:
+  - `tests/test_anio_lectivo_lecturas.py`, 24 nuevas: las cuatro lecturas
+    sin año (curso actual, sin matrículas, parámetros de siempre) y con año
+    (curso de la matrícula, el año primero); **el puesto con dos años**, con
+    una base que solo separa años si la consulta trae el filtro: con 2027
+    activo Ana es primera (4,5 frente a 4,0; mezclando sería segunda), y en
+    2026 es segunda; el controlador sin año, con el id del activo, con 2026 y
+    con un año inexistente; y las rutas (pasan el año, 422, 404, y un
+    `ValueError` cualquiera sigue en 500).
+  - Ajustadas a propósito: en `test_boletin_caracterizacion.py`, el contador
+    de consultas reconoce ahora las cinco que llevan un hueco para el curso
+    (siguen siendo 11 y 12; las de materias inactivas siguen siendo 2), y dos
+    dobles de ruta reciben el año; en `test_boletines_reporte_parcial.py`,
+    dos dobles más.
+  - Once versiones dañadas del código las hacen fallar, entre ellas quitar el
+    filtro de año del puesto.
+- Documentación: `docs/API_ENDPOINTS.md` (Boletines) y
+  `docs/CAMBIOS_BACKEND.md`.
+- Verificación: `scripts/verify.py` → **1687 pasan, 0 fallan** (antes
+  1663); ruff y `pip check` limpios; `git diff --check` limpio.
+- Efecto al desplegar: ninguno visible mientras haya un solo año. Revisión
+  en local recomendada (solo lectura): generar el boletín de un estudiante
+  (comprobar el puesto) y un certificado, iguales que en producción.
 
 ### Fase 4 — Selector de año en el frontend
 
@@ -2042,16 +2105,14 @@ cuando los profesores empiezan a ver sus clases nuevas.
   explícita de "anular deuda" sirve para casos como esa matrícula.
   Precaución operativa mientras tanto: no desactivar un concepto que
   todavía tenga deudas pendientes.
-- Fase 3, paso 3.5 (encontrada el 2026-10-02): el punto 2 de la fase 3 pide
-  que el boletín de un año cerrado oculte las materias de
-  `anios_lectivos_materias_ocultas`, pero esa tabla se crea en la fase 6 y
-  hoy no existe (búsqueda en todo el repo). Propuesto: en la fase 3 el
-  boletín queda como hoy para cualquier año, y la parte de años cerrados va
-  en la fase 6 junto con la tabla. Antes de la fase 6 no puede existir un
-  año cerrado (cerrar es parte de activar), así que no queda ningún caso sin
-  cubrir, y la fase 3 no necesita migración. La otra opción es crear la
-  tabla en la fase 3, con una migración que no se usaría hasta la fase 6.
-  **Sin respuesta del usuario.**
+- ~~Fase 3, paso 3.5: ¿la regla de materias ocultas de un año cerrado
+  (`anios_lectivos_materias_ocultas`, que se crea en la fase 6) va en el
+  3.5?~~ **Respondida el 2026-10-02: no, va en la fase 6.** En el 3.5 el
+  boletín oculta las materias inactivas como hoy, para cualquier año; la
+  regla de "como estaba al cerrar" (decisión 13) y su tabla se hacen en la
+  fase 6, cuando se cierra el primer año. Motivo: antes de la fase 6 no
+  puede existir un año cerrado, así que no queda ningún caso sin cubrir, y
+  el 3.5 no necesita migración.
 - Antes de la fase 5 (encontrada el 2026-10-02): `POST /cursos` y `POST
   /tipos-pagos` siempre crean en el año activo. La fase 4 dice que el admin
   prepara 2027 desde las pantallas existentes, pero ningún documento dice
@@ -2093,10 +2154,11 @@ cosa, gana lo que se pueda verificar.
   commit `fea2e83` (`GET /anios-lectivos` y `resolver_anio_pedido`); paso
   3.2 en `43764f2` (lo que ve el profesor, los listados del admin y los
   choques de horario, por año); paso 3.3 en `da4da87` (cursos, conceptos,
-  precios por curso, listas de seguimiento y reporte general, por año).
-  **Paso 3.4 escrito y probado, sin commit** (lista de estudiantes, cartera
-  y estado de cuenta por curso, por año; decisiones 18 y 19; ver su
-  "Avance").
+  precios por curso, listas de seguimiento y reporte general, por año); paso
+  3.4 en `c9554af` (lista de estudiantes, cartera y estado de cuenta por
+  curso, por año; decisiones 18 y 19). **Paso 3.5a escrito y probado, sin
+  commit** (boletín, reporte parcial y puesto por año; el puesto ya no
+  mezcla años; ver su "Avance").
 - **Hecho aparte, la noche del 2026-09-30:** el arreglo de la hora
   (`2e77634` en este repo, `033c042` en el frontend). Cobros, cartera y
   alta de colegios usan la fecha de Colombia (`app/core/fechas.py`), y el
@@ -2129,12 +2191,15 @@ cosa, gana lo que se pueda verificar.
   rama, detener el backend local que esté corriendo; si no, el frontend
   sigue hablando con el que apunta a producción.
 - **Siguiente acción exacta:** que el usuario revise y haga el commit del
-  paso 3.4. Después, **paso 3.5** (boletín, reporte parcial y puesto desde la
-  matrícula del año pedido; observador del admin; detalle del estudiante,
-  hallazgo 3; planes de clase del admin, hallazgo 5), solo con su visto
-  bueno. **Antes de empezarlo, hacerle al usuario la pregunta abierta de las
-  materias ocultas** (ver "Preguntas abiertas"): define si el 3.5 lleva una
-  migración o no. Las preguntas abiertas se le
+  paso 3.5a. Después, **paso 3.5b** (observador por año, para admin y
+  profesor, con `resolver_anio_pedido`; detalle del estudiante, hallazgo 3;
+  planes de clase del admin, hallazgo 5), solo con su visto bueno. Ya
+  revisado para él: la bitácora del observador hoy trae todas las
+  anotaciones del estudiante (filtro de año en el `ON`, como el del
+  periodo); el detalle del estudiante tiene cuatro lecturas en
+  `estudiantes_repository` y la deuda por `calcular_deudas_estudiante`; la
+  lista de planes del admin vive en `plan_de_clases_repository` y abre su
+  propio cursor, y su ruta convierte todo error en 500. Las preguntas abiertas se le
   hacen al usuario justo antes del paso que las necesita (lo pidió así el
   2026-10-02): la de materias ocultas, antes del 3.5; la de crear en el año
   en preparación, antes de la fase 5. La fase 3 tiene que estar en

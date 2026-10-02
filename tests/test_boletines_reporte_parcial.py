@@ -122,7 +122,8 @@ def test_ruta_reporte_parcial_conserva_guard_admin_y_respuesta(monkeypatch):
     monkeypatch.setattr(
         boletines,
         "obtener_reporte_parcial_admin_controller",
-        lambda estudiante_id, periodo: esperado,
+        # Año lectivo, fase 3 (paso 3.5a): sin año, None.
+        lambda estudiante_id, periodo, anio_lectivo_id=None: esperado,
     )
 
     assert boletines.generar_reporte_parcial_admin(8, 2, {"rol": "admin"}) == esperado
@@ -132,7 +133,7 @@ def test_ruta_reporte_parcial_responde_404_si_no_existe_estudiante(monkeypatch):
     monkeypatch.setattr(
         boletines,
         "obtener_reporte_parcial_admin_controller",
-        lambda estudiante_id, periodo: None,
+        lambda estudiante_id, periodo, anio_lectivo_id=None: None,
     )
 
     with pytest.raises(HTTPException) as exc:

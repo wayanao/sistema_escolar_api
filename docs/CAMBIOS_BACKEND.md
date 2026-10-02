@@ -6,6 +6,38 @@ Ultima revision documental: 2026-10-02.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
+## 2026-10-02 - Año lectivo: boletin, reporte parcial y puesto por año
+
+Fase 3, paso 3.5a, de `docs/funcionalidades/ANIO_LECTIVO.md`. El paso 3.5 se
+partio en dos para revisarlo mejor; este es el boletin.
+
+### Que cambia
+
+- `GET /boletines/admin/generar/...` y `/admin/reporte-parcial/...` aceptan
+  `?anio_lectivo_id=`. Sin el, o con el activo, las consultas son las de
+  siempre, letra por letra (comparadas con el commit anterior). Con otro año,
+  el curso es el de la matricula de ese año. Año inexistente: 404.
+- **Puesto en el curso**: solo cuentan las definitivas de cursos del año que
+  se mira, tambien sin año. Sin este filtro, con 2027 activo, el periodo 1
+  de 2027 se promediaria con el periodo 1 de 2026. Con un solo año, el mismo
+  resultado; mismos parametros.
+- Servicio `anio_lectivo`: `anio_distinto_del_activo` (la regla "con el
+  activo, el camino de siempre", que ahora comparte la lista de estudiantes)
+  y `AnioLectivoInexistenteError`, un `ValueError` que el boletin atrapa por
+  su nombre para no convertir otros fallos en 404.
+- Materias ocultas de un año cerrado: quedan para la fase 6 (decidido por el
+  usuario el 2026-10-02).
+
+### Pruebas
+
+24 nuevas en `tests/test_anio_lectivo_lecturas.py`, entre ellas el puesto con
+dos años (con 2027 activo, Ana es primera; mezclando, seria segunda). En
+`test_boletin_caracterizacion.py` el contador de consultas ahora reconoce las
+cinco que llevan un hueco para el curso (siguen siendo 11), y dos dobles de
+ruta reciben el año, igual que en `test_boletines_reporte_parcial.py`. Once
+versiones dañadas del codigo hacen fallar las nuevas. `scripts/verify.py`:
+1687 pasan, 0 fallan.
+
 ## 2026-10-02 - Año lectivo: estudiantes y cartera desde las matriculas
 
 Fase 3, paso 3.4, de `docs/funcionalidades/ANIO_LECTIVO.md`. Zona de dinero.

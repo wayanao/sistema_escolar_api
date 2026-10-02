@@ -15,17 +15,40 @@ class AnioLectivoNoPermitidoError(Exception):
     """Un usuario que no es admin pidio un año que no es el activo."""
 
 
+class AnioLectivoInexistenteError(ValueError):
+    """El año lectivo pedido no existe.
+
+    Es un `ValueError` para que quien ya lo atrapaba asi (las rutas de las
+    fases 2 y 3) siga igual; quien necesita distinguirlo de otros
+    `ValueError` lo atrapa por su nombre.
+    """
+
+
 def exigir_anio_lectivo(cursor, anio_lectivo_id):
     """Devuelve el año pedido como `(id, anio, estado)`.
 
-    Lanza `ValueError`, con un mensaje listo para mostrar, si no existe.
-    Cualquier estado vale: un pago se registra en el año de la deuda que
-    salda, aunque ese año este cerrado (decision 6).
+    Lanza `AnioLectivoInexistenteError`, con un mensaje listo para mostrar, si
+    no existe. Cualquier estado vale: un pago se registra en el año de la
+    deuda que salda, aunque ese año este cerrado (decision 6).
     """
     anio = leer_anio_lectivo(cursor, anio_lectivo_id)
     if anio is None:
-        raise ValueError("El año lectivo seleccionado no existe.")
+        raise AnioLectivoInexistenteError("El año lectivo seleccionado no existe.")
     return anio
+
+
+def anio_distinto_del_activo(cursor, anio_lectivo_id):
+    """El año pedido si no es el activo; `None` si no se pidio o es el activo.
+
+    Es la regla de "con el año activo, las consultas de siempre": quien recibe
+    `None` sigue su camino de hoy, letra por letra, y solo un año distinto
+    toma el camino que lee por matriculas. Sin año no consulta nada; con año,
+    una consulta para validarlo (`AnioLectivoInexistenteError` si no existe).
+    """
+    if anio_lectivo_id is None:
+        return None
+    anio = exigir_anio_lectivo(cursor, anio_lectivo_id)
+    return None if anio[2] == "activo" else anio_lectivo_id
 
 
 def _es_admin(usuario):

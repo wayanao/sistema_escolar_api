@@ -5,8 +5,9 @@
 - Estado: **Fase 3 en curso: inventario y plan del 2026-10-02; pasos 3.1 a
   3.5b en los commits `fea2e83`, `43764f2`, `da4da87`, `c9554af`,
   `eb835e3` y `8716fc5` (todas las lecturas quedan por año); paso 3.6
-  (aviso al renombrar una materia) escrito y probado, sin commit. Falta 3.7
-  (guardia de escritura). Ningún commit de la fase 3 está en GitHub.**
+  (aviso al renombrar una materia) en `0110359`. Paso 3.7 (guardia de
+  escritura): medido, falta que el usuario decida el costo. Ningún commit
+  de la fase 3 está en GitHub.**
   **Fase 2 con el código completo el
   2026-10-01, subida a GitHub.**
   Pasos 2.1 (las cuotas se cuentan en el año del concepto), 2.2 (cada año
@@ -2059,6 +2060,62 @@ desplegar):**
 - Efecto al desplegar: ninguno visible mientras haya un solo año. Revisión
   en local: no hace falta. Editar una materia en local escribe en la base
   real, y lo que cambia solo se ve con dos años.
+- Commit `0110359` (hecho por el usuario el 2026-10-02).
+
+**Medición previa del paso 3.7, la guardia de escritura (2026-10-02; sin
+cambios de código):**
+
+- Aprobado empezar el paso por el usuario ("continúa"). Como pide el plan,
+  primero se mide y el usuario decide el costo.
+- Cómo se midió: un banco de medición fuera del repo pasó cada ruta por la
+  aplicación real (ASGI) con una base simulada que cuenta conexiones,
+  consultas e idas a la base. El usuario de la sesión se dobló, así que las
+  cifras **no** incluyen la autenticación (~346 ms, igual con o sin
+  guardia). Idas = consultas + BEGIN, preparación y cierre de cada conexión.
+  Camino feliz de cada ruta.
+- Resultado, hoy (conexiones / consultas / idas):
+
+  | Ruta | Profesor | Admin |
+  |---|---|---|
+  | `POST /planilla/nota` | 2 / 6 / 12 | 1 / 5 / 8 |
+  | `DELETE /planilla/tipo` | 2 / 3 / 9 | 1 / 2 / 5 |
+  | `POST /asistencia` (1 estudiante) | 3 / 6 / 15 | 2 / 5 / 11 |
+  | `POST /boletines/guardar` | 3 / 7 / 16 | 2 / 6 / 12 |
+  | `POST /observaciones` | 3 / 5 / 14 | 2 / 4 / 10 |
+  | `PUT /planeador-anual/...` | 2 / 3 / 9 | 1 / 2 / 5 |
+  | `POST /plan-de-clases` | 2 / 3 / 9 | 1 / 2 / 5 |
+  | `DELETE /plan-de-clases/{id}/imagen` | 2 / 3 / 9 | 1 / 2 / 5 |
+  | `PATCH .../observaciones/{id}/vista` | 2 / 2 / 8 | — |
+  | `PUT /observador/{id}` | 1 / 1 / 4 | — |
+  | `POST /notas` | 5 / 6 / 21 | 4 / 5 / 17 |
+
+  Solo admin: asignaciones `POST` 1/12/15 y `PUT` 1/11/14 (las pruebas del
+  repo fijan 13 y 11 consultas: el banco tomó un camino un poco más corto al
+  crear), los dos `DELETE` 1/2/5, orden del boletín 1/6/11; cursos `PUT`
+  1/2/5 y estado 1/1/4; listas: crear columna 1/3/6, en todos los cursos
+  1/2/5, borrar columna 1/1/4, marcas 1/3/6; planes del admin: revisión
+  1/3/6, observación 1/4/7, borrar imagen 1/2/5; conceptos: editar 1/2/5,
+  configuración 2/4/10, precios 1/4/7, quitar precio 1/1/4; valores por
+  estudiante: guardar 1/8/11, borrar 1/2/5.
+- Tres rutas de la lista no necesitan consulta: `POST /observador` (la
+  anotación nueva siempre nace en el año activo, con `ANIO_ACTIVO_ID_SQL`, y
+  el activo es editable para todos), `DELETE /tipos-pagos/{id}` (nunca
+  escribe: responde 405 siempre) y `POST /listas-seguimiento/columnas-en-todos-los-cursos`
+  (sin año usa el activo; con año ya lee su estado al validarlo).
+- Diseño propuesto: la guardia corre **dentro de una conexión que el
+  guardado ya abre**, nunca en una nueva (cada conexión nueva son ~3 idas
+  más, ~180 ms, y presiona el pool de 10). Costo: **+1 consulta (~60 ms) en
+  cada guardado de las otras 30 rutas**; ninguna conexión nueva. Ejemplo,
+  lo que más usan los profesores: guardar una nota en la planilla pasa de 12
+  a 13 idas (~0,72 s a ~0,78 s, sin contar la autenticación).
+- Descartado por ahora: unir la guardia a la consulta de permisos del
+  profesor (`permissions.py`), que la dejaría en 0 para él. Es la capa de
+  permisos, zona sensible, y ahorra ~60 ms; se puede hacer después, aparte.
+- Hallazgo, fuera de alcance: `POST /notas` abre 5 conexiones (21 idas,
+  ~1,3 s), pero ninguna pantalla del frontend la usa (búsqueda en
+  `frontend-react/src`). Deuda anotada, sin prisa.
+- **Pendiente:** que el usuario acepte o no el costo. Con un solo año la
+  guardia nunca bloquea; solo suma ese tiempo.
 
 ### Fase 4 — Selector de año en el frontend
 
@@ -2310,9 +2367,10 @@ cosa, gana lo que se pueda verificar.
   reporte parcial y puesto por año; el puesto ya no mezcla años); paso 3.5b
   en `8716fc5` (observador, expediente y planes del admin por año; su
   "Avance" deja una consulta de solo lectura pendiente sobre faltas sin
-  clase). **Paso 3.6 escrito y probado, sin commit** (aviso al renombrar
-  una materia que se usa en otro año; ver su "Avance"). Los siete commits
-  de la fase 3 (`57b3710` a `8716fc5`) no están en GitHub.
+  clase); paso 3.6 en `0110359` (aviso al renombrar una materia que se usa
+  en otro año). **Paso 3.7 iniciado: medición previa hecha, sin código**
+  (ver "Medición previa del paso 3.7"). Los ocho commits de la fase 3
+  (`57b3710` a `0110359`) no están en GitHub.
 - **Hecho aparte, la noche del 2026-09-30:** el arreglo de la hora
   (`2e77634` en este repo, `033c042` en el frontend). Cobros, cartera y
   alta de colegios usan la fecha de Colombia (`app/core/fechas.py`), y el
@@ -2341,12 +2399,12 @@ cosa, gana lo que se pueda verificar.
   correr si falta `$env:DATABASE_URL`. Antes de probar la app contra una
   rama, detener el backend local que esté corriendo; si no, el frontend
   sigue hablando con el que apunta a producción.
-- **Siguiente acción exacta:** que el usuario revise y haga el commit del
-  paso 3.6. Después, **paso 3.7** (guardia `exigir_anio_editable` en las 33
-  rutas que escriben datos académicos, punto 4 de la fase 3; ver la lista
-  en "Inventario confirmado"), solo con su visto bueno. Antes de escribirlo
-  se mide cuántas consultas agrega a cada guardado y el usuario decide, como
-  en el paso 2.4. Las preguntas abiertas se le hacen al usuario justo antes
+- **Siguiente acción exacta:** que el usuario decida si acepta el costo de
+  la guardia del paso 3.7 (+1 consulta, ~60 ms, en 30 rutas; ver "Medición
+  previa del paso 3.7"). Si acepta: escribirla en dos partes, 3.7a las 11
+  rutas que usa el profesor y 3.7b las 19 de solo admin, cada una con
+  caracterización y conteo antes (el banco de medición pasa a ser prueba del
+  repo) y con su visto bueno. Las preguntas abiertas se le hacen al usuario justo antes
   del paso que las necesita (lo pidió así el 2026-10-02): la de crear en el
   año en preparación, antes de la fase 5; la del selector, antes de la fase
   4. Al cerrar la fase 3 se anota el contrato completo en el documento del

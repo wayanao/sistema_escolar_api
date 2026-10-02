@@ -2,11 +2,13 @@
 
 ## Control
 
-- Estado: **Fase 2 con el código completo el 2026-10-01, sin desplegar.**
+- Estado: **Fase 3 iniciada el 2026-10-02: inventario confirmado y plan
+  por pasos propuesto, sin código.** **Fase 2 con el código completo el
+  2026-10-01, sin desplegar.**
   Pasos 2.1 (las cuotas se cuentan en el año del concepto), 2.2 (cada año
-  cuenta solo sus pagos) y 2.3 (pagar en otro año) en los commits
-  `b2362f1`, `34712dd` y `b5f4099`; paso 2.4 (deuda de años anteriores)
-  sin commit. Fase 1
+  cuenta solo sus pagos), 2.3 (pagar en otro año) y 2.4 (deuda de años
+  anteriores) en los commits `b2362f1`, `34712dd`, `b5f4099` y `f03b032`,
+  sin subir a GitHub al 2026-10-02. Fase 1
   terminada el 2026-10-01: migración A (2026-09-30) y migración B
   (2026-10-01) aplicadas en producción, código que escribe el año
   desplegado en Render (`67b2d4b`, Live), esquema base regenerado. Fase 0
@@ -35,7 +37,7 @@
   fase 1, el relleno los marcaría como 2026; entre la fase 1 y la 5 no existe
   todavía un año 2027 donde ponerlos. Al 2026-09-30 no hay ninguno
   registrado (confirmado por el usuario).
-- Última actualización: 2026-10-01.
+- Última actualización: 2026-10-02.
 
 ## Objetivo
 
@@ -1382,6 +1384,7 @@ desplegar):**
   consulta más en las deudas de un estudiante y en cartera (unos 60 ms).
   El frontend tiene que mostrar `deuda_anios_anteriores` antes de activar
   2027 (fase 6).
+- Commit `f03b032` (hecho por el usuario el 2026-10-01).
 
 **Con esto, el código de la fase 2 queda completo (2026-10-01).** Se
 cumplen las condiciones del punto 9:
@@ -1392,7 +1395,8 @@ cumplen las condiciones del punto 9:
   del curso de 2027.
 - `verify.py` pasa.
 
-Falta que el usuario lo revise en local y lo despliegue.
+Falta que el usuario lo revise en local y lo despliegue. Al 2026-10-02 los
+cuatro commits siguen sin subir (`git status`: `ahead 4`).
 
 ### Fase 3 — Lecturas por año y guardia de escritura
 
@@ -1459,6 +1463,125 @@ profesores verían las clases de 2027.
 5. Terminado cuando: con el año activo, todas las respuestas son idénticas a
    las de la fase 0; con otro año, devuelven solo lo de ese año; `verify.py`
    pasa.
+
+**Inventario confirmado el 2026-10-02** (con `grep` sobre `app/`, como pide
+el punto 2; solo lectura, sin cambios de código):
+
+- Lo que ya estaba en la lista sigue ahí: `curso_controller.py` (nombre
+  repetido `:26`, listado `:113`, paginado y conteo `:137`),
+  `listas_seguimiento_repository.py:211` y `:226`, `reportes_repository.py:9`
+  y `:31` (antes `:6` y `:28`; se corrieron con el `import` de la fase 2) y
+  `:211` (estudiantes del estado de cuenta por curso),
+  `cartera_mora_controller.py:96`, `boletin_repository.py` (`:103`, `:181`,
+  `:241`, `:261`, `:300`, `:343`), `tipos_pagos_controller.py` (crear `:25`,
+  listar `:56`, detallado `:204`, cursos de un concepto `:379`, guardar
+  precios `:427`) y el observador del admin (`observador_repository.py:82`,
+  `leer_bitacora`).
+- Asignaciones del profesor, ubicadas: "mis clases"
+  (`leer_clases_con_horario_de_profesor`, `asignaciones_repository.py:639`),
+  `GET /profesores/{id}/cursos` (`leer_cursos_de_profesor`, `:436`, abierta a
+  profesores) y el inicio del profesor (`dashboard_repository.py:144`
+  inasistencias y `:178` promedios). **Corrección:** `profesor_controller.py`
+  sale del inventario. Su `obtener_clases_profesor_controller` (`:203`) no
+  tiene ruta, igual que la homónima de `asignacion_controller.py:421`
+  (código sin uso; no se borra sin permiso).
+- **Nuevo, no estaba en la lista:**
+  1. **Choques de horario del profesor.** `verificar_cruce_horario` y
+     `verificar_cruce_horario_editar` (`asignacion_controller.py:318` y
+     `:584`, con `leer_horarios_del_dia` y `leer_horarios_del_dia_excluyendo`
+     de `asignaciones_repository.py:257` y `:272`) y la disponibilidad
+     (`leer_horarios_ocupados`, `:350`, `GET
+     /profesores/{id}/disponibilidad`) miran todas las clases del profesor,
+     de cualquier año. Sin filtro, al armar la carga de 2027 (fase 5) cada
+     clase chocaría con la del mismo profesor a la misma hora en 2026, y la
+     pantalla lo mostraría ocupado. Se limitan al año del curso. El choque
+     por curso no necesita año: el curso ya lo implica.
+  2. **Listados de asignaciones del admin:** `GET /asignaciones/lista`
+     (`asignaciones_repository.py:570`, `:592`, `:605`) y `GET
+     /hora/horarios-admin` (`:472`). La lista anterior hablaba de horarios
+     solo del lado del profesor.
+  3. **Detalle del estudiante** (`GET /estudiantes/{id}/detalles`,
+     `estudiantes_repository.py:219`, `:235` y `:244`): promedios, faltas y
+     observaciones suman todos los años. La deuda de esa respuesta ya es
+     del año activo (fase 2). Se mezclaría desde que 2027 tenga notas, o
+     sea, después de activarlo.
+  4. **Nombre repetido al editar un concepto** (`actualizar_tipo_pago`,
+     `tipos_pagos_controller.py:67`), además del de crear.
+  5. **Planes de clase del admin** (`GET /admin/plan-de-clases`): lista los
+     de todos los años.
+  6. Para la fase 5, no la 3: los valores especiales por estudiante
+     (`/estudiantes/{id}/valores-pago-personalizados`) listan los de todos
+     los años, y al guardar uno toman el precio del curso de
+     `estudiantes.curso_id` (`tipos_pagos_controller.py:613`). Es lo que
+     ordena la decisión 8.
+- **Sin año, a propósito** (no se tocan): lo que parte de un `curso_id` o
+  un `asignacion_id` (planilla, asistencia, planeador, observaciones, plan
+  de clases del profesor, listas de un curso, orden del boletín); lo que el
+  profesor alcanza por `estudiantes.curso_id`, que es siempre del año activo
+  (`permissions.py`, `notas_repository.py`, `observador_repository.py:133`,
+  cumpleaños); y `/notas/{id}`, `/boletin/{id}` y `/boletin/detallado/{id}`,
+  que ninguna pantalla del frontend usa (búsqueda en
+  `frontend-react/src`).
+- **Rutas que escriben datos académicos** (punto 4, la guardia), 33:
+  - Profesor y admin (12): `POST /notas`, `POST /planilla/nota`, `DELETE
+    /planilla/tipo`, `POST /asistencia`, `POST /boletines/guardar`, `POST
+    /observaciones`, `POST /observador`, `PUT /observador/{id}`, `PUT
+    /planeador-anual/{asignacion_id}/{periodo}`, `POST /plan-de-clases`,
+    `DELETE /plan-de-clases/{id}/imagen` y `PATCH
+    /plan-de-clases/{id}/observaciones/{id}/vista`.
+  - Solo admin (21): asignaciones (`POST`, `PUT`, los dos `DELETE` y `PUT
+    /cursos/{id}/orden-boletin`), cursos (`PUT` y `PATCH .../estado`),
+    listas de seguimiento (las 4), planes de clase (`PATCH .../revision`,
+    `POST .../observaciones`, `DELETE /admin/.../imagen`), conceptos (`PUT`,
+    `DELETE`, `PUT .../configuracion`, `PUT` y `DELETE .../cursos`) y
+    valores por estudiante (`PUT` y `DELETE`).
+  - Sin guardia, a propósito: `POST /cursos` y `POST /tipos-pagos` (hoy
+    siempre crean en el año activo, que es editable; ver "Preguntas
+    abiertas"), estudiantes y materias (no tienen año; materias tiene el
+    aviso del punto 3) y pagos (decisión 6).
+
+**Plan por pasos (propuesto el 2026-10-02; cada paso, con el visto bueno del
+usuario):**
+
+Principios, los mismos de la fase 2: con el año activo cada respuesta y
+cada consulta quedan idénticas (caracterización antes de cambiar); el año
+viaja como la subconsulta `ANIO_ACTIVO_ID_SQL` o como un parámetro, sin
+consultas extra en las lecturas; un paso se puede desplegar solo.
+
+- **3.1 — Años lectivos y la regla del año pedido.** `GET /anios-lectivos`
+  (admin: todos; profesor: solo el activo) y, en `app/services/anio_lectivo.py`,
+  la regla común para `?anio_lectivo_id=`: sin él, el activo; un profesor
+  que pide otro, 403; uno que no existe, error. No cambia ninguna respuesta
+  existente.
+- **3.2 — Profesor y horarios, solo del año.** "Mis clases", cursos del
+  profesor e inicio del profesor, limitados al año activo; listados de
+  asignaciones y horarios del admin con el año pedido; choques de horario y
+  disponibilidad por el año del curso (hallazgo 1). Es lo que más gente usa:
+  todos los profesores.
+- **3.3 — Cursos y conceptos por año.** Listados de cursos; nombre repetido
+  de cursos y conceptos (crear y editar) dentro del año; listado y detalle
+  de conceptos; cursos ofrecidos para precios, y al guardar un precio,
+  concepto y curso del mismo año; listas de seguimiento "en todos los
+  cursos"; reporte general.
+- **3.4 — Estudiantes y cartera desde las matrículas** (dinero: zona
+  sensible). Listado y conteo de estudiantes del año pedido, con los mismos
+  resultados de hoy para el activo (incluidos los sin curso); `GET
+  /cartera/mora` y su resumen con `?anio_lectivo_id=`; estado de cuenta por
+  curso con el año de ese curso.
+- **3.5 — Boletín, certificados y consultas del admin por año.** Boletín,
+  reporte parcial y puesto desde la matrícula del año pedido; observador
+  del admin; detalle del estudiante (hallazgo 3); planes de clase del admin
+  (hallazgo 5).
+- **3.6 — Aviso al renombrar una materia** (punto 3, decisión 12).
+- **3.7 — Guardia de escritura** en las 33 rutas (punto 4). Antes de
+  escribirla se mide cuántas consultas agrega a cada guardado, y el usuario
+  decide, como en el paso 2.4: averiguar el año de una asignación cuesta
+  una ida a la base (~60 ms) si no se junta con una consulta que ya exista.
+
+Los siete pasos van antes de la fase 4: el orden de fases es obligatorio.
+Dentro de la fase, van primero los que bloquearían la fase 5 (3.2 y 3.3: sin
+ellos, crear el primer curso o la primera clase de 2027 se mezclaría con
+2026 o chocaría con sus horarios).
 
 ### Fase 4 — Selector de año en el frontend
 
@@ -1655,6 +1778,23 @@ cuando los profesores empiezan a ver sus clases nuevas.
   explícita de "anular deuda" sirve para casos como esa matrícula.
   Precaución operativa mientras tanto: no desactivar un concepto que
   todavía tenga deudas pendientes.
+- Fase 3, paso 3.5 (encontrada el 2026-10-02): el punto 2 de la fase 3 pide
+  que el boletín de un año cerrado oculte las materias de
+  `anios_lectivos_materias_ocultas`, pero esa tabla se crea en la fase 6 y
+  hoy no existe (búsqueda en todo el repo). Propuesto: en la fase 3 el
+  boletín queda como hoy para cualquier año, y la parte de años cerrados va
+  en la fase 6 junto con la tabla. Antes de la fase 6 no puede existir un
+  año cerrado (cerrar es parte de activar), así que no queda ningún caso sin
+  cubrir, y la fase 3 no necesita migración. La otra opción es crear la
+  tabla en la fase 3, con una migración que no se usaría hasta la fase 6.
+  **Sin respuesta del usuario.**
+- Antes de la fase 5 (encontrada el 2026-10-02): `POST /cursos` y `POST
+  /tipos-pagos` siempre crean en el año activo. La fase 4 dice que el admin
+  prepara 2027 desde las pantallas existentes, pero ningún documento dice
+  cómo se crea un curso o un concepto **nuevo** (que no venga de la copia)
+  en el año en preparación. ¿Se agrega `anio_lectivo_id` opcional a esas dos
+  rutas, y en qué fase? No bloquea los pasos 3.1 a 3.4. **Sin respuesta del
+  usuario.**
 - Antes de la fase 4 (frontend): en las pantallas que no dependen del año,
   ¿el selector se esconde o se muestra desactivado?
 - Antes de la fase 6: ¿un estudiante del último grado que termina se marca
@@ -1666,7 +1806,7 @@ cuando los profesores empiezan a ver sus clases nuevas.
 
 ## Entrega para el siguiente chat
 
-Estado al 2026-10-01. Si `git status` o el historial de git dicen otra
+Estado al 2026-10-02. Si `git status` o el historial de git dicen otra
 cosa, gana lo que se pueda verificar.
 
 - **Hecho:** fase 0 y **fase 1 completas**. Migración A (2026-09-30) y
@@ -1677,9 +1817,16 @@ cosa, gana lo que se pueda verificar.
   "Avance" de las fases 0 y 1.
 - **Fase 2, código completo:** la pregunta de los conceptos desactivados
   quedó respondida (se deja como está y se corrige después, aparte). Los
-  cuatro pasos del plan están escritos y probados: 2.1, 2.2 y 2.3 en los
-  commits `b2362f1`, `34712dd` y `b5f4099`, todavía sin subir al
-  2026-10-01, y 2.4 sin commit. Ver los "Avance" de cada uno.
+  cuatro pasos del plan están escritos y probados, en los commits
+  `b2362f1`, `34712dd`, `b5f4099` y `f03b032`, todavía sin subir al
+  2026-10-02. Ver los "Avance" de cada uno.
+- **Fase 3, iniciada el 2026-10-02** con la autorización del usuario (y
+  sabiendo que la fase 2 sigue sin subir): inventario confirmado con `grep`
+  y plan en siete pasos, 3.1 a 3.7. Ver "Inventario confirmado" y "Plan por
+  pasos" en la fase 3. Sin código todavía. El inventario encontró seis
+  cosas que no estaban en la lista; la más importante, los choques de
+  horario del profesor, que sin filtro por año bloquearían la carga
+  académica de 2027.
 - **Hecho aparte, la noche del 2026-09-30:** el arreglo de la hora
   (`2e77634` en este repo, `033c042` en el frontend). Cobros, cartera y
   alta de colegios usan la fecha de Colombia (`app/core/fechas.py`), y el
@@ -1688,7 +1835,7 @@ cosa, gana lo que se pueda verificar.
 - **Pendiente del usuario:**
   - Pasos 2.1 a 2.4: revisarlos en local (Cartera vencida, la pantalla de
     Pagos y el detalle de un estudiante deben mostrar los mismos números
-    que producción), el commit del 2.4 y después el push. Las consultas
+    que producción) y después el push. Las consultas
     nuevas solo se probaron con bases simuladas, y esa revisión es la que
     las corre contra la base real (solo lectura). No registrar pagos en
     local: escribe en la base real; para eso, una rama de Neon. El push
@@ -1711,12 +1858,13 @@ cosa, gana lo que se pueda verificar.
   correr si falta `$env:DATABASE_URL`. Antes de probar la app contra una
   rama, detener el backend local que esté corriendo; si no, el frontend
   sigue hablando con el que apunta a producción.
-- **Siguiente acción exacta:** **fase 3, lecturas por año y guardia de
-  escritura** (ver la fase 3), solo con la autorización explícita del
-  usuario para empezarla. Tiene que estar en producción **antes de crear el
-  primer curso de 2027**, es decir, antes de la fase 5 (meta: principios de
-  noviembre). Empieza por confirmar con `grep` el inventario de la fase 3,
-  que ya incluye cartera y estado de cuenta, pasados desde la fase 2.
-  Ninguna pregunta abierta la bloquea. Antes, conviene que la fase 2 esté
-  desplegada.
+- **Siguiente acción exacta:** **paso 3.1** (`GET /anios-lectivos` y la
+  regla común del año pedido), solo con el visto bueno del usuario al plan
+  de pasos y a ese paso. Antes de escribirlo, caracterización de lo que
+  toca. Las dos preguntas abiertas de la fase 3 (materias ocultas y crear
+  en el año en preparación) no bloquean los pasos 3.1 a 3.4; la primera
+  tiene que estar respondida antes del 3.5. La fase 3 tiene que estar en
+  producción **antes de crear el primer curso de 2027** (fase 5, meta:
+  principios de noviembre). Sigue siendo recomendable subir la fase 2
+  antes.
 - Prompt para retomar: `docs/funcionalidades/PROMPT_CONTINUACION_ANIO_LECTIVO.md`.

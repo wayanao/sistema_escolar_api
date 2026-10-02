@@ -267,6 +267,21 @@ Notas:
   el mismo profesor, curso y materia, el backend usa el ID real de la
   asignacion.
 
+Año lectivo (fase 3, paso 3.2, de `docs/funcionalidades/ANIO_LECTIVO.md`):
+
+- `GET /asignaciones/lista`, `GET /hora/horarios-admin` y `GET
+  /profesores/{profesor_id}/disponibilidad` aceptan `?anio_lectivo_id=`
+  opcional (entero mayor que 0). Sin el, devuelven o cuentan solo lo del año
+  activo; con el, lo de ese año. Un año que no existe da `404` con `El año
+  lectivo seleccionado no existe.`
+- `GET /mis-clases/{profesor_id}` y `GET /profesores/{profesor_id}/cursos`
+  devuelven solo clases y cursos del año activo, sin parametro: el profesor
+  no ve otros años.
+- Al crear o editar una asignacion, el cruce de horario solo se busca entre
+  clases del mismo año que el curso de la asignacion: una clase de 2026 no
+  choca con una de 2027 a la misma hora.
+- Mientras haya un solo año, todas estas respuestas son las mismas de antes.
+
 `GET /cursos/{curso_id}/orden-boletin` devuelve una fila por materia activa
 del curso, agrupando varios horarios de la misma materia.
 
@@ -451,6 +466,9 @@ Notas:
 - `dias` es opcional, por defecto `7`, y acepta valores de `0` a `31`.
 - `/dashboard/notas-bajas/{profesor_id}` y `/dashboard/notas-altas/{profesor_id}` validan que el profesor solo consulte su propio scope.
 - `curso_id` y `asignacion_id` son filtros opcionales para rendimiento; si se envian, el backend valida que pertenezcan al profesor.
+- `/dashboard/inasistencias/{profesor_id}` cuenta solo las faltas de cursos
+  del año activo (año lectivo, fase 3, paso 3.2). Los demas paneles del
+  profesor ya parten de un curso o del curso actual del estudiante.
 
 ## Usuarios
 

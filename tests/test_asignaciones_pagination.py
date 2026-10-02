@@ -74,15 +74,24 @@ def test_mis_clases_incluye_el_nivel_del_curso(monkeypatch):
 
 
 def test_asignaciones_lista_keeps_legacy_list_response(monkeypatch):
+    # Año lectivo, fase 3 (paso 3.2): el controlador recibe el año pedido.
+    # Sin `anio_lectivo_id` le llega None, que es el año activo.
+    calls = []
+
+    def fake_obtener_todas_asignaciones_controller(anio_lectivo_id):
+        calls.append(anio_lectivo_id)
+        return [{"id": 1}]
+
     monkeypatch.setattr(
         asignaciones,
         "obtener_todas_asignaciones_controller",
-        lambda: [{"id": 1}],
+        fake_obtener_todas_asignaciones_controller,
     )
 
     response = asignaciones.obtener_todas_asignaciones(_admin={"rol": "admin"})
 
     assert response == [{"id": 1}]
+    assert calls == [None]
 
 
 def test_asignaciones_lista_returns_paginated_response_when_limit_is_sent(monkeypatch):
@@ -95,6 +104,7 @@ def test_asignaciones_lista_returns_paginated_response_when_limit_is_sent(monkey
         curso_id,
         materia_id,
         busqueda,
+        anio_lectivo_id,
     ):
         calls.append({
             "limit": limit,
@@ -103,6 +113,7 @@ def test_asignaciones_lista_returns_paginated_response_when_limit_is_sent(monkey
             "curso_id": curso_id,
             "materia_id": materia_id,
             "busqueda": busqueda,
+            "anio_lectivo_id": anio_lectivo_id,
         })
         return {"total": 1, "limit": limit, "offset": offset, "items": [{"id": 9}]}
 
@@ -130,4 +141,6 @@ def test_asignaciones_lista_returns_paginated_response_when_limit_is_sent(monkey
         "curso_id": 4,
         "materia_id": 5,
         "busqueda": "matematicas",
+        # Año lectivo, fase 3 (paso 3.2): sin año, None, que es el activo.
+        "anio_lectivo_id": None,
     }]

@@ -6,6 +6,33 @@ Ultima revision documental: 2026-10-02.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
+## 2026-10-02 - Año lectivo: el profesor y los horarios, solo del año
+
+Fase 3, paso 3.2, de `docs/funcionalidades/ANIO_LECTIVO.md`. Mientras haya un
+solo año, ninguna respuesta cambia y ninguna consulta se agrega.
+
+### Que cambia
+
+- "Mis clases", los cursos del profesor y las faltas del inicio del profesor
+  muestran solo el año activo.
+- `GET /asignaciones/lista`, `GET /hora/horarios-admin` y `GET
+  /profesores/{id}/disponibilidad` aceptan `?anio_lectivo_id=` (sin el, el
+  activo; año inexistente, 404).
+- El cruce de horario de un profesor al crear o editar una asignacion solo
+  mira clases del mismo año que el curso. Sin esto, la carga academica de
+  2027 chocaria con los horarios de 2026.
+- `anios_lectivos_repository.condicion_anio`: el filtro por año que usaran
+  todos los listados.
+
+### Pruebas
+
+34 nuevas en `tests/test_anio_lectivo_lecturas.py`, entre ellas una base
+simulada con clases de 2026 y 2027 del mismo profesor. Se ajustaron dos dobles
+de ruta en `tests/test_asignaciones_pagination.py` por el argumento nuevo del
+controlador. Las demas pruebas existentes, incluidas las que cuentan
+consultas, pasaron sin cambios. Catorce versiones dañadas del codigo hacen
+fallar las nuevas. `scripts/verify.py`: 1603 pasan, 0 fallan.
+
 ## 2026-10-02 - Año lectivo: lista de años y regla del año pedido
 
 Fase 3, paso 3.1, de `docs/funcionalidades/ANIO_LECTIVO.md`. Primer paso de

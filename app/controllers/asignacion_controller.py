@@ -3,6 +3,8 @@ from psycopg2 import IntegrityError, errorcodes
 from app.core.nivel_academico import es_asignacion_de_jornada
 from app.database import get_connection, get_cursor
 from app.repositories import asignaciones_repository
+from app.repositories.anios_lectivos_repository import condicion_anio
+from app.services.anio_lectivo import exigir_anio_lectivo
 
 
 ASIGNACION_OTRO_PROFESOR_MENSAJE = (
@@ -100,14 +102,19 @@ def validar_jornada_curso(cursor, curso_id, hora_inicio, hora_fin):
     return None
 
 
-def verificar_cruce_horario(cursor, campo_id, valor_id, dia, hora_inicio_nueva, hora_fin_nueva):
+def verificar_cruce_horario(cursor, campo_id, valor_id, dia, hora_inicio_nueva, hora_fin_nueva, curso_id):
+    """`True` si la clase nueva choca con otra del profesor o del curso ese dia.
+
+    Solo cuentan las clases del año de `curso_id`, el curso de la clase que se
+    guarda: la de 2026 no choca con la de 2027 (fase 3 del año lectivo).
+    """
     if not hora_inicio_nueva or not hora_fin_nueva:
         return False
 
     if campo_id not in {"profesor_id", "curso_id"}:
         raise ValueError("Campo de cruce no permitido")
 
-    registros = asignaciones_repository.leer_horarios_del_dia(cursor, campo_id, valor_id, dia)
+    registros = asignaciones_repository.leer_horarios_del_dia(cursor, campo_id, valor_id, dia, curso_id)
 
     hora_inicio_nueva = normalizar_hora(hora_inicio_nueva)
     hora_fin_nueva = normalizar_hora(hora_fin_nueva)
@@ -315,10 +322,10 @@ def asignar_profesor_controller(asignacion):
             # por diseno, no por error. No se le aplica el cruce de horario.
             nombre_materia = asignaciones_repository.leer_nombre_materia(cursor, asignacion.materia_id)
             if not es_asignacion_de_jornada(nombre_materia):
-                if verificar_cruce_horario(cursor, "profesor_id", asignacion.profesor_id, asignacion.dia, asignacion.hora_inicio, asignacion.hora_fin):
+                if verificar_cruce_horario(cursor, "profesor_id", asignacion.profesor_id, asignacion.dia, asignacion.hora_inicio, asignacion.hora_fin, asignacion.curso_id):
                     return {"error": "Error: El profesor ya tiene una clase asignada en ese horario y ese día."}
 
-                if verificar_cruce_horario(cursor, "curso_id", asignacion.curso_id, asignacion.dia, asignacion.hora_inicio, asignacion.hora_fin):
+                if verificar_cruce_horario(cursor, "curso_id", asignacion.curso_id, asignacion.dia, asignacion.hora_inicio, asignacion.hora_fin, asignacion.curso_id):
                     return {"error": "Error: El curso (salón) ya tiene otra clase asignada en ese horario y ese día."}
 
         try:
@@ -384,9 +391,12 @@ def profesor_por_curso_controller(curso_id):
         })
 
     return data
-def obtener_horarios_admin_controller():
+def obtener_horarios_admin_controller(anio_lectivo_id=None):
+    """Horarios de un año; sin `anio_lectivo_id`, del activo."""
     with get_cursor() as cursor:
-        clases = asignaciones_repository.leer_horarios_admin(cursor)
+        if anio_lectivo_id is not None:
+            exigir_anio_lectivo(cursor, anio_lectivo_id)
+        clases = asignaciones_repository.leer_horarios_admin(cursor, anio_lectivo_id)
 
     resultado = []
     for c in clases:
@@ -448,7 +458,7 @@ def eliminar_asignacion_por_id_controller(asignacion_id):
         conn.close()
 
 
-def verificar_cruce_horario_editar(cursor, campo_id, valor_id, dia, hora_inicio_nueva, hora_fin_nueva, asignacion_id_ignorar):
+def verificar_cruce_horario_editar(cursor, campo_id, valor_id, dia, hora_inicio_nueva, hora_fin_nueva, asignacion_id_ignorar, curso_id):
     if not hora_inicio_nueva or not hora_fin_nueva:
         return False
 
@@ -456,7 +466,7 @@ def verificar_cruce_horario_editar(cursor, campo_id, valor_id, dia, hora_inicio_
         raise ValueError("Campo de cruce no permitido")
 
     registros = asignaciones_repository.leer_horarios_del_dia_excluyendo(
-        cursor, campo_id, valor_id, dia, asignacion_id_ignorar
+        cursor, campo_id, valor_id, dia, asignacion_id_ignorar, curso_id
     )
 
     hora_inicio_nueva = normalizar_hora(hora_inicio_nueva)
@@ -581,10 +591,10 @@ def editar_asignacion_controller(asignacion_id, asignacion):
             # asignacion reservada de jornada no se valida contra cruces.
             nombre_materia = asignaciones_repository.leer_nombre_materia(cursor, asignacion.materia_id)
             if not es_asignacion_de_jornada(nombre_materia):
-                if verificar_cruce_horario_editar(cursor, "profesor_id", asignacion.profesor_id, asignacion.dia, asignacion.hora_inicio, asignacion.hora_fin, asignacion_id):
+                if verificar_cruce_horario_editar(cursor, "profesor_id", asignacion.profesor_id, asignacion.dia, asignacion.hora_inicio, asignacion.hora_fin, asignacion_id, asignacion.curso_id):
                     return {"error": "Error: El profesor ya tiene una clase asignada en ese horario y ese día."}
 
-                if verificar_cruce_horario_editar(cursor, "curso_id", asignacion.curso_id, asignacion.dia, asignacion.hora_inicio, asignacion.hora_fin, asignacion_id):
+                if verificar_cruce_horario_editar(cursor, "curso_id", asignacion.curso_id, asignacion.dia, asignacion.hora_inicio, asignacion.hora_fin, asignacion_id, asignacion.curso_id):
                     return {"error": "Error: El curso (salón) ya tiene otra clase asignada en ese horario y ese día."}
 
         try:
@@ -616,9 +626,12 @@ def editar_asignacion_controller(asignacion_id, asignacion):
         cursor.close()
         conn.close()
 
-def obtener_todas_asignaciones_controller():
+def obtener_todas_asignaciones_controller(anio_lectivo_id=None):
+    """Asignaciones de un año; sin `anio_lectivo_id`, del activo."""
     with get_cursor() as cursor:
-        rows = asignaciones_repository.leer_todas_las_asignaciones(cursor)
+        if anio_lectivo_id is not None:
+            exigir_anio_lectivo(cursor, anio_lectivo_id)
+        rows = asignaciones_repository.leer_todas_las_asignaciones(cursor, anio_lectivo_id)
 
     resultado = []
     for r in rows:
@@ -662,11 +675,16 @@ def obtener_todas_asignaciones_paginado_controller(
     curso_id=None,
     materia_id=None,
     busqueda=None,
+    anio_lectivo_id=None,
 ):
+    """Pagina de asignaciones de un año; sin `anio_lectivo_id`, del activo."""
     conn = get_connection()
     cursor = conn.cursor()
 
     try:
+        if anio_lectivo_id is not None:
+            exigir_anio_lectivo(cursor, anio_lectivo_id)
+
         filtros = []
         params = []
 
@@ -695,6 +713,12 @@ def obtener_todas_asignaciones_paginado_controller(
         filtros.append("COALESCE(LOWER(c.estado), 'activo') = 'activo'")
         filtros.append("COALESCE(LOWER(m.estado), 'activo') = 'activo'")
 
+        # El año va el ultimo, y su parametro tambien: detras de los de
+        # profesor, curso, materia y busqueda, y antes de limit y offset.
+        condicion, params_anio = condicion_anio("c.anio_lectivo_id", anio_lectivo_id)
+        filtros.append(condicion)
+        params.extend(params_anio)
+
         where_sql = f"WHERE {' AND '.join(filtros)}" if filtros else ""
 
         total = asignaciones_repository.contar_asignaciones(cursor, where_sql, params)[0]
@@ -714,18 +738,28 @@ def obtener_todas_asignaciones_paginado_controller(
         conn.close()
 
 
-def obtener_disponibilidad_profesor_controller(profesor_id, dia, excluir_asignacion_id=None):
+def obtener_disponibilidad_profesor_controller(profesor_id, dia, excluir_asignacion_id=None, anio_lectivo_id=None):
+    """Franjas libres del profesor ese dia, contando solo sus clases de un año.
+
+    Sin `anio_lectivo_id`, el activo: una clase de 2026 no ocupa la franja en
+    2027 (fase 3 del año lectivo).
+    """
     conn = get_connection()
     cursor = conn.cursor()
 
     try:
+        if anio_lectivo_id is not None:
+            exigir_anio_lectivo(cursor, anio_lectivo_id)
+
         params = [profesor_id, dia]
         filtro_excluir = ""
         if excluir_asignacion_id is not None:
             filtro_excluir = "AND id != %s"
             params.append(excluir_asignacion_id)
 
-        franjas = asignaciones_repository.leer_horarios_ocupados(cursor, filtro_excluir, params)
+        franjas = asignaciones_repository.leer_horarios_ocupados(
+            cursor, filtro_excluir, params, anio_lectivo_id
+        )
         ocupadas = []
         for inicio, fin in franjas:
             inicio_min = hora_a_minutos(inicio)

@@ -15,7 +15,15 @@ el `fetchone` aqui cambiaria ese orden, asi que se deja donde estaba.
 Las cadenas SQL se conservan con su texto original, incluida la sangria, para que
 lo que recibe PostgreSQL no cambie. Ver la nota de `desactivar_asignacion_por_id`
 sobre las dos formas de la misma sentencia.
+
+Excepcion autorizada, fase 3 del año lectivo (paso 3.2, ver
+`docs/funcionalidades/ANIO_LECTIVO.md`): las lecturas que recorren las clases de
+un profesor o de todo el colegio sin partir de un curso se limitan a un año. Es
+un cambio de comportamiento a proposito, no una refactorizacion; con un solo año
+devuelven lo mismo que antes.
 """
+
+from app.repositories.anios_lectivos_repository import ANIO_ACTIVO_ID_SQL, condicion_anio
 
 
 def insertar_asignacion(cursor, valores):
@@ -254,22 +262,34 @@ def buscar_curso_activo_para_orden(cursor, curso_id):
 # ---------------------------------------------------------------------------
 
 
-def leer_horarios_del_dia(cursor, campo_id, valor_id, dia):
-    """Horarios activos de un profesor o de un curso en un dia."""
+# Solo las clases de cursos del mismo año que el curso de la clase que se
+# guarda (su id es el `%s`). Sin esto, al armar la carga academica de 2027 cada
+# clase chocaria con la del mismo profesor a la misma hora en 2026 (fase 3 del
+# año lectivo). Para el cruce por curso sobra, pero no estorba: un curso ya es
+# de un solo año.
+_DEL_MISMO_ANIO_QUE_EL_CURSO = """
+          AND curso_id IN (
+              SELECT id FROM cursos
+              WHERE anio_lectivo_id = (SELECT anio_lectivo_id FROM cursos WHERE id = %s)
+          )"""
+
+
+def leer_horarios_del_dia(cursor, campo_id, valor_id, dia, curso_id):
+    """Horarios activos de un profesor o de un curso en un dia, en el año de `curso_id`."""
     cursor.execute(
         f"""
         SELECT hora_inicio, hora_fin
         FROM asignaciones
         WHERE {campo_id} = %s
           AND dia = %s
-          AND activo = TRUE
+          AND activo = TRUE{_DEL_MISMO_ANIO_QUE_EL_CURSO}
         """,
-        (valor_id, dia),
+        (valor_id, dia, curso_id),
     )
     return cursor.fetchall()
 
 
-def leer_horarios_del_dia_excluyendo(cursor, campo_id, valor_id, dia, asignacion_id_ignorar):
+def leer_horarios_del_dia_excluyendo(cursor, campo_id, valor_id, dia, asignacion_id_ignorar, curso_id):
     """Igual que la anterior, pero sin contar la asignacion que se esta editando."""
     cursor.execute(
         f"""
@@ -278,9 +298,9 @@ def leer_horarios_del_dia_excluyendo(cursor, campo_id, valor_id, dia, asignacion
         WHERE {campo_id} = %s
           AND dia = %s
           AND id != %s
-          AND activo = TRUE
+          AND activo = TRUE{_DEL_MISMO_ANIO_QUE_EL_CURSO}
         """,
-        (valor_id, dia, asignacion_id_ignorar),
+        (valor_id, dia, asignacion_id_ignorar, curso_id),
     )
     return cursor.fetchall()
 
@@ -347,12 +367,16 @@ def buscar_asignacion_academica(cursor, filtro_asignacion, params):
     return cursor.fetchone()
 
 
-def leer_horarios_ocupados(cursor, filtro_excluir, params):
+def leer_horarios_ocupados(cursor, filtro_excluir, params, anio_lectivo_id=None):
     """Franjas ocupadas de un profesor en un dia, ordenadas y sin vacios.
+
+    Solo las de un año: el pedido o, sin el, el activo. El filtro va al final
+    para que su parametro vaya detras de los que trae `params`.
 
     El calculo de los rangos libres a partir de estas franjas se queda en el
     controlador: es aritmetica, no persistencia.
     """
+    condicion, params_anio = condicion_anio("anio_lectivo_id", anio_lectivo_id)
     cursor.execute(f"""
             SELECT hora_inicio, hora_fin
             FROM asignaciones
@@ -364,8 +388,9 @@ def leer_horarios_ocupados(cursor, filtro_excluir, params):
               AND hora_inicio != ''
               AND hora_fin != ''
               {filtro_excluir}
+              AND curso_id IN (SELECT id FROM cursos WHERE {condicion})
             ORDER BY hora_inicio
-        """, params)
+        """, [*params, *params_anio])
     return cursor.fetchall()
 
 
@@ -434,8 +459,12 @@ def leer_materias_asignadas(cursor, curso_id):
 
 
 def leer_cursos_de_profesor(cursor, profesor_id):
-    """Cursos activos en los que el profesor tiene alguna materia activa."""
-    cursor.execute("""
+    """Cursos activos en los que el profesor tiene alguna materia activa.
+
+    Solo los del año activo: el profesor no ve otros años (decision 4 del año
+    lectivo), ni los que se preparan para el siguiente.
+    """
+    cursor.execute(f"""
             SELECT DISTINCT
                 c.id,
                 c.nombre
@@ -446,6 +475,7 @@ def leer_cursos_de_profesor(cursor, profesor_id):
               AND a.activo = TRUE
               AND COALESCE(LOWER(c.estado), 'activo') = 'activo'
               AND COALESCE(LOWER(m.estado), 'activo') = 'activo'
+              AND c.anio_lectivo_id = {ANIO_ACTIVO_ID_SQL}
         """, (profesor_id,))
     return cursor.fetchall()
 
@@ -469,13 +499,17 @@ def leer_profesores_de_curso(cursor, curso_id):
     return cursor.fetchall()
 
 
-def leer_horarios_admin(cursor):
-    """Todos los horarios completos, ordenados por dia de la semana y hora.
+def leer_horarios_admin(cursor, anio_lectivo_id=None):
+    """Todos los horarios completos de un año, ordenados por dia de la semana y hora.
+
+    El año pedido o, sin el, el activo. Sin año la consulta no lleva
+    parametros, como antes.
 
     El `CASE` sobre el nombre del dia es lo que da el orden: los dias se guardan
     como texto en espanol, con tilde en «Miércoles» y «Sábado».
     """
-    cursor.execute("""
+    condicion, params = condicion_anio("c.anio_lectivo_id", anio_lectivo_id)
+    cursor.execute(f"""
             SELECT
                 p.nombre || ' ' || p.apellido AS profesor,
                 c.nombre AS curso,
@@ -495,6 +529,7 @@ def leer_horarios_admin(cursor):
               AND a.activo = TRUE
               AND COALESCE(LOWER(c.estado), 'activo') = 'activo'
               AND COALESCE(LOWER(m.estado), 'activo') = 'activo'
+              AND {condicion}
             ORDER BY
                 CASE a.dia
                     WHEN 'Lunes' THEN 1
@@ -507,7 +542,7 @@ def leer_horarios_admin(cursor):
                     ELSE 8
                 END,
                 a.hora_inicio
-        """)
+        """, params or None)
     return cursor.fetchall()
 
 
@@ -567,9 +602,14 @@ def leer_clases_de_profesor(cursor, profesor_id):
     return cursor.fetchall()
 
 
-def leer_todas_las_asignaciones(cursor):
-    """Listado heredado sin paginar, mas reciente primero."""
-    cursor.execute("""
+def leer_todas_las_asignaciones(cursor, anio_lectivo_id=None):
+    """Listado heredado sin paginar, mas reciente primero.
+
+    Solo las de un año: el pedido o, sin el, el activo. Sin año la consulta
+    no lleva parametros, como antes.
+    """
+    condicion, params = condicion_anio("c.anio_lectivo_id", anio_lectivo_id)
+    cursor.execute(f"""
             SELECT
                 a.id, a.profesor_id, a.curso_id, a.materia_id, a.dia, a.hora_inicio, a.hora_fin,
                 p.nombre || ' ' || p.apellido AS profesor_nombre,
@@ -584,8 +624,9 @@ def leer_todas_las_asignaciones(cursor):
             WHERE a.activo = TRUE
               AND COALESCE(LOWER(c.estado), 'activo') = 'activo'
               AND COALESCE(LOWER(m.estado), 'activo') = 'activo'
+              AND {condicion}
             ORDER BY a.id DESC
-        """)
+        """, params or None)
     return cursor.fetchall()
 
 
@@ -652,8 +693,11 @@ def leer_clases_con_horario_de_profesor(cursor, profesor_id):
     `resolver_asignacion_academica_id_cursor`, y `horario_id` es la fila concreta
     de este horario. El frontend usa el primero para notas y boletines, y el
     segundo para editar la franja.
+
+    Solo las clases del año activo: el profesor no ve otros años (decision 4
+    del año lectivo), ni las que se preparan para el siguiente.
     """
-    cursor.execute("""
+    cursor.execute(f"""
             SELECT
                 CASE
                     WHEN base.id IS NOT NULL
@@ -682,6 +726,7 @@ def leer_clases_con_horario_de_profesor(cursor, profesor_id):
               AND a.activo = TRUE
               AND COALESCE(LOWER(c.estado), 'activo') = 'activo'
               AND COALESCE(LOWER(m.estado), 'activo') = 'activo'
+              AND c.anio_lectivo_id = {ANIO_ACTIVO_ID_SQL}
             ORDER BY
                 c.nombre,
                 m.nombre,

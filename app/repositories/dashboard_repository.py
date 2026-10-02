@@ -26,6 +26,8 @@ asignacion desactivada conserva su historial, pero ya no sirve como prueba de
 acceso al rendimiento del curso.
 """
 
+from app.repositories.anios_lectivos_repository import ANIO_ACTIVO_ID_SQL
+
 
 def _cte_rango_cumpleanos():
     return """
@@ -146,8 +148,13 @@ def leer_inasistencias_por_curso(cursor, profesor_id):
 
     Solo cuenta `estado ILIKE 'ausente'`, y el corte a tres se hace con
     `ROW_NUMBER()` por curso, no en Python.
+
+    Solo los cursos del año activo (fase 3 del año lectivo): cuando 2027 este
+    activo, las faltas de 2026 no se suman. Las otras lecturas del profesor no
+    lo necesitan: parten de un curso o de `estudiantes.curso_id`, que ya son
+    del año activo.
     """
-    cursor.execute("""
+    cursor.execute(f"""
             WITH conteos AS (
                 SELECT
                     c.id as curso_id,
@@ -164,6 +171,7 @@ def leer_inasistencias_por_curso(cursor, profesor_id):
                 JOIN asignaciones asi ON a.asignacion_id = asi.id
                 JOIN cursos c ON asi.curso_id = c.id
                 WHERE asi.profesor_id = %s AND a.estado ILIKE 'ausente'
+                  AND c.anio_lectivo_id = {ANIO_ACTIVO_ID_SQL}
                 GROUP BY c.id, c.nombre, e.id, e.nombre, e.apellido
             )
             SELECT curso_id, curso, estudiante_id, nombre_estudiante, total_fallas, posicion_curso

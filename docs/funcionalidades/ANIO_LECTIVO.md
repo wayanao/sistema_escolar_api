@@ -3,7 +3,8 @@
 ## Control
 
 - Estado: **Fase 3 en curso: inventario y plan del 2026-10-02; paso 3.1
-  (años lectivos y regla del año pedido) escrito y probado, sin commit.**
+  en el commit `fea2e83`; paso 3.2 (profesor y horarios solo del año)
+  escrito y probado, sin commit.**
   **Fase 2 con el código completo el
   2026-10-01, sin desplegar.**
   Pasos 2.1 (las cuotas se cuentan en el año del concepto), 2.2 (cada año
@@ -1628,6 +1629,71 @@ pedido (sin desplegar):**
   del frontend (normalmente `http://localhost:8000`; con `127.0.0.1` la
   sesión no viaja). Debe mostrar `[{"id": 1, "anio": 2026, "estado":
   "activo"}]` (el `id` puede ser otro). Con un profesor, lo mismo.
+- Commit `fea2e83` (hecho por el usuario el 2026-10-02).
+
+**Avance del 2026-10-02 — paso 3.2, profesor y horarios solo del año (sin
+desplegar):**
+
+- Aprobado por el usuario el 2026-10-02 ("por ahora continúa"). Pidió que
+  las preguntas abiertas se le hagan justo antes del paso que las necesita.
+- Código:
+  - `app/repositories/anios_lectivos_repository.py`: `condicion_anio(columna,
+    anio_lectivo_id)`, el filtro que usarán todos los listados por año. Sin
+    año devuelve la subconsulta del activo y ningún parámetro; con año,
+    `%s`. Así la consulta de hoy conserva sus parámetros y su número.
+  - Lo que ve el profesor, siempre el año activo y sin parámetro nuevo:
+    "mis clases" (`leer_clases_con_horario_de_profesor`), sus cursos
+    (`leer_cursos_de_profesor`) y las faltas de su inicio
+    (`dashboard_repository.leer_inasistencias_por_curso`). Revisado y sin
+    cambio: los promedios del inicio parten de un curso, y los cumpleaños, de
+    `estudiantes.curso_id`.
+  - Choques de horario (hallazgo 1): `leer_horarios_del_dia` y
+    `leer_horarios_del_dia_excluyendo` reciben el curso de la clase que se
+    guarda y solo miran clases de cursos de su mismo año, con una
+    subconsulta dentro de la misma consulta. `verificar_cruce_horario` y
+    `verificar_cruce_horario_editar` lo pasan, en el alta y en la edición.
+  - Listados del admin con `?anio_lectivo_id=` (sin él, el activo; si no
+    existe, 404): `GET /asignaciones/lista` (con y sin paginar), `GET
+    /hora/horarios-admin` y `GET /profesores/{id}/disponibilidad`. Son rutas
+    solo de admin, así que validan el año con `exigir_anio_lectivo`, como las
+    deudas del paso 2.3; `resolver_anio_pedido` queda para las rutas que
+    también usa el profesor.
+- No se tocó: `obtener_clases_profesor_controller` de `asignacion_controller`
+  y de `profesor_controller`, que no tienen ruta; lo que parte de un curso o
+  de una asignación.
+- Pruebas:
+  - `tests/test_anio_lectivo_lecturas.py`, 34 nuevas. La principal usa una
+    base simulada con una clase de 2026 y una de 2027 del mismo profesor, que
+    como PostgreSQL solo filtra por año si la consulta trae el filtro: la de
+    2026 ya no choca con una de 2027 a la misma hora, y dentro de cada año el
+    choque se detecta como siempre (alta, edición y por curso). Además: el
+    flujo completo de crear y editar pasa el curso a los dos cruces y sigue
+    en 13 y 11 consultas; las tres lecturas del profesor; los listados del
+    admin con y sin año (sin año, sin parámetros); el orden de parámetros del
+    paginado (el año antes de `limit`); la disponibilidad; un año inexistente
+    que no llega a consultar el listado; y las tres rutas por HTTP (pasan el
+    año, 422 con 0, 404 si no existe).
+  - Ajustadas a propósito: los dos dobles de ruta de
+    `tests/test_asignaciones_pagination.py`, que ahora reciben el año (y
+    comprueban que sin año llega `None`). Las demás 1567 pruebas, incluidas
+    las que cuentan consultas al crear y editar asignaciones y en el inicio
+    del profesor, pasaron sin tocarlas.
+  - Catorce versiones dañadas del código las hacen fallar: cada filtro
+    quitado, cada listado que ignora el año, crear y editar pasando otro id
+    como curso, el paginado sin año, los horarios sin validar el año, la ruta
+    que no pasa el año y la ruta sin 404.
+- Documentación: `docs/API_ENDPOINTS.md` (Asignaciones y Dashboard) y
+  `docs/CAMBIOS_BACKEND.md`.
+- Verificación: `scripts/verify.py` → **1603 pasan, 0 fallan** (antes
+  1569); ruff y `pip check` limpios; `git diff --check` limpio.
+- Para el frontend (su fase 4): esas tres rutas del admin ya aceptan el año.
+  Se anota en su documento al cerrar la fase 3, con el contrato completo.
+- Efecto al desplegar: ninguno visible mientras haya un solo año. Revisión
+  en local recomendada (solo lectura, el backend local lee la base real):
+  con un profesor, "mis clases" y su inicio iguales que en producción; con
+  el admin, la lista de asignaciones, los horarios y la disponibilidad de un
+  profesor al crear una clase. **No crear ni editar clases en local**: eso
+  escribe en la base real.
 
 ### Fase 4 — Selector de año en el frontend
 
@@ -1871,9 +1937,10 @@ cosa, gana lo que se pueda verificar.
   y plan en siete pasos, 3.1 a 3.7. Ver "Inventario confirmado" y "Plan por
   pasos" en la fase 3. El inventario encontró seis cosas que no estaban en
   la lista; la más importante, los choques de horario del profesor, que sin
-  filtro por año bloquearían la carga académica de 2027. **Paso 3.1 escrito
-  y probado, sin commit** (`GET /anios-lectivos` y `resolver_anio_pedido`;
-  ver su "Avance").
+  filtro por año bloquearían la carga académica de 2027. Paso 3.1 en el
+  commit `fea2e83` (`GET /anios-lectivos` y `resolver_anio_pedido`). **Paso
+  3.2 escrito y probado, sin commit** (lo que ve el profesor, los listados
+  del admin y los choques de horario, por año; ver su "Avance").
 - **Hecho aparte, la noche del 2026-09-30:** el arreglo de la hora
   (`2e77634` en este repo, `033c042` en el frontend). Cobros, cartera y
   alta de colegios usan la fecha de Colombia (`app/core/fechas.py`), y el
@@ -1906,13 +1973,15 @@ cosa, gana lo que se pueda verificar.
   rama, detener el backend local que esté corriendo; si no, el frontend
   sigue hablando con el que apunta a producción.
 - **Siguiente acción exacta:** que el usuario revise y haga el commit del
-  paso 3.1. Después, **paso 3.2** (profesor y horarios solo del año: "mis
-  clases", cursos del profesor, inicio del profesor, listados de
-  asignaciones y horarios del admin, choques de horario y disponibilidad
-  por el año del curso), solo con su visto bueno. Antes de escribirlo,
-  caracterización de cada consulta que toca. Las dos preguntas abiertas de
-  la fase 3 (materias ocultas y crear en el año en preparación) no bloquean
-  los pasos 3.2 a 3.4; la primera tiene que estar respondida antes del 3.5. La fase 3 tiene que estar en
+  paso 3.2. Después, **paso 3.3** (cursos y conceptos por año: listados de
+  cursos, nombre repetido de cursos y conceptos dentro del año, listado y
+  detalle de conceptos, cursos para precios y concepto y curso del mismo
+  año al guardar un precio, listas de seguimiento "en todos los cursos" y
+  reporte general), solo con su visto bueno. Antes de escribirlo,
+  caracterización de cada consulta que toca. Las preguntas abiertas se le
+  hacen al usuario justo antes del paso que las necesita (lo pidió así el
+  2026-10-02): la de materias ocultas, antes del 3.5; la de crear en el año
+  en preparación, antes de la fase 5. La fase 3 tiene que estar en
   producción **antes de crear el primer curso de 2027** (fase 5, meta:
   principios de noviembre). Sigue siendo recomendable subir la fase 2
   antes.

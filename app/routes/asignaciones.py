@@ -35,18 +35,24 @@ def obtener_todas_asignaciones(
     curso_id: Optional[int] = None,
     materia_id: Optional[int] = None,
     busqueda: Optional[str] = None,
+    anio_lectivo_id: Annotated[Optional[int], Query(gt=0)] = None,
     _admin: dict = Depends(get_current_active_admin),
 ):
-    if limit is not None:
-        return obtener_todas_asignaciones_paginado_controller(
-            limit=limit,
-            offset=offset,
-            profesor_id=profesor_id,
-            curso_id=curso_id,
-            materia_id=materia_id,
-            busqueda=busqueda,
-        )
-    return obtener_todas_asignaciones_controller()
+    """Sin `anio_lectivo_id`, las asignaciones del año activo."""
+    try:
+        if limit is not None:
+            return obtener_todas_asignaciones_paginado_controller(
+                limit=limit,
+                offset=offset,
+                profesor_id=profesor_id,
+                curso_id=curso_id,
+                materia_id=materia_id,
+                busqueda=busqueda,
+                anio_lectivo_id=anio_lectivo_id,
+            )
+        return obtener_todas_asignaciones_controller(anio_lectivo_id=anio_lectivo_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 @router.put("/asignaciones/{asignacion_id}")
 def editar_asignacion(
@@ -78,8 +84,15 @@ def eliminar_asignacion_por_id(
 
 # 🚀 Obtener todos los horarios para Dashboard
 @router.get("/hora/horarios-admin")
-def horarios_admin(_admin: dict = Depends(get_current_active_admin)):
-    return obtener_horarios_admin_controller()
+def horarios_admin(
+    anio_lectivo_id: Annotated[Optional[int], Query(gt=0)] = None,
+    _admin: dict = Depends(get_current_active_admin),
+):
+    """Sin `anio_lectivo_id`, los horarios del año activo."""
+    try:
+        return obtener_horarios_admin_controller(anio_lectivo_id=anio_lectivo_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 @router.get("/profesores/{profesor_id}/disponibilidad")
@@ -87,13 +100,19 @@ def disponibilidad_profesor(
     profesor_id: int,
     dia: str,
     excluir_asignacion_id: Optional[int] = None,
+    anio_lectivo_id: Annotated[Optional[int], Query(gt=0)] = None,
     _admin: dict = Depends(get_current_active_admin),
 ):
-    return obtener_disponibilidad_profesor_controller(
-        profesor_id=profesor_id,
-        dia=dia,
-        excluir_asignacion_id=excluir_asignacion_id,
-    )
+    """Sin `anio_lectivo_id`, cuenta las clases del año activo."""
+    try:
+        return obtener_disponibilidad_profesor_controller(
+            profesor_id=profesor_id,
+            dia=dia,
+            excluir_asignacion_id=excluir_asignacion_id,
+            anio_lectivo_id=anio_lectivo_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 # 🚀 Asignar profesor a curso
 @router.post("/asignaciones")

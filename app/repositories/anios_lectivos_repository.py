@@ -2,7 +2,8 @@
 
 Fase 1: lo minimo para que toda fila nueva nazca con su año. Fase 2: leer un
 año pedido, para cobrar en un año que no es el activo. Fase 3: listar los
-años, para que el frontend sepa cuales hay y cual es el activo. Como el resto de
+años, para que el frontend sepa cuales hay y cual es el activo, y
+`condicion_anio`, el filtro por año que comparten los listados. Como el resto de
 repositorios, cada funcion recibe el cursor de quien llama y no abre, confirma
 ni cierra nada.
 """
@@ -15,6 +16,21 @@ ni cierra nada.
 # que el alta lo sembrara). La columna todavia lo admite; la migracion B
 # inserta el año que falte antes de volverla obligatoria.
 ANIO_ACTIVO_ID_SQL = "(SELECT id FROM anios_lectivos WHERE estado = 'activo')"
+
+
+def condicion_anio(columna, anio_lectivo_id=None):
+    """Condicion de `WHERE` que deja solo las filas de un año, y sus parametros.
+
+    Sin `anio_lectivo_id`, el año activo como subconsulta y **ningun
+    parametro**: la consulta de hoy, que no manda año, conserva sus
+    parametros y no gasta una ida extra a la base. Con el, `%s` y el id.
+
+    `columna` es un nombre escrito en el codigo (por ejemplo
+    `"c.anio_lectivo_id"`), nunca entrada del cliente.
+    """
+    if anio_lectivo_id is None:
+        return f"{columna} = {ANIO_ACTIVO_ID_SQL}", ()
+    return f"{columna} = %s", (anio_lectivo_id,)
 
 
 def sincronizar_matricula_del_anio_activo(cursor, estudiante_id):

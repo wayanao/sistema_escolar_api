@@ -2,9 +2,10 @@
 
 ## Control
 
-- Estado: **Fase 3 en curso: inventario y plan del 2026-10-02; pasos 3.1 y
-  3.2 en los commits `fea2e83` y `43764f2`; paso 3.3 (cursos y conceptos
-  por año) escrito y probado, sin commit.**
+- Estado: **Fase 3 en curso: inventario y plan del 2026-10-02; pasos 3.1,
+  3.2 y 3.3 en los commits `fea2e83`, `43764f2` y `da4da87`; paso 3.4
+  (estudiantes y cartera desde las matrículas) escrito y probado, sin
+  commit.**
   **Fase 2 con el código completo el
   2026-10-01, sin desplegar.**
   Pasos 2.1 (las cuotas se cuentan en el año del concepto), 2.2 (cada año
@@ -205,6 +206,18 @@ Las decisiones 14 a 16 son la única excepción a la decisión 4: el profesor
 recibe contenido de 2026, pero no navega 2026. El backend deduce el origen a
 partir de la asignación de 2027 del profesor; el profesor nunca manda ids de
 2026 para listar.
+
+Agregadas el 2026-10-02 (paso 3.4, al leer cartera por año):
+
+18. **Quien se retira debiendo se ve al mirar ese año.** En la Cartera de un
+    año que no es el activo (por ejemplo, 2026 ya cerrado) salen todos los
+    matriculados de ese año que deben, aunque después se hayan retirado. La
+    Cartera del año activo queda como hoy: solo estudiantes activos. Así la
+    deuda de un estudiante que no continúa no desaparece (decisión 2), sin
+    meter retirados en la cartera del año.
+19. **Las ventas de inventario solo en la Cartera del año activo.** No
+    pertenecen a ningún año lectivo (van por fecha); mostrarlas al mirar otro
+    año las repetiría.
 
 17. **Los conceptos de pago también son por año, copiados como los
     cursos.** Agregada el 2026-09-30 tras los números de la fase 0: en
@@ -1763,6 +1776,76 @@ desplegar):**
   detalle de un concepto con sus precios) y la pantalla de reportes con
   "estudiantes por curso", iguales que en producción. **No crear, editar ni
   guardar precios en local**: escribe en la base real.
+- Commit `da4da87` (hecho por el usuario el 2026-10-02).
+
+**Avance del 2026-10-02 — paso 3.4, estudiantes y cartera desde las
+matrículas (sin desplegar):**
+
+- Zona de dinero: antes de escribir se le explicó al usuario el cambio y el
+  costo en consultas, y decidió (2026-10-02) las decisiones 18 (retirados
+  con deuda, visibles al mirar ese año) y 19 (ventas solo en el año activo)
+  y aceptó una consulta más en `/reportes/estado-cuenta/{curso}`.
+- Código:
+  - Lista de estudiantes (`estudiantes_repository.py`,
+    `estudiante_controller.py`, `routes/estudiantes.py`): `GET /estudiantes`
+    con `?anio_lectivo_id=`. Sin año, **o con el activo**, el SQL de siempre,
+    letra por letra: todos los estudiantes con su curso actual, porque la
+    usan Pagos, Ventas, Boletines y Certificados, y Pagos tiene que encontrar
+    también a un estudiante nuevo de 2027 sin curso este año. Con otro año,
+    un camino aparte: los matriculados de ese año (subconsulta de
+    `matriculas` con la columna renombrada, para que los filtros sin prefijo
+    sigan siendo de `estudiantes`), cada uno con su curso de ese año.
+  - Cartera (`cartera_mora_controller.py`, `routes/cartera.py`): `GET
+    /cartera/mora` y `/resumen` con `?anio_lectivo_id=`. Los estudiantes
+    salen de las matrículas del año (`FROM estudiantes e JOIN matriculas
+    m`), con el curso de la matrícula, el mismo que fija sus precios desde el
+    paso 2.2. Conceptos, pagos y años anteriores se piden con el año (las
+    funciones de `cobros.py` lo aceptan desde el 2.3; `cobros.py` no se
+    tocó). Mirando el año activo: solo activos y con ventas, como hoy.
+    Mirando otro año: sin filtro de estado y sin ventas (decisiones 18 y 19).
+  - Estado de cuenta por curso (sin pantalla hoy): `/estado-cuenta/curso/{id}`
+    toma los estudiantes de las matrículas del curso y trae el año y su
+    estado en la misma consulta; `/reportes/estado-cuenta/{id}` lee primero
+    el año del curso (`leer_anio_de_curso`, nueva en el repositorio del año).
+    En los dos, si el curso es del año activo se sigue el camino de siempre
+    (sin año explícito), como hizo `con_anio` en el paso 2.3.
+- Consultas, medidas en pruebas: sin año, iguales (lista 1 y 2; cartera
+  5/13/13; estado de cuenta 1/13/37). Con año, una más para validarlo:
+  cartera con el id del activo 6/14/14; cartera de otro año 6/13/13 (la
+  validación suma una y las ventas, que ya no se consultan, restan una).
+  `/reportes/estado-cuenta`: 7/16/16 (antes 6/15/15), aceptado.
+- No se tocó: `cobros.py`; el estado de cuenta por estudiante (año activo);
+  la consulta de "otros pagos" que compara nombres con conceptos de todos
+  los años (con un año el resultado es el mismo).
+- Pruebas:
+  - `tests/test_anio_lectivo_lecturas.py`, 22 nuevas, con bases simuladas de
+    dos años que solo leen matrículas si la consulta las une: la lista de
+    estudiantes (sin año y con el activo, la de siempre; con 2026, Luis, que
+    se retiró, y Ana con su curso de 2026; filtro de estado; paginado);
+    **cartera** (año activo: solo Ana, con su venta; 2026: Ana y Luis, sin
+    ventas; el id del activo da lo del activo; curso; resumen; año
+    inexistente sin calcular nada); estado de cuenta y reporte de un curso
+    de 2026 (calculan en 2026) y del activo (camino de siempre); rutas.
+  - `tests/test_reportes_query_counts.py`, 6 nuevas: los conteos de cartera
+    con año.
+  - Ajustadas a propósito: los dos dobles de la ruta de estudiantes; las
+    bases simuladas de estado de cuenta de `test_reportes_query_counts.py`,
+    `test_reportes_estado_cuenta.py` y `test_pagos_adelantados.py`, que no
+    conocían la lectura del año del curso ni los estudiantes desde
+    matrículas; el conteo aceptado del reporte. Cartera no necesitó ningún
+    ajuste: su consulta nueva se escribió `FROM estudiantes e JOIN
+    matriculas m` y las bases que ya la reconocían siguieron sirviendo.
+  - Diecinueve versiones dañadas del código las hacen fallar. Antes de
+    correrlas se corrigió una base simulada que habría tapado una: ponía el
+    curso de la matrícula aunque la consulta pidiera el curso actual.
+- Documentación: `docs/API_ENDPOINTS.md` (Estudiantes, Cuentas, Reportes y
+  Cartera) y `docs/CAMBIOS_BACKEND.md`.
+- Verificación: `scripts/verify.py` → **1663 pasan, 0 fallan** (antes
+  1635); ruff y `pip check` limpios; `git diff --check` limpio.
+- Efecto al desplegar: ninguno visible mientras haya un solo año. Revisión
+  en local recomendada (solo lectura): Estudiantes, el buscador de
+  estudiantes de Pagos, Cartera vencida (lista, filtro por curso y el
+  resumen del inicio), iguales que en producción.
 
 ### Fase 4 — Selector de año en el frontend
 
@@ -2009,9 +2092,11 @@ cosa, gana lo que se pueda verificar.
   filtro por año bloquearían la carga académica de 2027. Paso 3.1 en el
   commit `fea2e83` (`GET /anios-lectivos` y `resolver_anio_pedido`); paso
   3.2 en `43764f2` (lo que ve el profesor, los listados del admin y los
-  choques de horario, por año). **Paso 3.3 escrito y probado, sin commit**
-  (cursos, conceptos, precios por curso, listas de seguimiento y reporte
-  general, por año; ver su "Avance").
+  choques de horario, por año); paso 3.3 en `da4da87` (cursos, conceptos,
+  precios por curso, listas de seguimiento y reporte general, por año).
+  **Paso 3.4 escrito y probado, sin commit** (lista de estudiantes, cartera
+  y estado de cuenta por curso, por año; decisiones 18 y 19; ver su
+  "Avance").
 - **Hecho aparte, la noche del 2026-09-30:** el arreglo de la hora
   (`2e77634` en este repo, `033c042` en el frontend). Cobros, cartera y
   alta de colegios usan la fecha de Colombia (`app/core/fechas.py`), y el
@@ -2044,13 +2129,12 @@ cosa, gana lo que se pueda verificar.
   rama, detener el backend local que esté corriendo; si no, el frontend
   sigue hablando con el que apunta a producción.
 - **Siguiente acción exacta:** que el usuario revise y haga el commit del
-  paso 3.3. Después, **paso 3.4** (estudiantes y cartera desde las
-  matrículas, zona de dinero: listado y conteo de estudiantes del año
-  pedido con los mismos resultados de hoy para el activo, incluidos los sin
-  curso; `GET /cartera/mora` y su resumen con `?anio_lectivo_id=`; estado
-  de cuenta por curso con el año de ese curso), solo con su visto bueno.
-  Antes de escribirlo, caracterización de cada consulta que toca y medición
-  de consultas, como en el paso 2.4. Las preguntas abiertas se le
+  paso 3.4. Después, **paso 3.5** (boletín, reporte parcial y puesto desde la
+  matrícula del año pedido; observador del admin; detalle del estudiante,
+  hallazgo 3; planes de clase del admin, hallazgo 5), solo con su visto
+  bueno. **Antes de empezarlo, hacerle al usuario la pregunta abierta de las
+  materias ocultas** (ver "Preguntas abiertas"): define si el 3.5 lleva una
+  migración o no. Las preguntas abiertas se le
   hacen al usuario justo antes del paso que las necesita (lo pidió así el
   2026-10-02): la de materias ocultas, antes del 3.5; la de crear en el año
   en preparación, antes de la fase 5. La fase 3 tiene que estar en

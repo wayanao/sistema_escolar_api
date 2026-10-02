@@ -15,6 +15,10 @@ como hicieron 4.3 y 5.2, para no alterar el valor y mantener limpio
 Las consultas del filtro llegan ya construidas desde el controlador. El
 fragmento `where_sql` no es entrada del cliente: sale de literales del propio
 codigo y sus valores viajan siempre parametrizados.
+
+Año lectivo, fase 3 (paso 3.4): la lista, el conteo y la pagina aceptan un
+año. Sin el, su SQL es el de siempre, letra por letra; con el, va por otro
+camino que lee las matriculas de ese año. Ver `_MATRICULAS_DEL_ANIO`.
 """
 
 
@@ -118,9 +122,53 @@ def actualizar_estudiante(cursor, valores):
     return cursor.fetchone()
 
 
-def listar_estudiantes(cursor, where_sql, parametros):
-    """Lista sin paginar, ordenada por apellido y nombre."""
-    cursor.execute(f"""
+# Año lectivo, fase 3 (paso 3.4): mirando un año que no es el activo, la lista
+# son los matriculados de ese año, cada uno con el curso que tuvo ese año (su
+# `%s` es el año y va antes de los del `where_sql`). Sin año, o con el activo,
+# las tres consultas de abajo quedan como siempre: todos los estudiantes, con
+# su curso actual, porque Pagos y Ventas tienen que encontrar a cualquiera.
+#
+# La matricula entra como subconsulta con la columna renombrada para que los
+# nombres sin prefijo del `where_sql` (`estado`, `nombre`...) sigan siendo solo
+# de `estudiantes`.
+_MATRICULAS_DEL_ANIO = """
+            JOIN (
+                SELECT estudiante_id, curso_id AS curso_del_anio
+                FROM matriculas
+                WHERE anio_lectivo_id = %s
+            ) m ON m.estudiante_id = estudiantes.id
+"""
+
+
+def _columnas_de_la_lista(anio_lectivo_id):
+    curso = "curso_id" if anio_lectivo_id is None else "m.curso_del_anio"
+    return f"""
+            SELECT
+                id,
+                nombre,
+                apellido,
+                documento_identidad,
+                fecha_nacimiento,
+                {curso},
+                email,
+                COALESCE(LOWER(estado), 'activo') AS estado
+            FROM estudiantes"""
+
+
+def _desde(anio_lectivo_id, parametros):
+    """El `JOIN` de las matriculas del año, si se pide uno, y los parametros."""
+    if anio_lectivo_id is None:
+        return "", tuple(parametros)
+    return _MATRICULAS_DEL_ANIO, (anio_lectivo_id, *parametros)
+
+
+def listar_estudiantes(cursor, where_sql, parametros, anio_lectivo_id=None):
+    """Lista sin paginar, ordenada por apellido y nombre.
+
+    Con `anio_lectivo_id`, los matriculados de ese año (ver arriba).
+    """
+    if anio_lectivo_id is None:
+        cursor.execute(f"""
             SELECT
                 id,
                 nombre,
@@ -134,19 +182,37 @@ def listar_estudiantes(cursor, where_sql, parametros):
             {where_sql}
             ORDER BY apellido ASC, nombre ASC
         """, tuple(parametros))
+        return cursor.fetchall()
+
+    join, params = _desde(anio_lectivo_id, parametros)
+    cursor.execute(
+        _columnas_de_la_lista(anio_lectivo_id)
+        + join
+        + f"""
+            {where_sql}
+            ORDER BY apellido ASC, nombre ASC
+        """,
+        params,
+    )
     return cursor.fetchall()
 
 
-def contar_estudiantes(cursor, where_sql, parametros):
+def contar_estudiantes(cursor, where_sql, parametros, anio_lectivo_id=None):
     """Total que acompana a la respuesta paginada."""
-    cursor.execute("SELECT COUNT(*) FROM estudiantes" + where_sql, tuple(parametros))
+    if anio_lectivo_id is None:
+        cursor.execute("SELECT COUNT(*) FROM estudiantes" + where_sql, tuple(parametros))
+        return cursor.fetchone()[0]
+
+    join, params = _desde(anio_lectivo_id, parametros)
+    cursor.execute("SELECT COUNT(*) FROM estudiantes" + join + where_sql, params)
     return cursor.fetchone()[0]
 
 
-def listar_estudiantes_paginado(cursor, where_sql, parametros):
+def listar_estudiantes_paginado(cursor, where_sql, parametros, anio_lectivo_id=None):
     """Pagina de la lista. El `where_sql` es el mismo que uso el conteo."""
-    cursor.execute(
-        """
+    if anio_lectivo_id is None:
+        cursor.execute(
+            """
             SELECT
                 id,
                 nombre,
@@ -158,12 +224,25 @@ def listar_estudiantes_paginado(cursor, where_sql, parametros):
                 COALESCE(LOWER(estado), 'activo') AS estado
             FROM estudiantes
             """
+            + where_sql
+            + """
+            ORDER BY apellido ASC, nombre ASC
+            LIMIT %s OFFSET %s
+            """,
+            tuple(parametros),
+        )
+        return cursor.fetchall()
+
+    join, params = _desde(anio_lectivo_id, parametros)
+    cursor.execute(
+        _columnas_de_la_lista(anio_lectivo_id)
+        + join
         + where_sql
         + """
             ORDER BY apellido ASC, nombre ASC
             LIMIT %s OFFSET %s
             """,
-        tuple(parametros),
+        params,
     )
     return cursor.fetchall()
 

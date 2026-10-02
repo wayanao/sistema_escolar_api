@@ -73,12 +73,23 @@ class QueryCountingCursor:
                 (student_id, nombre, apellido, "Activo", 3, "Curso 3")
                 for student_id, nombre, apellido in self.students
             ]
+        # Fase 3 del año lectivo (paso 3.4): el estado de cuenta por curso lee
+        # primero el año del curso (el activo aqui), y sus estudiantes salen
+        # de las matriculas del curso.
+        if "from cursos c join anios_lectivos al" in query:
+            return [(1, "activo")]
+        if (
+            "select e.id, e.nombre, e.apellido," in query
+            and "where m.curso_id" in query
+        ):
+            return [
+                (student_id, nombre, apellido, 1, "activo")
+                for student_id, nombre, apellido in self.students
+            ]
         if (
             "select e.id, e.nombre, e.apellido" in query
-            and "where e.curso_id" in query
+            and "where m.curso_id" in query
         ):
-            return self.students
-        if "select id, nombre, apellido" in query and "where curso_id" in query:
             return self.students
         # Matriculas de años anteriores (fase 2 del año lectivo, paso 2.4):
         # mientras haya un solo año, ninguna.
@@ -173,7 +184,10 @@ def test_financial_report_http_boundary_is_admin_only_sync_get():
 
 @pytest.mark.parametrize(
     ("student_count", "expected_queries"),
-    [(0, 6), (1, 15), (3, 15)],
+    # 6/15/15 -> 7/16/16 desde el paso 3.4 del año lectivo, aceptado por el
+    # usuario el 2026-10-02: una consulta para leer el año del curso. Sigue
+    # sin crecer con los estudiantes.
+    [(0, 7), (1, 16), (3, 16)],
 )
 def test_financial_report_account_keeps_grouped_query_count_constant(
     monkeypatch,
@@ -253,3 +267,41 @@ def test_overdue_portfolio_keeps_grouped_query_count_constant(
     assert cursor.closed is True
     assert connection.closed is True
     assert connection.committed is False
+
+
+class QueryCountingCursorConAnio(QueryCountingCursor):
+    """La misma base, con el año lectivo 1 en el estado que se le pida."""
+
+    def __init__(self, student_count, estado):
+        super().__init__(student_count)
+        self.estado = estado
+
+    def _dispatch(self, query):
+        if query.startswith("select id, anio, estado from anios_lectivos where id = %s"):
+            return [(1, 2026, self.estado)]
+        return super()._dispatch(query)
+
+
+@pytest.mark.parametrize(
+    ("estado", "student_count", "expected_queries"),
+    # Fase 3 del año lectivo (paso 3.4), medido el 2026-10-02: pedir un año
+    # suma una consulta para validarlo. Mirando otro año que no es el activo,
+    # las ventas no se consultan (decision 19), asi que queda como sin año.
+    [
+        ("activo", 0, 6), ("activo", 1, 14), ("activo", 3, 14),
+        ("cerrado", 0, 6), ("cerrado", 1, 13), ("cerrado", 3, 13),
+    ],
+)
+def test_overdue_portfolio_of_a_requested_year_query_count(
+    monkeypatch,
+    estado,
+    student_count,
+    expected_queries,
+):
+    cursor = QueryCountingCursorConAnio(student_count, estado)
+    connection = QueryCountingConnection(cursor)
+    monkeypatch.setattr(cartera_mora_controller, "get_connection", lambda: connection)
+
+    cartera_mora_controller.reporte_cartera_vencida(anio_lectivo_id=1)
+
+    assert len(cursor.executed) == expected_queries

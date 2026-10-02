@@ -71,6 +71,20 @@ def leer_anio_lectivo(cursor, anio_lectivo_id):
     return cursor.fetchone()
 
 
+def leer_anio_de_curso(cursor, curso_id):
+    """El año lectivo del curso como `(id, estado)`, o `None` si el curso no existe."""
+    cursor.execute(
+        """
+        SELECT c.anio_lectivo_id, al.estado
+        FROM cursos c
+        JOIN anios_lectivos al ON al.id = c.anio_lectivo_id
+        WHERE c.id = %s
+        """,
+        (curso_id,),
+    )
+    return cursor.fetchone()
+
+
 def listar_anios_lectivos(cursor):
     """Todos los años lectivos como `(id, anio, estado)`, el mas reciente primero.
 

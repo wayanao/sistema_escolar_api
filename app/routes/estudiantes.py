@@ -39,7 +39,10 @@ def obtener_estudiantes(
     offset: Annotated[int, Query(ge=0)] = 0,
     busqueda: Optional[str] = None,
     estado: Optional[str] = "activo",
+    anio_lectivo_id: Annotated[Optional[int], Query(gt=0)] = None,
 ):
+    """Sin `anio_lectivo_id`, o con el activo, todos los estudiantes, como
+    siempre; con otro año, los matriculados de ese año con su curso de ese año."""
     estado_normalizado = str(estado or "activo").strip().lower()
     if estado_normalizado not in ESTADOS_FILTRO_ESTUDIANTE:
         raise HTTPException(
@@ -47,15 +50,23 @@ def obtener_estudiantes(
             detail="Filtro de estado de estudiante invalido",
         )
 
-    if limit is not None:
-        return obtener_estudiantes_paginado_controller(
-            limit=limit,
-            offset=offset,
-            busqueda=busqueda,
-            estado=estado_normalizado,
-        )
+    # El estado ya se valido arriba: el unico ValueError que queda es el de un
+    # año lectivo que no existe.
+    try:
+        if limit is not None:
+            return obtener_estudiantes_paginado_controller(
+                limit=limit,
+                offset=offset,
+                busqueda=busqueda,
+                estado=estado_normalizado,
+                anio_lectivo_id=anio_lectivo_id,
+            )
 
-    return obtener_estudiantes_controller(estado=estado_normalizado)
+        return obtener_estudiantes_controller(
+            estado=estado_normalizado, anio_lectivo_id=anio_lectivo_id
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 # 🔍 Obtener detalles de un estudiante
 @router.get("/estudiantes/{estudiante_id}/detalles")

@@ -121,6 +121,13 @@ Notas:
   de la matricula de ese año y sus pagos. Sin el parametro, el año activo, como
   antes. Año inexistente o estudiante sin matricula en ese año: `404` con el
   mensaje.
+- `GET /estudiantes?anio_lectivo_id=` (opcional, fase 3 del año lectivo, paso
+  3.4; con y sin `limit`). Sin el parametro, **o con el del año activo**, la
+  lista de siempre: todos los estudiantes con su curso actual, incluidos los
+  que no tienen curso (Pagos y Ventas la usan para encontrar a cualquiera).
+  Con otro año: los matriculados de ese año, cada uno con su `curso_id` de ese
+  año; el filtro `estado` se aplica igual, sobre el estado de hoy. Año
+  inexistente: `404`.
 - Desde el paso 2.4 del año lectivo la respuesta trae ademas
   `deuda_anios_anteriores`: la deuda de cada año anterior al que se mira, en
   que el estudiante tuvo matricula, aparte de `total_deuda`. Mismo formato que
@@ -130,6 +137,12 @@ Notas:
 
 - `GET /estado-cuenta/curso/{curso_id}`
 - `GET /estado-cuenta/estudiante/{estudiante_id}`
+
+Año lectivo (fase 3, paso 3.4): `GET /estado-cuenta/curso/{curso_id}` toma
+los estudiantes de las matriculas del curso y calcula deuda y pagos en el año
+de ese curso; el año viaja en la misma consulta de estudiantes (sin consultas
+nuevas). Con un curso del año activo, todo es como antes. El de estudiante
+sigue en el año activo.
 
 ## Pagos
 
@@ -494,6 +507,11 @@ Notas:
 Año lectivo (fase 3, paso 3.3): en `GET /reportes/general`, `total_cursos` y
 `estudiantes_por_curso` cuentan solo los cursos del año activo. Los demas
 totales no cambian (dinero y egresos van por fecha).
+
+Año lectivo (fase 3, paso 3.4): `GET /reportes/estado-cuenta/{curso_id}` toma
+los estudiantes de las matriculas del curso y calcula en el año de ese curso.
+Para saberlo hace una consulta mas al empezar (6/15/15 -> 7/16/16, aceptado por
+el usuario el 2026-10-02). Con un curso del año activo, el resto es como antes.
 
 ## Tipos de pagos
 
@@ -860,6 +878,14 @@ Notas:
   estudiante que solo debe de años anteriores tambien aparece, con `total` 0.
   `GET /cartera/mora/resumen` suma esa deuda en `total_anios_anteriores`.
   Mientras haya un solo año, la lista viene vacia y el total en 0.
+- Año lectivo (fase 3, paso 3.4): `GET /cartera/mora` y `GET
+  /cartera/mora/resumen` aceptan `?anio_lectivo_id=`. Sin el, el año activo,
+  como antes. Los estudiantes salen de las matriculas del año, cada uno con el
+  curso de ese año (el mismo que fija sus precios). Mirando el año activo,
+  solo estudiantes activos y con sus ventas pendientes, como siempre. Mirando
+  otro año (decisiones 18 y 19 de `docs/funcionalidades/ANIO_LECTIVO.md`):
+  todos sus matriculados que deben, aunque despues se hayan retirado, y **sin
+  ventas** (no son de ningun año). Año inexistente: `404`.
 
 ## Paginacion compatible existente
 

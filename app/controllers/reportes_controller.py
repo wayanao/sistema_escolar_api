@@ -1,4 +1,5 @@
 from app.database import get_connection
+from app.repositories.anios_lectivos_repository import leer_anio_de_curso
 from app.repositories.reportes_repository import (
     consultar_egresos_rango,
     consultar_estudiantes_estado_cuenta_curso,
@@ -9,6 +10,7 @@ from app.repositories.reportes_repository import (
     consultar_reporte_general,
 )
 from app.services.cobros import (
+    con_anio,
     obtener_asignaciones_cobro_por_curso,
     obtener_pagos_por_concepto_estudiantes,
     obtener_tipos_pago,
@@ -143,7 +145,16 @@ def reporte_estado_cuenta_curso_controller(curso_id):
     cursor = conn.cursor()
 
     try:
-        tipos_list = obtener_tipos_pago(cursor)
+        # Fase 3 del año lectivo: todo se calcula en el año del curso (una
+        # consulta mas, aceptada por el usuario el 2026-10-02). Si el curso es
+        # del año activo, o no existe, `None`: las mismas consultas de siempre.
+        anio_del_curso = leer_anio_de_curso(cursor, curso_id)
+        anio_lectivo_id = (
+            anio_del_curso[0]
+            if anio_del_curso and anio_del_curso[1] != "activo"
+            else None
+        )
+        tipos_list = obtener_tipos_pago(cursor, **con_anio(anio_lectivo_id))
         valor_por_tipo_en_curso = obtener_asignaciones_cobro_por_curso(cursor, curso_id)
 
         estudiantes = consultar_estudiantes_estado_cuenta_curso(cursor, curso_id)
@@ -151,6 +162,7 @@ def reporte_estado_cuenta_curso_controller(curso_id):
         _, _, pagos_aplicados_por_estudiante = obtener_pagos_por_concepto_estudiantes(
             cursor,
             estudiante_ids,
+            **con_anio(anio_lectivo_id),
         )
         tiene_aplicaciones = tabla_pagos_aplicaciones_existe(cursor)
 
@@ -159,6 +171,7 @@ def reporte_estado_cuenta_curso_controller(curso_id):
                 cursor,
                 estudiante_ids,
                 tiene_aplicaciones,
+                anio_lectivo_id,
             )
         )
         valores_por_estudiante = obtener_valores_personalizados_por_estudiantes(
@@ -169,6 +182,7 @@ def reporte_estado_cuenta_curso_controller(curso_id):
             cursor,
             estudiante_ids,
             tiene_aplicaciones,
+            anio_lectivo_id,
         )
         return construir_estado_cuenta_curso(
             estudiantes=estudiantes,

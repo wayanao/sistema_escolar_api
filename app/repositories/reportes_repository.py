@@ -1,4 +1,4 @@
-from app.repositories.anios_lectivos_repository import ANIO_ACTIVO_ID_SQL
+from app.repositories.anios_lectivos_repository import ANIO_ACTIVO_ID_SQL, condicion_anio
 
 
 def consultar_reporte_general(cursor):
@@ -213,11 +213,13 @@ def consultar_egresos_rango(
 
 
 def consultar_estudiantes_estado_cuenta_curso(cursor, curso_id):
+    # Fase 3 del año lectivo: los estudiantes del curso salen de sus
+    # matriculas, asi que un curso de un año pasado sigue teniendo los suyos.
     cursor.execute('''
             SELECT e.id, e.nombre, e.apellido
-            FROM estudiantes e\x20
-            JOIN cursos c ON e.curso_id = c.id\x20
-            WHERE e.curso_id = %s\x20
+            FROM estudiantes e
+            JOIN matriculas m ON m.estudiante_id = e.id
+            WHERE m.curso_id = %s
             ORDER BY e.apellido, e.nombre
         ''', (curso_id,))
     return cursor.fetchall()
@@ -227,6 +229,7 @@ def consultar_pagos_estado_cuenta_por_estudiantes(
     cursor,
     estudiante_ids,
     tiene_aplicaciones,
+    anio_lectivo_id=None,
 ):
     if not estudiante_ids:
         return [], []
@@ -237,7 +240,9 @@ def consultar_pagos_estado_cuenta_por_estudiantes(
               WHERE pa.pago_id = pagos.id
           )
     """ if tiene_aplicaciones else ""
-    # Solo los pagos del año activo, el mismo año de los conceptos.
+    # Solo los pagos de un año (sin `anio_lectivo_id`, el activo), el mismo
+    # año de los conceptos.
+    condicion, params_anio = condicion_anio("pagos.anio_lectivo_id", anio_lectivo_id)
     cursor.execute(
         f"""
         SELECT estudiante_id, descripcion, COALESCE(SUM(monto), 0)
@@ -246,11 +251,11 @@ def consultar_pagos_estado_cuenta_por_estudiantes(
           AND venta_id IS NULL
           AND descripcion IS NOT NULL
           AND COALESCE(estado, 'Pagado') <> 'Anulado'
-          AND pagos.anio_lectivo_id = {ANIO_ACTIVO_ID_SQL}
+          AND {condicion}
           {excluir_aplicaciones}
         GROUP BY estudiante_id, descripcion
         """,
-        (estudiante_ids,),
+        (estudiante_ids, *params_anio),
     )
     pagos_por_descripcion = cursor.fetchall()
 
@@ -261,11 +266,11 @@ def consultar_pagos_estado_cuenta_por_estudiantes(
         WHERE estudiante_id IN %s
           AND venta_id IS NULL
           AND COALESCE(estado, 'Pagado') <> 'Anulado'
-          AND pagos.anio_lectivo_id = {ANIO_ACTIVO_ID_SQL}
+          AND {condicion}
           {excluir_aplicaciones}
         GROUP BY estudiante_id, tipo_pago
         """,
-        (estudiante_ids,),
+        (estudiante_ids, *params_anio),
     )
     pagos_por_nombre = cursor.fetchall()
 
@@ -276,6 +281,7 @@ def consultar_otros_pagos_por_estudiantes(
     cursor,
     estudiante_ids,
     tiene_aplicaciones,
+    anio_lectivo_id=None,
 ):
     if not estudiante_ids:
         return []
@@ -286,6 +292,7 @@ def consultar_otros_pagos_por_estudiantes(
               WHERE pa.pago_id = pagos.id
           )
     """ if tiene_aplicaciones else ""
+    condicion, params_anio = condicion_anio("pagos.anio_lectivo_id", anio_lectivo_id)
     cursor.execute(
         f"""
         SELECT estudiante_id, COALESCE(SUM(monto), 0)
@@ -309,10 +316,10 @@ def consultar_otros_pagos_por_estudiantes(
               )
           )
           AND COALESCE(estado, 'Pagado') <> 'Anulado'
-          AND pagos.anio_lectivo_id = {ANIO_ACTIVO_ID_SQL}
+          AND {condicion}
           {excluir_adelantos}
         GROUP BY estudiante_id
         """,
-        (estudiante_ids,),
+        (estudiante_ids, *params_anio),
     )
     return cursor.fetchall()

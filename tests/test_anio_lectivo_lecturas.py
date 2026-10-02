@@ -28,6 +28,7 @@ from app.controllers import anios_lectivos_controller as controlador
 from app.controllers import (
     asignacion_controller,
     curso_controller,
+    estudiante_controller,
     listas_seguimiento_controller,
     tipos_pagos_controller,
 )
@@ -1297,3 +1298,481 @@ def test_un_precio_en_un_curso_de_otro_anio_responde_400_con_el_mensaje(app_admi
 
     assert status == 400
     assert cuerpo == {"detail": "Estos cursos no son del año lectivo del concepto: PRIMERO A."}
+
+
+# ===========================================================================
+# Paso 3.4: estudiantes y cartera desde las matriculas (dinero).
+# ===========================================================================
+
+# 2026 cerrado (id 1) y 2027 activo (id 2).
+ANIOS_DOS = {1: (1, 2026, "cerrado"), 2: (2, 2027, "activo")}
+MATRICULAS_DEL_ANIO = "FROM matriculas WHERE anio_lectivo_id = %s"
+
+
+class BaseDeEstudiantes:
+    """Estudiantes y matriculas de dos años, contestados como PostgreSQL.
+
+    Ana (7) estuvo en el curso 3 en 2026 y esta en el 30 en 2027. Beto (8) es
+    nuevo en 2027 (curso 31). Luis (9) estuvo en 2026 (curso 3), se retiro y
+    hoy no tiene curso. La lista sale de las matriculas del año **solo si la
+    consulta las une**; si no, de `estudiantes.curso_id`.
+    """
+
+    ESTUDIANTES = [
+        (7, "Ana", "Rios", "1", None, 30, "a@x.co", "activo"),
+        (8, "Beto", "Diaz", "2", None, 31, None, "activo"),
+        (9, "Luis", "Mora", "3", None, None, None, "retirado"),
+    ]
+    MATRICULAS = {(7, 1): 3, (9, 1): 3, (7, 2): 30, (8, 2): 31}
+
+    def __init__(self):
+        self.consultas = []
+        self._filas = []
+
+    def execute(self, sql, params=None):
+        sql = _normalizar(sql)
+        self.consultas.append((sql, params))
+        params = list(params or ())
+        if sql == SQL_POR_ID:
+            self._filas = [ANIOS_DOS[params[0]]] if params[0] in ANIOS_DOS else []
+            return
+        filas = list(self.ESTUDIANTES)
+        if MATRICULAS_DEL_ANIO in sql:
+            anio = params.pop(0)
+            # El curso de la matricula solo si la consulta lo pide; si no, el
+            # de `estudiantes.curso_id`, como haria PostgreSQL.
+            del_anio = "m.curso_del_anio" in sql
+            filas = [
+                (*e[:5], self.MATRICULAS[(e[0], anio)] if del_anio else e[5], *e[6:])
+                for e in filas if (e[0], anio) in self.MATRICULAS
+            ]
+        if "COALESCE(LOWER(estado), 'activo') = %s" in sql:
+            estado = params.pop(0)
+            filas = [e for e in filas if e[7] == estado]
+        filas.sort(key=lambda e: (e[2], e[1]))
+        self._filas = [(len(filas),)] if sql.startswith("SELECT COUNT(*)") else filas
+
+    def fetchone(self):
+        return self._filas[0] if self._filas else None
+
+    def fetchall(self):
+        return list(self._filas)
+
+    def close(self):
+        pass
+
+
+def _lista(monkeypatch, **kwargs):
+    base = BaseDeEstudiantes()
+    monkeypatch.setattr(estudiante_controller, "get_connection", lambda: ConexionFalsa(base))
+    respuesta = estudiante_controller.obtener_estudiantes_controller(**kwargs)
+    return [(e["id"], e["curso_id"]) for e in respuesta], base.consultas
+
+
+def test_sin_anio_la_lista_de_estudiantes_es_la_de_siempre(monkeypatch):
+    """La usan Pagos y Ventas: tiene que encontrar a cualquiera, como hoy."""
+    lista, consultas = _lista(monkeypatch)
+
+    assert lista == [(8, 31), (7, 30)]
+    [(sql, params)] = consultas
+    assert "matriculas" not in sql
+    assert params == ("activo",)
+
+
+def test_con_el_anio_activo_la_lista_de_estudiantes_es_la_de_siempre(monkeypatch):
+    lista, (anio, (sql, params)) = _lista(monkeypatch, anio_lectivo_id=2)
+
+    assert lista == [(8, 31), (7, 30)]
+    assert anio == (SQL_POR_ID, (2,))
+    assert "matriculas" not in sql
+    assert params == ("activo",)
+
+
+def test_con_otro_anio_la_lista_son_sus_matriculados_con_el_curso_de_ese_anio(monkeypatch):
+    lista, (_anio, (sql, params)) = _lista(monkeypatch, estado="todos", anio_lectivo_id=1)
+
+    # Luis se retiro despues, Ana estaba en el curso 3, Beto no estaba.
+    assert lista == [(9, 3), (7, 3)]
+    assert MATRICULAS_DEL_ANIO in sql
+    assert params == (1,)
+
+
+def test_con_otro_anio_el_filtro_de_estado_sigue_valiendo(monkeypatch):
+    lista, (_anio, (_sql, params)) = _lista(monkeypatch, anio_lectivo_id=1)
+
+    assert lista == [(7, 3)]
+    assert params == (1, "activo")
+
+
+def test_el_paginado_de_estudiantes_de_otro_anio_pone_el_anio_primero(monkeypatch):
+    base = BaseDeEstudiantes()
+    monkeypatch.setattr(estudiante_controller, "get_connection", lambda: ConexionFalsa(base))
+
+    respuesta = estudiante_controller.obtener_estudiantes_paginado_controller(
+        limit=10, offset=0, busqueda=None, estado="todos", anio_lectivo_id=1
+    )
+
+    _anio, conteo, pagina = base.consultas
+    assert MATRICULAS_DEL_ANIO in conteo[0] and MATRICULAS_DEL_ANIO in pagina[0]
+    assert conteo[1] == (1,)
+    assert pagina[1] == (1, 10, 0)
+    assert respuesta["total"] == 2
+
+
+def test_la_lista_de_un_anio_que_no_existe_no_consulta_estudiantes(monkeypatch):
+    base = BaseDeEstudiantes()
+    monkeypatch.setattr(estudiante_controller, "get_connection", lambda: ConexionFalsa(base))
+
+    with pytest.raises(ValueError, match="El año lectivo seleccionado no existe."):
+        estudiante_controller.obtener_estudiantes_controller(anio_lectivo_id=99)
+
+    assert base.consultas == [(SQL_POR_ID, (99,))]
+
+
+# ---------------------------------------------------------------------------
+# Cartera por año (decisiones 18 y 19).
+# ---------------------------------------------------------------------------
+
+# Un concepto "unico" de 300.000 en el curso 3, sin pagar.
+CONCEPTO_UNICO = {
+    "id": 2, "nombre": "MATRICULA", "valor": 300_000.0, "tipo_cobro": "unico",
+    "activo": True, "mes_inicial": None, "mes_final": 12, "frecuencia_meses": 1,
+    "dia_limite_mes": None, "dias_gracia": 0, "mora_tipo": None, "mora_valor": 0.0,
+    "anio": 2026,
+}
+
+
+class BaseDeCartera:
+    """Lo que cartera lee de la base, sin lo que ya calcula `cobros`.
+
+    Ana (7) esta activa y Luis (9) se retiro: los dos deben la matricula del
+    curso 3. Ana tiene una venta pendiente de 20.000. Luis solo sale si la
+    consulta **no** filtra a los activos.
+    """
+
+    def __init__(self):
+        self.consultas = []
+        self._filas = []
+
+    def execute(self, sql, params=None):
+        sql = _normalizar(sql)
+        self.consultas.append((sql, params))
+        if sql == SQL_POR_ID:
+            self._filas = [ANIOS_DOS[params[0]]] if params[0] in ANIOS_DOS else []
+        elif "information_schema.tables" in sql:
+            self._filas = [(1,)]
+        elif "FROM tipos_pagos_cursos WHERE activo = TRUE" in sql:
+            self._filas = [(3, 2, 300_000)]
+        elif "JOIN matriculas m ON m.estudiante_id = e.id" in sql:
+            ana = (7, "Ana", "Rios", "Activo", 3, "PRIMERO A")
+            luis = (9, "Luis", "Mora", "Retirado", 3, "PRIMERO A")
+            self._filas = [ana] if "ILIKE 'activo'" in sql else [ana, luis]
+        elif "FROM ventas" in sql:
+            self._filas = [(7, 50, None, 20_000, 0)]
+        else:
+            raise AssertionError(f"consulta inesperada: {sql}")
+
+    def fetchone(self):
+        return self._filas[0] if self._filas else None
+
+    def fetchall(self):
+        return list(self._filas)
+
+    def close(self):
+        pass
+
+
+@pytest.fixture
+def cartera(monkeypatch):
+    """La cartera real con la base de arriba; anota el año con que se llama a cobros."""
+    from app.controllers import cartera_mora_controller
+
+    base = BaseDeCartera()
+    anios = []
+
+    def anotar(resultado):
+        def falso(*args, anio_lectivo_id=None, **kwargs):
+            anios.append(anio_lectivo_id)
+            return resultado
+        return falso
+
+    monkeypatch.setattr(cartera_mora_controller, "get_connection", lambda: ConexionFalsa(base))
+    monkeypatch.setattr(cartera_mora_controller, "obtener_tipos_pago", anotar([CONCEPTO_UNICO]))
+    monkeypatch.setattr(
+        cartera_mora_controller, "obtener_valores_personalizados_por_estudiantes",
+        lambda *args, **kwargs: {},
+    )
+    monkeypatch.setattr(
+        cartera_mora_controller, "obtener_pagos_por_concepto_estudiantes", anotar(({}, {}, {}))
+    )
+    monkeypatch.setattr(
+        cartera_mora_controller, "calcular_deudas_anios_anteriores", anotar({})
+    )
+    return cartera_mora_controller, base, anios
+
+
+def _resumen_de(items):
+    return [(i["estudiante_id"], i["deuda_academica"], i["deuda_inventario"]) for i in items]
+
+
+def test_la_cartera_del_anio_activo_queda_como_hoy(cartera):
+    controlador_cartera, base, anios = cartera
+
+    items = controlador_cartera.reporte_cartera_vencida()
+
+    # Solo activos, con su venta pendiente; todo con el año activo.
+    assert _resumen_de(items) == [(7, 300_000, 20_000)]
+    assert anios == [None, None, None]
+    [estudiantes] = [sql for sql, _ in base.consultas if "JOIN matriculas m" in sql]
+    assert SOLO_EL_ACTIVO.replace("c.", "m.") in estudiantes
+    assert any("FROM ventas" in sql for sql, _ in base.consultas)
+
+
+def test_la_cartera_de_2026_muestra_a_quien_se_retiro_debiendo_y_no_las_ventas(cartera):
+    """Decisiones 18 y 19: mirando un año que no es el activo salen todos sus
+    matriculados que deben, aunque se hayan retirado, y ninguna venta."""
+    controlador_cartera, base, anios = cartera
+
+    items = controlador_cartera.reporte_cartera_vencida(anio_lectivo_id=1)
+
+    assert _resumen_de(items) == [(7, 300_000, 0), (9, 300_000, 0)]
+    assert anios == [1, 1, 1]
+    assert base.consultas[0] == (SQL_POR_ID, (1,))
+    assert not any("FROM ventas" in sql for sql, _ in base.consultas)
+    [(estudiantes, params)] = [c for c in base.consultas if "JOIN matriculas m" in c[0]]
+    assert "m.anio_lectivo_id = %s" in estudiantes
+    assert "ILIKE 'activo'" not in estudiantes
+    assert params == (1,)
+
+
+def test_la_cartera_pedida_con_el_id_del_activo_es_la_del_activo(cartera):
+    controlador_cartera, base, anios = cartera
+
+    items = controlador_cartera.reporte_cartera_vencida(anio_lectivo_id=2)
+
+    assert _resumen_de(items) == [(7, 300_000, 20_000)]
+    assert anios == [2, 2, 2]
+
+
+def test_la_cartera_por_curso_pone_el_anio_antes_del_curso(cartera):
+    controlador_cartera, base, _ = cartera
+
+    controlador_cartera.reporte_cartera_vencida(curso_id=3, anio_lectivo_id=1)
+
+    [(estudiantes, params)] = [c for c in base.consultas if "JOIN matriculas m" in c[0]]
+    assert "m.curso_id = %s" in estudiantes
+    assert params == (1, 3)
+
+
+def test_el_resumen_de_cartera_es_del_anio_pedido(cartera):
+    controlador_cartera, _, anios = cartera
+
+    resumen = controlador_cartera.resumen_cartera_vencida(anio_lectivo_id=1)
+
+    assert resumen["total_estudiantes"] == 2
+    assert resumen["total_inventario"] == 0
+    assert anios == [1, 1, 1]
+
+
+def test_la_cartera_de_un_anio_que_no_existe_no_calcula_nada(cartera):
+    controlador_cartera, base, anios = cartera
+
+    with pytest.raises(ValueError, match="El año lectivo seleccionado no existe."):
+        controlador_cartera.reporte_cartera_vencida(anio_lectivo_id=99)
+
+    assert base.consultas == [(SQL_POR_ID, (99,))]
+    assert anios == []
+
+
+# ---------------------------------------------------------------------------
+# Estado de cuenta por curso: el año de su curso.
+# ---------------------------------------------------------------------------
+
+
+class BaseDeEstadoDeCuenta:
+    """El curso 3 es de 2026 (cerrado) y el 30 de 2027 (activo)."""
+
+    ANIO_DEL_CURSO = {3: (1, "cerrado"), 30: (2, "activo")}
+
+    def __init__(self):
+        self.consultas = []
+        self._filas = []
+
+    def execute(self, sql, params=None):
+        sql = _normalizar(sql)
+        self.consultas.append((sql, params))
+        if "FROM cursos c JOIN anios_lectivos al" in sql:
+            self._filas = [self.ANIO_DEL_CURSO[params[0]]]
+        elif "WHERE m.curso_id = %s" in sql and "al.estado" in sql:
+            anio, estado = self.ANIO_DEL_CURSO[params[0]]
+            self._filas = [(7, "Ana", "Rios", anio, estado)]
+        elif "WHERE m.curso_id = %s" in sql:
+            self._filas = [(7, "Ana", "Rios")]
+        elif "FROM pagos" in sql and "STRING_AGG" in sql:
+            self._filas = [(50, "Abono")]
+        elif "FROM pagos" in sql:
+            self._filas = []
+        else:
+            raise AssertionError(f"consulta inesperada: {sql}")
+
+    def fetchone(self):
+        return self._filas[0] if self._filas else None
+
+    def fetchall(self):
+        return list(self._filas)
+
+    def close(self):
+        pass
+
+
+@pytest.fixture
+def estado_de_cuenta(monkeypatch):
+    from app.controllers import estado_cuenta_controller
+
+    base = BaseDeEstadoDeCuenta()
+    llamadas = []
+
+    def calcular(cursor, estudiante_id, **kwargs):
+        llamadas.append(kwargs)
+        return {"total_deuda": 100}
+
+    monkeypatch.setattr(estado_cuenta_controller, "get_connection", lambda: ConexionFalsa(base))
+    monkeypatch.setattr(estado_cuenta_controller, "calcular_deudas_estudiante", calcular)
+    return estado_cuenta_controller, base, llamadas
+
+
+def test_el_estado_de_cuenta_de_un_curso_de_2026_calcula_en_2026(estado_de_cuenta):
+    controlador_cuentas, base, llamadas = estado_de_cuenta
+
+    [fila] = controlador_cuentas.estado_cuenta_curso_controller(3)
+
+    assert fila["deuda"] == 100 and fila["pagado"] == 50
+    assert llamadas == [{"anio_lectivo_id": 1}]
+    [(pagos, params)] = [c for c in base.consultas if "STRING_AGG" in c[0]]
+    assert "pagos.anio_lectivo_id = %s" in pagos
+    assert params == (7, 1)
+
+
+def test_el_estado_de_cuenta_de_un_curso_del_anio_activo_es_el_de_siempre(estado_de_cuenta):
+    controlador_cuentas, base, llamadas = estado_de_cuenta
+
+    controlador_cuentas.estado_cuenta_curso_controller(30)
+
+    assert llamadas == [{}]
+    [(pagos, params)] = [c for c in base.consultas if "STRING_AGG" in c[0]]
+    assert _normalizar(f"pagos.anio_lectivo_id = {ANIO_ACTIVO_ID_SQL}") in pagos
+    assert params == (7,)
+    # El año viaja en la consulta de estudiantes: ni una ida mas.
+    assert len(base.consultas) == 2
+
+
+@pytest.fixture
+def reporte_de_curso(monkeypatch):
+    from app.controllers import reportes_controller
+
+    base = BaseDeEstadoDeCuenta()
+    anios = []
+
+    def anotar(resultado):
+        def falso(*args, anio_lectivo_id=None, **kwargs):
+            anios.append(anio_lectivo_id)
+            return resultado
+        return falso
+
+    monkeypatch.setattr(reportes_controller, "get_connection", lambda: ConexionFalsa(base))
+    monkeypatch.setattr(reportes_controller, "obtener_tipos_pago", anotar([]))
+    monkeypatch.setattr(
+        reportes_controller, "obtener_asignaciones_cobro_por_curso", lambda *a, **k: {}
+    )
+    monkeypatch.setattr(
+        reportes_controller, "obtener_pagos_por_concepto_estudiantes", anotar(({}, {}, {}))
+    )
+    monkeypatch.setattr(reportes_controller, "tabla_pagos_aplicaciones_existe", lambda *a: True)
+    monkeypatch.setattr(
+        reportes_controller, "obtener_valores_personalizados_por_estudiantes", lambda *a, **k: {}
+    )
+    monkeypatch.setattr(reportes_controller, "construir_estado_cuenta_curso", lambda **k: ["ok"])
+    return reportes_controller, base, anios
+
+
+def test_el_reporte_de_un_curso_de_2026_calcula_en_2026(reporte_de_curso):
+    controlador_reportes, base, anios = reporte_de_curso
+
+    assert controlador_reportes.reporte_estado_cuenta_curso_controller(3) == ["ok"]
+
+    assert anios == [1, 1]
+    pagos = [c for c in base.consultas if "FROM pagos" in c[0]]
+    assert len(pagos) == 3
+    assert all("pagos.anio_lectivo_id = %s" in sql for sql, _ in pagos)
+    assert all(params == ((7,), 1) for _, params in pagos)
+
+
+def test_el_reporte_de_un_curso_del_anio_activo_es_el_de_siempre(reporte_de_curso):
+    controlador_reportes, base, anios = reporte_de_curso
+
+    controlador_reportes.reporte_estado_cuenta_curso_controller(30)
+
+    assert anios == [None, None]
+    pagos = [c for c in base.consultas if "FROM pagos" in c[0]]
+    assert all(ANIO_ACTIVO_ID_SQL in sql for sql, _ in pagos)
+    assert all(params == ((7,),) for _, params in pagos)
+
+
+# ---------------------------------------------------------------------------
+# Las rutas del paso 3.4, por HTTP.
+# ---------------------------------------------------------------------------
+
+RUTAS_CON_ANIO_34 = {
+    "/estudiantes": ("routes.estudiantes", "obtener_estudiantes_controller"),
+    "/cartera/mora": ("routes.cartera", "reporte_cartera_vencida"),
+    "/cartera/mora/resumen": ("routes.cartera", "resumen_cartera_vencida"),
+}
+
+
+@pytest.fixture
+def app_admin_34(monkeypatch):
+    import importlib
+
+    from app.dependencies import get_current_user
+    from app.main import app
+
+    recibido = []
+
+    def doblar(ruta, error=None):
+        modulo, nombre = RUTAS_CON_ANIO_34[ruta]
+
+        def falso(*args, **kwargs):
+            recibido.append(kwargs.get("anio_lectivo_id"))
+            if error is not None:
+                raise error
+            return []
+
+        monkeypatch.setattr(importlib.import_module(f"app.{modulo}"), nombre, falso)
+
+    app.dependency_overrides[get_current_user] = lambda: ADMIN
+    try:
+        yield app, doblar, recibido
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+
+
+@pytest.mark.parametrize("ruta", sorted(RUTAS_CON_ANIO_34))
+def test_las_rutas_del_paso_34_pasan_el_anio(app_admin_34, ruta):
+    app, doblar, recibido = app_admin_34
+    doblar(ruta)
+
+    assert peticion_get(app, ruta)[0] == 200
+    assert peticion_get(app, _con_anio(ruta, 5))[0] == 200
+    assert peticion_get(app, _con_anio(ruta, 0))[0] == 422
+    assert recibido == [None, 5]
+
+
+@pytest.mark.parametrize("ruta", sorted(RUTAS_CON_ANIO_34))
+def test_las_rutas_del_paso_34_responden_404_si_el_anio_no_existe(app_admin_34, ruta):
+    app, doblar, _ = app_admin_34
+    doblar(ruta, error=ValueError("El año lectivo seleccionado no existe."))
+
+    status, cuerpo = peticion_get(app, _con_anio(ruta, 99))
+
+    assert status == 404
+    assert cuerpo == {"detail": "El año lectivo seleccionado no existe."}

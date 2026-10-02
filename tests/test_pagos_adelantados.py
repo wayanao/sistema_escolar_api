@@ -361,6 +361,9 @@ def test_anular_adelanto_libera_sus_periodos(monkeypatch):
 
 def test_reporte_curso_aplica_solo_adelantos_maduros_y_no_los_duplica(monkeypatch):
     cursor = FakeCursor(fetches=[
+        # Año lectivo, fase 3 (paso 3.4): primero se lee el año del curso. Es
+        # el activo, asi que el resto va por el camino de siempre.
+        (1, "activo"),
         [(7, "Ana", "Díaz")],
         [],
         [],

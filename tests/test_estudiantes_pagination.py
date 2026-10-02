@@ -4,30 +4,33 @@ from app.routes import estudiantes
 def test_estudiantes_route_keeps_legacy_list_response(monkeypatch):
     calls = []
 
-    def fake_listado(estado="activo"):
-        calls.append(estado)
+    # Año lectivo, fase 3 (paso 3.4): el controlador recibe el año pedido.
+    # Sin `anio_lectivo_id` le llega None: la lista de siempre.
+    def fake_listado(estado="activo", anio_lectivo_id=None):
+        calls.append((estado, anio_lectivo_id))
         return [{"id": 1}]
 
     monkeypatch.setattr(estudiantes, "obtener_estudiantes_controller", fake_listado)
 
     result = estudiantes.obtener_estudiantes()
 
-    assert calls == ["activo"]
+    assert calls == [("activo", None)]
     assert result == [{"id": 1}]
 
 
 def test_estudiantes_route_returns_paginated_response_when_limit_is_sent(monkeypatch):
     calls = []
 
-    def fake_paginado(limit, offset, busqueda, estado):
-        calls.append((limit, offset, busqueda, estado))
+    def fake_paginado(limit, offset, busqueda, estado, anio_lectivo_id):
+        calls.append((limit, offset, busqueda, estado, anio_lectivo_id))
         return {"total": 1, "limit": limit, "offset": offset, "items": [{"id": 1}]}
 
     monkeypatch.setattr(estudiantes, "obtener_estudiantes_paginado_controller", fake_paginado)
 
     result = estudiantes.obtener_estudiantes(limit=25, offset=50, busqueda="ana", estado="retirado")
 
-    assert calls == [(25, 50, "ana", "retirado")]
+    # Año lectivo, fase 3 (paso 3.4): sin año, None.
+    assert calls == [(25, 50, "ana", "retirado", None)]
     assert result == {"total": 1, "limit": 25, "offset": 50, "items": [{"id": 1}]}
 
 

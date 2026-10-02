@@ -10,17 +10,23 @@ con el resumen del estudiante y los reportes por curso.
 from __future__ import annotations
 
 from app.database import get_connection
+from app.repositories.anios_lectivos_repository import condicion_anio
+from app.services.anio_lectivo import exigir_anio_lectivo
 from app.services.cobros import (
     calcular_deudas_anios_anteriores,
     calcular_deudas_desde_contexto,
+    con_anio,
     obtener_pagos_por_concepto_estudiantes,
     obtener_tipos_pago,
     obtener_valores_personalizados_por_estudiantes,
 )
 
 
-def reporte_cartera_vencida(curso_id: int | None = None):
-    """Devuelve la lista de estudiantes con deuda > 0.
+def reporte_cartera_vencida(curso_id: int | None = None, anio_lectivo_id: int | None = None):
+    """Devuelve la lista de estudiantes con deuda > 0 en un año.
+
+    Sin `anio_lectivo_id`, el año activo, como siempre. Un año que no existe
+    lanza `ValueError`.
 
     Estructura del item:
     {
@@ -60,7 +66,15 @@ def reporte_cartera_vencida(curso_id: int | None = None):
     conn = get_connection()
     cursor = conn.cursor()
     try:
-        tipos = obtener_tipos_pago(cursor)
+        # 1. El año que se mira (fase 3 del año lectivo): sin `anio_lectivo_id`,
+        # el activo, como siempre. Mirando otro año (decisiones 18 y 19):
+        # aparecen todos sus matriculados que deben, aunque despues se hayan
+        # retirado, y no se muestran ventas, que no son de ningun año.
+        es_el_anio_activo = True
+        if anio_lectivo_id is not None:
+            es_el_anio_activo = exigir_anio_lectivo(cursor, anio_lectivo_id)[2] == "activo"
+
+        tipos = obtener_tipos_pago(cursor, **con_anio(anio_lectivo_id))
 
         # 2. ¿Existe la tabla puente?
         cursor.execute(
@@ -85,20 +99,29 @@ def reporte_cartera_vencida(curso_id: int | None = None):
             for r in cursor.fetchall():
                 asignaciones_por_curso.setdefault(r[0], {})[r[1]] = float(r[2] or 0)
 
-        # 4. Estudiantes (filtrar por curso si se pidió)
-        where_curso = "AND e.curso_id = %s" if curso_id else ""
-        params = (curso_id,) if curso_id else ()
+        # 4. Estudiantes del año, desde sus matriculas: el curso de cada uno es
+        # el de ese año, el mismo que fija sus precios (paso 2.2). Con el año
+        # activo es el mismo curso de `estudiantes.curso_id` (consulta de
+        # control en 0). Filtrar por curso si se pidio.
+        condicion, params_anio = condicion_anio("m.anio_lectivo_id", anio_lectivo_id)
+        filtros = [condicion]
+        params = list(params_anio)
+        if es_el_anio_activo:
+            filtros.append("COALESCE(e.estado, 'Activo') ILIKE 'activo'")
+        if curso_id:
+            filtros.append("m.curso_id = %s")
+            params.append(curso_id)
         cursor.execute(
             f"""
             SELECT e.id, e.nombre, e.apellido, e.estado,
                    c.id AS curso_id, c.nombre AS curso_nombre
             FROM estudiantes e
-            JOIN cursos c ON c.id = e.curso_id
-            WHERE COALESCE(e.estado, 'Activo') ILIKE 'activo'
-            {where_curso}
+            JOIN matriculas m ON m.estudiante_id = e.id
+            JOIN cursos c ON c.id = m.curso_id
+            WHERE {' AND '.join(filtros)}
             ORDER BY c.nombre, e.apellido, e.nombre
             """,
-            params,
+            tuple(params),
         )
         estudiantes = cursor.fetchall()
 
@@ -118,20 +141,26 @@ def reporte_cartera_vencida(curso_id: int | None = None):
         ) = obtener_pagos_por_concepto_estudiantes(
             cursor,
             est_ids,
+            **con_anio(anio_lectivo_id),
         )
 
-        # 6. Ventas pendientes (cargos de inventario con saldo)
-        cursor.execute(
-            """
-            SELECT estudiante_id, id, fecha, total, COALESCE(pagado, 0)
-            FROM ventas
-            WHERE estudiante_id IN %s AND estado = 'Pendiente'
-            ORDER BY fecha ASC
-            """,
-            (est_ids,),
-        )
+        # 6. Ventas pendientes (cargos de inventario con saldo). Solo mirando el
+        # año activo: una venta no es de ningun año, y asi no sale repetida al
+        # mirar otro (decision 19).
+        filas_ventas = []
+        if es_el_anio_activo:
+            cursor.execute(
+                """
+                SELECT estudiante_id, id, fecha, total, COALESCE(pagado, 0)
+                FROM ventas
+                WHERE estudiante_id IN %s AND estado = 'Pendiente'
+                ORDER BY fecha ASC
+                """,
+                (est_ids,),
+            )
+            filas_ventas = cursor.fetchall()
         ventas_por_est = {}
-        for r in cursor.fetchall():
+        for r in filas_ventas:
             est_id, v_id, fecha, total, pagado_v = r
             saldo = max(0.0, float(total or 0) - float(pagado_v or 0))
             if saldo <= 0:
@@ -149,6 +178,7 @@ def reporte_cartera_vencida(curso_id: int | None = None):
         anteriores = calcular_deudas_anios_anteriores(
             cursor,
             est_ids,
+            anio_lectivo_id=anio_lectivo_id,
             asignaciones_por_curso=asignaciones_por_curso,
             valores_por_estudiante=valores_por_estudiante,
         )
@@ -217,9 +247,12 @@ def reporte_cartera_vencida(curso_id: int | None = None):
         conn.close()
 
 
-def resumen_cartera_vencida():
-    """Resumen para KPIs del dashboard: total deuda, # estudiantes en mora, etc."""
-    items = reporte_cartera_vencida()
+def resumen_cartera_vencida(anio_lectivo_id: int | None = None):
+    """Resumen para KPIs del dashboard: total deuda, # estudiantes en mora, etc.
+
+    Del año pedido o, sin el, del activo.
+    """
+    items = reporte_cartera_vencida(anio_lectivo_id=anio_lectivo_id)
     total_estudiantes = len(items)
     total_deuda = sum(i["total"] for i in items)
     total_academico = sum(i["deuda_academica"] for i in items)

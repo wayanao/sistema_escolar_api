@@ -6,6 +6,43 @@ Ultima revision documental: 2026-10-02.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
+## 2026-10-02 - Año lectivo: estudiantes y cartera desde las matriculas
+
+Fase 3, paso 3.4, de `docs/funcionalidades/ANIO_LECTIVO.md`. Zona de dinero.
+Mientras haya un solo año, ninguna respuesta cambia.
+
+### Que cambia
+
+- `GET /estudiantes?anio_lectivo_id=`: sin año o con el activo, la lista de
+  siempre (su SQL no cambia); con otro año, sus matriculados con el curso de
+  ese año.
+- `GET /cartera/mora` y `/cartera/mora/resumen` con `?anio_lectivo_id=`. Los
+  estudiantes salen de las matriculas del año. Mirando otro año que no es el
+  activo, salen tambien los que se retiraron debiendo (decision 18) y no salen
+  ventas (decision 19), las dos decididas por el usuario el 2026-10-02.
+- El estado de cuenta por curso (`/estado-cuenta/curso/{id}` y
+  `/reportes/estado-cuenta/{id}`, sin pantalla hoy) calcula en el año del
+  curso, con sus estudiantes desde las matriculas.
+
+### Consultas (medidas en pruebas)
+
+Sin año, iguales: lista de estudiantes 1 y 2 (paginada), cartera 5/13/13,
+estado de cuenta 1/13/37. Con año, una mas para validarlo (cartera de otro año:
+la validacion suma una y las ventas restan una). `/reportes/estado-cuenta`
+pasa de 6/15/15 a 7/16/16, aceptado por el usuario.
+
+### Pruebas
+
+22 nuevas en `tests/test_anio_lectivo_lecturas.py`, con bases simuladas de dos
+años (estudiantes, cartera con un retirado que debe y una venta, y estado de
+cuenta de un curso de cada año), y 6 en `tests/test_reportes_query_counts.py`
+que fijan los conteos de cartera con año. Ajustadas a proposito: los dobles de la ruta
+de estudiantes, y las bases simuladas de estado de cuenta en
+`test_reportes_query_counts.py`, `test_reportes_estado_cuenta.py` y
+`test_pagos_adelantados.py`, que no conocian las consultas nuevas; el conteo
+aceptado del reporte. Diecinueve versiones dañadas del codigo las hacen
+fallar. `scripts/verify.py`: 1663 pasan, 0 fallan.
+
 ## 2026-10-02 - Año lectivo: cursos y conceptos por año
 
 Fase 3, paso 3.3, de `docs/funcionalidades/ANIO_LECTIVO.md`. Mientras haya un

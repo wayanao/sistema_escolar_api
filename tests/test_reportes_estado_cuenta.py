@@ -56,9 +56,13 @@ class EstadoCuentaCursor:
                 "El schema canónico de pagos no contiene concepto_id"
             )
 
+        # Fase 3 del año lectivo (paso 3.4): primero el año del curso (el
+        # activo aqui), y los estudiantes salen de las matriculas del curso.
+        if "from cursos c join anios_lectivos al" in query:
+            return [(1, "activo")]
         if (
             "select e.id, e.nombre, e.apellido" in query
-            and "where e.curso_id = %s" in query
+            and "where m.curso_id = %s" in query
         ):
             return ESTUDIANTES
 
@@ -309,8 +313,9 @@ def test_estado_cuenta_preserva_reglas_orden_totales_y_aislamiento(monkeypatch):
         (query, params) for query, params in cursor.executed
         if "select e.id, e.nombre, e.apellido" in query
     )
-    assert "join cursos c on e.curso_id = c.id" in students_query
-    assert "where e.curso_id = %s" in students_query
+    # Fase 3 del año lectivo (paso 3.4): desde las matriculas del curso.
+    assert "join matriculas m on m.estudiante_id = e.id" in students_query
+    assert "where m.curso_id = %s" in students_query
     assert "order by e.apellido, e.nombre" in students_query
     assert students_params == (3,)
 

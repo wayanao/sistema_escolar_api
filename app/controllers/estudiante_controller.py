@@ -99,9 +99,21 @@ def _formatear_estudiante_lista(row):
     }
 
 
-# 🎯 Obtener todos los estudiantes
-def obtener_estudiantes_controller(estado="activo"):
+def _anio_de_la_lista(cursor, anio_lectivo_id):
+    """El año cuyas matriculas forman la lista, o `None` para la de siempre.
 
+    Sin año, o con el activo, `None`: la lista de hoy, con todos los
+    estudiantes. Con otro año, su id. Un año que no existe lanza `ValueError`.
+    """
+    if anio_lectivo_id is None:
+        return None
+    anio = exigir_anio_lectivo(cursor, anio_lectivo_id)
+    return None if anio[2] == "activo" else anio_lectivo_id
+
+
+# 🎯 Obtener todos los estudiantes
+def obtener_estudiantes_controller(estado="activo", anio_lectivo_id=None):
+    """Sin año, o con el activo, todos; con otro año, sus matriculados."""
     conn = get_connection()
     cursor = conn.cursor()
     try:
@@ -109,7 +121,8 @@ def obtener_estudiantes_controller(estado="activo"):
         where_sql = f"WHERE {estado_where}" if estado_where else ""
 
         resultado = estudiantes_repository.listar_estudiantes(
-            cursor, where_sql, parametros
+            cursor, where_sql, parametros,
+            anio_lectivo_id=_anio_de_la_lista(cursor, anio_lectivo_id),
         )
     finally:
         cursor.close()
@@ -118,7 +131,10 @@ def obtener_estudiantes_controller(estado="activo"):
     return [_formatear_estudiante_lista(row) for row in resultado]
 
 
-def obtener_estudiantes_paginado_controller(limit=50, offset=0, busqueda=None, estado="activo"):
+def obtener_estudiantes_paginado_controller(
+    limit=50, offset=0, busqueda=None, estado="activo", anio_lectivo_id=None
+):
+    """Sin año, o con el activo, todos; con otro año, sus matriculados."""
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -145,10 +161,14 @@ def obtener_estudiantes_paginado_controller(limit=50, offset=0, busqueda=None, e
     where_sql = " WHERE " + " AND ".join(condiciones) if condiciones else ""
 
     try:
-        total = estudiantes_repository.contar_estudiantes(cursor, where_sql, parametros)
+        anio_de_la_lista = _anio_de_la_lista(cursor, anio_lectivo_id)
+        total = estudiantes_repository.contar_estudiantes(
+            cursor, where_sql, parametros, anio_lectivo_id=anio_de_la_lista
+        )
 
         filas = estudiantes_repository.listar_estudiantes_paginado(
-            cursor, where_sql, parametros + [limit, offset]
+            cursor, where_sql, parametros + [limit, offset],
+            anio_lectivo_id=anio_de_la_lista,
         )
 
         return {

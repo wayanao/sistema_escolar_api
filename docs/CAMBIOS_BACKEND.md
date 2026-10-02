@@ -6,6 +6,35 @@ Ultima revision documental: 2026-10-01.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
+## 2026-10-01 - Año lectivo: pagar en otro año y adelantar meses del siguiente
+
+Fase 2, paso 2.3, de `docs/funcionalidades/ANIO_LECTIVO.md`. Prepara el cobro
+de la matricula 2027 en noviembre y los adelantos de 2027 en diciembre.
+
+### Que cambia
+
+- `POST /pagos` y `POST /pagos/adelanto` aceptan `anio_lectivo_id` opcional:
+  el pago se guarda en ese año, y la deuda y los meses se calculan con sus
+  conceptos y el curso de su matricula. Cualquier estado del año vale (un
+  pago se registra en el año de la deuda que salda); un año que no existe da
+  400.
+- `GET /estudiantes/{id}/deudas`, `/pagos/vencidos/opciones/{id}` y
+  `/pagos/adelanto/opciones/{id}` aceptan `?anio_lectivo_id=` opcional.
+- Nuevo `app/services/anio_lectivo.py` (`exigir_anio_lectivo`) y
+  `leer_anio_lectivo` en el repositorio del año lectivo.
+
+Sin el año, todo es identico: la misma sentencia, los mismos parametros y las
+mismas llamadas. Las 1516 pruebas que ya existian pasaron sin tocarse. El
+frontend no cambia todavia; el selector "Año del pago" es de su fase 5.
+
+### Pruebas
+
+22 nuevas en `tests/test_anio_lectivo_cobros_por_anio.py` (pago a un año
+cerrado y a uno en preparacion, año inexistente, precio del curso de 2027,
+adelantos de 2027 en diciembre, rutas y esquemas). Se invirtio la ultima
+prueba de error de la caracterizacion, la de los adelantos de diciembre.
+`scripts/verify.py`: 1538 pasan, 0 fallan.
+
 ## 2026-10-01 - Año lectivo: cada año cuenta solo sus pagos
 
 Fase 2, paso 2.2, de `docs/funcionalidades/ANIO_LECTIVO.md`. Prepara el

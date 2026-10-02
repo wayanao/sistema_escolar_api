@@ -2,7 +2,8 @@ import logging
 
 from app.database import get_connection, get_cursor
 from app.repositories import anios_lectivos_repository, estudiantes_repository
-from app.services.cobros import calcular_deudas_estudiante
+from app.services.anio_lectivo import exigir_anio_lectivo
+from app.services.cobros import calcular_deudas_estudiante, con_anio
 
 logger = logging.getLogger(__name__)
 
@@ -264,9 +265,12 @@ def actualizar_estado_estudiante_controller(est_id, estado):
         conn.close()
 
 
-def obtener_deudas_estudiante_controller(est_id):
+def obtener_deudas_estudiante_controller(est_id, anio_lectivo_id=None):
+    """Deudas del estudiante en un año; sin `anio_lectivo_id`, en el activo."""
     with get_cursor() as cursor:
-        resumen_cobros = calcular_deudas_estudiante(cursor, est_id)
+        if anio_lectivo_id is not None:
+            exigir_anio_lectivo(cursor, anio_lectivo_id)
+        resumen_cobros = calcular_deudas_estudiante(cursor, est_id, **con_anio(anio_lectivo_id))
 
     return _formatear_resumen_deudas(est_id, resumen_cobros)
 

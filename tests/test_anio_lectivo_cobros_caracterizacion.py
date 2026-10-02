@@ -14,7 +14,8 @@ Fase 0 de `docs/funcionalidades/ANIO_LECTIVO.md`. Dos grupos:
    de 2026 en enero. En el paso 2.2 (cada año cuenta solo sus pagos): la
    matricula del año siguiente, el caso A y los meses vencidos de 2027. Esas
    tres pasan por una base de pagos simulada (`BaseDePagos`), porque el
-   filtro por año vive en el SQL.
+   filtro por año vive en el SQL. En el paso 2.3 (pagar en otro año): los
+   adelantos de diciembre. Ya no queda ninguna `test_error_actual_`.
 
 Los montos son los del diagnostico del documento (matricula de $300.000,
 mensualidad de $200.000 de febrero a noviembre con dia limite 5).
@@ -403,12 +404,24 @@ def test_meses_vencidos_de_2027_no_se_cubren_con_pagos_de_2026(monkeypatch):
     assert [cuota["saldo"] for cuota in opciones[0]["cuotas"]] == [MENSUALIDAD, MENSUALIDAD]
 
 
-def test_error_actual_adelantos_de_diciembre_no_ofrecen_meses_del_anio_siguiente():
-    """Correcto: en diciembre se pueden adelantar meses de 2027."""
-    concepto = {"frecuencia_meses": 1, "mes_inicial": 2, "mes_final": 11}
+def test_en_diciembre_se_pueden_adelantar_meses_del_anio_siguiente():
+    """Invertida en el paso 2.3. Antes, en diciembre no se podia adelantar
+    nada: solo existian meses del año del calendario. Ahora el pago puede ir
+    al año siguiente (en preparacion), y sus conceptos traen ese año. Los de
+    2026 siguen sin ofrecer nada en diciembre: ya no les quedan meses. El
+    camino completo, del controlador al registro, esta en
+    tests/test_anio_lectivo_cobros_por_anio.py."""
+    concepto_2026 = {"frecuencia_meses": 1, "mes_inicial": 2, "mes_final": 11, "anio": 2026}
+    concepto_2027 = {**concepto_2026, "anio": 2027}
 
-    en_octubre = pagos_controller._periodos_programados(concepto, datetime.date(2026, 10, 10))
-    en_diciembre = pagos_controller._periodos_programados(concepto, datetime.date(2026, 12, 10))
+    en_octubre = pagos_controller._periodos_programados(concepto_2026, datetime.date(2026, 10, 10))
+    en_diciembre_2026 = pagos_controller._periodos_programados(
+        concepto_2026, datetime.date(2026, 12, 10),
+    )
+    en_diciembre_2027 = pagos_controller._periodos_programados(
+        concepto_2027, datetime.date(2026, 12, 10),
+    )
 
     assert en_octubre == [datetime.date(2026, 11, 1)]
-    assert en_diciembre == []
+    assert en_diciembre_2026 == []
+    assert en_diciembre_2027 == [datetime.date(2027, mes, 1) for mes in range(2, 12)]

@@ -23,7 +23,9 @@ from app.repositories.pagos_repository import (
     marcar_pago_anulado,
     marcar_venta_pagada,
 )
+from app.services.anio_lectivo import exigir_anio_lectivo
 from app.services.cobros import (
+    con_anio,
     obtener_conceptos_mensuales_estudiante,
     obtener_cuotas_vencidas_estudiante,
     obtener_saldo_concepto,
@@ -218,15 +220,23 @@ def _distribuir_monto_adelantado(periodos, monto):
     return distribuciones
 
 
-def obtener_opciones_adelanto_controller(estudiante_id, hoy=None):
+def obtener_opciones_adelanto_controller(estudiante_id, hoy=None, anio_lectivo_id=None):
+    """Meses que se pueden adelantar; sin `anio_lectivo_id`, del año activo.
+
+    Con el año siguiente en preparacion, en diciembre se ofrecen sus meses.
+    """
     conn = get_connection()
     cursor = conn.cursor()
     try:
         _exigir_tabla_pagos_aplicaciones(cursor)
+        if anio_lectivo_id is not None:
+            exigir_anio_lectivo(cursor, anio_lectivo_id)
         fecha_referencia = hoy or datetime.datetime.now(ZONA_HORARIA_LOCAL).date()
         opciones = [
             _serializar_opcion_adelanto(cursor, estudiante_id, concepto, fecha_referencia)
-            for concepto in obtener_conceptos_mensuales_estudiante(cursor, estudiante_id)
+            for concepto in obtener_conceptos_mensuales_estudiante(
+                cursor, estudiante_id, **con_anio(anio_lectivo_id),
+            )
         ]
         return {"estudiante_id": estudiante_id, "opciones": opciones}
     finally:
@@ -234,11 +244,14 @@ def obtener_opciones_adelanto_controller(estudiante_id, hoy=None):
         conn.close()
 
 
-def obtener_opciones_vencidas_controller(estudiante_id, hoy=None):
+def obtener_opciones_vencidas_controller(estudiante_id, hoy=None, anio_lectivo_id=None):
+    """Meses vencidos por pagar; sin `anio_lectivo_id`, del año activo."""
     conn = get_connection()
     cursor = conn.cursor()
     try:
         _exigir_tabla_pagos_aplicaciones(cursor)
+        if anio_lectivo_id is not None:
+            exigir_anio_lectivo(cursor, anio_lectivo_id)
         fecha_referencia = hoy or datetime.datetime.now(ZONA_HORARIA_LOCAL).date()
         return {
             "estudiante_id": estudiante_id,
@@ -246,6 +259,7 @@ def obtener_opciones_vencidas_controller(estudiante_id, hoy=None):
                 cursor,
                 estudiante_id,
                 hoy=fecha_referencia,
+                **con_anio(anio_lectivo_id),
             ),
         }
     finally:
@@ -269,10 +283,13 @@ def _preparar_aplicaciones_pago(cursor, pago, hoy=None):
     tipo_pago_id = next(iter(tipo_pago_ids))
     _bloquear_aplicaciones_concepto(cursor, pago.estudiante_id, tipo_pago_id)
     fecha_referencia = hoy or datetime.datetime.now(ZONA_HORARIA_LOCAL).date()
+    # Las cuotas, y por lo tanto los conceptos validos, son las del año del
+    # pago: una aplicacion a un concepto de otro año no aparece aqui.
     opciones = obtener_cuotas_vencidas_estudiante(
         cursor,
         pago.estudiante_id,
         hoy=fecha_referencia,
+        **con_anio(getattr(pago, "anio_lectivo_id", None)),
     )
     opcion = next(
         (item for item in opciones if int(item["tipo_pago_id"]) == tipo_pago_id),
@@ -354,8 +371,15 @@ def registrar_pago_adelantado_controller(pago, hoy=None):
     cursor = conn.cursor()
     try:
         _exigir_tabla_pagos_aplicaciones(cursor)
+        # Sin año, el adelanto es del año activo; con año, de ese año y con
+        # sus conceptos (fase 2 del año lectivo).
+        anio_lectivo_id = getattr(pago, "anio_lectivo_id", None)
+        if anio_lectivo_id is not None:
+            exigir_anio_lectivo(cursor, anio_lectivo_id)
         fecha_referencia = hoy or datetime.datetime.now(ZONA_HORARIA_LOCAL).date()
-        conceptos = obtener_conceptos_mensuales_estudiante(cursor, pago.estudiante_id)
+        conceptos = obtener_conceptos_mensuales_estudiante(
+            cursor, pago.estudiante_id, **con_anio(anio_lectivo_id),
+        )
         concepto = next((item for item in conceptos if item["id"] == pago.tipo_pago_id), None)
         if not concepto:
             raise ValueError("El concepto no es mensual o no está asignado al estudiante.")
@@ -398,6 +422,7 @@ def registrar_pago_adelantado_controller(pago, hoy=None):
             descripcion,
             fecha_registro,
             resumen_metodos,
+            anio_lectivo_id=anio_lectivo_id,
         )
 
         for item in periodos:
@@ -467,8 +492,8 @@ def _obtener_saldo_venta(cursor, venta_id):
     return saldo
 
 
-def _obtener_saldo_concepto(cursor, estudiante_id, concepto):
-    return obtener_saldo_concepto(cursor, estudiante_id, concepto)
+def _obtener_saldo_concepto(cursor, estudiante_id, concepto, anio_lectivo_id=None):
+    return obtener_saldo_concepto(cursor, estudiante_id, concepto, **con_anio(anio_lectivo_id))
 
 
 def _validar_pago_no_excede_deuda(cursor, pago):
@@ -484,7 +509,13 @@ def _validar_pago_no_excede_deuda(cursor, pago):
             )
         return
 
-    saldo = _obtener_saldo_concepto(cursor, pago.estudiante_id, getattr(pago, 'descripcion', None))
+    # La deuda que se salda es la del año del pago (el activo si no se pide).
+    saldo = _obtener_saldo_concepto(
+        cursor,
+        pago.estudiante_id,
+        getattr(pago, 'descripcion', None),
+        getattr(pago, 'anio_lectivo_id', None),
+    )
     if monto_total > saldo:
         raise ValueError(
             f"El monto a pagar (${monto_total:,.2f}) no puede ser mayor a la deuda pendiente (${saldo:,.2f})."
@@ -499,6 +530,11 @@ def registrar_pago_controller(pago):
 
     try:
         _bloquear_registro_de_pagos(cursor, pago.estudiante_id)
+        # Un pago se registra en el año de la deuda que salda, aunque ese año
+        # este cerrado (decision 6 del año lectivo). Sin año, el activo.
+        anio_lectivo_id = getattr(pago, "anio_lectivo_id", None)
+        if anio_lectivo_id is not None:
+            exigir_anio_lectivo(cursor, anio_lectivo_id)
         aplicaciones_preparadas = _preparar_aplicaciones_pago(cursor, pago)
         _validar_pago_no_excede_deuda(cursor, pago)
         fecha_registro = _fecha_pago_local(getattr(pago, "fecha", None))
@@ -520,6 +556,7 @@ def registrar_pago_controller(pago):
                     descripcion_registro,
                     fecha_registro,
                     _formatear_tipo_pago(metodo),
+                    anio_lectivo_id=anio_lectivo_id,
                 )
                 pago_ids.append(pago_id)
                 pagos_creados.append((pago_id, float(metodo.monto or 0)))
@@ -541,6 +578,7 @@ def registrar_pago_controller(pago):
                 descripcion_registro,
                 fecha_registro,
                 getattr(pago, 'tipo_pago', None),
+                anio_lectivo_id=anio_lectivo_id,
             )
             pago_ids.append(pago_id)
             pagos_creados.append((pago_id, float(pago.monto or 0)))

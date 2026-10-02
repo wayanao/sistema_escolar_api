@@ -36,9 +36,13 @@ def registrar_pago(pago: PagoCreate):
 
 
 @router.get("/pagos/vencidos/opciones/{estudiante_id}")
-def opciones_pago_vencido(estudiante_id: int):
+def opciones_pago_vencido(
+    estudiante_id: int,
+    anio_lectivo_id: Annotated[Optional[int], Query(gt=0)] = None,
+):
+    """Sin `anio_lectivo_id`, los meses vencidos del año activo."""
     try:
-        return obtener_opciones_vencidas_controller(estudiante_id)
+        return obtener_opciones_vencidas_controller(estudiante_id, anio_lectivo_id=anio_lectivo_id)
     except MigracionPagosAdelantadosPendienteError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
@@ -46,9 +50,13 @@ def opciones_pago_vencido(estudiante_id: int):
 
 
 @router.get("/pagos/adelanto/opciones/{estudiante_id}")
-def opciones_pago_adelantado(estudiante_id: int):
+def opciones_pago_adelantado(
+    estudiante_id: int,
+    anio_lectivo_id: Annotated[Optional[int], Query(gt=0)] = None,
+):
+    """Sin `anio_lectivo_id`, los meses que se pueden adelantar del año activo."""
     try:
-        return obtener_opciones_adelanto_controller(estudiante_id)
+        return obtener_opciones_adelanto_controller(estudiante_id, anio_lectivo_id=anio_lectivo_id)
     except MigracionPagosAdelantadosPendienteError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:

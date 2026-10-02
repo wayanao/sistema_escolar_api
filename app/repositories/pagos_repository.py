@@ -12,13 +12,25 @@ anotada en `insertar_pago`.
 Cambio de comportamiento autorizado aparte, que no es una refactorizacion: la
 fase 1 del año lectivo (docs/funcionalidades/ANIO_LECTIVO.md) agrega a los dos
 INSERT de `pagos` la columna `anio_lectivo_id` con el año activo. Los
-parametros no cambian.
+parametros no cambian. En la fase 2 los dos aceptan un año pedido, para
+registrar un pago en el año de la deuda que salda; sin el, la sentencia y los
+parametros son los de la fase 1.
 """
 
 from app.repositories.anios_lectivos_repository import ANIO_ACTIVO_ID_SQL
 
 
-def insertar_pago(cursor, estudiante_id, venta_id, monto, descripcion, fecha, tipo_pago):
+def _valor_anio(anio_lectivo_id):
+    """El año del pago para el INSERT: la subconsulta del año activo, o un
+    parametro con el año pedido."""
+    if anio_lectivo_id is None:
+        return ANIO_ACTIVO_ID_SQL, ()
+    return "%s", (int(anio_lectivo_id),)
+
+
+def insertar_pago(
+    cursor, estudiante_id, venta_id, monto, descripcion, fecha, tipo_pago, anio_lectivo_id=None,
+):
     """Inserta un pago y devuelve su id.
 
     Sirve a las dos ramas de `registrar_pago_controller`, la de metodos y la
@@ -26,26 +38,30 @@ def insertar_pago(cursor, estudiante_id, venta_id, monto, descripcion, fecha, ti
     5.1 los unifico con autorizacion explicita del usuario. El flujo de tokens
     que recibe PostgreSQL es el mismo.
     """
+    valor_anio, params_anio = _valor_anio(anio_lectivo_id)
     cursor.execute(f"""
                 INSERT INTO pagos (estudiante_id, venta_id, monto, descripcion, fecha, tipo_pago, anio_lectivo_id)
-                VALUES (%s, %s, %s, %s, %s, %s, {ANIO_ACTIVO_ID_SQL})
+                VALUES (%s, %s, %s, %s, %s, %s, {valor_anio})
                 RETURNING id
-            """, (estudiante_id, venta_id, monto, descripcion, fecha, tipo_pago))
+            """, (estudiante_id, venta_id, monto, descripcion, fecha, tipo_pago, *params_anio))
     return cursor.fetchone()[0]
 
 
-def insertar_pago_adelantado(cursor, estudiante_id, monto, descripcion, fecha, tipo_pago):
+def insertar_pago_adelantado(
+    cursor, estudiante_id, monto, descripcion, fecha, tipo_pago, anio_lectivo_id=None,
+):
     """Inserta el pago unico de un adelanto y devuelve su id.
 
     No admite `venta_id`: un adelanto no puede ser un cargo de inventario.
     """
+    valor_anio, params_anio = _valor_anio(anio_lectivo_id)
     cursor.execute(
         f"""
             INSERT INTO pagos (estudiante_id, monto, descripcion, fecha, tipo_pago, anio_lectivo_id)
-            VALUES (%s, %s, %s, %s, %s, {ANIO_ACTIVO_ID_SQL})
+            VALUES (%s, %s, %s, %s, %s, {valor_anio})
             RETURNING id
             """,
-        (estudiante_id, monto, descripcion, fecha, tipo_pago),
+        (estudiante_id, monto, descripcion, fecha, tipo_pago, *params_anio),
     )
     return cursor.fetchone()[0]
 

@@ -3,8 +3,9 @@
 ## Control
 
 - Estado: **Fase 2 en curso.** Paso 2.1 (las cuotas se cuentan en el año
-  del concepto, commit `b2362f1`) y paso 2.2 (cada año cuenta solo sus
-  pagos, sin commit) escritos y probados el 2026-10-01, sin desplegar. Fase 1
+  del concepto, commit `b2362f1`), paso 2.2 (cada año cuenta solo sus
+  pagos, commit `34712dd`) y paso 2.3 (pagar en otro año, sin commit)
+  escritos y probados el 2026-10-01, sin desplegar. Fase 1
   terminada el 2026-10-01: migración A (2026-09-30) y migración B
   (2026-10-01) aplicadas en producción, código que escribe el año
   desplegado en Render (`67b2d4b`, Live), esquema base regenerado. Fase 0
@@ -1264,6 +1265,64 @@ desplegar):**
   `pip check` limpios; `git diff --check` limpio.
 - Efecto al desplegar: ninguno visible con un solo año. Cuando exista 2027
   (fase 5), sus pagos no se mezclan con los de 2026.
+- Commit `34712dd` (hecho por el usuario el 2026-10-01).
+
+**Avance del 2026-10-01 — paso 2.3, pagar en otro año y adelantar meses del
+año siguiente (sin desplegar):**
+
+- Código:
+  - `app/services/cobros.py`: `obtener_tipos_pago`,
+    `obtener_curso_estudiante`, `obtener_pagos_por_concepto(_estudiantes)`,
+    `obtener_conceptos_mensuales_estudiante`,
+    `obtener_cuotas_vencidas_estudiante`, `calcular_deudas_estudiante` y
+    `obtener_saldo_concepto` aceptan `anio_lectivo_id` opcional. Sin él, la
+    consulta y los parámetros son los del paso 2.2; con él, el año va como
+    un parámetro más. `con_anio()` solo pasa el año cuando se pidió, así que
+    el camino del año activo hace exactamente las mismas llamadas que antes.
+    Si el estudiante no tiene matrícula en el año pedido, el mensaje lo dice;
+    sin año, sale el mensaje de siempre.
+  - `app/repositories/pagos_repository.py`: `insertar_pago` e
+    `insertar_pago_adelantado` aceptan el año; sin él, la sentencia de la
+    fase 1.
+  - `app/repositories/anios_lectivos_repository.py`: `leer_anio_lectivo`.
+    Nuevo `app/services/anio_lectivo.py`, el servicio que este documento
+    preveía, con `exigir_anio_lectivo`: si el año no existe, `ValueError`
+    con el mensaje listo. Cualquier estado vale (decisión 6).
+  - `app/controllers/pagos_controller.py`: registrar un pago o un adelanto
+    con año (se valida el año, se calculan la deuda y los meses de ese año,
+    y se guarda en él), y las opciones de meses vencidos y de adelanto con
+    año. Una aplicación solo puede ser de un concepto del año del pago,
+    porque las cuotas válidas se calculan con los conceptos de ese año.
+  - `app/controllers/estudiante_controller.py`, `app/routes/pagos.py`,
+    `app/routes/estudiantes.py` y `app/schemas/pago.py`: el parámetro
+    `?anio_lectivo_id=` (entero mayor que 0, opcional) en las tres
+    consultas, y el campo opcional en los dos cuerpos. Un año que no existe
+    da 400 en pagos y 404 en deudas, como los demás errores de cada ruta.
+- Sin año, todo queda igual: las 1516 pruebas que ya existían pasaron sin
+  tocar ninguna, incluidas las de escrituras de pagos y las de conteo de
+  consultas.
+- Pruebas: `tests/test_anio_lectivo_cobros_por_anio.py`, 22 nuevas (con los
+  casos parametrizados):
+  - las consultas con y sin año, y el precio del curso de 2027 (350.000
+    frente a 300.000 en 2026, con una base simulada de dos años);
+  - el mensaje sin matrícula y el INSERT con el año;
+  - pago a un año cerrado y a uno en preparación, año inexistente (no se
+    registra y se revierte) y pago sin año (ni siquiera se consulta el año);
+  - cuotas del año del pago, y opciones y registro de adelantos de 2027 en
+    diciembre;
+  - deudas del estudiante en otro año, rutas y esquemas.
+
+  Se invirtió la última `test_error_actual_`, la de "adelantos de
+  diciembre": la cuenta de meses por año ya existía desde el 2.1, y el 2.3
+  la conecta con el año del pago. Contra el código del paso 2.2 fallan 21
+  de las 22 nuevas; pasa la que comprueba que, sin año, los conceptos se
+  piden igual.
+- Documentación: `docs/API_ENDPOINTS.md` (el parámetro y el campo nuevos).
+- Verificación: `scripts/verify.py` → **1538 pasan, 0 fallan**; ruff y
+  `pip check` limpios; `git diff --check` limpio.
+- Efecto al desplegar: ninguno visible, porque el frontend todavía no manda
+  el año. Queda listo para el selector "Año del pago" de la fase 5 del
+  frontend.
 
 ### Fase 3 — Lecturas por año y guardia de escritura
 
@@ -1524,6 +1583,10 @@ cuando los profesores empiezan a ver sus clases nuevas.
   ¿el selector se esconde o se muestra desactivado?
 - Antes de la fase 6: ¿un estudiante del último grado que termina se marca
   "no continúa" (retirado) o hace falta un estado distinto como "egresado"?
+  Dato encontrado el 2026-10-01, para cuando se decida: el estado
+  `egresado` ya existe (`ESTADOS_ESTUDIANTE` en
+  `app/controllers/estudiante_controller.py`, y el filtro
+  `GET /estudiantes?estado=egresado`).
 
 ## Entrega para el siguiente chat
 
@@ -1538,21 +1601,23 @@ cosa, gana lo que se pueda verificar.
   "Avance" de las fases 0 y 1.
 - **Fase 2:** la pregunta de los conceptos desactivados quedó respondida
   (se deja como está y se corrige después, aparte), y el plan por pasos
-  (2.1 a 2.4) está escrito en la fase 2. **Paso 2.1** en el commit
-  `b2362f1`, todavía sin subir al 2026-10-01. **Paso 2.2** escrito y
-  probado, sin commit. Ver los "Avance" de cada uno.
+  (2.1 a 2.4) está escrito en la fase 2. **Pasos 2.1 y 2.2** en los
+  commits `b2362f1` y `34712dd`, todavía sin subir al 2026-10-01. **Paso
+  2.3** escrito y probado, sin commit. Ver los "Avance" de cada uno.
 - **Hecho aparte, la noche del 2026-09-30:** el arreglo de la hora
   (`2e77634` en este repo, `033c042` en el frontend). Cobros, cartera y
   alta de colegios usan la fecha de Colombia (`app/core/fechas.py`), y el
   frontend propone fechas de Colombia (`src/utils/fechaColombia.js`). Ver
   el hallazgo correspondiente y `docs/CAMBIOS_BACKEND.md`.
 - **Pendiente del usuario:**
-  - Pasos 2.1 y 2.2: revisarlos en local (Cartera vencida y la pantalla de
-    Pagos deben mostrar los mismos números que producción), el commit del
-    2.2 y después el push. Las consultas nuevas solo se probaron con bases
-    simuladas, y esa revisión es la que las corre contra la base real
-    (solo lectura). El push despliega; no cambia nada visible mientras
-    haya un solo año y 2026 sea el año del calendario.
+  - Pasos 2.1 a 2.3: revisarlos en local (Cartera vencida, la pantalla de
+    Pagos y el detalle de un estudiante deben mostrar los mismos números
+    que producción, y registrar un pago debe funcionar igual), el commit
+    del 2.3 y después el push. Las consultas nuevas solo se probaron con
+    bases simuladas, y esa revisión es la que las corre contra la base
+    real. Ojo: registrar un pago en local escribe en la base real; para
+    probar el registro, usar una rama de Neon. El push despliega; no
+    cambia nada visible mientras haya un solo año.
   - Borrar la rama `prueba-anio-lectivo-b` de Neon, si no se borró sola.
   - Si no se hizo todavía, **rotar la contraseña** de `neondb_owner` (ver
     el punto siguiente).
@@ -1571,9 +1636,10 @@ cosa, gana lo que se pueda verificar.
   correr si falta `$env:DATABASE_URL`. Antes de probar la app contra una
   rama, detener el backend local que esté corriendo; si no, el frontend
   sigue hablando con el que apunta a producción.
-- **Siguiente acción exacta:** **paso 2.3 de la fase 2** (registrar un pago
-  en otro año y adelantar meses del año siguiente; ver el plan en la fase
-  2), solo con la autorización explícita del usuario para ese paso. Zona
-  sensible: dinero. La fase 2 completa tiene fecha límite antes del 1 de
-  noviembre y, en todo caso, antes del 1 de enero de 2027.
+- **Siguiente acción exacta:** **paso 2.4 de la fase 2** (deuda de años
+  anteriores; ver el plan en la fase 2), solo con la autorización explícita
+  del usuario para ese paso. Antes de escribirlo hay que medir cuántas
+  consultas agrega y que el usuario decida si lo acepta (lo dice el plan).
+  Zona sensible: dinero. La fase 2 completa tiene fecha límite antes del 1
+  de noviembre y, en todo caso, antes del 1 de enero de 2027.
 - Prompt para retomar: `docs/funcionalidades/PROMPT_CONTINUACION_ANIO_LECTIVO.md`.

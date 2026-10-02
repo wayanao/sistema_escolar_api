@@ -1,6 +1,7 @@
 """Acceso a datos del año lectivo. Ver docs/funcionalidades/ANIO_LECTIVO.md.
 
-Fase 1: lo minimo para que toda fila nueva nazca con su año. Como el resto de
+Fase 1: lo minimo para que toda fila nueva nazca con su año. Fase 2: leer un
+año pedido, para cobrar en un año que no es el activo. Como el resto de
 repositorios, cada funcion recibe el cursor de quien llama y no abre, confirma
 ni cierra nada.
 """
@@ -42,6 +43,15 @@ def sincronizar_matricula_del_anio_activo(cursor, estudiante_id):
         """,
         (estudiante_id,),
     )
+
+
+def leer_anio_lectivo(cursor, anio_lectivo_id):
+    """El año lectivo pedido como `(id, anio, estado)`, o `None` si no existe."""
+    cursor.execute(
+        "SELECT id, anio, estado FROM anios_lectivos WHERE id = %s",
+        (anio_lectivo_id,),
+    )
+    return cursor.fetchone()
 
 
 def crear_anio_activo_inicial(cursor, anio):

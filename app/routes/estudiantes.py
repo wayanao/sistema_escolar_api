@@ -64,9 +64,13 @@ def obtener_detalles_estudiante(estudiante_id: int):
 
 # 🔍 Obtener deudas academicas de un estudiante
 @router.get("/estudiantes/{estudiante_id}/deudas")
-def obtener_deudas_estudiante(estudiante_id: int):
+def obtener_deudas_estudiante(
+    estudiante_id: int,
+    anio_lectivo_id: Annotated[Optional[int], Query(gt=0)] = None,
+):
+    """Sin `anio_lectivo_id`, las deudas del año activo."""
     try:
-        return obtener_deudas_estudiante_controller(estudiante_id)
+        return obtener_deudas_estudiante_controller(estudiante_id, anio_lectivo_id=anio_lectivo_id)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 

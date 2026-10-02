@@ -15,17 +15,30 @@ Tres grupos:
 3. Paso 2.2: cada año cuenta solo sus pagos, y el curso que fija los precios
    sale de la matricula del año. El año va como subconsulta, sin parametros
    ni consultas nuevas.
+4. Paso 2.3: se puede pedir un año que no es el activo, para registrar un
+   pago en el año de la deuda que salda (cerrado o en preparacion) y para
+   adelantar en diciembre meses del año siguiente. Sin año, todo sigue como
+   antes: las pruebas que ya existian no se tocaron.
 
 Los casos A y B del diagnostico estan en
 tests/test_anio_lectivo_cobros_caracterizacion.py.
 """
 import datetime
 from calendar import monthrange
+from contextlib import contextmanager
 from datetime import date, timedelta
 from itertools import product
+from types import SimpleNamespace
 
-from app.controllers import estado_cuenta_controller, pagos_controller
-from app.repositories import reportes_repository
+import pytest
+from fastapi.routing import APIRoute
+from pydantic import ValidationError
+
+from app.controllers import estado_cuenta_controller, estudiante_controller, pagos_controller
+from app.repositories import pagos_repository, reportes_repository
+from app.routes import estudiantes as rutas_estudiantes
+from app.routes import pagos as rutas_pagos
+from app.schemas.pago import PagoAdelantadoCreate, PagoCreate
 from app.services import cartera, cobros
 
 
@@ -271,11 +284,13 @@ class CursorConceptos:
         self.columnas = list(columnas)
         self.filas = list(filas)
         self.consultas = []
+        self.parametros = []
         self._resultado = []
 
     def execute(self, query, params=None):
         normalizada = " ".join(str(query).split())
         self.consultas.append(normalizada)
+        self.parametros.append(params)
         if "information_schema.columns" in normalizada:
             self._resultado = [(columna,) for columna in self.columnas]
         else:
@@ -442,3 +457,437 @@ def test_los_reportes_de_estado_de_cuenta_cuentan_solo_pagos_del_anio_activo():
     for consulta, params in cursor.consultas:
         assert FILTRO_PAGOS_DEL_ANIO in consulta
         assert params == ((7, 8),)
+
+
+# ---------------------------------------------------------------------------
+# 4. Paso 2.3: pedir un año que no es el activo.
+# ---------------------------------------------------------------------------
+
+ID_2027 = 3  # id de 2027 en anios_lectivos, en preparacion
+ANIOS_DE_PRUEBA = {1: (1, 2026, "cerrado"), ID_2027: (ID_2027, 2027, "preparacion")}
+
+
+def test_sin_anio_los_conceptos_se_piden_como_siempre():
+    cursor = CursorConceptos(COLUMNAS_TIPOS_PAGO, [])
+
+    cobros.obtener_tipos_pago(cursor)
+
+    assert "WHERE al.estado = 'activo'" in cursor.consultas[1]
+    assert cursor.parametros[1] is None
+
+
+def test_con_anio_los_conceptos_son_los_de_ese_anio():
+    cursor = CursorConceptos(COLUMNAS_TIPOS_PAGO, [])
+
+    cobros.obtener_tipos_pago(cursor, anio_lectivo_id=ID_2027)
+
+    assert "WHERE al.id = %s ORDER BY tp.id" in cursor.consultas[1]
+    assert cursor.parametros[1] == (ID_2027,)
+
+
+def test_con_anio_el_curso_sale_de_la_matricula_de_ese_anio():
+    cursor = CursorQueAnota(fila=(30,))
+
+    assert cobros.obtener_curso_estudiante(cursor, 7, anio_lectivo_id=ID_2027) == (30,)
+    consulta, params = cursor.consultas[0]
+    assert consulta.endswith("WHERE m.estudiante_id = %s AND al.id = %s")
+    assert params == (7, ID_2027)
+
+
+def test_con_anio_lo_pagado_cuenta_los_pagos_de_ese_anio():
+    cursor = CursorQueAnota(fila=(1,))  # existe pagos_aplicaciones
+
+    cobros.obtener_pagos_por_concepto_estudiantes(
+        cursor, (7, 8), hoy=date(2026, 12, 10), anio_lectivo_id=ID_2027,
+    )
+
+    _tabla, por_nombre, por_descripcion, aplicaciones = cursor.consultas
+    assert "AND pagos.anio_lectivo_id = %s" in por_nombre[0]
+    assert "AND pagos.anio_lectivo_id = %s" in por_descripcion[0]
+    assert "AND tp.anio_lectivo_id = %s" in aplicaciones[0]
+    assert por_nombre[1] == ((7, 8), ID_2027)
+    assert por_descripcion[1] == ((7, 8), ID_2027)
+    assert aplicaciones[1] == ((7, 8), date(2026, 12, 1), ID_2027)
+
+
+class BaseDeCobros:
+    """Base simulada con 2026 activo y 2027 en preparacion.
+
+    El estudiante 7 esta en el curso 3 en 2026 y en el curso 30 en 2027. Cada
+    año tiene su propia matricula: 300.000 en el curso de 2026 y 350.000 en el
+    de 2027. No hay pagos.
+    """
+
+    def __init__(self):
+        self.consultas = []
+        self._filas = []
+
+    def execute(self, query, params=None):
+        consulta = " ".join(str(query).lower().split())
+        self.consultas.append((consulta, params))
+        pide_2027 = "al.id = %s" in consulta and params[-1] == ID_2027
+        if "information_schema.columns" in consulta:
+            self._filas = [(columna,) for columna in COLUMNAS_TIPOS_PAGO]
+        elif "information_schema.tables" in consulta:
+            self._filas = [(1,)]
+        elif "from matriculas m" in consulta:
+            self._filas = [(30,)] if pide_2027 else [(3,)]
+        elif "from tipos_pagos_cursos" in consulta:
+            self._filas = {3: [(1, 300_000)], 30: [(12, 350_000)]}[params[0]]
+        elif "from tipos_pagos_estudiantes" in consulta:
+            self._filas = []
+        elif "from tipos_de_pagos tp" in consulta:
+            id_concepto, anio = (12, 2027) if pide_2027 else (1, 2026)
+            self._filas = [
+                (id_concepto, "MATRICULA", 300_000, "anual", True, 2, 12, 1, None, 0, None, 0, anio),
+            ]
+        elif "lower(coalesce(" in consulta or "from pagos_aplicaciones pa" in consulta:
+            self._filas = []
+        else:
+            raise AssertionError(f"Consulta no caracterizada: {consulta}")
+
+    def fetchall(self):
+        return list(self._filas)
+
+    def fetchone(self):
+        return self._filas[0] if self._filas else None
+
+
+def test_el_precio_de_2027_sale_del_curso_de_2027():
+    hoy = date(2026, 11, 20)
+
+    del_2026 = cobros.calcular_deudas_estudiante(BaseDeCobros(), 7, hoy=hoy)
+    del_2027 = cobros.calcular_deudas_estudiante(
+        BaseDeCobros(), 7, hoy=hoy, anio_lectivo_id=ID_2027,
+    )
+
+    assert del_2026["curso_id"] == 3
+    assert [d["valor_unitario"] for d in del_2026["deudas"]] == [300_000]
+    assert del_2027["curso_id"] == 30
+    assert [d["concepto_id"] for d in del_2027["deudas"]] == [12]
+    # La matricula de 2027 se debe completa aunque el año no haya empezado.
+    assert [d["deuda"] for d in del_2027["deudas"]] == [350_000]
+
+
+def test_sin_matricula_en_el_anio_pedido_el_mensaje_lo_dice():
+    class SinMatricula(BaseDeCobros):
+        def execute(self, query, params=None):
+            super().execute(query, params)
+            if "from matriculas m" in " ".join(str(query).lower().split()):
+                self._filas = []
+
+    with pytest.raises(ValueError, match="no tiene matrícula en el año lectivo seleccionado"):
+        cobros.calcular_deudas_estudiante(SinMatricula(), 7, anio_lectivo_id=ID_2027)
+    # Sin año, el mensaje de siempre.
+    with pytest.raises(ValueError, match="El estudiante seleccionado no existe."):
+        cobros.calcular_deudas_estudiante(SinMatricula(), 7)
+
+
+def test_el_pago_se_guarda_con_el_anio_pedido():
+    cursor = CursorQueAnota(fila=(501,))
+
+    pagos_repository.insertar_pago(
+        cursor, 7, None, 300_000, "MATRICULA", "2026-11-20", "Efectivo", anio_lectivo_id=ID_2027,
+    )
+    pagos_repository.insertar_pago_adelantado(
+        cursor, 7, 400_000, "MENSUALIDAD", "2026-12-10", "Efectivo", anio_lectivo_id=ID_2027,
+    )
+
+    (pago, params_pago), (adelanto, params_adelanto) = cursor.consultas
+    assert "VALUES (%s, %s, %s, %s, %s, %s, %s)" in pago
+    assert params_pago == (7, None, 300_000, "MATRICULA", "2026-11-20", "Efectivo", ID_2027)
+    assert "VALUES (%s, %s, %s, %s, %s, %s)" in adelanto
+    assert params_adelanto == (7, 400_000, "MENSUALIDAD", "2026-12-10", "Efectivo", ID_2027)
+
+
+class CursorDePagos:
+    """Lo que el registro de pagos lee de la base, con los años de prueba."""
+
+    def __init__(self, anios=None):
+        self.anios = dict(ANIOS_DE_PRUEBA if anios is None else anios)
+        self.consultas = []
+        self._fila = None
+
+    def execute(self, query, params=None):
+        consulta = " ".join(str(query).lower().split())
+        self.consultas.append((consulta, params))
+        if "from anios_lectivos where id = %s" in consulta:
+            self._fila = self.anios.get(params[0])
+        elif "information_schema.tables" in consulta or "from pg_indexes" in consulta:
+            self._fila = (1,)
+        else:
+            self._fila = None
+
+    def fetchone(self):
+        return self._fila
+
+    def fetchall(self):
+        return []
+
+    def close(self):
+        pass
+
+    def leyo_anios(self):
+        return any("from anios_lectivos" in consulta for consulta, _ in self.consultas)
+
+
+class ConexionDePagos:
+    def __init__(self, cursor):
+        self._cursor = cursor
+        self.commits = 0
+        self.rollbacks = 0
+
+    def cursor(self):
+        return self._cursor
+
+    def commit(self):
+        self.commits += 1
+
+    def rollback(self):
+        self.rollbacks += 1
+
+    def close(self):
+        pass
+
+
+def _pago(**cambios):
+    datos = {
+        "estudiante_id": 7, "monto": 300_000, "descripcion": "MATRICULA", "fecha": None,
+        "venta_id": None, "metodos": None, "aplicaciones": None, "tipo_pago": "Efectivo",
+    }
+    datos.update(cambios)
+    return SimpleNamespace(**datos)
+
+
+@pytest.fixture
+def registro(monkeypatch):
+    """Registro de pagos con la deuda y el INSERT espiados."""
+    cursor = CursorDePagos()
+    conexion = ConexionDePagos(cursor)
+    llamadas = {"saldo": [], "insert": []}
+
+    def saldo(_cursor, _estudiante_id, _concepto, **kwargs):
+        llamadas["saldo"].append(kwargs)
+        return 1_000_000.0
+
+    def insertar(_cursor, *_args, **kwargs):
+        llamadas["insert"].append(kwargs)
+        return 501
+
+    monkeypatch.setattr(pagos_controller, "get_connection", lambda: conexion)
+    monkeypatch.setattr(pagos_controller, "obtener_saldo_concepto", saldo)
+    monkeypatch.setattr(pagos_controller, "insertar_pago", insertar)
+    return SimpleNamespace(cursor=cursor, conexion=conexion, llamadas=llamadas)
+
+
+@pytest.mark.parametrize(
+    "anio_lectivo_id", [1, ID_2027], ids=["anio_cerrado", "anio_en_preparacion"],
+)
+def test_un_pago_se_registra_en_el_anio_de_la_deuda_que_salda(registro, anio_lectivo_id):
+    """Decision 6: aunque el año este cerrado."""
+    pago_id = pagos_controller.registrar_pago_controller(_pago(anio_lectivo_id=anio_lectivo_id))
+
+    assert pago_id == 501
+    assert registro.llamadas["saldo"] == [{"anio_lectivo_id": anio_lectivo_id}]
+    assert registro.llamadas["insert"] == [{"anio_lectivo_id": anio_lectivo_id}]
+    assert registro.conexion.commits == 1
+
+
+def test_un_pago_a_un_anio_que_no_existe_no_se_registra(registro):
+    with pytest.raises(ValueError, match="El año lectivo seleccionado no existe."):
+        pagos_controller.registrar_pago_controller(_pago(anio_lectivo_id=99))
+
+    assert registro.llamadas == {"saldo": [], "insert": []}
+    assert registro.conexion.rollbacks == 1
+
+
+def test_sin_anio_el_pago_va_al_anio_activo_como_siempre(registro):
+    pagos_controller.registrar_pago_controller(_pago())
+
+    assert registro.llamadas["saldo"] == [{}]
+    assert registro.llamadas["insert"] == [{"anio_lectivo_id": None}]
+    assert not registro.cursor.leyo_anios()
+
+
+def test_las_cuotas_que_se_pagan_son_las_del_anio_del_pago(monkeypatch):
+    """Una aplicacion solo puede ser de un concepto del año del pago."""
+    conexion = ConexionDePagos(CursorDePagos())
+    recibido = {}
+
+    def cuotas(_cursor, _estudiante_id, hoy=None, **kwargs):
+        recibido.update(kwargs)
+        return []
+
+    monkeypatch.setattr(pagos_controller, "get_connection", lambda: conexion)
+    monkeypatch.setattr(pagos_controller, "obtener_cuotas_vencidas_estudiante", cuotas)
+    aplicacion = SimpleNamespace(tipo_pago_id=2, periodo=date(2026, 10, 1), monto=200_000)
+
+    with pytest.raises(ValueError, match="no tiene cuotas vencidas disponibles"):
+        pagos_controller.registrar_pago_controller(
+            _pago(anio_lectivo_id=ID_2027, aplicaciones=[aplicacion], monto=200_000),
+        )
+
+    assert recibido == {"anio_lectivo_id": ID_2027}
+    assert conexion.rollbacks == 1
+
+
+def _mensualidad_2027():
+    """Como la devuelve obtener_conceptos_mensuales_estudiante para 2027."""
+    return {
+        "id": 12, "nombre": "MENSUALIDAD", "valor_unitario": 200_000, "valor_origen": "curso",
+        "mes_inicial": 2, "mes_final": 11, "frecuencia_meses": 1, "anio": 2027,
+    }
+
+
+MESES_FEBRERO_A_NOVIEMBRE = [
+    "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+    "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre",
+]
+
+
+def test_en_diciembre_se_ofrecen_los_meses_de_2027_para_adelantar(monkeypatch):
+    conexion = ConexionDePagos(CursorDePagos())
+
+    def conceptos(_cursor, _estudiante_id, **kwargs):
+        return [_mensualidad_2027()] if kwargs == {"anio_lectivo_id": ID_2027} else []
+
+    monkeypatch.setattr(pagos_controller, "get_connection", lambda: conexion)
+    monkeypatch.setattr(pagos_controller, "obtener_conceptos_mensuales_estudiante", conceptos)
+    monkeypatch.setattr(pagos_controller, "leer_aplicaciones_vigentes", lambda _c, _e, _t: [])
+
+    opciones = pagos_controller.obtener_opciones_adelanto_controller(
+        7, hoy=date(2026, 12, 10), anio_lectivo_id=ID_2027,
+    )
+
+    periodos = opciones["opciones"][0]["periodos_disponibles"]
+    assert [p["etiqueta"] for p in periodos] == [f"{mes} 2027" for mes in MESES_FEBRERO_A_NOVIEMBRE]
+    assert opciones["opciones"][0]["total_disponible"] == 10 * 200_000
+
+
+def test_en_diciembre_se_registra_un_adelanto_de_meses_de_2027(monkeypatch):
+    conexion = ConexionDePagos(CursorDePagos())
+    recibidos = {"conceptos": [], "insert": [], "aplicaciones": []}
+
+    def conceptos(_cursor, _estudiante_id, **kwargs):
+        recibidos["conceptos"].append(kwargs)
+        return [_mensualidad_2027()]
+
+    def insertar(_cursor, *_args, **kwargs):
+        recibidos["insert"].append(kwargs)
+        return 601
+
+    def aplicar(_cursor, _pago_id, _estudiante_id, tipo_pago_id, periodo, monto):
+        recibidos["aplicaciones"].append((tipo_pago_id, periodo, monto))
+
+    monkeypatch.setattr(pagos_controller, "get_connection", lambda: conexion)
+    monkeypatch.setattr(pagos_controller, "obtener_conceptos_mensuales_estudiante", conceptos)
+    monkeypatch.setattr(pagos_controller, "leer_aplicaciones_vigentes", lambda _c, _e, _t: [])
+    monkeypatch.setattr(pagos_controller, "insertar_pago_adelantado", insertar)
+    monkeypatch.setattr(pagos_controller, "insertar_aplicacion", aplicar)
+    adelanto = SimpleNamespace(
+        estudiante_id=7, tipo_pago_id=12, cantidad_meses=2, monto_distribuir=None, fecha=None,
+        metodos=[SimpleNamespace(tipo="Efectivo", monto=400_000, nota=None)],
+        anio_lectivo_id=ID_2027,
+    )
+
+    resultado = pagos_controller.registrar_pago_adelantado_controller(
+        adelanto, hoy=date(2026, 12, 10),
+    )
+
+    assert recibidos["conceptos"] == [{"anio_lectivo_id": ID_2027}]
+    assert recibidos["insert"] == [{"anio_lectivo_id": ID_2027}]
+    assert recibidos["aplicaciones"] == [
+        (12, date(2027, 2, 1), 200_000),
+        (12, date(2027, 3, 1), 200_000),
+    ]
+    assert [p["etiqueta"] for p in resultado["periodos"]] == ["Febrero 2027", "Marzo 2027"]
+    assert conexion.commits == 1
+
+
+def test_las_deudas_del_estudiante_en_otro_anio(monkeypatch):
+    cursor = CursorDePagos()
+    recibido = []
+
+    @contextmanager
+    def cursor_de_prueba(*_args, **_kwargs):
+        yield cursor
+
+    def deudas(_cursor, _estudiante_id, **kwargs):
+        recibido.append(kwargs)
+        return {"curso_id": 30, "deudas": [{"concepto": "MATRICULA", "deuda": 350_000.0}]}
+
+    monkeypatch.setattr(estudiante_controller, "get_cursor", cursor_de_prueba)
+    monkeypatch.setattr(estudiante_controller, "calcular_deudas_estudiante", deudas)
+
+    respuesta = estudiante_controller.obtener_deudas_estudiante_controller(
+        7, anio_lectivo_id=ID_2027,
+    )
+
+    assert recibido == [{"anio_lectivo_id": ID_2027}]
+    assert respuesta == {
+        "estudiante_id": 7,
+        "curso_id": 30,
+        "deudas": [{"concepto": "MATRICULA", "deuda": 350_000.0}],
+        "total_deuda": 350_000.0,
+    }
+    with pytest.raises(ValueError, match="El año lectivo seleccionado no existe."):
+        estudiante_controller.obtener_deudas_estudiante_controller(7, anio_lectivo_id=99)
+
+
+RUTAS_CON_ANIO = {
+    "/pagos/vencidos/opciones/{estudiante_id}": (rutas_pagos, "obtener_opciones_vencidas_controller"),
+    "/pagos/adelanto/opciones/{estudiante_id}": (rutas_pagos, "obtener_opciones_adelanto_controller"),
+    "/estudiantes/{estudiante_id}/deudas": (rutas_estudiantes, "obtener_deudas_estudiante_controller"),
+}
+
+
+def _ruta(path):
+    modulo, _controlador = RUTAS_CON_ANIO[path]
+    return next(
+        ruta for ruta in modulo.router.routes
+        if isinstance(ruta, APIRoute) and ruta.path == path
+    )
+
+
+@pytest.mark.parametrize("path", sorted(RUTAS_CON_ANIO))
+def test_las_consultas_aceptan_el_anio_opcional(path):
+    parametros = {p.name: p for p in _ruta(path).dependant.query_params}
+
+    assert set(parametros) == {"anio_lectivo_id"}
+    anio = parametros["anio_lectivo_id"]
+    assert not anio.field_info.is_required()
+    assert anio.field_info.default is None
+    limites = {type(m).__name__.lower(): m for m in anio.field_info.metadata}
+    assert limites["gt"].gt == 0
+
+
+@pytest.mark.parametrize("path", sorted(RUTAS_CON_ANIO))
+def test_las_consultas_le_pasan_el_anio_al_controlador(monkeypatch, path):
+    modulo, controlador = RUTAS_CON_ANIO[path]
+    recibido = []
+    monkeypatch.setattr(
+        modulo, controlador,
+        lambda estudiante_id, **kwargs: recibido.append((estudiante_id, kwargs)),
+    )
+    endpoint = _ruta(path).endpoint
+
+    endpoint(7, anio_lectivo_id=ID_2027)
+    endpoint(7, anio_lectivo_id=None)
+
+    assert recibido == [(7, {"anio_lectivo_id": ID_2027}), (7, {"anio_lectivo_id": None})]
+
+
+def test_el_cuerpo_del_pago_y_del_adelanto_acepta_el_anio_opcional():
+    assert PagoCreate(estudiante_id=7, monto=1).anio_lectivo_id is None
+    assert PagoCreate(estudiante_id=7, monto=1, anio_lectivo_id=ID_2027).anio_lectivo_id == ID_2027
+    with pytest.raises(ValidationError):
+        PagoCreate(estudiante_id=7, monto=1, anio_lectivo_id=0)
+
+    adelanto = {
+        "estudiante_id": 7, "tipo_pago_id": 12, "cantidad_meses": 1,
+        "metodos": [{"tipo": "Efectivo", "monto": 1}],
+    }
+    assert PagoAdelantadoCreate(**adelanto).anio_lectivo_id is None
+    assert PagoAdelantadoCreate(**adelanto, anio_lectivo_id=ID_2027).anio_lectivo_id == ID_2027
+    with pytest.raises(ValidationError):
+        PagoAdelantadoCreate(**adelanto, anio_lectivo_id=-1)

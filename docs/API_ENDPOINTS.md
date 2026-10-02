@@ -1,6 +1,6 @@
 # API Endpoints
 
-Ultima revision documental: 2026-09-22.
+Ultima revision documental: 2026-10-01.
 
 ## Routers
 
@@ -100,6 +100,11 @@ Notas:
 - `GET /estudiantes/{estudiante_id}/deudas` devuelve solo deuda academica
   pendiente del estudiante usando la logica central de cobros; no depende del
   resumen amplio de notas, observaciones o inventario.
+- `GET /estudiantes/{estudiante_id}/deudas?anio_lectivo_id=` (opcional, desde
+  la fase 2 del año lectivo): la deuda de ese año, con sus conceptos, el curso
+  de la matricula de ese año y sus pagos. Sin el parametro, el año activo, como
+  antes. Año inexistente o estudiante sin matricula en ese año: `404` con el
+  mensaje.
 
 ## Cuentas
 
@@ -148,6 +153,16 @@ Notas:
   metodos.
 - Un mes activo no puede adelantarse dos veces. La anulacion libera sus meses
   y mantiene el pago visible como anulado.
+- Año lectivo (fase 2, `docs/funcionalidades/ANIO_LECTIVO.md`): `POST /pagos` y
+  `POST /pagos/adelanto` aceptan `anio_lectivo_id` opcional en el cuerpo, y
+  `GET /pagos/vencidos/opciones/{estudiante_id}` y
+  `GET /pagos/adelanto/opciones/{estudiante_id}` lo aceptan como parametro
+  opcional. Sin el, todo es del año activo, como antes. Con el, el pago se
+  guarda en ese año y la deuda, los meses vencidos y los adelantos se calculan
+  con los conceptos y el curso de ese año. Cualquier estado vale: un pago se
+  registra en el año de la deuda que salda, aunque este cerrado. Un año que no
+  existe responde `400` con el mensaje. Con el año siguiente en preparacion, en
+  diciembre se pueden adelantar sus meses.
 - Los adelantos futuros cuentan como ingreso desde su registro, pero no reducen
   la cartera exigible antes del mes aplicado.
 - Los endpoints de adelanto requieren la migracion

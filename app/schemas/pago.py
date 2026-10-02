@@ -23,6 +23,8 @@ class PagoCreate(BaseModel):
     venta_id: Optional[int] = None
     metodos: Optional[List[MetodoPago]] = None
     aplicaciones: Optional[List[PagoAplicacionCreate]] = None
+    # Año lectivo de la deuda que salda; sin el, el año activo.
+    anio_lectivo_id: Optional[int] = Field(default=None, gt=0)
 
 class PagoAnular(BaseModel):
     motivo: str
@@ -35,6 +37,8 @@ class PagoAdelantadoCreate(BaseModel):
     monto_distribuir: Optional[float] = Field(default=None, gt=0)
     fecha: Optional[date] = None
     metodos: List[MetodoPago] = Field(min_length=1)
+    # Año lectivo de los meses que se adelantan; sin el, el año activo.
+    anio_lectivo_id: Optional[int] = Field(default=None, gt=0)
 
     @model_validator(mode="after")
     def validar_metodos(self):

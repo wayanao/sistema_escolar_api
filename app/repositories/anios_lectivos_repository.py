@@ -2,8 +2,9 @@
 
 Fase 1: lo minimo para que toda fila nueva nazca con su año. Fase 2: leer un
 año pedido, para cobrar en un año que no es el activo. Fase 3: listar los
-años, para que el frontend sepa cuales hay y cual es el activo, y
-`condicion_anio`, el filtro por año que comparten los listados. Como el resto de
+años, para que el frontend sepa cuales hay y cual es el activo,
+`condicion_anio`, el filtro por año que comparten los listados, y en que años
+se dicta una materia (aviso al renombrarla). Como el resto de
 repositorios, cada funcion recibe el cursor de quien llama y no abre, confirma
 ni cierra nada.
 """
@@ -91,6 +92,34 @@ def leer_anio_de_curso(cursor, curso_id):
         (curso_id,),
     )
     return cursor.fetchone()
+
+
+def leer_nombre_y_anios_de_materia(cursor, materia_id):
+    """El nombre guardado de una materia y los años en que se dicta.
+
+    Devuelve `(nombre, [(anio, estado), ...])`, un año por fila y de menor a
+    mayor, o `None` si la materia no existe. Una materia sin clases trae la
+    lista vacia. Cuenta todas sus clases (asignaciones), tambien las
+    inactivas: sus notas siguen ahi, y ante la duda es mejor avisar de mas
+    (paso 3.6, decision 12).
+    """
+    cursor.execute(
+        """
+        SELECT m.nombre, al.anio, al.estado
+        FROM materias m
+        LEFT JOIN asignaciones a ON a.materia_id = m.id
+        LEFT JOIN cursos c ON c.id = a.curso_id
+        LEFT JOIN anios_lectivos al ON al.id = c.anio_lectivo_id
+        WHERE m.id = %s
+        GROUP BY m.nombre, al.anio, al.estado
+        ORDER BY al.anio
+        """,
+        (materia_id,),
+    )
+    filas = cursor.fetchall()
+    if not filas:
+        return None
+    return filas[0][0], [(anio, estado) for _, anio, estado in filas if anio is not None]
 
 
 def listar_anios_lectivos(cursor):

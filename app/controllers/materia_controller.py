@@ -1,4 +1,9 @@
 from app.database import get_connection
+from app.repositories.anios_lectivos_repository import leer_nombre_y_anios_de_materia
+from app.services.anio_lectivo import (
+    anios_a_avisar_al_renombrar,
+    mensaje_materia_usada_en_otro_anio,
+)
 from psycopg2 import IntegrityError
 
 ESTADOS_MATERIA = {"activo", "inactivo"}
@@ -7,6 +12,16 @@ ESTADO_MATERIA_DEFAULT = "activo"
 
 class MateriaDuplicadaError(Exception):
     """Se lanza cuando ya existe una materia con el mismo nombre."""
+
+
+class MateriaUsadaEnOtroAnioError(Exception):
+    """El nombre nuevo cambiaria los boletines de otro año (decision 12).
+
+    No es un `ValueError` a proposito: la ruta lo responde como 409 con su
+    codigo, no como 422.
+    """
+
+    codigo = "materia_usada_en_otro_anio"
 
 
 def _upper_text(value):
@@ -148,6 +163,25 @@ def obtener_materias_paginado_controller(limit=50, offset=0, busqueda=None, esta
         cursor.close()
         conn.close()
 
+def _avisar_si_cambia_el_nombre_de_otro_anio(cursor, materia_id, nombre):
+    """Año lectivo, paso 3.6 (decision 12): avisar antes de renombrar.
+
+    Si el nombre guardado cambia y la materia se usa en otro año, lanza
+    `MateriaUsadaEnOtroAnioError` con el aviso. Se compara el texto guardado
+    tal cual, porque es lo que imprime el boletin. Si la materia no existe no
+    hace nada: el `UPDATE` responde "no encontrada", como siempre.
+    """
+    materia = leer_nombre_y_anios_de_materia(cursor, materia_id)
+    if materia is None:
+        return
+    nombre_actual, usos = materia
+    if nombre_actual == nombre:
+        return
+    anios = anios_a_avisar_al_renombrar(usos)
+    if anios:
+        raise MateriaUsadaEnOtroAnioError(mensaje_materia_usada_en_otro_anio(anios))
+
+
 def actualizar_materia_controller(materia_id, data):
     conn = get_connection()
     cursor = conn.cursor()
@@ -155,6 +189,10 @@ def actualizar_materia_controller(materia_id, data):
         nombre = _upper_text(data.get("nombre"))
         _validar_nombre_obligatorio(nombre)
         _validar_materia_unica(cursor, nombre, materia_id)
+        # Con la confirmacion explicita del admin se guarda como siempre, sin
+        # la consulta del aviso. Solo vale el booleano `true` del JSON.
+        if data.get("confirmar_cambio_nombre") is not True:
+            _avisar_si_cambia_el_nombre_de_otro_anio(cursor, materia_id, nombre)
 
         cursor.execute('''
             UPDATE materias
@@ -167,7 +205,7 @@ def actualizar_materia_controller(materia_id, data):
             return {"error": "Materia no encontrada"}
         conn.commit()
         return {"mensaje": "Materia actualizada correctamente"}
-    except (MateriaDuplicadaError, ValueError):
+    except (MateriaDuplicadaError, MateriaUsadaEnOtroAnioError, ValueError):
         conn.rollback()
         raise
     except IntegrityError as exc:

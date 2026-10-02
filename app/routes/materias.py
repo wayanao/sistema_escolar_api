@@ -5,6 +5,7 @@ from app.dependencies import get_current_active_admin
 from app.schemas.materia import MateriaEstadoUpdate
 from app.controllers.materia_controller import (
     MateriaDuplicadaError,
+    MateriaUsadaEnOtroAnioError,
     actualizar_estado_materia_controller,
     crear_materia_controller,
     actualizar_materia_controller,
@@ -52,6 +53,13 @@ def obtener_materias(
 def actualizar_materia(materia_id: int, data: dict):
     try:
         resultado = actualizar_materia_controller(materia_id, data)
+    except MateriaUsadaEnOtroAnioError as exc:
+        # Año lectivo, decision 12: el frontend reconoce el aviso por su
+        # codigo y reenvia con `confirmar_cambio_nombre: true`.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"codigo": exc.codigo, "mensaje": str(exc)},
+        ) from exc
     except MateriaDuplicadaError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except ValueError as exc:

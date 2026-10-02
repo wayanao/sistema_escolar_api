@@ -3,16 +3,17 @@
 ## Control
 
 - Estado: **Fase 3 en curso: inventario y plan del 2026-10-02; pasos 3.1 a
-  3.5a en los commits `fea2e83`, `43764f2`, `da4da87`, `c9554af` y
-  `eb835e3`; paso 3.5b (observador, expediente y planes del admin por año)
-  escrito y probado, sin commit. Con él, todas las lecturas quedan por año;
-  faltan 3.6 (aviso al renombrar materia) y 3.7 (guardia de escritura).**
+  3.5b en los commits `fea2e83`, `43764f2`, `da4da87`, `c9554af`,
+  `eb835e3` y `8716fc5` (todas las lecturas quedan por año); paso 3.6
+  (aviso al renombrar una materia) escrito y probado, sin commit. Falta 3.7
+  (guardia de escritura). Ningún commit de la fase 3 está en GitHub.**
   **Fase 2 con el código completo el
-  2026-10-01, sin desplegar.**
+  2026-10-01, subida a GitHub.**
   Pasos 2.1 (las cuotas se cuentan en el año del concepto), 2.2 (cada año
   cuenta solo sus pagos), 2.3 (pagar en otro año) y 2.4 (deuda de años
-  anteriores) en los commits `b2362f1`, `34712dd`, `b5f4099` y `f03b032`,
-  sin subir a GitHub al 2026-10-02. Fase 1
+  anteriores) en los commits `b2362f1`, `34712dd`, `b5f4099` y `f03b032`.
+  Al 2026-10-02 la copia local de GitHub (`origin/main`) ya llega a
+  `f03b032`; que Render lo haya desplegado no se ve desde el repo. Fase 1
   terminada el 2026-10-01: migración A (2026-09-30) y migración B
   (2026-10-01) aplicadas en producción, código que escribe el año
   desplegado en Render (`67b2d4b`, Live), esquema base regenerado. Fase 0
@@ -1412,7 +1413,9 @@ cumplen las condiciones del punto 9:
 - `verify.py` pasa.
 
 Falta que el usuario lo revise en local y lo despliegue. Al 2026-10-02 los
-cuatro commits siguen sin subir (`git status`: `ahead 4`).
+cuatro commits siguen sin subir (`git status`: `ahead 4`). *Actualizado más
+tarde el 2026-10-02:* ya están en GitHub (`origin/main` en `f03b032`, visto
+en la copia local); el despliegue en Render lo confirma el usuario.
 
 ### Fase 3 — Lecturas por año y guardia de escritura
 
@@ -1981,6 +1984,81 @@ admin por año (sin desplegar). Con él, todas las lecturas de la fase 3
   en local recomendada (solo lectura): la bitácora de un estudiante con un
   profesor y con el admin, el detalle de un estudiante y la bandeja de
   planes del admin, iguales que en producción.
+- Commit `8716fc5` (hecho por el usuario el 2026-10-02).
+
+**Avance del 2026-10-02 — paso 3.6, aviso al renombrar una materia (sin
+desplegar):**
+
+- Aprobado por el usuario el 2026-10-02 ("si"), después de explicarle el
+  cambio, que con un solo año nunca avisa y el costo de una consulta más.
+  Ninguna pregunta abierta afectaba este paso.
+- Caracterización primero: editar una materia no tenía ninguna prueba.
+  `tests/test_materias_caracterizacion.py` (12) fija el nombre que se
+  guarda, los errores con su código HTTP (409 repetido, 422 vacío, 404 no
+  encontrada), que un profesor recibe 403 y las dos consultas de hoy con su
+  texto y parámetros. Pasó entera contra el código anterior.
+- Código:
+  - `app/repositories/anios_lectivos_repository.py`:
+    `leer_nombre_y_anios_de_materia`, una consulta con el nombre guardado y
+    los años en que se dicta la materia (por sus clases → curso → año).
+    Cuenta también las clases inactivas: sus notas siguen ahí, y ante la
+    duda es mejor avisar de más.
+  - `app/services/anio_lectivo.py`: `anios_a_avisar_al_renombrar` (la regla
+    del punto 3: más de un año, o uno `cerrado` o `reabierto`; se nombran
+    los años que no son el activo) y `mensaje_materia_usada_en_otro_anio`
+    (el texto del punto 3; con varios años, "2025 y 2026").
+  - `app/controllers/materia_controller.py`: `MateriaUsadaEnOtroAnioError`
+    (no es `ValueError`, para no salir como 422). Al editar, después de la
+    revisión de nombre repetido (confirmar no arregla un repetido), si la
+    petición no trae `confirmar_cambio_nombre: true` se mira si cambia el
+    texto guardado tal cual (es lo que imprime el boletín) y en qué años se
+    usa. Con la confirmación no se hace esa consulta: guarda como hoy.
+  - `app/routes/materias.py`: el aviso sale como 409 con `detail =
+    {"codigo": "materia_usada_en_otro_anio", "mensaje": ...}`. El 409 de
+    nombre repetido sigue con `detail` de texto, así que el frontend los
+    distingue.
+- Decisiones de detalle tomadas al escribirlo, dentro de la decisión 12:
+  solo el booleano `true` confirma (no `"true"` ni `1`); cambiar solo
+  mayúsculas o espacios de un nombre guardado también avisa, porque cambia
+  lo impreso; un solo año en preparación, sin el activo, no avisa (no es
+  "más de un año" ni un año pasado).
+- Consultas: editar una materia, 3 en vez de 2 (aceptado por el usuario);
+  con la confirmación, las 2 de siempre. Crear una materia no cambió.
+- Pruebas:
+  - `tests/test_anio_lectivo_renombrar_materia.py`, 30 nuevas: la regla con
+    ocho combinaciones de años, el mensaje con uno, dos y tres años, la
+    consulta, el controlador con 2026 cerrado y 2027 activo (avisa sin
+    guardar y con `rollback`; con la confirmación guarda sin la consulta;
+    solo `true` confirma; sin cambio de nombre no avisa; el repetido va
+    primero; con un solo año guarda) y la ruta por HTTP (409 con el código,
+    la confirmación llega al controlador, y el flujo completo: aviso,
+    confirmación, guardado).
+  - Ajustada a propósito, solo la caracterización escrita en este mismo
+    paso: su doble conoce la consulta nueva (responde un solo año, como
+    hoy) y el conteo pasa de 2 a 3. Antes del ajuste fallaban exactamente
+    las 5 pruebas que pasan por esa consulta, y solo por ella. Ninguna otra
+    prueba del repo cambió.
+  - Trece versiones dañadas del código hacen fallar alguna prueba: quitar
+    la confirmación, aceptar `1`, ignorar los años cerrados, ignorar "más
+    de un año", nombrar también el activo, avisar sin cambio de nombre,
+    comparar el nombre normalizado, responder el aviso como texto, no
+    atraparlo en la ruta, no hacer `rollback`, filtrar clases inactivas, no
+    quitar el año nulo de una materia sin clases y avisar antes del
+    repetido.
+- Documentación: `docs/API_ENDPOINTS.md` (Materias) y
+  `docs/CAMBIOS_BACKEND.md`.
+- Verificación: `scripts/verify.py` → **1747 pasan, 0 fallan** (antes
+  1705); ruff y `pip check` limpios; `git diff --check` limpio. Corrido con
+  un `DATABASE_URL` inventado, como en CI.
+- Para el frontend (su fase 4, punto 5): el código, el mensaje y el campo de
+  confirmación de arriba. Se anota en su documento al cerrar la fase 3, con
+  el resto del contrato, como se dijo en el 3.2. Hasta que la pantalla de
+  Materias tenga su diálogo, mostraría este aviso como `[object Object]`
+  (`obtenerMensajeErrorMateria` espera texto). No puede pasar antes de la
+  fase 5, porque hace falta un segundo año, y la fase 4 va antes.
+- Efecto al desplegar: ninguno visible mientras haya un solo año. Revisión
+  en local: no hace falta. Editar una materia en local escribe en la base
+  real, y lo que cambia solo se ve con dos años.
 
 ### Fase 4 — Selector de año en el frontend
 
@@ -2215,8 +2293,8 @@ cosa, gana lo que se pueda verificar.
 - **Fase 2, código completo:** la pregunta de los conceptos desactivados
   quedó respondida (se deja como está y se corrige después, aparte). Los
   cuatro pasos del plan están escritos y probados, en los commits
-  `b2362f1`, `34712dd`, `b5f4099` y `f03b032`, todavía sin subir al
-  2026-10-02. Ver los "Avance" de cada uno.
+  `b2362f1`, `34712dd`, `b5f4099` y `f03b032`, ya en GitHub al 2026-10-02
+  (`origin/main` en `f03b032`). Ver los "Avance" de cada uno.
 - **Fase 3, iniciada el 2026-10-02** con la autorización del usuario (y
   sabiendo que la fase 2 sigue sin subir): inventario confirmado con `grep`
   y plan en siete pasos, 3.1 a 3.7. Ver "Inventario confirmado" y "Plan por
@@ -2229,23 +2307,22 @@ cosa, gana lo que se pueda verificar.
   precios por curso, listas de seguimiento y reporte general, por año); paso
   3.4 en `c9554af` (lista de estudiantes, cartera y estado de cuenta por
   curso, por año; decisiones 18 y 19); paso 3.5a en `eb835e3` (boletín,
-  reporte parcial y puesto por año; el puesto ya no mezcla años). **Paso
-  3.5b escrito y probado, sin commit** (observador, expediente y planes del
-  admin por año; ver su "Avance", que deja una consulta de solo lectura
-  pendiente sobre faltas sin clase).
+  reporte parcial y puesto por año; el puesto ya no mezcla años); paso 3.5b
+  en `8716fc5` (observador, expediente y planes del admin por año; su
+  "Avance" deja una consulta de solo lectura pendiente sobre faltas sin
+  clase). **Paso 3.6 escrito y probado, sin commit** (aviso al renombrar
+  una materia que se usa en otro año; ver su "Avance"). Los siete commits
+  de la fase 3 (`57b3710` a `8716fc5`) no están en GitHub.
 - **Hecho aparte, la noche del 2026-09-30:** el arreglo de la hora
   (`2e77634` en este repo, `033c042` en el frontend). Cobros, cartera y
   alta de colegios usan la fecha de Colombia (`app/core/fechas.py`), y el
   frontend propone fechas de Colombia (`src/utils/fechaColombia.js`). Ver
   el hallazgo correspondiente y `docs/CAMBIOS_BACKEND.md`.
 - **Pendiente del usuario:**
-  - Pasos 2.1 a 2.4: revisarlos en local (Cartera vencida, la pantalla de
-    Pagos y el detalle de un estudiante deben mostrar los mismos números
-    que producción) y después el push. Las consultas
-    nuevas solo se probaron con bases simuladas, y esa revisión es la que
-    las corre contra la base real (solo lectura). No registrar pagos en
-    local: escribe en la base real; para eso, una rama de Neon. El push
-    despliega; no cambia nada visible mientras haya un solo año.
+  - Fase 2: ya en GitHub. Confirmar en Render que el despliegue de
+    `f03b032` quedó **Live** y que Cartera vencida, Pagos y el detalle de
+    un estudiante muestran los mismos números que antes.
+  - Consulta de faltas sin clase (solo lectura; en el "Avance" del 3.5b).
   - Borrar la rama `prueba-anio-lectivo-b` de Neon, si no se borró sola.
   - Si no se hizo todavía, **rotar la contraseña** de `neondb_owner` (ver
     el punto siguiente).
@@ -2265,15 +2342,15 @@ cosa, gana lo que se pueda verificar.
   rama, detener el backend local que esté corriendo; si no, el frontend
   sigue hablando con el que apunta a producción.
 - **Siguiente acción exacta:** que el usuario revise y haga el commit del
-  paso 3.5b, y si puede, corra la consulta de faltas sin clase (ver el
-  "Avance" del 3.5b). Después, **paso 3.6** (aviso al renombrar una materia
-  que se usa en otro año o en uno cerrado, decisión 12: 409 con código
-  propio y el mensaje del punto 3 de la fase 3; con confirmación, guarda como
-  hoy; mientras haya un solo año, nunca avisa), solo con su visto bueno. Las preguntas abiertas se le
-  hacen al usuario justo antes del paso que las necesita (lo pidió así el
-  2026-10-02): la de materias ocultas, antes del 3.5; la de crear en el año
-  en preparación, antes de la fase 5. La fase 3 tiene que estar en
-  producción **antes de crear el primer curso de 2027** (fase 5, meta:
-  principios de noviembre). Sigue siendo recomendable subir la fase 2
-  antes.
+  paso 3.6. Después, **paso 3.7** (guardia `exigir_anio_editable` en las 33
+  rutas que escriben datos académicos, punto 4 de la fase 3; ver la lista
+  en "Inventario confirmado"), solo con su visto bueno. Antes de escribirlo
+  se mide cuántas consultas agrega a cada guardado y el usuario decide, como
+  en el paso 2.4. Las preguntas abiertas se le hacen al usuario justo antes
+  del paso que las necesita (lo pidió así el 2026-10-02): la de crear en el
+  año en preparación, antes de la fase 5; la del selector, antes de la fase
+  4. Al cerrar la fase 3 se anota el contrato completo en el documento del
+  frontend (rutas con `?anio_lectivo_id=` y el aviso de materias). La fase 3
+  tiene que estar en producción **antes de crear el primer curso de 2027**
+  (fase 5, meta: principios de noviembre).
 - Prompt para retomar: `docs/funcionalidades/PROMPT_CONTINUACION_ANIO_LECTIVO.md`.

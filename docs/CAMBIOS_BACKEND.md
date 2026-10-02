@@ -6,6 +6,33 @@ Ultima revision documental: 2026-10-02.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
+## 2026-10-02 - Año lectivo: aviso al renombrar una materia de otro año
+
+Fase 3, paso 3.6, de `docs/funcionalidades/ANIO_LECTIVO.md` (decision 12).
+
+### Que cambia
+
+- `PUT /materias/{materia_id}`: si el nombre guardado cambia y la materia se
+  dicta en mas de un año, o en uno cerrado o reabierto, no guarda y responde
+  `409` con `detail = {"codigo": "materia_usada_en_otro_anio", "mensaje":
+  ...}`. Con `"confirmar_cambio_nombre": true` en el cuerpo guarda como
+  siempre. Con un solo año, como hoy, nunca avisa.
+- Consulta nueva `leer_nombre_y_anios_de_materia` (repositorio del año) y la
+  regla `anios_a_avisar_al_renombrar` con su mensaje (servicio del año).
+  Cuenta tambien las clases inactivas: ante la duda, avisa.
+- Costo: editar una materia hace 3 consultas en vez de 2 (aceptado por el
+  usuario). Con la confirmacion, las 2 de siempre.
+
+### Pruebas
+
+`tests/test_materias_caracterizacion.py` (12), escrita antes del cambio:
+editar una materia no tenia ninguna prueba. Ajustada a proposito despues: el
+doble conoce la consulta nueva y el conteo pasa de 2 a 3; las dos consultas de
+antes conservan texto, parametros y orden. `tests/test_anio_lectivo_renombrar_materia.py`
+(30): la regla, el mensaje, la consulta, el controlador con dos años y la ruta
+por HTTP. Trece versiones dañadas del codigo hacen fallar alguna.
+`scripts/verify.py`: 1747 pasan, 0 fallan.
+
 ## 2026-10-02 - Año lectivo: observador, expediente y planes del admin por año
 
 Fase 3, paso 3.5b, de `docs/funcionalidades/ANIO_LECTIVO.md`. Con esto, todas

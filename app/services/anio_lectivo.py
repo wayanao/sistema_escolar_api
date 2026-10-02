@@ -1,8 +1,9 @@
 """Reglas del año lectivo que comparten varios modulos.
 
 Ver docs/funcionalidades/ANIO_LECTIVO.md. Es el servicio que el documento
-preve para el año lectivo: valida el año que se pide (fase 2) y decide que
-años puede mirar cada usuario (fase 3).
+preve para el año lectivo: valida el año que se pide (fase 2), decide que
+años puede mirar cada usuario y cuando avisar al renombrar una materia
+(fase 3).
 """
 from app.repositories.anios_lectivos_repository import (
     leer_anio_activo,
@@ -56,6 +57,36 @@ def anio_distinto_del_activo(cursor, anio_lectivo_id, usuario=None):
     else:
         anio = resolver_anio_pedido(cursor, anio_lectivo_id, usuario)
     return None if anio[2] == "activo" else anio_lectivo_id
+
+
+ESTADOS_DE_ANIO_PASADO = {"cerrado", "reabierto"}
+
+
+def anios_a_avisar_al_renombrar(usos):
+    """Los años que hay que nombrar al avisar de un cambio de nombre de materia.
+
+    `usos` son los años en que se dicta la materia, como `(anio, estado)`. El
+    nombre se lee al imprimir, asi que cambiarlo cambia tambien los boletines
+    y certificados de esos años (decision 12). Se avisa si la materia se usa
+    en mas de un año o en uno cerrado o reabierto, y se nombran los años que
+    no son el activo. Con un solo año, como hoy, devuelve `[]`: nunca avisa.
+    """
+    if len(usos) <= 1 and not any(estado in ESTADOS_DE_ANIO_PASADO for _, estado in usos):
+        return []
+    return [anio for anio, estado in usos if estado != "activo"]
+
+
+def mensaje_materia_usada_en_otro_anio(anios):
+    """El aviso de la decision 12, listo para mostrar."""
+    textos = [str(anio) for anio in anios]
+    if len(textos) > 1:
+        texto = f"{', '.join(textos[:-1])} y {textos[-1]}"
+    else:
+        texto = textos[0]
+    return (
+        f"Esta materia se usa en {texto}. Si cambias el nombre, también "
+        f"cambiará en los boletines y certificados de {texto}."
+    )
 
 
 def _es_admin(usuario):

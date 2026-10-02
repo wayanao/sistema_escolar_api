@@ -374,7 +374,28 @@ Notas:
 - Una materia `inactivo` no puede usarse en nuevas asignaciones ni ediciones de
   asignaciones activas.
 - `POST /materia` y `PUT /materias/{materia_id}` responden `409 Conflict` si
-  ya existe una materia con el mismo nombre.
+  ya existe una materia con el mismo nombre. En ese caso `detail` es un texto.
+- Año lectivo (paso 3.6, decision 12 de `docs/funcionalidades/ANIO_LECTIVO.md`):
+  el boletin y los certificados leen el nombre al imprimir, asi que
+  renombrar una materia cambia tambien los documentos de otros años. Si el
+  nombre guardado cambia y la materia se dicta en mas de un año, o en un año
+  `cerrado` o `reabierto`, `PUT /materias/{materia_id}` **no guarda** y
+  responde `409` con un objeto:
+
+```json
+{
+  "detail": {
+    "codigo": "materia_usada_en_otro_anio",
+    "mensaje": "Esta materia se usa en 2026. Si cambias el nombre, también cambiará en los boletines y certificados de 2026."
+  }
+}
+```
+
+  Para guardar igual, el frontend reenvia el mismo cuerpo con
+  `"confirmar_cambio_nombre": true` (solo el booleano `true` confirma). El
+  nombre repetido se informa antes que este aviso. Con un solo año nunca
+  avisa. Editar cuesta una consulta mas (3 en vez de 2), salvo con la
+  confirmacion.
 
 ## Observaciones
 

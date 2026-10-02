@@ -1,5 +1,6 @@
 from app.database import get_cursor
 from app.repositories import notas_repository
+from app.services.anio_lectivo import exigir_asignacion_editable
 from app.services.asignacion_academica import resolver_asignacion_academica_id_cursor
 
 # 👇 IMPORTAMOS SERVICES
@@ -11,7 +12,7 @@ from app.services.nota_service import (
 
 
 # 🎯 Crear nota
-def crear_nota_controller(nota):
+def crear_nota_controller(nota, *, usuario):
 
     # 🔥 VALIDACIONES (SERVICE)
     if not validar_asignacion(nota.asignacion_id):
@@ -25,6 +26,8 @@ def crear_nota_controller(nota):
 
     # 🔌 conexión
     with get_cursor(commit=True) as cursor:
+        # Año lectivo, paso 3.7: lo primero, en la conexion que ya se abrio.
+        exigir_asignacion_editable(cursor, nota.asignacion_id, usuario)
         asignacion_id = resolver_asignacion_academica_id_cursor(cursor, nota.asignacion_id)
 
         # 🧠 Insertar nota

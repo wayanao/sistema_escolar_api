@@ -14,7 +14,7 @@ router = APIRouter(tags=["Planilla"], dependencies=[Depends(get_current_user)])
 def registrar_nota(data: NotaPlanillaCreate, current_user: dict = Depends(get_current_user)):
     require_asignacion_access(data.asignacion_id, current_user)
 
-    return registrar_nota_planilla_controller(data)
+    return registrar_nota_planilla_controller(data, usuario=current_user)
 
 # 📊 Descargar planilla en formato Excel
 @router.get("/planilla-excel/{asignacion_id}/{periodo}")
@@ -35,4 +35,4 @@ def eliminar_tipo(
     current_user: dict = Depends(get_current_user)
 ):
     require_asignacion_access(asignacion_id, current_user)
-    return eliminar_tipo_controller(asignacion_id, descripcion, periodo)
+    return eliminar_tipo_controller(asignacion_id, descripcion, periodo, usuario=current_user)

@@ -1,5 +1,6 @@
 from app.database import get_cursor
 from app.repositories.anios_lectivos_repository import condicion_anio
+from app.services.anio_lectivo import exigir_asignacion_editable, exigir_plan_editable
 from app.services.asignacion_academica import resolver_asignacion_academica_id_cursor
 
 
@@ -151,8 +152,10 @@ def _marcar_notificaciones_admin_leidas(cursor, plan_id, version):
     )
 
 
-def guardar_plan_de_clases(plan, imagen1_path=None, imagen2_path=None):
+def guardar_plan_de_clases(plan, imagen1_path=None, imagen2_path=None, *, usuario):
     with get_cursor(commit=True) as cursor:
+        # Año lectivo, paso 3.7: lo primero, en la conexion que ya se abrio.
+        exigir_asignacion_editable(cursor, plan.asignacion_id, usuario)
         asignacion_id = resolver_asignacion_academica_id_cursor(cursor, plan.asignacion_id)
         version_esperada = getattr(plan, "version_esperada", None)
 
@@ -595,8 +598,10 @@ def listar_observaciones_plan(plan_id):
         ]
 
 
-def marcar_observacion_vista(plan_id, observacion_id):
+def marcar_observacion_vista(plan_id, observacion_id, *, usuario):
     with get_cursor(commit=True) as cursor:
+        # Año lectivo, paso 3.7: lo primero, en la conexion que ya se abrio.
+        exigir_plan_editable(cursor, plan_id, usuario)
         cursor.execute(
             """
             UPDATE plan_de_clases_observaciones
@@ -727,11 +732,13 @@ def listar_notificaciones_profesor(profesor_id, limit=8):
         }
 
 
-def eliminar_imagen_plan(plan_id, slot, reiniciar_revision=False):
+def eliminar_imagen_plan(plan_id, slot, reiniciar_revision=False, *, usuario):
     if slot not in {"imagen1", "imagen2"}:
         raise ValueError("Imagen inválida")
 
     with get_cursor(commit=True) as cursor:
+        # Año lectivo, paso 3.7: lo primero, en la conexion que ya se abrio.
+        exigir_plan_editable(cursor, plan_id, usuario)
         cursor.execute(
             f"SELECT {slot}, estado_revision FROM plan_de_clases WHERE id = %s FOR UPDATE",
             (plan_id,),

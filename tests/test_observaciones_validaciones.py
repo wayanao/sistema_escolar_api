@@ -5,6 +5,24 @@ from app.controllers import observacion_controller
 from app.routes import observaciones
 from app.schemas.observacion import ObservacionCreate
 
+PROFESOR = {"id": 3, "rol": "profesor"}
+
+
+@pytest.fixture(autouse=True)
+def guardia_del_anio(monkeypatch):
+    """Año lectivo, paso 3.7: la guardia de escritura se dobla aqui, asi que
+    no suma en los conteos de este archivo (en produccion es una consulta mas,
+    la primera del guardado; la cuenta `test_anio_lectivo_guardia_conteos.py`).
+    Sus pruebas viven en `test_anio_lectivo_guardia.py`; aqui solo se anota a
+    quien se le pidio."""
+    llamadas = []
+    monkeypatch.setattr(
+        observacion_controller,
+        "exigir_asignacion_editable",
+        lambda _cursor, asignacion_id, usuario: llamadas.append((asignacion_id, usuario)),
+    )
+    return llamadas
+
 
 def test_observacion_permite_una_sola_dimension():
     observacion = ObservacionCreate(
@@ -53,7 +71,7 @@ def test_ruta_observacion_valida_permisos_y_envia_campos_vacios(monkeypatch):
     monkeypatch.setattr(
         observaciones,
         "guardar_observacion_controller",
-        lambda payload: payloads.append(payload) or {"mensaje": "ok"},
+        lambda payload, usuario: payloads.append(payload) or {"mensaje": "ok"},
     )
 
     response = observaciones.guardar_observacion(data, current_user={"id": 3, "rol": "profesor"})
@@ -118,7 +136,7 @@ def test_controller_guarda_dimensiones_no_diligenciadas_como_vacias(monkeypatch)
         "asignacion_id": 10,
         "periodo": 2,
         "cognitivo": "Avanza en lectura.",
-    })
+    }, usuario=PROFESOR)
 
     assert response == {"mensaje": "Observación guardada/actualizada"}
     assert cursor.calls[-1][1] == (1, 77, 2, "", "Avanza en lectura.", "")

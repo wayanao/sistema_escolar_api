@@ -35,6 +35,9 @@ RAIZ = Path(__file__).resolve().parents[1]
 ADMIN = {"id": 7, "rol": "admin", "tenant": "tenant_demo"}
 PROFESOR = {"id": 7, "rol": "profesor", "tenant": "tenant_demo"}
 ESTUDIANTE = {"id": 11, "rol": "estudiante", "tenant": "tenant_demo"}
+# Año lectivo, paso 3.7: la guardia de escritura lee el año de la clase, la
+# primera consulta de cada guardado. Aqui se cuenta como las demas.
+SQL_GUARDIA = "SELECT al.anio, al.estado"
 
 DATOS = NotaPlanillaCreate(
     estudiante_id=11,
@@ -102,6 +105,10 @@ class CursorInstrumentado:
         self.registro.consultas.append((query, params))
 
     def fetchone(self):
+        # La guardia del año lectivo ve 2026 activo sin gastar las filas.
+        ultima = self.registro.consultas[-1][0] if self.registro.consultas else ""
+        if SQL_GUARDIA in ultima:
+            return (2026, "activo")
         if not self.registro.filas:
             return None
         return self.registro.filas.pop(0)
@@ -339,7 +346,7 @@ def test_las_tres_entradas_delegan_el_mismo_permiso_y_su_controlador(
     monkeypatch.setattr(
         ruta_planilla,
         "registrar_nota_planilla_controller",
-        lambda data: ("post", data.asignacion_id),
+        lambda data, usuario: ("post", data.asignacion_id),
     )
     monkeypatch.setattr(
         ruta_planilla,
@@ -349,7 +356,7 @@ def test_las_tres_entradas_delegan_el_mismo_permiso_y_su_controlador(
     monkeypatch.setattr(
         ruta_planilla,
         "eliminar_tipo_controller",
-        lambda asignacion_id, descripcion, periodo: (
+        lambda asignacion_id, descripcion, periodo, usuario: (
             "delete",
             asignacion_id,
             descripcion,
@@ -438,14 +445,18 @@ def test_post_como_admin_cuesta_cinco_consultas_y_una_conexion(
     cuatro a cinco; las conexiones no cambian.
 
     Desde el 2026-09-24 la validacion del estudiante tambien viaja en esa
-    conexion: eran dos, ahora es una. Las cinco consultas son las mismas."""
+    conexion: eran dos, ahora es una. Las cinco consultas son las mismas.
+
+    Año lectivo, paso 3.7: la guardia de escritura suma una sexta, la primera,
+    en la misma conexion."""
     registro = instrumentado(filas=[(11,), (77,), (None,), (901,)])
 
     respuesta = ruta_planilla.registrar_nota(DATOS, ADMIN)
 
     assert registro.cursores == [True]
     assert registro.conexiones_permiso == 0
-    assert len(registro.consultas) == 5
+    assert len(registro.consultas) == 6
+    assert SQL_GUARDIA in registro.consultas[0][0]
     assert len(registro.cursores) + registro.conexiones_permiso == 1
     assert respuesta == {
         "mensaje": "Nota registrada correctamente",
@@ -464,7 +475,8 @@ def test_post_como_profesor_cuesta_seis_consultas_y_dos_conexiones(
 
     assert registro.cursores == [True]
     assert registro.conexiones_permiso == 1
-    assert len(registro.consultas) == 5
+    # Cinco del guardado mas la guardia del año lectivo (paso 3.7).
+    assert len(registro.consultas) == 6
     assert len(registro.consultas_permiso) == 1
     assert len(registro.cursores) + registro.conexiones_permiso == 2
 
@@ -477,13 +489,16 @@ def test_post_rechazado_abre_una_conexion_y_responde_error_con_200_logico(
     respuesta = ruta_planilla.registrar_nota(DATOS, ADMIN)
 
     assert registro.cursores == [True]
-    assert len(registro.consultas) == 1
+    # La guardia del año lectivo (paso 3.7) va primero, y luego la validacion.
+    assert len(registro.consultas) == 2
     assert respuesta == {"error": "El estudiante no pertenece a esta asignación"}
 
 
+# Año lectivo, paso 3.7: la guardia suma una consulta y ninguna conexion
+# (antes 2 y 3).
 @pytest.mark.parametrize(
     "usuario,consultas,conexiones",
-    [(ADMIN, 2, 1), (PROFESOR, 3, 2)],
+    [(ADMIN, 3, 1), (PROFESOR, 4, 2)],
 )
 def test_delete_tiene_coste_constante_y_confirma_una_transaccion(
     instrumentado,
@@ -588,7 +603,7 @@ def app_http(monkeypatch):
     monkeypatch.setattr(
         ruta_planilla,
         "registrar_nota_planilla_controller",
-        lambda data: {
+        lambda data, usuario: {
             "mensaje": "Nota registrada correctamente",
             "nota_id": 901,
         },
@@ -604,7 +619,7 @@ def app_http(monkeypatch):
     monkeypatch.setattr(
         ruta_planilla,
         "eliminar_tipo_controller",
-        lambda asignacion_id, descripcion, periodo: {
+        lambda asignacion_id, descripcion, periodo, usuario: {
             "mensaje": "Tipo eliminado correctamente"
         },
     )
@@ -682,7 +697,7 @@ def test_http_validacion_interna_fallida_sigue_respondiendo_200(
     monkeypatch.setattr(
         ruta_planilla,
         "registrar_nota_planilla_controller",
-        lambda data: {"error": "El estudiante no pertenece a esta asignación"},
+        lambda data, usuario: {"error": "El estudiante no pertenece a esta asignación"},
     )
 
     estado, cuerpo = _peticion_asgi(

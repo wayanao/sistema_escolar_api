@@ -8,15 +8,18 @@ from app.repositories.asistencia_repository import (
     insertar_asistencia,
     leer_historial_de_asignacion,
 )
+from app.services.anio_lectivo import exigir_asignacion_editable
 from app.services.asignacion_academica import (
     resolver_asignacion_academica_id_cursor,
     resolver_nivel_y_materia_cursor,
 )
 
-def guardar_asistencia_controller(data):
+def guardar_asistencia_controller(data, *, usuario):
     conn = get_connection()
     cursor = conn.cursor()
     try:
+        # Año lectivo, paso 3.7: lo primero, en la conexion que ya se abrio.
+        exigir_asignacion_editable(cursor, data[0].asignacion_id, usuario)
         asignacion_id = resolver_asignacion_academica_id_cursor(cursor, data[0].asignacion_id)
 
         nivel, nombre_materia = resolver_nivel_y_materia_cursor(cursor, asignacion_id)

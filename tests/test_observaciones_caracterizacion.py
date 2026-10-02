@@ -30,6 +30,23 @@ from app.routes import observaciones, plan_de_clases
 from app.schemas.observacion import ObservacionCreate
 
 RAIZ = Path(__file__).resolve().parents[1]
+ADMIN = {"id": 1, "rol": "admin"}
+
+
+@pytest.fixture(autouse=True)
+def guardia_del_anio(monkeypatch):
+    """Año lectivo, paso 3.7: la guardia de escritura se dobla aqui, asi que
+    no suma en los conteos de este archivo (en produccion es una consulta mas,
+    la primera del guardado; la cuenta `test_anio_lectivo_guardia_conteos.py`).
+    Sus pruebas viven en `test_anio_lectivo_guardia.py`; aqui solo se anota a
+    quien se le pidio."""
+    llamadas = []
+    monkeypatch.setattr(
+        observacion_controller,
+        "exigir_asignacion_editable",
+        lambda _cursor, asignacion_id, usuario: llamadas.append((asignacion_id, usuario)),
+    )
+    return llamadas
 
 
 # --------------------------------------------------------------------------
@@ -331,7 +348,7 @@ def test_guardar_observacion_hace_un_upsert_sobre_una_sola_tabla(monkeypatch):
         lambda _c, _a: 77,
     )
 
-    resultado = observacion_controller.guardar_observacion_controller(_payload())
+    resultado = observacion_controller.guardar_observacion_controller(_payload(), usuario=ADMIN)
 
     assert resultado == {"mensaje": "Observación guardada/actualizada"}
 
@@ -363,7 +380,7 @@ def test_guardar_observacion_escribe_el_asignacion_academica_id_resuelto(monkeyp
         lambda _c, _a: 77,
     )
 
-    observacion_controller.guardar_observacion_controller(_payload(asignacion_id=10))
+    observacion_controller.guardar_observacion_controller(_payload(asignacion_id=10), usuario=ADMIN)
 
     _, params = cursor.calls[-1]
     assert params == (1, 77, 2, "Atento", "", "")
@@ -385,7 +402,7 @@ def test_guardar_observacion_revierte_y_propaga_el_error(monkeypatch):
     )
 
     with pytest.raises(RuntimeError):
-        observacion_controller.guardar_observacion_controller(_payload())
+        observacion_controller.guardar_observacion_controller(_payload(), usuario=ADMIN)
 
     assert conn.rollbacks == 1
     assert conn.commits == 0
@@ -762,11 +779,12 @@ def test_linea_base_de_consultas_de_la_escritura(monkeypatch):
     conn = ConexionFalsa(cursor)
     monkeypatch.setattr(observacion_controller, "get_connection", lambda: conn)
 
-    observacion_controller.guardar_observacion_controller(_payload())
+    observacion_controller.guardar_observacion_controller(_payload(), usuario=ADMIN)
 
     # Resolver + comprobacion de `activo` + UPSERT, los tres sobre el mismo
     # cursor. Eran dos hasta el 2026-08-27: la comprobacion la anadio la
-    # correccion del hallazgo 6.
+    # correccion del hallazgo 6. La guardia del año lectivo (paso 3.7) esta
+    # doblada en este archivo: en produccion es una cuarta, la primera.
     assert len(cursor.calls) == 3
 
 
@@ -801,7 +819,7 @@ def test_la_escritura_abre_exactamente_una_conexion(monkeypatch):
         lambda _c, _a: 77,
     )
 
-    observacion_controller.guardar_observacion_controller(_payload())
+    observacion_controller.guardar_observacion_controller(_payload(), usuario=ADMIN)
     assert contador.abiertas == 1
 
 
@@ -840,7 +858,7 @@ def test_no_se_puede_escribir_contra_una_asignacion_dada_de_baja(monkeypatch):
     )
 
     with pytest.raises(observacion_controller.AsignacionInactivaError):
-        observacion_controller.guardar_observacion_controller(_payload())
+        observacion_controller.guardar_observacion_controller(_payload(), usuario=ADMIN)
 
     # No se escribio nada y la transaccion se revirtio.
     sentencias = [sql for sql, _ in cursor.calls]

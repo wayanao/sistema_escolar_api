@@ -32,7 +32,12 @@ def actualizar_planeador_anual(
 ):
     require_asignacion_access(asignacion_id, current_user)
     try:
-        bulk_actualizar_planeadores_controller(asignacion_id, periodo, planeadores)
+        bulk_actualizar_planeadores_controller(
+            asignacion_id, periodo, planeadores, usuario=current_user
+        )
         return {"message": "Planeador actualizado correctamente"}
+    except HTTPException:
+        # La guardia del año lectivo (409 o 403) sale tal cual, no como 500.
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

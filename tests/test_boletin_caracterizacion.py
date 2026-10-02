@@ -29,6 +29,25 @@ RAIZ = Path(__file__).resolve().parents[1]
 # Dobles
 # --------------------------------------------------------------------------
 
+ADMIN = {"id": 1, "rol": "admin"}
+
+
+@pytest.fixture(autouse=True)
+def guardia_del_anio(monkeypatch):
+    """Año lectivo, paso 3.7: la guardia de escritura se dobla aqui, igual que
+    los dos resolutores del guardado, asi que no suma en los conteos de este
+    archivo (en produccion es una consulta mas; la cuenta
+    `test_anio_lectivo_guardia_conteos.py`). Sus pruebas viven en
+    `test_anio_lectivo_guardia.py`; aqui solo se anota a quien se le pidio."""
+    llamadas = []
+    monkeypatch.setattr(
+        boletin_controller,
+        "exigir_asignacion_editable",
+        lambda _cursor, asignacion_id, usuario: llamadas.append((asignacion_id, usuario)),
+    )
+    return llamadas
+
+
 class CursorFalso:
     """Cursor que registra cada `execute` y sirve filas preprogramadas."""
 
@@ -279,7 +298,7 @@ def test_guardar_boletin_escribe_dos_tablas_con_reemplazo_parcial(monkeypatch):
     )
 
     datos = _BoletinFalso(detalles=[_DetalleFalso(), _DetalleFalso(nota=3.0)])
-    resultado = boletin_controller.guardar_boletin_controller(datos)
+    resultado = boletin_controller.guardar_boletin_controller(datos, usuario=ADMIN)
 
     assert resultado == {"mensaje": "Boletín guardado exitosamente"}
 
@@ -297,7 +316,7 @@ def test_guardar_boletin_escribe_dos_tablas_con_reemplazo_parcial(monkeypatch):
     assert conn.closed is True
 
 
-def test_guardar_boletin_escribe_el_asignacion_academica_id_resuelto(monkeypatch):
+def test_guardar_boletin_escribe_el_asignacion_academica_id_resuelto(monkeypatch, guardia_del_anio):
     cursor = CursorFalso(secuencia_fetchone=[(77,)])
     conn = ConexionFalsa(cursor)
     monkeypatch.setattr(boletin_controller, "get_connection", lambda: conn)
@@ -312,10 +331,13 @@ def test_guardar_boletin_escribe_el_asignacion_academica_id_resuelto(monkeypatch
         lambda _cursor, _asignacion_id: None,
     )
 
-    boletin_controller.guardar_boletin_controller(_BoletinFalso(asignacion_id=44))
+    boletin_controller.guardar_boletin_controller(_BoletinFalso(asignacion_id=44), usuario=ADMIN)
 
     _, params_cabecera = cursor.calls[0]
     assert params_cabecera == (8, 55, 2, 4.5)
+    # La guardia mira la clase pedida, no la academica resuelta: es la misma
+    # clase (curso y materia), y asi va antes de cualquier otra consulta.
+    assert guardia_del_anio == [(44, ADMIN)]
 
 
 def test_guardar_boletin_revierte_y_propaga_el_error(monkeypatch):
@@ -339,7 +361,7 @@ def test_guardar_boletin_revierte_y_propaga_el_error(monkeypatch):
     )
 
     with pytest.raises(RuntimeError):
-        boletin_controller.guardar_boletin_controller(_BoletinFalso())
+        boletin_controller.guardar_boletin_controller(_BoletinFalso(), usuario=ADMIN)
 
     assert conn.rollbacks == 1
     assert conn.commits == 0
@@ -375,7 +397,7 @@ def test_guardar_boletin_en_curso_preescolar_fuerza_desarrollo_en_todos_los_deta
         _DetalleFalso(tipo_evaluacion="numerica"),
         _DetalleFalso(tipo_evaluacion="desarrollo", valoracion="Alto"),
     ]
-    boletin_controller.guardar_boletin_controller(_BoletinFalso(detalles=detalles))
+    boletin_controller.guardar_boletin_controller(_BoletinFalso(detalles=detalles), usuario=ADMIN)
 
     _, params_detalle1 = cursor.calls[2]
     _, params_detalle2 = cursor.calls[3]
@@ -403,7 +425,7 @@ def test_guardar_boletin_en_curso_primaria_fuerza_numerica_aunque_pidan_desarrol
     )
 
     detalles = [_DetalleFalso(tipo_evaluacion="desarrollo", valoracion="Alto")]
-    boletin_controller.guardar_boletin_controller(_BoletinFalso(detalles=detalles))
+    boletin_controller.guardar_boletin_controller(_BoletinFalso(detalles=detalles), usuario=ADMIN)
 
     _, params_detalle = cursor.calls[2]
     assert params_detalle[3] == "numerica"
@@ -480,7 +502,7 @@ def test_guardar_boletin_sin_detalles_borra_y_no_inserta_ninguno(monkeypatch):
         lambda _cursor, _asignacion_id: None,
     )
 
-    boletin_controller.guardar_boletin_controller(_BoletinFalso(detalles=[]))
+    boletin_controller.guardar_boletin_controller(_BoletinFalso(detalles=[]), usuario=ADMIN)
 
     sentencias = [sql for sql, _ in cursor.calls]
     assert len(sentencias) == 2
@@ -821,7 +843,7 @@ def test_guardar_boletin_cuesta_tres_consultas_mas_una_por_detalle(monkeypatch):
     )
 
     detalles = [_DetalleFalso() for _ in range(5)]
-    boletin_controller.guardar_boletin_controller(_BoletinFalso(detalles=detalles))
+    boletin_controller.guardar_boletin_controller(_BoletinFalso(detalles=detalles), usuario=ADMIN)
 
     # 2 fijas dentro del controlador + 1 INSERT por detalle. Los dos resolvers
     # (asignacion academica y nivel del curso) estan doblados, asi que no
@@ -955,6 +977,9 @@ def test_las_dos_entradas_admin_responden_404_con_resultado_vacio(monkeypatch):
 
 def test_el_404_no_queda_atrapado_por_el_except_generico(monkeypatch):
     """Las dos entradas admin reenvian `HTTPException` antes del `except
-    Exception`. Sin ese reenvio, el 404 se convertiria en 500."""
+    Exception`. Sin ese reenvio, el 404 se convertiria en 500.
+
+    Año lectivo, paso 3.7: el guardado tambien reenvia, para que el 409 o el
+    403 de la guardia no salgan como 500. De 2 a 3."""
     fuente = (RAIZ / "app/routes/boletines.py").read_text(encoding="utf-8")
-    assert fuente.count("except HTTPException:") == 2
+    assert fuente.count("except HTTPException:") == 3

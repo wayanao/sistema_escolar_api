@@ -21,6 +21,7 @@ from app.services.anio_lectivo import (
     AnioLectivoInexistenteError,
     AnioLectivoNoPermitidoError,
     anio_distinto_del_activo,
+    exigir_anotacion_editable,
 )
 
 logger = logging.getLogger(__name__)
@@ -300,6 +301,8 @@ def editar_anotacion(
 
     try:
         with get_cursor(commit=True) as cursor:
+            # Año lectivo, paso 3.7: lo primero, en la conexion que ya se abrio.
+            exigir_anotacion_editable(cursor, anotacion_id, current_user)
             actualizada = observador_repository.actualizar_anotacion_del_autor(
                 cursor,
                 anotacion_id,

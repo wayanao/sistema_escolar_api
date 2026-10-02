@@ -38,6 +38,22 @@ NOTA = SimpleNamespace(asignacion_id=12, estudiante_id=11, nota=4.2, descripcion
 ADMIN = {"id": 7, "rol": "admin", "tenant": "tenant_demo"}
 PROFESOR = {"id": 7, "rol": "profesor", "tenant": "tenant_demo"}
 
+
+@pytest.fixture(autouse=True)
+def guardia_del_anio(monkeypatch):
+    """Año lectivo, paso 3.7: la guardia de escritura se dobla aqui, igual que
+    el resolutor de la asignacion academica, asi que no suma en los conteos de
+    este archivo (en produccion es una consulta mas; la cuenta
+    `test_anio_lectivo_guardia_conteos.py`). Sus pruebas viven en
+    `test_anio_lectivo_guardia.py`; aqui solo se anota a quien se le pidio."""
+    llamadas = []
+    monkeypatch.setattr(
+        notas_controller,
+        "exigir_asignacion_editable",
+        lambda _cursor, asignacion_id, usuario: llamadas.append((asignacion_id, usuario)),
+    )
+    return llamadas
+
 PALABRAS_SQL = ("SELECT", "INSERT", "UPDATE", "DELETE", "WITH ")
 
 
@@ -492,7 +508,7 @@ def test_la_escritura_no_fija_la_columna_periodo(instrumentado):
     """
     registro = instrumentado(fila=(501,))
 
-    notas_controller.crear_nota_controller(NOTA)
+    notas_controller.crear_nota_controller(NOTA, usuario=ADMIN)
 
     assert len(registro.cursor.calls) == 4
     query, params = registro.cursor.calls[3]

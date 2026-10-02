@@ -23,6 +23,23 @@ ADMIN = {"id": 1, "rol": "admin"}
 ACUDIENTE = {"id": 3, "rol": "acudiente"}
 
 
+@pytest.fixture(autouse=True)
+def guardia_del_anio(monkeypatch):
+    """Año lectivo, paso 3.7: al editar, la guardia de escritura mira el año de
+    la anotacion antes de escribir. Se dobla aqui, asi que no suma en los
+    conteos de este archivo (en produccion es una consulta mas; la cuenta
+    `test_anio_lectivo_guardia_conteos.py`). Sus pruebas viven en
+    `test_anio_lectivo_guardia.py`; aqui solo se anota a quien se le pidio.
+    Crear no la lleva: la anotacion nueva nace siempre en el año activo."""
+    llamadas = []
+    monkeypatch.setattr(
+        observador,
+        "exigir_anotacion_editable",
+        lambda _cursor, anotacion_id, usuario: llamadas.append((anotacion_id, usuario)),
+    )
+    return llamadas
+
+
 class CursorFalso:
     def __init__(self, respuestas=None):
         self.respuestas = list(respuestas or [])

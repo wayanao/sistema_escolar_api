@@ -10,6 +10,27 @@ from app.repositories import plan_de_clases_repository
 from app.schemas.plan_de_clases import PlanDeClasesCreate
 from scripts import auditar_plan_de_clases_integridad
 
+PROFESOR = {"id": 9, "rol": "profesor"}
+
+
+@pytest.fixture(autouse=True)
+def guardia_del_anio(monkeypatch):
+    """Año lectivo, paso 3.7: la guardia de escritura se dobla aqui, igual que
+    el resolutor. Sus pruebas viven en `test_anio_lectivo_guardia.py` y la
+    cuenta `test_anio_lectivo_guardia_conteos.py`."""
+    llamadas = []
+    monkeypatch.setattr(
+        plan_de_clases_repository,
+        "exigir_asignacion_editable",
+        lambda _cursor, asignacion_id, usuario: llamadas.append((asignacion_id, usuario)),
+    )
+    monkeypatch.setattr(
+        plan_de_clases_repository,
+        "exigir_plan_editable",
+        lambda _cursor, plan_id, usuario: llamadas.append((plan_id, usuario)),
+    )
+    return llamadas
+
 
 class FakeCursor:
     def __init__(self, returned_id=91, returned_version=1, returned_state="pendiente"):
@@ -72,7 +93,7 @@ def test_guardar_plan_usa_un_solo_upsert_atomico(monkeypatch):
         lambda _cursor, _asignacion_id: 44,
     )
 
-    resultado = plan_de_clases_repository.guardar_plan_de_clases(crear_plan())
+    resultado = plan_de_clases_repository.guardar_plan_de_clases(crear_plan(), usuario=PROFESOR)
 
     assert resultado == {
         "id": 127,
@@ -115,7 +136,7 @@ def test_guardar_plan_valida_la_version_esperada_dentro_de_la_transaccion(monkey
     )
 
     resultado = plan_de_clases_repository.guardar_plan_de_clases(
-        crear_plan(version_esperada=2)
+        crear_plan(version_esperada=2), usuario=PROFESOR
     )
 
     assert resultado == {
@@ -145,7 +166,7 @@ def test_guardar_plan_rechaza_una_version_desactualizada_sin_escribir(monkeypatc
     )
 
     resultado = plan_de_clases_repository.guardar_plan_de_clases(
-        crear_plan(version_esperada=2)
+        crear_plan(version_esperada=2), usuario=PROFESOR
     )
 
     assert resultado == {
@@ -178,7 +199,7 @@ def test_guardar_plan_nuevo_detecta_creacion_concurrente(monkeypatch):
     )
 
     resultado = plan_de_clases_repository.guardar_plan_de_clases(
-        crear_plan(version_esperada=0)
+        crear_plan(version_esperada=0), usuario=PROFESOR
     )
 
     assert resultado == {
@@ -207,7 +228,7 @@ def test_controlador_limpia_imagenes_nuevas_si_hay_conflicto(monkeypatch):
     monkeypatch.setattr(
         plan_de_clases_controller,
         "guardar_plan",
-        lambda *_args: {
+        lambda *_args, **_kwargs: {
             "resultado": "version_desactualizada",
             "version_actual": 4,
         },
@@ -223,6 +244,7 @@ def test_controlador_limpia_imagenes_nuevas_si_hay_conflicto(monkeypatch):
             crear_plan(version_esperada=3),
             imagen1=object(),
             imagen2=object(),
+            usuario=PROFESOR,
         )
 
     assert exc.value.status_code == 409
@@ -252,7 +274,7 @@ def test_correccion_con_observaciones_no_reabre_revision_admin(monkeypatch):
         lambda _cursor, _asignacion_id: 44,
     )
 
-    resultado = plan_de_clases_repository.guardar_plan_de_clases(crear_plan())
+    resultado = plan_de_clases_repository.guardar_plan_de_clases(crear_plan(), usuario=PROFESOR)
 
     assert resultado == {
         "id": 127,
@@ -284,7 +306,7 @@ def test_plan_revisado_no_reabre_revision_admin(monkeypatch):
         lambda _cursor, _asignacion_id: 44,
     )
 
-    resultado = plan_de_clases_repository.guardar_plan_de_clases(crear_plan())
+    resultado = plan_de_clases_repository.guardar_plan_de_clases(crear_plan(), usuario=PROFESOR)
 
     assert resultado == {
         "id": 127,
@@ -316,6 +338,7 @@ def test_eliminar_evidencia_de_correccion_no_notifica_de_nuevo(monkeypatch):
         127,
         "imagen1",
         reiniciar_revision=True,
+        usuario=PROFESOR,
     )
 
     assert ruta == "evidencias/plan-127.jpg"
@@ -343,6 +366,7 @@ def test_eliminar_evidencia_revisada_no_notifica_de_nuevo(monkeypatch):
         127,
         "imagen1",
         reiniciar_revision=True,
+        usuario=PROFESOR,
     )
 
     assert ruta == "evidencias/plan-127.jpg"
@@ -423,7 +447,7 @@ def test_upsert_conserva_imagenes_si_no_se_envian_archivos_nuevos(monkeypatch):
         lambda _cursor, asignacion_id: asignacion_id,
     )
 
-    plan_de_clases_repository.guardar_plan_de_clases(crear_plan())
+    plan_de_clases_repository.guardar_plan_de_clases(crear_plan(), usuario=PROFESOR)
 
     query, params = cursor.calls[0]
     assert "COALESCE(EXCLUDED.imagen1, plan_de_clases.imagen1)" in query

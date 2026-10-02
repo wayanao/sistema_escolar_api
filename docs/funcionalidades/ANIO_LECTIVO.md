@@ -6,8 +6,9 @@
   3.5b en los commits `fea2e83`, `43764f2`, `da4da87`, `c9554af`,
   `eb835e3` y `8716fc5` (todas las lecturas quedan por año); paso 3.6
   (aviso al renombrar una materia) en `0110359`. Paso 3.7 (guardia de
-  escritura): medido, falta que el usuario decida el costo. Ningún commit
-  de la fase 3 está en GitHub.**
+  escritura): medido y costo aceptado (`50d9f53`); 3.7a, las rutas del
+  profesor, escrito y probado, sin commit; falta 3.7b, las de solo admin.
+  Ningún commit de la fase 3 está en GitHub.**
   **Fase 2 con el código completo el
   2026-10-01, subida a GitHub.**
   Pasos 2.1 (las cuotas se cuentan en el año del concepto), 2.2 (cada año
@@ -2114,8 +2115,89 @@ cambios de código):**
 - Hallazgo, fuera de alcance: `POST /notas` abre 5 conexiones (21 idas,
   ~1,3 s), pero ninguna pantalla del frontend la usa (búsqueda en
   `frontend-react/src`). Deuda anotada, sin prisa.
-- **Pendiente:** que el usuario acepte o no el costo. Con un solo año la
-  guardia nunca bloquea; solo suma ese tiempo.
+- **Aceptado por el usuario el 2026-10-02** ("sigue", en respuesta a la
+  pregunta del costo). Con un solo año la guardia nunca bloquea; solo suma
+  ese tiempo. Commit `50d9f53` (esta medición, solo documento).
+
+**Avance del 2026-10-02 — paso 3.7a, la guardia en las rutas que usa el
+profesor (sin desplegar):**
+
+- Caracterización primero: `tests/test_anio_lectivo_guardia_conteos.py`
+  convierte el banco de medición en prueba del repo. Fija, para cada ruta y
+  rol, las conexiones y consultas de la tabla de arriba; se escribió y pasó
+  (21 de 21) contra el código anterior.
+- Código:
+  - `app/services/anio_lectivo.py`: `exigir_anio_editable` (la tabla de "La
+    guardia de escritura"; un estado desconocido cuenta como cerrado; sin
+    fila no hace nada y el guardado responde como siempre),
+    `exigir_asignacion_editable`, `exigir_plan_editable`,
+    `exigir_anotacion_editable` y `AnioLectivoNoEditableError`. Es una
+    `HTTPException`, así llega a la respuesta sin que cada ruta la traduzca.
+  - `app/repositories/anios_lectivos_repository.py`:
+    `leer_anio_de_asignacion` (clase → curso → año), `leer_anio_de_plan` y
+    `leer_anio_de_anotacion` (la anotación guarda su año). Una consulta cada
+    una, por id.
+  - La guardia es **lo primero dentro de la transacción** que ya abre cada
+    guardado: notas, planilla (nota y borrar columna), asistencia, boletín,
+    observaciones, planeador, crear plan, borrar evidencia, marcar vista y
+    editar anotación (en la ruta del observador, que tiene su propio
+    cursor). Si rechaza, no se escribe nada y la transacción se revierte.
+  - Quién guarda viaja como argumento obligatorio por nombre (`usuario=`),
+    de la ruta a la transacción; en el plan de clases, por controlador,
+    servicio y repositorio. Obligatorio a propósito: nadie puede olvidarlo.
+  - Boletín y planeador reenvían `HTTPException` antes de su `except
+    Exception`; sin eso, el 409 saldría como 500.
+  - `DELETE /admin/plan-de-clases/{id}/imagen` comparte el guardado con la
+    del profesor, así que entró aquí. La protección de admin pasó del
+    decorador a un parámetro, como en sus rutas hermanas del admin: la misma
+    dependencia, una sola vez.
+- Consultas, medidas: cada guardado de estas 12 rutas, **+1 consulta y 0
+  conexiones**, para profesor y admin. Ejemplo, la nota de la planilla: de
+  12 a 13 idas.
+- Pruebas:
+  - `tests/test_anio_lectivo_guardia.py`, 126 nuevas: la regla (diez
+    combinaciones de estado y rol), las tres lecturas (con cursor de tuplas
+    y de diccionarios), y por HTTP en cada ruta y rol: año cerrado → 409,
+    nada escrito y ningún `commit`; preparación y reabierto → 403 al
+    profesor y el admin guarda; activo → como siempre; el id que mira la
+    guardia (clase 9, plan 20, anotación 15); y que una evidencia subida
+    antes de un rechazo se borra del almacenamiento.
+  - Ajustadas a propósito, **111 pruebas en 15 archivos** que fijan cómo
+    se llaman estos guardados y qué consultas hacen. Un solo criterio: si el
+    archivo dobla los ayudantes del guardado (resolutores), dobla también la
+    guardia y anota a quién se le pidió; si cuenta las consultas reales, la
+    guardia corre de verdad, se cuenta (+1) y se corren una posición los
+    índices. Ninguna dejó de comprobar lo que comprobaba. Además: el total
+    de líneas del dominio de planes (1395 → 1413) y las veces que la ruta
+    del boletín reenvía `HTTPException` (2 → 3).
+  - Veintitrés versiones dañadas del código hacen fallar alguna prueba:
+    quitar la guardia de cada una de las 11 escrituras, mirar el id
+    equivocado (dos), dejar escribir al profesor en preparación o al admin
+    en un año cerrado, aceptar un estado desconocido, responder 403 por
+    cerrado, bloquear cuando no hay fila, el 409 convertido en 500 (boletín
+    y planeador), la consulta sin unir el curso, sin cursor de diccionarios
+    y la ruta del admin pasando otro usuario.
+- Documentación: `docs/API_ENDPOINTS.md` ("Guardia de escritura"),
+  `docs/ROLES_PERMISOS_BACKEND.md` y `docs/CAMBIOS_BACKEND.md`.
+- Verificación: `scripts/verify.py` → **1894 pasan, 0 fallan** (antes
+  1747); ruff y `pip check` limpios; `git diff --check` limpio.
+- **Hallazgo para la fase 6** (no se toca ahora): asistencia, boletín y
+  observaciones comprueban en la ruta, antes de la guardia, que el
+  estudiante sea del curso de la clase, comparando con
+  `estudiantes.curso_id` (el curso del año activo). Dos efectos: un
+  profesor que guarda en un año que ya no es el activo recibe primero ese
+  403 ("El estudiante no pertenece a esta asignación") y no el 409 con el
+  año (no se escribe nada, igual); y **el admin no podrá corregir el
+  boletín, la asistencia ni las observaciones de un año reabierto**, porque
+  esa comprobación lo rechaza antes. La fase 6 (reabrir) tiene que hacer que
+  esa comprobación mire la matrícula del año de la clase.
+- Efecto al desplegar: ninguno visible mientras haya un solo año; un poco
+  más de tiempo en cada guardado (~60 ms). Revisión en local: no hace falta
+  y no conviene (guardar en local escribe en la base real).
+- Siguiente: **paso 3.7b**, la guardia en las 19 rutas de solo admin
+  (asignaciones 5, cursos 2, listas de seguimiento 4 —la de "todos los
+  cursos" sin consulta extra—, revisión y observaciones de planes 2,
+  conceptos 4 y valores por estudiante 2), con el mismo método.
 
 ### Fase 4 — Selector de año en el frontend
 
@@ -2175,7 +2257,11 @@ propuestos bajo `/anios-lectivos`:
    inactivas en ese momento como ocultas del año que se cierra. Se guarda
    `activado_en` y `cerrado_en`.
 4. **Reabrir / volver a cerrar** un año pasado (`cerrado` ↔ `reabierto`),
-   solo admin, para correcciones puntuales.
+   solo admin, para correcciones puntuales. Ojo (hallazgo del paso 3.7a):
+   asistencia, boletín y observaciones comprueban en la ruta que el
+   estudiante sea del curso de la clase con `estudiantes.curso_id`; en un
+   año reabierto eso rechaza al admin antes de llegar a guardar. Hay que
+   hacer que esa comprobación mire la matrícula del año de la clase.
 5. Terminado cuando: el ensayo completo de activación en una rama de Neon
    con copia de producción deja la consulta de control en 0 filas, los
    profesores ven solo 2027 y el admin puede consultar e imprimir 2026.
@@ -2368,9 +2454,10 @@ cosa, gana lo que se pueda verificar.
   en `8716fc5` (observador, expediente y planes del admin por año; su
   "Avance" deja una consulta de solo lectura pendiente sobre faltas sin
   clase); paso 3.6 en `0110359` (aviso al renombrar una materia que se usa
-  en otro año). **Paso 3.7 iniciado: medición previa hecha, sin código**
-  (ver "Medición previa del paso 3.7"). Los ocho commits de la fase 3
-  (`57b3710` a `0110359`) no están en GitHub.
+  en otro año). Paso 3.7: medición y costo aceptado en `50d9f53`; **paso
+  3.7a escrito y probado, sin commit** (la guardia en las rutas que usa el
+  profesor; ver su "Avance", que deja un hallazgo para la fase 6). Los
+  nueve commits de la fase 3 (`57b3710` a `50d9f53`) no están en GitHub.
 - **Hecho aparte, la noche del 2026-09-30:** el arreglo de la hora
   (`2e77634` en este repo, `033c042` en el frontend). Cobros, cartera y
   alta de colegios usan la fecha de Colombia (`app/core/fechas.py`), y el
@@ -2399,12 +2486,13 @@ cosa, gana lo que se pueda verificar.
   correr si falta `$env:DATABASE_URL`. Antes de probar la app contra una
   rama, detener el backend local que esté corriendo; si no, el frontend
   sigue hablando con el que apunta a producción.
-- **Siguiente acción exacta:** que el usuario decida si acepta el costo de
-  la guardia del paso 3.7 (+1 consulta, ~60 ms, en 30 rutas; ver "Medición
-  previa del paso 3.7"). Si acepta: escribirla en dos partes, 3.7a las 11
-  rutas que usa el profesor y 3.7b las 19 de solo admin, cada una con
-  caracterización y conteo antes (el banco de medición pasa a ser prueba del
-  repo) y con su visto bueno. Las preguntas abiertas se le hacen al usuario justo antes
+- **Siguiente acción exacta:** que el usuario revise y haga el commit del
+  paso 3.7a. Después, con su visto bueno, **paso 3.7b**: la guardia en las
+  19 rutas de solo admin (lista al final del "Avance" del 3.7a), con el
+  mismo método: conteo antes en `test_anio_lectivo_guardia_conteos.py`, la
+  guardia dentro de la transacción del guardado, +1 consulta y 0
+  conexiones. Con el 3.7b se cierra la fase 3; entonces se anota el
+  contrato completo en el documento del frontend. Las preguntas abiertas se le hacen al usuario justo antes
   del paso que las necesita (lo pidió así el 2026-10-02): la de crear en el
   año en preparación, antes de la fase 5; la del selector, antes de la fase
   4. Al cerrar la fase 3 se anota el contrato completo en el documento del

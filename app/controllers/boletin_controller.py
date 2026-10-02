@@ -4,17 +4,19 @@ from app.core.nivel_academico import (
 )
 from app.database import get_connection
 from app.repositories import boletin_repository
-from app.services.anio_lectivo import anio_distinto_del_activo
+from app.services.anio_lectivo import anio_distinto_del_activo, exigir_asignacion_editable
 from app.services.asignacion_academica import (
     resolver_asignacion_academica_id_cursor,
     resolver_nivel_curso_cursor,
 )
 from psycopg2.extras import RealDictCursor
 
-def guardar_boletin_controller(data):
+def guardar_boletin_controller(data, *, usuario):
     conn = get_connection()
     cursor = conn.cursor()
     try:
+        # Año lectivo, paso 3.7: lo primero, en la conexion que ya se abrio.
+        exigir_asignacion_editable(cursor, data.asignacion_id, usuario)
         asignacion_id = resolver_asignacion_academica_id_cursor(cursor, data.asignacion_id)
         nivel_curso = resolver_nivel_curso_cursor(cursor, asignacion_id)
         tipo_evaluacion = resolver_tipo_evaluacion(

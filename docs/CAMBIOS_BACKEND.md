@@ -6,6 +6,45 @@ Ultima revision documental: 2026-10-02.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
+## 2026-10-02 - Año lectivo: guardia de escritura en las rutas del profesor
+
+Fase 3, paso 3.7a, de `docs/funcionalidades/ANIO_LECTIVO.md`.
+
+### Que cambia
+
+- Las 11 rutas de escritura que usa el profesor (mas el borrado de imagen del
+  admin, que comparte el guardado) miran el año de lo que se guarda antes de
+  escribir: `cerrado` responde 409 para todos; `preparacion` y `reabierto`,
+  403 para el profesor. Con el año activo, todo igual. Lista y mensajes en
+  `docs/API_ENDPOINTS.md`, "Guardia de escritura".
+- Servicio `anio_lectivo`: `exigir_anio_editable` (la regla),
+  `exigir_asignacion_editable`, `exigir_plan_editable`,
+  `exigir_anotacion_editable` y `AnioLectivoNoEditableError`, una
+  `HTTPException`. Repositorio del año: `leer_anio_de_asignacion`,
+  `leer_anio_de_plan` y `leer_anio_de_anotacion`.
+- Los guardados reciben `usuario` (argumento obligatorio, por nombre) desde
+  la ruta hasta la transaccion. Boletin y planeador reenvian
+  `HTTPException` antes de su `except Exception`, para no responder 500.
+- `DELETE /admin/plan-de-clases/{plan_id}/imagen`: la proteccion de admin
+  pasa del decorador a un parametro (`current_user`), como en sus rutas
+  hermanas del admin. Misma dependencia, una sola vez.
+- Costo, aceptado por el usuario: una consulta mas por guardado, ninguna
+  conexion nueva.
+
+### Pruebas
+
+`tests/test_anio_lectivo_guardia_conteos.py` (21): cada ruta y rol, conexiones
+y consultas medidas antes (escrita y pasada contra el codigo anterior) y
+despues: +1 consulta, 0 conexiones. `tests/test_anio_lectivo_guardia.py`
+(126): la regla, las tres lecturas, y por HTTP en cada ruta y rol: año
+cerrado (409, nada escrito, ningun `commit`), en preparacion y reabierto (403
+el profesor; el admin guarda), activo (como siempre), el id que mira la
+guardia y la limpieza de la evidencia subida. Ajustadas a proposito 111
+pruebas de 15 archivos que fijan llamadas y consultas de esos guardados: donde
+el archivo dobla los ayudantes, se dobla la guardia; donde cuenta consultas
+reales, la guardia corre y se cuenta (+1). Veintitres versiones dañadas del
+codigo hacen fallar alguna. `scripts/verify.py`: 1894 pasan, 0 fallan.
+
 ## 2026-10-02 - Año lectivo: aviso al renombrar una materia de otro año
 
 Fase 3, paso 3.6, de `docs/funcionalidades/ANIO_LECTIVO.md` (decision 12).

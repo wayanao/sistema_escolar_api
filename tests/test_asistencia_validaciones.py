@@ -9,6 +9,23 @@ from app.routes import asistencia
 from app.schemas.asistencia import AsistenciaCreate
 
 
+PROFESOR = {"id": 3, "rol": "profesor"}
+
+
+@pytest.fixture(autouse=True)
+def guardia_del_anio(monkeypatch):
+    """Año lectivo, paso 3.7: la guardia de escritura se dobla aqui, como los
+    resolutores del controlador. Sus pruebas viven en
+    `test_anio_lectivo_guardia.py`; aqui solo se anota a quien se le pidio."""
+    llamadas = []
+    monkeypatch.setattr(
+        asistencia_controller,
+        "exigir_asignacion_editable",
+        lambda _cursor, asignacion_id, usuario: llamadas.append((asignacion_id, usuario)),
+    )
+    return llamadas
+
+
 def crear_registro(estudiante_id=1, asignacion_id=10, fecha=date(2026, 7, 15), periodo=2, estado="presente"):
     return AsistenciaCreate(
         estudiante_id=estudiante_id,
@@ -73,7 +90,7 @@ def test_guardar_asistencia_valida_permisos_y_envia_lote(monkeypatch):
     monkeypatch.setattr(
         asistencia,
         "guardar_asistencia_controller",
-        lambda lote: {"mensaje": f"{len(lote)} registros"},
+        lambda lote, usuario: {"mensaje": f"{len(lote)} registros"},
     )
 
     response = asistencia.guardar_asistencia(data, current_user={"id": 3, "rol": "profesor"})
@@ -96,7 +113,7 @@ def test_guardar_asistencia_conserva_precedencia_del_permiso_de_asignacion(monke
     monkeypatch.setattr(
         asistencia,
         "guardar_asistencia_controller",
-        lambda _lote: pytest.fail("No debe escribir sin acceso a la asignación"),
+        lambda _lote, usuario: pytest.fail("No debe escribir sin acceso a la asignación"),
     )
 
     with pytest.raises(HTTPException) as exc:
@@ -118,7 +135,7 @@ def test_guardar_asistencia_no_escribe_si_un_estudiante_no_pertenece(monkeypatch
     monkeypatch.setattr(
         asistencia,
         "guardar_asistencia_controller",
-        lambda _lote: pytest.fail("No debe escribir un lote con un estudiante ajeno"),
+        lambda _lote, usuario: pytest.fail("No debe escribir un lote con un estudiante ajeno"),
     )
 
     with pytest.raises(HTTPException) as exc:
@@ -166,7 +183,7 @@ class FakeConnection:
         self.closed = True
 
 
-def test_controller_actualiza_solo_estudiantes_enviados(monkeypatch):
+def test_controller_actualiza_solo_estudiantes_enviados(monkeypatch, guardia_del_anio):
     cursor = FakeCursor()
     conn = FakeConnection(cursor)
     data = [crear_registro(estudiante_id=1), crear_registro(estudiante_id=2, estado="ausente")]
@@ -183,10 +200,12 @@ def test_controller_actualiza_solo_estudiantes_enviados(monkeypatch):
         lambda _cursor, _asignacion_id: (None, None),
     )
 
-    response = asistencia_controller.guardar_asistencia_controller(data)
+    response = asistencia_controller.guardar_asistencia_controller(data, usuario=PROFESOR)
 
     delete_query, delete_params = cursor.calls[0]
     assert response == {"mensaje": "Asistencia guardada"}
+    # La guardia se pide sobre la clase del lote y con quien guarda.
+    assert guardia_del_anio == [(10, PROFESOR)]
     assert "estudiante_id = ANY" in delete_query
     assert delete_params == (77, date(2026, 7, 15), 2, [1, 2])
     assert conn.committed is True
@@ -212,7 +231,7 @@ def test_controller_hace_rollback_si_falla_actualizacion(monkeypatch):
     )
 
     with pytest.raises(RuntimeError, match="insert fallido"):
-        asistencia_controller.guardar_asistencia_controller([crear_registro()])
+        asistencia_controller.guardar_asistencia_controller([crear_registro()], usuario=PROFESOR)
 
     assert conn.committed is False
     assert conn.rolled_back is True
@@ -239,7 +258,7 @@ def test_controller_rechaza_una_materia_normal_en_curso_preescolar(monkeypatch):
         lambda _cursor, _asignacion_id: ("preescolar", "Matemáticas"),
     )
 
-    response = asistencia_controller.guardar_asistencia_controller([crear_registro()])
+    response = asistencia_controller.guardar_asistencia_controller([crear_registro()], usuario=PROFESOR)
 
     assert response == {
         "error": 'Este curso es de preescolar. Usa la asignación "Asistencia diaria" '
@@ -268,7 +287,7 @@ def test_controller_acepta_la_asignacion_de_jornada_en_curso_preescolar(monkeypa
         lambda _cursor, _asignacion_id: ("preescolar", "ASISTENCIA DIARIA"),
     )
 
-    response = asistencia_controller.guardar_asistencia_controller([crear_registro()])
+    response = asistencia_controller.guardar_asistencia_controller([crear_registro()], usuario=PROFESOR)
 
     assert response == {"mensaje": "Asistencia guardada"}
     assert conn.committed is True
@@ -290,7 +309,7 @@ def test_controller_no_rechaza_una_materia_normal_en_curso_de_primaria(monkeypat
         lambda _cursor, _asignacion_id: ("primaria", "Matemáticas"),
     )
 
-    response = asistencia_controller.guardar_asistencia_controller([crear_registro()])
+    response = asistencia_controller.guardar_asistencia_controller([crear_registro()], usuario=PROFESOR)
 
     assert response == {"mensaje": "Asistencia guardada"}
     assert conn.committed is True

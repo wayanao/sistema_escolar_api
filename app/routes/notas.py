@@ -19,7 +19,7 @@ router = APIRouter(tags=["Notas"], dependencies=[Depends(get_current_user)])
 def crear_nota(nota: NotaCreate, current_user: dict = Depends(get_current_user)):
     require_asignacion_access(nota.asignacion_id, current_user)
 
-    nota_id = crear_nota_controller(nota)
+    nota_id = crear_nota_controller(nota, usuario=current_user)
 
     return {
         "mensaje": "Nota registrada",

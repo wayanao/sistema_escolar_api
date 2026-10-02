@@ -48,6 +48,9 @@ PROFESOR = {"id": 3, "rol": "profesor", "tenant": "tenant_demo"}
 PALABRAS_SQL = ("SELECT", "INSERT", "UPDATE", "DELETE", "WITH ")
 
 ASIGNACION_RESUELTA = 42
+# Año lectivo, paso 3.7: la guardia de escritura lee el año de la clase.
+SQL_GUARDIA = "SELECT al.anio, al.estado"
+GUARDIA_HOY = (2026, "activo")
 
 
 def _literales_sql(ruta_relativa):
@@ -92,6 +95,10 @@ class CursorInstrumentado:
 
     `fetchone` y `fetchall` comparten la misma cola, que es el idioma que ya
     usan las caracterizaciones de `ventas` y de `notas`.
+
+    Año lectivo, paso 3.7: la consulta de la guardia (el año de la clase) se
+    anota como cualquier otra, pero responde "2026 activo" sin gastar la cola,
+    para que cada prueba siga sirviendo las mismas respuestas.
     """
 
     def __init__(self, fetches=()):
@@ -103,6 +110,8 @@ class CursorInstrumentado:
         self.calls.append((query, params))
 
     def fetchone(self):
+        if self.calls and SQL_GUARDIA in self.calls[-1][0]:
+            return GUARDIA_HOY
         return self.fetches.pop(0) if self.fetches else None
 
     def fetchall(self):
@@ -372,7 +381,7 @@ def test_el_dominio_usa_dos_idiomas_de_conexion():
 def test_la_escritura_es_duena_de_su_ciclo_de_vida(instrumentado):
     registro = instrumentado([(ASIGNACION_RESUELTA,), (None, "Matemáticas")])
 
-    asistencia_controller.guardar_asistencia_controller([_registro()])
+    asistencia_controller.guardar_asistencia_controller([_registro()], usuario=ADMIN)
 
     assert registro.conexiones == 1
     assert registro.conexion().committed is True
@@ -392,16 +401,17 @@ def test_la_escritura_revierte_y_cierra_ante_un_fallo(instrumentado):
 
     def execute(query, params=None):
         llamadas["n"] += 1
-        # Llamada 1: resolver asignacion. 2: resolver nivel/materia. 3: DELETE.
-        # 4: primer INSERT, donde se hace fallar la escritura.
-        if llamadas["n"] == 4:
+        # Llamada 1: guardia del año lectivo (paso 3.7). 2: resolver
+        # asignacion. 3: resolver nivel/materia. 4: DELETE. 5: primer INSERT,
+        # donde se hace fallar la escritura.
+        if llamadas["n"] == 5:
             explota(query, params)
         original(query, params)
 
     registro.cursor.execute = execute
 
     with pytest.raises(RuntimeError):
-        asistencia_controller.guardar_asistencia_controller([_registro()])
+        asistencia_controller.guardar_asistencia_controller([_registro()], usuario=ADMIN)
 
     assert registro.conexion().committed is False
     assert registro.conexion().rolled_back is True
@@ -417,18 +427,23 @@ def test_guardar_cuesta_una_conexion_y_dos_consultas_mas_una_por_estudiante(inst
     """La funcionalidad de nivel academico agrega una consulta de solo
     lectura (nivel + materia de la asignacion) dentro de la MISMA
     conexion/transaccion ya abierta -no abre una conexion nueva-. El conteo
-    fijo sube de dos a tres; el costo por estudiante no cambia."""
+    fijo sube de dos a tres; el costo por estudiante no cambia.
+
+    Año lectivo, paso 3.7: la guardia de escritura suma otra lectura fija, la
+    primera, en la misma conexion. De tres a cuatro fijas."""
     registro = instrumentado([(ASIGNACION_RESUELTA,), (None, "Matemáticas")])
 
     asistencia_controller.guardar_asistencia_controller(
-        [_registro(estudiante_id=1), _registro(estudiante_id=2), _registro(estudiante_id=3)]
+        [_registro(estudiante_id=1), _registro(estudiante_id=2), _registro(estudiante_id=3)],
+        usuario=ADMIN,
     )
 
     assert registro.conexiones == 1
-    assert len(registro.cursor.calls) == 6
+    assert len(registro.cursor.calls) == 7
 
     tipos = [s.strip().split()[0].upper() for s in registro.cursor.sql]
-    assert tipos == ["SELECT", "SELECT", "DELETE", "INSERT", "INSERT", "INSERT"]
+    assert tipos == ["SELECT", "SELECT", "SELECT", "DELETE", "INSERT", "INSERT", "INSERT"]
+    assert SQL_GUARDIA in registro.cursor.sql[0]
 
 
 def test_historial_cuesta_una_conexion_y_dos_consultas(instrumentado):
@@ -445,9 +460,11 @@ def test_historial_cuesta_una_conexion_y_dos_consultas(instrumentado):
 
 def test_los_dos_caminos_resuelven_la_asignacion_academica(instrumentado):
     registro = instrumentado([(ASIGNACION_RESUELTA,), (None, "Matemáticas")])
-    asistencia_controller.guardar_asistencia_controller([_registro(asignacion_id=10)])
+    asistencia_controller.guardar_asistencia_controller([_registro(asignacion_id=10)], usuario=ADMIN)
+    # calls[0] es la guardia del año lectivo, sobre la clase pedida (paso 3.7).
     assert registro.cursor.calls[0][1] == (10,)
-    assert registro.cursor.calls[1][1][0] == ASIGNACION_RESUELTA
+    assert registro.cursor.calls[1][1] == (10,)
+    assert registro.cursor.calls[2][1][0] == ASIGNACION_RESUELTA
 
     registro = instrumentado([(ASIGNACION_RESUELTA,), []])
     asistencia_controller.obtener_historial_asistencia(10, 2)
@@ -464,12 +481,13 @@ def test_el_borrado_solo_alcanza_a_los_estudiantes_del_lote(instrumentado):
     registro = instrumentado([(ASIGNACION_RESUELTA,), (None, "Matemáticas")])
 
     asistencia_controller.guardar_asistencia_controller(
-        [_registro(estudiante_id=4), _registro(estudiante_id=9)]
+        [_registro(estudiante_id=4), _registro(estudiante_id=9)], usuario=ADMIN
     )
 
-    # calls[0] resuelve la asignacion academica, calls[1] el nivel/materia
-    # (funcionalidad de nivel academico), calls[2] es el DELETE.
-    _sql, params = registro.cursor.calls[2]
+    # calls[0] es la guardia del año lectivo (paso 3.7), calls[1] resuelve la
+    # asignacion academica, calls[2] el nivel/materia (funcionalidad de nivel
+    # academico), calls[3] es el DELETE.
+    _sql, params = registro.cursor.calls[3]
     assert params == (ASIGNACION_RESUELTA, date(2026, 7, 15), 2, [4, 9])
 
 
@@ -496,11 +514,13 @@ def test_la_escritura_no_valida_el_estado(instrumentado):
     registro = instrumentado([(ASIGNACION_RESUELTA,), (None, "Matemáticas")])
 
     asistencia_controller.guardar_asistencia_controller(
-        [SimpleNamespace(estudiante_id=1, asignacion_id=10, fecha=date(2026, 7, 15), periodo=2, estado="EXCUSA")]
+        [SimpleNamespace(estudiante_id=1, asignacion_id=10, fecha=date(2026, 7, 15), periodo=2, estado="EXCUSA")],
+        usuario=ADMIN,
     )
 
-    # calls[3] es el primer (y unico) INSERT: 0=asignacion, 1=nivel/materia, 2=DELETE.
-    _sql, params = registro.cursor.calls[3]
+    # calls[4] es el primer (y unico) INSERT: 0=guardia del año (paso 3.7),
+    # 1=asignacion, 2=nivel/materia, 3=DELETE.
+    _sql, params = registro.cursor.calls[4]
     assert params[3] == "EXCUSA"
 
 
@@ -570,7 +590,8 @@ def test_el_rechazo_por_nivel_no_abre_una_conexion_extra(ruta_instrumentada):
         "para registrar asistencia."
     }
     assert registro.conexiones == 1
-    assert len(registro.cursor.calls) == 2
+    # Guardia del año lectivo (paso 3.7), asignacion y nivel/materia.
+    assert len(registro.cursor.calls) == 3
     assert registro.conexion().committed is False
 
 
@@ -605,7 +626,9 @@ def test_los_permisos_se_comprueban_una_vez_para_el_lote_completo(monkeypatch):
         "require_estudiantes_in_asignacion",
         lambda estudiantes, asignacion: lotes.append((estudiantes, asignacion)),
     )
-    monkeypatch.setattr(ruta, "guardar_asistencia_controller", lambda lote: {"mensaje": "ok"})
+    monkeypatch.setattr(
+        ruta, "guardar_asistencia_controller", lambda lote, usuario: {"mensaje": "ok"}
+    )
 
     ruta.guardar_asistencia([_registro(estudiante_id=i) for i in range(1, 5)], current_user=ADMIN)
 

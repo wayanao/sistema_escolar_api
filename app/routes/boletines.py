@@ -31,8 +31,11 @@ def guardar_boletin(
     require_asignacion_access(boletin.asignacion_id, current_user)
     require_estudiante_in_asignacion(boletin.estudiante_id, boletin.asignacion_id)
     try:
-        resultado = guardar_boletin_controller(boletin)
+        resultado = guardar_boletin_controller(boletin, usuario=current_user)
         return resultado
+    except HTTPException:
+        # La guardia del año lectivo (409 o 403) sale tal cual, no como 500.
+        raise
     except Exception as e:
         logger.exception("Error guardando boletin")
         raise HTTPException(status_code=500, detail="No se pudo guardar el boletin") from e

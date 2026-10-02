@@ -162,6 +162,13 @@ Con usuario autenticado y alcance por rol, sin ownership:
   paso 3.5b): ademas del ownership de siempre, un profesor solo puede pedir
   el año activo (`anio_distinto_del_activo` con el usuario); otro año da 403.
   El admin puede pedir cualquiera.
+- guardia de escritura del año lectivo (paso 3.7, `exigir_anio_editable` en
+  `app/services/anio_lectivo.py`): se suma al ownership, no lo reemplaza.
+  Nadie escribe en un año `cerrado` (409); el profesor solo en el `activo`
+  (403 en `preparacion` o `reabierto`); el admin en el activo, el de
+  preparacion y uno reabierto. Corre dentro de la transaccion del guardado,
+  antes de escribir. Paso 3.7a: las rutas de escritura que usa el profesor
+  (lista en `docs/API_ENDPOINTS.md`, "Guardia de escritura").
 
 ## Riesgos pendientes documentados
 

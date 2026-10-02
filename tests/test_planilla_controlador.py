@@ -19,6 +19,22 @@ import pytest
 
 from app.controllers import planilla_controller, planilla_excel_controller
 
+PROFESOR = {"id": 3, "rol": "profesor"}
+
+
+@pytest.fixture(autouse=True)
+def guardia_del_anio(monkeypatch):
+    """Año lectivo, paso 3.7: la guardia de escritura se dobla aqui, igual que
+    los resolutores. Sus pruebas viven en `test_anio_lectivo_guardia.py` y la
+    cuenta `test_anio_lectivo_guardia_conteos.py`."""
+    llamadas = []
+    monkeypatch.setattr(
+        planilla_controller,
+        "exigir_asignacion_editable",
+        lambda _cursor, asignacion_id, usuario: llamadas.append((asignacion_id, usuario)),
+    )
+    return llamadas
+
 
 class CursorFalso:
     def __init__(self, fila=None, filas=()):
@@ -98,7 +114,7 @@ DATOS = SimpleNamespace(
 def test_registrar_nota_borra_y_reinserta_en_la_misma_transaccion(cursor_planilla):
     cursor, commits, resueltos, _ = cursor_planilla(fila=(901,))
 
-    respuesta = planilla_controller.registrar_nota_planilla_controller(DATOS)
+    respuesta = planilla_controller.registrar_nota_planilla_controller(DATOS, usuario=PROFESOR)
 
     borrado, params_borrado = cursor.calls[0]
     insercion, params_insercion = cursor.calls[1]
@@ -121,7 +137,7 @@ def test_registrar_nota_de_desarrollo_guarda_valoracion_y_no_nota(cursor_planill
         descripcion="Ensayo", tipo_evaluacion="desarrollo", valoracion="Alto",
     )
 
-    planilla_controller.registrar_nota_planilla_controller(datos)
+    planilla_controller.registrar_nota_planilla_controller(datos, usuario=PROFESOR)
 
     _, params = cursor.calls[1]
     assert params[3] is None
@@ -145,7 +161,7 @@ def test_registrar_nota_en_curso_preescolar_fuerza_desarrollo_aunque_pidan_numer
         descripcion="Parcial 1", tipo_evaluacion="numerica", valoracion=None,
     )
 
-    planilla_controller.registrar_nota_planilla_controller(datos)
+    planilla_controller.registrar_nota_planilla_controller(datos, usuario=PROFESOR)
 
     _, params = cursor.calls[1]
     assert params[3] is None  # nota numerica descartada
@@ -168,7 +184,7 @@ def test_registrar_nota_en_curso_primaria_fuerza_numerica_aunque_pidan_desarroll
         descripcion="Ensayo", tipo_evaluacion="desarrollo", valoracion="Alto",
     )
 
-    planilla_controller.registrar_nota_planilla_controller(datos)
+    planilla_controller.registrar_nota_planilla_controller(datos, usuario=PROFESOR)
 
     _, params = cursor.calls[1]
     assert params[3] == 4.5  # nota numerica si se guarda
@@ -184,7 +200,7 @@ def test_registrar_nota_sin_nivel_definido_mantiene_comportamiento_actual(
     cursos existentes antes de esta funcionalidad."""
     cursor, _, _, niveles = cursor_planilla(fila=(905,), nivel_curso=None)
 
-    planilla_controller.registrar_nota_planilla_controller(DATOS)
+    planilla_controller.registrar_nota_planilla_controller(DATOS, usuario=PROFESOR)
 
     _, params = cursor.calls[1]
     assert params[5] == "numerica"
@@ -199,7 +215,7 @@ def test_registrar_nota_rechaza_estudiante_ajeno_sin_escribir_nada(cursor_planil
         lambda _e, _a, cursor=None: False,
     )
 
-    respuesta = planilla_controller.registrar_nota_planilla_controller(DATOS)
+    respuesta = planilla_controller.registrar_nota_planilla_controller(DATOS, usuario=PROFESOR)
 
     assert respuesta == {"error": "El estudiante no pertenece a esta asignación"}
     # La validacion ahora ocurre dentro del bloque que ya abria el controlador,
@@ -212,7 +228,7 @@ def test_registrar_nota_rechaza_estudiante_ajeno_sin_escribir_nada(cursor_planil
 def test_eliminar_tipo_borra_la_columna_del_periodo(cursor_planilla):
     cursor, commits, resueltos, _ = cursor_planilla()
 
-    respuesta = planilla_controller.eliminar_tipo_controller(12, "Parcial 1", periodo=3)
+    respuesta = planilla_controller.eliminar_tipo_controller(12, "Parcial 1", periodo=3, usuario=PROFESOR)
 
     query, params = cursor.calls[0]
     assert "DELETE FROM notas_detalle" in query
@@ -226,7 +242,7 @@ def test_eliminar_tipo_borra_la_columna_del_periodo(cursor_planilla):
 def test_eliminar_tipo_usa_periodo_uno_por_defecto(cursor_planilla):
     cursor, _, _, _ = cursor_planilla()
 
-    planilla_controller.eliminar_tipo_controller(12, "Parcial 1")
+    planilla_controller.eliminar_tipo_controller(12, "Parcial 1", usuario=PROFESOR)
 
     _, params = cursor.calls[0]
     assert params == (77, 1, "Parcial 1")

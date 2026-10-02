@@ -36,6 +36,23 @@ def test_fila_rechaza_fecha_sin_contenido():
         PlaneadorAnualUpdate(fecha="2026-08-15")
 
 
+PROFESOR = {"id": 3, "rol": "profesor"}
+
+
+@pytest.fixture(autouse=True)
+def guardia_del_anio(monkeypatch):
+    """Año lectivo, paso 3.7: la guardia de escritura se dobla aqui, igual que
+    el resolutor. Sus pruebas viven en `test_anio_lectivo_guardia.py` y la
+    cuenta `test_anio_lectivo_guardia_conteos.py`."""
+    llamadas = []
+    monkeypatch.setattr(
+        planeador_anual_controller,
+        "exigir_asignacion_editable",
+        lambda _cursor, asignacion_id, usuario: llamadas.append((asignacion_id, usuario)),
+    )
+    return llamadas
+
+
 class FakeCursor:
     def __init__(self):
         self.calls = []
@@ -83,7 +100,7 @@ def test_bulk_elimina_filas_vacias_y_conserva_slot_de_filas_diligenciadas(monkey
         lambda _cursor, _asignacion_id: 77,
     )
 
-    planeador_anual_controller.bulk_actualizar_planeadores_controller(10, 2, filas)
+    planeador_anual_controller.bulk_actualizar_planeadores_controller(10, 2, filas, usuario=PROFESOR)
 
     delete_query, delete_params = cursor.calls[0]
     insert_query, insert_params = cursor.calls[1]

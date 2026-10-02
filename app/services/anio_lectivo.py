@@ -2,11 +2,16 @@
 
 Ver docs/funcionalidades/ANIO_LECTIVO.md. Es el servicio que el documento
 preve para el año lectivo: valida el año que se pide (fase 2), decide que
-años puede mirar cada usuario y cuando avisar al renombrar una materia
-(fase 3).
+años puede mirar cada usuario, cuando avisar al renombrar una materia y en
+que años puede guardar cada usuario (fase 3).
 """
+from fastapi import HTTPException, status
+
 from app.repositories.anios_lectivos_repository import (
     leer_anio_activo,
+    leer_anio_de_anotacion,
+    leer_anio_de_asignacion,
+    leer_anio_de_plan,
     leer_anio_lectivo,
     listar_anios_lectivos,
 )
@@ -93,6 +98,70 @@ def _es_admin(usuario):
     # Todo lo que no sea admin se trata como profesor: si mañana aparece otro
     # rol, ve solo el año activo hasta que alguien decida otra cosa.
     return usuario.get("rol") == "admin"
+
+
+# ---------------------------------------------------------------------------
+# Guardia de escritura (fase 3, paso 3.7).
+# ---------------------------------------------------------------------------
+
+MENSAJE_ANIO_CERRADO = "El año lectivo {anio} está cerrado. Solo se puede consultar."
+MENSAJE_SOLO_ANIO_ACTIVO = "Solo se pueden guardar cambios en el año lectivo activo."
+ESTADOS_EDITABLES_POR_ADMIN = {"preparacion", "reabierto"}
+
+
+class AnioLectivoNoEditableError(HTTPException):
+    """El año de lo que se quiere guardar no admite cambios de este usuario.
+
+    Es una `HTTPException` a proposito: la guardia corre dentro de cada
+    guardado, y asi llega a la respuesta tal cual (409 o 403, con su mensaje)
+    sin que cada ruta la traduzca. Las rutas que atrapan `Exception` dejan
+    pasar antes las `HTTPException`.
+    """
+
+    def __init__(self, codigo_http, mensaje):
+        super().__init__(status_code=codigo_http, detail=mensaje)
+
+
+def exigir_anio_editable(anio_y_estado, usuario):
+    """La regla de la guardia, sobre el `(anio, estado)` ya leido.
+
+    | Estado          | Admin | Profesor |
+    |-----------------|-------|----------|
+    | activo          | si    | si       |
+    | preparacion     | si    | 403      |
+    | reabierto       | si    | 403      |
+    | cerrado         | 409   | 409      |
+
+    Un estado desconocido se trata como cerrado. Sin fila (`None`: lo que se
+    quiere guardar no existe) no hace nada: el guardado responde como siempre.
+    """
+    if anio_y_estado is None:
+        return
+    anio, estado = anio_y_estado
+    if estado == "activo":
+        return
+    if estado in ESTADOS_EDITABLES_POR_ADMIN:
+        if _es_admin(usuario):
+            return
+        raise AnioLectivoNoEditableError(status.HTTP_403_FORBIDDEN, MENSAJE_SOLO_ANIO_ACTIVO)
+    raise AnioLectivoNoEditableError(
+        status.HTTP_409_CONFLICT, MENSAJE_ANIO_CERRADO.format(anio=anio)
+    )
+
+
+def exigir_asignacion_editable(cursor, asignacion_id, usuario):
+    """Guardia para lo que cuelga de una clase. Una consulta, en el cursor dado."""
+    exigir_anio_editable(leer_anio_de_asignacion(cursor, asignacion_id), usuario)
+
+
+def exigir_plan_editable(cursor, plan_id, usuario):
+    """Guardia para un plan de clases. Una consulta, en el cursor dado."""
+    exigir_anio_editable(leer_anio_de_plan(cursor, plan_id), usuario)
+
+
+def exigir_anotacion_editable(cursor, anotacion_id, usuario):
+    """Guardia para una anotacion del observador. Una consulta, en el cursor dado."""
+    exigir_anio_editable(leer_anio_de_anotacion(cursor, anotacion_id), usuario)
 
 
 def listar_anios_visibles(cursor, usuario):

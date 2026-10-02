@@ -80,7 +80,9 @@ def guardar_imagen_plan(upload_dir, imagen):
     return db_path_for_key(key)
 
 
-def crear_plan_de_clases_controller(plan: PlanDeClasesCreate, imagen1=None, imagen2=None):
+def crear_plan_de_clases_controller(
+    plan: PlanDeClasesCreate, imagen1=None, imagen2=None, *, usuario
+):
     upload_dir = obtener_directorio_archivos()
     imagenes_creadas = []
 
@@ -93,7 +95,7 @@ def crear_plan_de_clases_controller(plan: PlanDeClasesCreate, imagen1=None, imag
         if imagen2_path:
             imagenes_creadas.append(imagen2_path)
 
-        resultado = guardar_plan(plan, imagen1_path, imagen2_path)
+        resultado = guardar_plan(plan, imagen1_path, imagen2_path, usuario=usuario)
         if resultado.get("resultado") == "version_desactualizada":
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -189,8 +191,8 @@ def listar_observaciones_plan_controller(plan_id):
     return obtener_observaciones_plan(plan_id)
 
 
-def marcar_observacion_vista_controller(plan_id, observacion_id):
-    resultado = confirmar_observacion_vista(plan_id, observacion_id)
+def marcar_observacion_vista_controller(plan_id, observacion_id, *, usuario):
+    resultado = confirmar_observacion_vista(plan_id, observacion_id, usuario=usuario)
     if resultado is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -203,11 +205,12 @@ def obtener_notificaciones_planeadores_controller(current_user, limit=8):
     return obtener_notificaciones_planeadores(current_user, limit=limit)
 
 
-def eliminar_imagen_plan_admin_controller(plan_id, slot, reiniciar_revision=False):
+def eliminar_imagen_plan_admin_controller(plan_id, slot, reiniciar_revision=False, *, usuario):
     path = eliminar_imagen_plan_admin(
         plan_id,
         slot,
         reiniciar_revision=reiniciar_revision,
+        usuario=usuario,
     )
     if path is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan de clases no encontrado")

@@ -25,6 +25,10 @@ CONTROLLER_PATH = ROOT / "app" / "controllers" / "planeador_anual_controller.py"
 REPOSITORY_PATH = ROOT / "app" / "repositories" / "planeador_anual_repository.py"
 SCHEMA_PATH = ROOT / "app" / "schemas" / "planeador_anual.py"
 BASE_DDL_PATH = ROOT / "migrations" / "base" / "20260813_esquema_base_tenant.sql"
+ADMIN = {"id": 9, "rol": "admin"}
+# Año lectivo, paso 3.7: la guardia de escritura lee el año de la clase, la
+# primera consulta del guardado. Aqui se cuenta como las demas.
+SQL_GUARDIA = "SELECT al.anio, al.estado"
 
 
 def _source(path):
@@ -289,8 +293,8 @@ def test_put_http_conserva_status_payload_normalizacion_y_guard(monkeypatch):
     monkeypatch.setattr(
         planeador_anual,
         "bulk_actualizar_planeadores_controller",
-        lambda asignacion_id, periodo, filas: controller_calls.append(
-            (asignacion_id, periodo, filas)
+        lambda asignacion_id, periodo, filas, usuario: controller_calls.append(
+            (asignacion_id, periodo, filas, usuario)
         ),
     )
 
@@ -313,8 +317,9 @@ def test_put_http_conserva_status_payload_normalizacion_y_guard(monkeypatch):
     assert payload == {"message": "Planeador actualizado correctamente"}
     assert guard_calls == [(10, current_user)]
     assert dependency_calls == [current_user]
-    asignacion_id, periodo, filas = controller_calls[0]
+    asignacion_id, periodo, filas, usuario = controller_calls[0]
     assert (asignacion_id, periodo) == (10, 2)
+    assert usuario == current_user
     assert [(fila.contenido, fila.fecha) for fila in filas] == [
         ("Fracciones equivalentes", date(2026, 8, 15)),
         ("", None),
@@ -328,7 +333,7 @@ def test_put_http_invalido_responde_422_antes_del_controlador(monkeypatch):
     monkeypatch.setattr(
         planeador_anual,
         "bulk_actualizar_planeadores_controller",
-        lambda *args: controller_calls.append(args),
+        lambda *args, **kwargs: controller_calls.append(args),
     )
 
     status, payload = asyncio.run(
@@ -363,7 +368,7 @@ def test_path_no_entero_responde_422_antes_del_controlador(monkeypatch, method, 
     monkeypatch.setattr(
         planeador_anual,
         "bulk_actualizar_planeadores_controller",
-        lambda *args: controller_calls.append(args),
+        lambda *args, **kwargs: controller_calls.append(args),
     )
 
     status, response = asyncio.run(
@@ -402,7 +407,7 @@ def test_put_http_no_limita_el_lote_a_los_ocho_slots_del_ddl(monkeypatch):
     monkeypatch.setattr(
         planeador_anual,
         "bulk_actualizar_planeadores_controller",
-        lambda _asignacion_id, _periodo, filas: controller_calls.append(filas),
+        lambda _asignacion_id, _periodo, filas, usuario: controller_calls.append(filas),
     )
     filas = [
         {"contenido": f"Contenido {slot}", "fecha": "2026-08-15"}
@@ -446,7 +451,7 @@ def test_fallo_del_controlador_responde_500_y_expone_el_texto(monkeypatch, metho
     app = _http_app({"id": 9, "rol": "admin"}, dependency_calls)
     monkeypatch.setattr(planeador_anual, "require_asignacion_access", lambda *_args: None)
 
-    def fallar(*_args):
+    def fallar(*_args, **_kwargs):
         raise RuntimeError("detalle interno planeador")
 
     if method == "GET":
@@ -478,6 +483,8 @@ class RecordingCursor:
             raise RuntimeError("fallo simulado")
 
     def fetchone(self):
+        if self.calls and SQL_GUARDIA in self.calls[-1][0]:
+            return (2026, "activo")
         return self.fetchone_values.pop(0)
 
     def fetchall(self):
@@ -618,13 +625,15 @@ def _filled_rows(count):
     ]
 
 
+# Año lectivo, paso 3.7: la guardia suma una consulta y ninguna conexion
+# (antes 2/4/3/5).
 @pytest.mark.parametrize(
     ("role", "row_count", "expected_queries", "expected_connections"),
     [
-        ("admin", 1, 2, 1),
-        ("admin", 3, 4, 1),
-        ("profesor", 1, 3, 2),
-        ("profesor", 3, 5, 2),
+        ("admin", 1, 3, 1),
+        ("admin", 3, 5, 1),
+        ("profesor", 1, 4, 2),
+        ("profesor", 3, 6, 2),
     ],
 )
 def test_put_es_un_mas_n_consultas_con_conexiones_constantes(
@@ -677,9 +686,11 @@ def test_put_mas_corto_no_borra_slots_que_no_llegan_en_el_payload(monkeypatch):
         10,
         2,
         _filled_rows(1),
+        usuario=ADMIN,
     )
 
-    consultas_dominio = cursor.calls[1:]
+    # calls[0] es la guardia del año lectivo (paso 3.7), calls[1] el resolutor.
+    consultas_dominio = cursor.calls[2:]
     assert len(consultas_dominio) == 1
     assert "INSERT INTO planeador_anual" in consultas_dominio[0][0]
     assert "ON CONFLICT (asignacion_id, periodo, slot)" in consultas_dominio[0][0]
@@ -691,10 +702,12 @@ def test_put_vacio_confirma_sin_borrar_ningun_slot(monkeypatch):
     conn = RecordingConnection(cursor)
     monkeypatch.setattr(planeador_anual_controller, "get_connection", lambda: conn)
 
-    planeador_anual_controller.bulk_actualizar_planeadores_controller(10, 2, [])
+    planeador_anual_controller.bulk_actualizar_planeadores_controller(10, 2, [], usuario=ADMIN)
 
-    assert len(cursor.calls) == 1
-    assert "FROM asignaciones" in cursor.calls[0][0]
+    # La guardia del año lectivo (paso 3.7) y el resolutor; nada de escritura.
+    assert len(cursor.calls) == 2
+    assert SQL_GUARDIA in cursor.calls[0][0]
+    assert "FROM asignaciones" in cursor.calls[1][0]
     assert conn.commits == 1
     assert conn.rollbacks == 0
     assert cursor.closed is True
@@ -702,7 +715,9 @@ def test_put_vacio_confirma_sin_borrar_ningun_slot(monkeypatch):
 
 
 def test_bulk_fallido_revierte_y_cierra_la_conexion(monkeypatch):
-    cursor = RecordingCursor(fetchone_values=[(77,)], fail_on_call=3)
+    # Falla el segundo INSERT: 1 guardia del año (paso 3.7), 2 resolutor, 3 y 4
+    # los INSERT.
+    cursor = RecordingCursor(fetchone_values=[(77,)], fail_on_call=4)
     conn = RecordingConnection(cursor)
     monkeypatch.setattr(planeador_anual_controller, "get_connection", lambda: conn)
 
@@ -711,6 +726,7 @@ def test_bulk_fallido_revierte_y_cierra_la_conexion(monkeypatch):
             10,
             2,
             _filled_rows(2),
+            usuario=ADMIN,
         )
 
     assert conn.commits == 0

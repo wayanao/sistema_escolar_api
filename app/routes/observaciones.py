@@ -36,7 +36,7 @@ def guardar_observacion(data: ObservacionCreate, current_user: dict = Depends(ge
     require_estudiante_in_asignacion(data.estudiante_id, data.asignacion_id)
 
     try:
-        return guardar_observacion_controller(data.model_dump())
+        return guardar_observacion_controller(data.model_dump(), usuario=current_user)
     except HTTPException:
         raise
     except AsignacionInactivaError:

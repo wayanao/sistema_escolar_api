@@ -3,8 +3,9 @@
 Fase 1: lo minimo para que toda fila nueva nazca con su año. Fase 2: leer un
 año pedido, para cobrar en un año que no es el activo. Fase 3: listar los
 años, para que el frontend sepa cuales hay y cual es el activo,
-`condicion_anio`, el filtro por año que comparten los listados, y en que años
-se dicta una materia (aviso al renombrarla). Como el resto de
+`condicion_anio`, el filtro por año que comparten los listados, en que años
+se dicta una materia (aviso al renombrarla) y el año de una clase, un plan o
+una anotacion (guardia de escritura). Como el resto de
 repositorios, cada funcion recibe el cursor de quien llama y no abre, confirma
 ni cierra nada.
 """
@@ -92,6 +93,72 @@ def leer_anio_de_curso(cursor, curso_id):
         (curso_id,),
     )
     return cursor.fetchone()
+
+
+def _anio_y_estado(cursor, sql, params):
+    """Ejecuta una lectura de `(anio, estado)` y la devuelve como tupla o `None`.
+
+    Siempre como tupla, tambien con un cursor de diccionarios, como
+    `leer_anio_lectivo`.
+    """
+    cursor.execute(sql, params)
+    fila = cursor.fetchone()
+    if isinstance(fila, dict):
+        return (fila["anio"], fila["estado"])
+    return fila
+
+
+def leer_anio_de_asignacion(cursor, asignacion_id):
+    """El año de una clase como `(anio, estado)`, o `None` si no existe.
+
+    El año sale del curso de la clase. Lo usa la guardia de escritura del paso
+    3.7 para notas, planilla, asistencia, boletin, observaciones, planeador y
+    planes de clase.
+    """
+    return _anio_y_estado(
+        cursor,
+        """
+        SELECT al.anio, al.estado
+        FROM asignaciones a
+        JOIN cursos c ON c.id = a.curso_id
+        JOIN anios_lectivos al ON al.id = c.anio_lectivo_id
+        WHERE a.id = %s
+        """,
+        (asignacion_id,),
+    )
+
+
+def leer_anio_de_plan(cursor, plan_id):
+    """El año de un plan de clases como `(anio, estado)`, o `None` si no existe."""
+    return _anio_y_estado(
+        cursor,
+        """
+        SELECT al.anio, al.estado
+        FROM plan_de_clases p
+        JOIN asignaciones a ON a.id = p.asignacion_id
+        JOIN cursos c ON c.id = a.curso_id
+        JOIN anios_lectivos al ON al.id = c.anio_lectivo_id
+        WHERE p.id = %s
+        """,
+        (plan_id,),
+    )
+
+
+def leer_anio_de_anotacion(cursor, anotacion_id):
+    """El año de una anotacion del observador como `(anio, estado)`, o `None`.
+
+    La anotacion no cuelga de un curso: guarda su propio año.
+    """
+    return _anio_y_estado(
+        cursor,
+        """
+        SELECT al.anio, al.estado
+        FROM observador_anotaciones o
+        JOIN anios_lectivos al ON al.id = o.anio_lectivo_id
+        WHERE o.id = %s
+        """,
+        (anotacion_id,),
+    )
 
 
 def leer_nombre_y_anios_de_materia(cursor, materia_id):

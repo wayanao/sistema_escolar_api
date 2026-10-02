@@ -70,18 +70,36 @@ def validaciones_ok(monkeypatch):
 
 
 NOTA = SimpleNamespace(asignacion_id=12, estudiante_id=11, nota=4.2, descripcion="Parcial 1")
+ADMIN = {"id": 1, "rol": "admin"}
 
 
-def test_crear_nota_inserta_confirmando(cursor_de, validaciones_ok):
+@pytest.fixture(autouse=True)
+def guardia_del_anio(monkeypatch):
+    """Año lectivo, paso 3.7: la guardia de escritura se dobla aqui, igual que
+    el resolutor de la asignacion academica, asi que no suma en los conteos de
+    este archivo (en produccion es una consulta mas; la cuenta
+    `test_anio_lectivo_guardia_conteos.py`). Sus pruebas viven en
+    `test_anio_lectivo_guardia.py`; aqui solo se anota a quien se le pidio."""
+    llamadas = []
+    monkeypatch.setattr(
+        notas_controller,
+        "exigir_asignacion_editable",
+        lambda _cursor, asignacion_id, usuario: llamadas.append((asignacion_id, usuario)),
+    )
+    return llamadas
+
+
+def test_crear_nota_inserta_confirmando(cursor_de, validaciones_ok, guardia_del_anio):
     cursor, commits, resueltos = cursor_de(fila=(501,))
 
-    respuesta = notas_controller.crear_nota_controller(NOTA)
+    respuesta = notas_controller.crear_nota_controller(NOTA, usuario=ADMIN)
 
     query, params = cursor.calls[0]
     assert "INSERT INTO notas_detalle" in query
     assert "RETURNING id" in query
     assert params == (11, 77, 4.2, "Parcial 1")
     assert resueltos == [12]
+    assert guardia_del_anio == [(12, ADMIN)]
     assert commits == [True]
     assert respuesta == {"mensaje": "Nota creada", "id": 501}
 
@@ -94,15 +112,18 @@ def test_crear_nota_inserta_confirmando(cursor_de, validaciones_ok):
         ("validar_estudiante_en_curso", "El estudiante no pertenece a ese curso"),
     ],
 )
-def test_crear_nota_rechaza_sin_pedir_conexion(cursor_de, validaciones_ok, monkeypatch, validador, mensaje):
+def test_crear_nota_rechaza_sin_pedir_conexion(
+    cursor_de, validaciones_ok, monkeypatch, validador, mensaje, guardia_del_anio
+):
     cursor, commits, _ = cursor_de()
     monkeypatch.setattr(notas_controller, validador, lambda *_args: False)
 
-    respuesta = notas_controller.crear_nota_controller(NOTA)
+    respuesta = notas_controller.crear_nota_controller(NOTA, usuario=ADMIN)
 
     assert respuesta == {"error": mensaje}
     assert cursor.calls == []
     assert commits == []
+    assert guardia_del_anio == []
 
 
 def test_notas_estudiante_calcula_el_promedio(cursor_de):

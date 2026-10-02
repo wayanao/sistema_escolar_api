@@ -88,6 +88,37 @@ Notas:
   que acepten `?anio_lectivo_id=` (pasos 3.2 a 3.5) usan el activo si no
   llega; un profesor que pida otro año recibira 403.
 
+### Guardia de escritura (paso 3.7)
+
+Antes de guardar, el backend mira el año de lo que se guarda (el de la clase,
+el del plan o el de la anotacion) y aplica esta regla:
+
+| Estado del año | Admin | Profesor |
+|---|---|---|
+| `activo` | guarda | guarda |
+| `preparacion` | guarda | `403` |
+| `reabierto` | guarda | `403` |
+| `cerrado` | `409` | `409` |
+
+- `409`: `{"detail": "El año lectivo 2026 está cerrado. Solo se puede consultar."}`.
+- `403`: `{"detail": "Solo se pueden guardar cambios en el año lectivo activo."}`.
+- No se escribe nada: la guardia es lo primero de la transaccion. Con el año
+  activo, la respuesta es la de siempre.
+- Paso 3.7a (rutas que usa el profesor): `POST /notas`, `POST /planilla/nota`,
+  `DELETE /planilla/tipo`, `POST /asistencia`, `POST /boletines/guardar`,
+  `POST /observaciones`, `PUT /observador/{anotacion_id}`, `PUT
+  /planeador-anual/{asignacion_id}/{periodo}`, `POST /plan-de-clases`,
+  `DELETE /plan-de-clases/{plan_id}/imagen`, `PATCH
+  /plan-de-clases/{plan_id}/observaciones/{observacion_id}/vista` y, porque
+  comparte el guardado, `DELETE /admin/plan-de-clases/{plan_id}/imagen`.
+- `POST /observador` no la lleva: la anotacion nueva nace siempre en el año
+  activo.
+- En asistencia, boletin y observaciones, la comprobacion de que el
+  estudiante es del curso de la clase corre antes, en la ruta. Para una clase
+  de un año que ya no es el activo esa comprobacion responde primero `403`
+  ("El estudiante no pertenece a esta asignación"); el efecto es el mismo:
+  no se guarda.
+
 ## Estudiantes
 
 - `POST /estudiantes`

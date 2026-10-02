@@ -201,6 +201,9 @@ class RepositoryCursor:
 
     def fetchone(self):
         query = self.last_query
+        # Año lectivo, paso 3.7: la guardia de escritura ve 2026 activo.
+        if "SELECT al.anio, al.estado" in query:
+            return (2026, "activo")
         if "AS asignacion_academica_id" in query:
             return (23,)
         if "RETURNING id, version_revision, estado_revision" in query:
@@ -283,8 +286,10 @@ def test_domain_boundary_is_five_own_product_files():
 
     assert discovered == DOMAIN_FILES
     # 1382 -> 1395: año lectivo, fase 3 (paso 3.5b), la lista de planes del
-    # admin por año (repositorio y ruta).
-    assert sum(len(_source(path).splitlines()) for path in DOMAIN_FILES) == 1395
+    # admin por año (repositorio y ruta). 1395 -> 1413: paso 3.7, la guardia
+    # de escritura en crear, borrar imagen y marcar vista (quien guarda llega
+    # hasta el repositorio, y la ruta del admin recibe al admin).
+    assert sum(len(_source(path).splitlines()) for path in DOMAIN_FILES) == 1413
     own_source = "\n".join(_source(path) for path in DOMAIN_FILES)
     assert "planeador_anual" not in own_source
     assert "app.routes.observaciones" not in own_source
@@ -613,9 +618,11 @@ def test_assignment_history_has_constant_query_and_connection_counts(
     ) == expected_queries
 
 
+# Año lectivo, paso 3.7: la guardia suma una consulta y ninguna conexion
+# (antes 3 y 4).
 @pytest.mark.parametrize(
     ("role", "expected_connections", "expected_queries"),
-    [("admin", 1, 3), ("profesor", 2, 4)],
+    [("admin", 1, 4), ("profesor", 2, 5)],
 )
 def test_create_without_version_or_images_has_constant_baseline(
     monkeypatch,

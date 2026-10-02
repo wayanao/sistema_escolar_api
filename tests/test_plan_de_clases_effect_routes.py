@@ -119,6 +119,13 @@ class FakeUpload:
         self.file = BytesIO(content)
 
 
+PROFESOR_PLAN = {"id": 9, "rol": "profesor"}
+ADMIN_PLAN = {"id": 1, "rol": "admin"}
+# Año lectivo, paso 3.7: la guardia de escritura lee el año del plan, la
+# primera consulta de cada guardado. Aqui corre de verdad y se cuenta.
+SQL_GUARDIA = "SELECT al.anio, al.estado"
+
+
 class ScriptedCursor:
     def __init__(self, rows):
         self.rows = iter(rows)
@@ -128,6 +135,8 @@ class ScriptedCursor:
         self.calls.append((query, params))
 
     def fetchone(self):
+        if self.calls and SQL_GUARDIA in self.calls[-1][0]:
+            return (2026, "activo")
         return next(self.rows)
 
 
@@ -280,8 +289,9 @@ def test_create_checks_access_then_builds_model_and_delegates(monkeypatch):
     def fake_guard(asignacion_id, user, detail):
         observed.append(("guard", asignacion_id, user, detail))
 
-    def fake_controller(model, imagen1, imagen2):
+    def fake_controller(model, imagen1, imagen2, usuario):
         observed.append(("controller", model, imagen1, imagen2))
+        observed.append(("usuario", usuario))
         return expected
 
     monkeypatch.setattr(plan_de_clases, "require_asignacion_access", fake_guard)
@@ -317,6 +327,7 @@ def test_create_checks_access_then_builds_model_and_delegates(monkeypatch):
     }
     assert imagen1 is values["imagen1"]
     assert imagen2 is values["imagen2"]
+    assert observed[2] == ("usuario", values["current_user"])
 
 
 def test_create_access_denial_precedes_validation_and_controller(monkeypatch):
@@ -399,7 +410,7 @@ def test_create_preserves_http_errors_and_translates_other_errors(
         lambda *_args, **_kwargs: None,
     )
 
-    def fail(*_args):
+    def fail(*_args, **_kwargs):
         raise error
 
     monkeypatch.setattr(plan_de_clases, "crear_plan_de_clases_controller", fail)
@@ -418,20 +429,20 @@ def test_create_preserves_http_errors_and_translates_other_errors(
             "eliminar_imagen_plan_profesor",
             "imagen1",
             (31, "imagen1"),
-            {"reiniciar_revision": True},
+            {"reiniciar_revision": True, "usuario": PROFESOR_PLAN},
         ),
         (
             "eliminar_imagen_plan_admin",
             "imagen2",
             (31, "imagen2"),
-            {},
+            {"usuario": ADMIN_PLAN},
         ),
     ],
 )
 def test_delete_routes_preserve_mode_and_response(
     monkeypatch, handler_name, slot, expected_args, expected_kwargs
 ):
-    current_user = {"id": 9, "rol": "profesor"}
+    current_user = PROFESOR_PLAN
     expected = {"mensaje": "Imagen eliminada correctamente"}
     observed = []
 
@@ -452,6 +463,9 @@ def test_delete_routes_preserve_mode_and_response(
     kwargs = {"plan_id": 31, "slot": slot}
     if handler_name.endswith("profesor"):
         kwargs["current_user"] = current_user
+    else:
+        # Paso 3.7: la ruta del admin recibe al admin, para la guardia.
+        kwargs["current_user"] = ADMIN_PLAN
 
     response = _invoke(handler, **kwargs)
 
@@ -691,8 +705,8 @@ def test_mark_view_delegates_or_preserves_404(monkeypatch, missing):
     def fake_guard(plan_id, user, detail):
         observed.append(("guard", plan_id, user, detail))
 
-    def fake_controller(plan_id, observation_id):
-        observed.append(("controller", plan_id, observation_id))
+    def fake_controller(plan_id, observation_id, usuario):
+        observed.append(("controller", plan_id, observation_id, usuario))
         if missing:
             raise HTTPException(
                 status_code=404,
@@ -727,7 +741,7 @@ def test_mark_view_delegates_or_preserves_404(monkeypatch, missing):
         assert response is expected
     assert observed == [
         ("guard", 31, current_user, "No tienes permisos para este plan"),
-        ("controller", 31, 7),
+        ("controller", 31, 7, current_user),
     ]
 
 
@@ -893,8 +907,8 @@ def test_create_controller_preserves_image_then_db_order(monkeypatch):
         events.append(("image", directory, image))
         return paths[image]
 
-    def fake_plan(model, image1_path, image2_path):
-        events.append(("db", model, image1_path, image2_path))
+    def fake_plan(model, image1_path, image2_path, usuario):
+        events.append(("db", model, image1_path, image2_path, usuario))
         return expected
 
     monkeypatch.setattr(plan_de_clases_controller, "guardar_imagen_plan", fake_image)
@@ -910,6 +924,7 @@ def test_create_controller_preserves_image_then_db_order(monkeypatch):
         model,
         first,
         second,
+        usuario=PROFESOR_PLAN,
     )
 
     assert result is expected
@@ -921,6 +936,7 @@ def test_create_controller_preserves_image_then_db_order(monkeypatch):
             model,
             "uploads/tenant/first.jpg",
             "uploads/tenant/second.jpg",
+            PROFESOR_PLAN,
         ),
     ]
 
@@ -934,7 +950,7 @@ def test_create_controller_keeps_canonical_version_conflict(monkeypatch):
     monkeypatch.setattr(
         plan_de_clases_controller,
         "guardar_plan",
-        lambda *_args: {
+        lambda *_args, **_kwargs: {
             "resultado": "version_desactualizada",
             "version_actual": 7,
         },
@@ -945,6 +961,7 @@ def test_create_controller_keeps_canonical_version_conflict(monkeypatch):
             SimpleNamespace(),
             imagen1=None,
             imagen2=None,
+            usuario=PROFESOR_PLAN,
         )
 
     assert exc_info.value.status_code == 409
@@ -1004,7 +1021,7 @@ def test_create_controller_cleans_first_image_if_second_save_fails(monkeypatch):
     monkeypatch.setattr(
         plan_de_clases_controller,
         "guardar_plan",
-        lambda *_args: pytest.fail("No debe tocar DB"),
+        lambda *_args, **_kwargs: pytest.fail("No debe tocar DB"),
     )
     monkeypatch.setattr(
         plan_de_clases_controller,
@@ -1017,6 +1034,7 @@ def test_create_controller_cleans_first_image_if_second_save_fails(monkeypatch):
             SimpleNamespace(),
             first,
             second,
+            usuario=PROFESOR_PLAN,
         )
 
     assert events == [
@@ -1032,8 +1050,8 @@ def test_delete_controller_calls_repository_before_storage_delete(
 ):
     events = []
 
-    def fake_repository(plan_id, slot, reiniciar_revision=False):
-        events.append(("db", plan_id, slot, reiniciar_revision))
+    def fake_repository(plan_id, slot, reiniciar_revision=False, *, usuario):
+        events.append(("db", plan_id, slot, reiniciar_revision, usuario))
         return None if missing else "uploads/tenant/plan.jpg"
 
     monkeypatch.setattr(
@@ -1053,19 +1071,21 @@ def test_delete_controller_calls_repository_before_storage_delete(
                 31,
                 "imagen1",
                 reiniciar_revision=True,
+                usuario=PROFESOR_PLAN,
             )
         assert exc_info.value.status_code == 404
         assert exc_info.value.detail == "Plan de clases no encontrado"
-        assert events == [("db", 31, "imagen1", True)]
+        assert events == [("db", 31, "imagen1", True, PROFESOR_PLAN)]
     else:
         result = plan_de_clases_controller.eliminar_imagen_plan_admin_controller(
             31,
             "imagen1",
             reiniciar_revision=True,
+            usuario=PROFESOR_PLAN,
         )
         assert result == {"mensaje": "Imagen eliminada correctamente"}
         assert events == [
-            ("db", 31, "imagen1", True),
+            ("db", 31, "imagen1", True, PROFESOR_PLAN),
             ("delete", "uploads/tenant/plan.jpg"),
         ]
 
@@ -1084,14 +1104,18 @@ def test_admin_delete_repository_keeps_simple_transaction(monkeypatch):
         31,
         "imagen2",
         reiniciar_revision=False,
+        usuario=ADMIN_PLAN,
     )
 
     assert path == "uploads/tenant/plan.jpg"
-    assert len(cursor.calls) == 2
-    assert "SELECT imagen2, estado_revision" in cursor.calls[0][0]
-    assert "FOR UPDATE" in cursor.calls[0][0]
+    # Año lectivo, paso 3.7: la guardia va primero, en la misma transaccion.
+    assert len(cursor.calls) == 3
+    assert SQL_GUARDIA in cursor.calls[0][0]
     assert cursor.calls[0][1] == (31,)
-    update, params = cursor.calls[1]
+    assert "SELECT imagen2, estado_revision" in cursor.calls[1][0]
+    assert "FOR UPDATE" in cursor.calls[1][0]
+    assert cursor.calls[1][1] == (31,)
+    update, params = cursor.calls[2]
     assert "SET imagen2 = NULL" in update
     assert "version_revision" not in update
     assert "plan_de_clases_notificaciones_admin" not in update
@@ -1117,11 +1141,14 @@ def test_mark_view_repository_preserves_transaction_and_result(
 
     monkeypatch.setattr(plan_de_clases_repository, "get_cursor", fake_get_cursor)
 
-    result = plan_de_clases_repository.marcar_observacion_vista(31, 7)
+    result = plan_de_clases_repository.marcar_observacion_vista(31, 7, usuario=PROFESOR_PLAN)
 
     assert result == expected
-    assert len(cursor.calls) == 1
-    query, params = cursor.calls[0]
+    # Año lectivo, paso 3.7: la guardia va primero, en la misma transaccion.
+    assert len(cursor.calls) == 2
+    assert SQL_GUARDIA in cursor.calls[0][0]
+    assert cursor.calls[0][1] == (31,)
+    query, params = cursor.calls[1]
     assert "COALESCE" in query
     assert "WHERE id = %s AND plan_id = %s" in query
     assert params == (7, 31)
@@ -1131,11 +1158,11 @@ def test_mark_view_controller_keeps_missing_404(monkeypatch):
     monkeypatch.setattr(
         plan_de_clases_controller,
         "confirmar_observacion_vista",
-        lambda _plan_id, _observation_id: None,
+        lambda _plan_id, _observation_id, usuario: None,
     )
 
     with pytest.raises(HTTPException) as exc_info:
-        plan_de_clases_controller.marcar_observacion_vista_controller(31, 7)
+        plan_de_clases_controller.marcar_observacion_vista_controller(31, 7, usuario=PROFESOR_PLAN)
 
     assert exc_info.value.status_code == 404
     assert exc_info.value.detail == "Observacion no encontrada para este plan"

@@ -37,7 +37,7 @@ def guardar_asistencia(data: List[AsistenciaCreate], current_user: dict = Depend
         [item.estudiante_id for item in data],
         referencia.asignacion_id,
     )
-    return guardar_asistencia_controller(data)
+    return guardar_asistencia_controller(data, usuario=current_user)
 
 
 @router.get("/asistencia/historial/{asignacion_id}/{periodo}")

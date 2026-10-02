@@ -71,7 +71,7 @@ def crear_plan_de_clases(
             tema=tema,
             fecha=date.fromisoformat(fecha),
         )
-        result = crear_plan_de_clases_controller(plan, imagen1, imagen2)
+        result = crear_plan_de_clases_controller(plan, imagen1, imagen2, usuario=current_user)
         return result
     except HTTPException:
         raise
@@ -112,6 +112,7 @@ def eliminar_imagen_plan_profesor(
             plan_id,
             slot,
             reiniciar_revision=True,
+            usuario=current_user,
         )
     except HTTPException:
         raise
@@ -200,16 +201,20 @@ def marcar_observacion_vista(
         current_user,
         detail="No tienes permisos para este plan",
     )
-    return marcar_observacion_vista_controller(plan_id, observacion_id)
+    return marcar_observacion_vista_controller(plan_id, observacion_id, usuario=current_user)
 
 
-@router.delete("/admin/plan-de-clases/{plan_id}/imagen", dependencies=[Depends(get_current_active_admin)])
+@router.delete("/admin/plan-de-clases/{plan_id}/imagen")
 def eliminar_imagen_plan_admin(
     plan_id: int,
     slot: str = Query(..., pattern="^(imagen1|imagen2)$"),
+    # Año lectivo, paso 3.7: la guardia necesita saber quien guarda. La misma
+    # proteccion de admin que antes iba en el decorador, ahora como parametro,
+    # como en la revision y las observaciones del admin.
+    current_user: dict = Depends(get_current_active_admin),
 ):
     try:
-        return eliminar_imagen_plan_admin_controller(plan_id, slot)
+        return eliminar_imagen_plan_admin_controller(plan_id, slot, usuario=current_user)
     except HTTPException:
         raise
     except Exception:

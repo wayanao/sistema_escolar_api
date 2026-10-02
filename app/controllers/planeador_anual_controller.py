@@ -1,6 +1,7 @@
 from app.database import get_connection, get_cursor
 from app.repositories import planeador_anual_repository
 from app.schemas.planeador_anual import PlaneadorAnualCreate, PlaneadorAnualUpdate
+from app.services.anio_lectivo import exigir_asignacion_editable
 from app.services.asignacion_academica import resolver_asignacion_academica_id_cursor
 from typing import List
 
@@ -59,10 +60,18 @@ def actualizar_planeador_anual_controller(planeador_id: int, planeador: Planeado
             planeador.fecha,
         )
 
-def bulk_actualizar_planeadores_controller(asignacion_id: int, periodo: int, planeadores: List[PlaneadorAnualUpdate]):
+def bulk_actualizar_planeadores_controller(
+    asignacion_id: int,
+    periodo: int,
+    planeadores: List[PlaneadorAnualUpdate],
+    *,
+    usuario,
+):
     conn = get_connection()
     cursor = conn.cursor()
     try:
+        # Año lectivo, paso 3.7: lo primero, en la conexion que ya se abrio.
+        exigir_asignacion_editable(cursor, asignacion_id, usuario)
         asignacion_id = resolver_asignacion_academica_id_cursor(cursor, asignacion_id)
         for i, planeador in enumerate(planeadores):
             slot = i + 1

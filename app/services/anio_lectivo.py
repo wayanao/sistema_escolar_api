@@ -1,9 +1,18 @@
 """Reglas del año lectivo que comparten varios modulos.
 
 Ver docs/funcionalidades/ANIO_LECTIVO.md. Es el servicio que el documento
-preve para el año lectivo; por ahora solo valida el año que se pide.
+preve para el año lectivo: valida el año que se pide (fase 2) y decide que
+años puede mirar cada usuario (fase 3).
 """
-from app.repositories.anios_lectivos_repository import leer_anio_lectivo
+from app.repositories.anios_lectivos_repository import (
+    leer_anio_activo,
+    leer_anio_lectivo,
+    listar_anios_lectivos,
+)
+
+
+class AnioLectivoNoPermitidoError(Exception):
+    """Un usuario que no es admin pidio un año que no es el activo."""
 
 
 def exigir_anio_lectivo(cursor, anio_lectivo_id):
@@ -16,4 +25,44 @@ def exigir_anio_lectivo(cursor, anio_lectivo_id):
     anio = leer_anio_lectivo(cursor, anio_lectivo_id)
     if anio is None:
         raise ValueError("El año lectivo seleccionado no existe.")
+    return anio
+
+
+def _es_admin(usuario):
+    # Todo lo que no sea admin se trata como profesor: si mañana aparece otro
+    # rol, ve solo el año activo hasta que alguien decida otra cosa.
+    return usuario.get("rol") == "admin"
+
+
+def listar_anios_visibles(cursor, usuario):
+    """Los años que puede mirar el usuario, como filas `(id, anio, estado)`.
+
+    El admin ve todos (decision 3: consulta los años pasados). El profesor
+    solo el activo (decision 4), y una lista vacia si el colegio no tuviera
+    año activo.
+    """
+    if _es_admin(usuario):
+        return listar_anios_lectivos(cursor)
+    activo = leer_anio_activo(cursor)
+    return [activo] if activo else []
+
+
+def resolver_anio_pedido(cursor, anio_lectivo_id, usuario):
+    """El año que se quiere mirar en un listado, ya validado.
+
+    Sin `anio_lectivo_id` devuelve `None` **sin consultar nada**: quien llama
+    usa el año activo con `ANIO_ACTIVO_ID_SQL` dentro de su propia consulta,
+    asi que la peticion de hoy, que no manda año, cuesta lo mismo que antes.
+
+    Con el, devuelve `(id, anio, estado)`. Lanza `ValueError` si no existe y
+    `AnioLectivoNoPermitidoError` si el usuario no es admin y el año no es el
+    activo: el profesor no navega otros años (decision 4).
+    """
+    if anio_lectivo_id is None:
+        return None
+    anio = exigir_anio_lectivo(cursor, anio_lectivo_id)
+    if not _es_admin(usuario) and anio[2] != "activo":
+        raise AnioLectivoNoPermitidoError(
+            "Solo se puede consultar el año lectivo activo."
+        )
     return anio

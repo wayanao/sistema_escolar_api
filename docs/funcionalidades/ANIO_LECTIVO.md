@@ -2,8 +2,9 @@
 
 ## Control
 
-- Estado: **Fase 3 iniciada el 2026-10-02: inventario confirmado y plan
-  por pasos propuesto, sin código.** **Fase 2 con el código completo el
+- Estado: **Fase 3 en curso: inventario y plan del 2026-10-02; paso 3.1
+  (años lectivos y regla del año pedido) escrito y probado, sin commit.**
+  **Fase 2 con el código completo el
   2026-10-01, sin desplegar.**
   Pasos 2.1 (las cuotas se cuentan en el año del concepto), 2.2 (cada año
   cuenta solo sus pagos), 2.3 (pagar en otro año) y 2.4 (deuda de años
@@ -1583,6 +1584,51 @@ Dentro de la fase, van primero los que bloquearían la fase 5 (3.2 y 3.3: sin
 ellos, crear el primer curso o la primera clase de 2027 se mezclaría con
 2026 o chocaría con sus horarios).
 
+**Avance del 2026-10-02 — paso 3.1, los años lectivos y la regla del año
+pedido (sin desplegar):**
+
+- Plan y paso aprobados por el usuario el 2026-10-02 ("continúa"), con las
+  dos preguntas abiertas de la fase 3 todavía sin respuesta (no afectan
+  este paso).
+- Código, todo nuevo; ninguna respuesta existente cambia:
+  - `GET /anios-lectivos` (`app/routes/anios_lectivos.py`, archivo nuevo),
+    protegida en el router con `get_current_user`: admin y profesor. Responde
+    `[{id, anio, estado}]`, el más reciente primero. Solo esos tres campos:
+    las fechas de la tabla no las necesita ninguna pantalla todavía, y
+    agregarlas después no rompe nada.
+  - `app/controllers/anios_lectivos_controller.py` (nuevo): abre el cursor y
+    da forma a la respuesta.
+  - `app/services/anio_lectivo.py`: `listar_anios_visibles` (admin, todos,
+    decisión 3; cualquier otro rol, solo el activo, decisión 4) y
+    `resolver_anio_pedido`, la regla que usarán los listados de los pasos
+    3.2 a 3.5. Sin año devuelve `None` **sin consultar nada** (quien llama
+    usa `ANIO_ACTIVO_ID_SQL`); con año, `ValueError` si no existe y
+    `AnioLectivoNoPermitidoError` si quien no es admin pide uno que no es el
+    activo. Cada ruta traducirá esos errores a 404 y 403.
+  - `app/repositories/anios_lectivos_repository.py`: `listar_anios_lectivos`
+    y `leer_anio_activo`. No se creó un repositorio nuevo: cinco pruebas
+    enumeran todos los repositorios y este ya estaba.
+- Pruebas: `tests/test_anio_lectivo_lecturas.py`, 21 nuevas, sin base de
+  datos: qué ve cada rol (con una consulta), que sin año pedido no se
+  consulta nada, que el admin puede mirar un año en cualquier estado, que el
+  profesor solo el activo, el mensaje de año inexistente, la forma de la
+  respuesta, y la ruta por HTTP (protección en el router, 401 sin sesión,
+  admin y profesor reciben 200). Cinco versiones dañadas del código las
+  hacen fallar: orden ascendente, un rol desconocido que ve todo, consultar
+  sin año pedido, profesor con cualquier año y router sin protección.
+- Documentación: `docs/API_ENDPOINTS.md`, `docs/ROLES_PERMISOS_BACKEND.md` y
+  `docs/CAMBIOS_BACKEND.md`.
+- Verificación: `scripts/verify.py` → **1569 pasan, 0 fallan** (antes
+  1548); ruff y `pip check` limpios; `git diff --check` limpio. Corrido con
+  un `DATABASE_URL` inventado, como en CI.
+- Efecto al desplegar: una ruta nueva que ninguna pantalla usa todavía. Se
+  puede probar en local (solo lee; el backend local apunta a la base real):
+  con la sesión del admin iniciada en el frontend local, abrir en otra
+  pestaña `/anios-lectivos` en la **misma dirección** del `VITE_API_URL`
+  del frontend (normalmente `http://localhost:8000`; con `127.0.0.1` la
+  sesión no viaja). Debe mostrar `[{"id": 1, "anio": 2026, "estado":
+  "activo"}]` (el `id` puede ser otro). Con un profesor, lo mismo.
+
 ### Fase 4 — Selector de año en el frontend
 
 Ver `frontend-react/docs/funcionalidades/ANIO_LECTIVO.md`. En el backend no
@@ -1823,10 +1869,11 @@ cosa, gana lo que se pueda verificar.
 - **Fase 3, iniciada el 2026-10-02** con la autorización del usuario (y
   sabiendo que la fase 2 sigue sin subir): inventario confirmado con `grep`
   y plan en siete pasos, 3.1 a 3.7. Ver "Inventario confirmado" y "Plan por
-  pasos" en la fase 3. Sin código todavía. El inventario encontró seis
-  cosas que no estaban en la lista; la más importante, los choques de
-  horario del profesor, que sin filtro por año bloquearían la carga
-  académica de 2027.
+  pasos" en la fase 3. El inventario encontró seis cosas que no estaban en
+  la lista; la más importante, los choques de horario del profesor, que sin
+  filtro por año bloquearían la carga académica de 2027. **Paso 3.1 escrito
+  y probado, sin commit** (`GET /anios-lectivos` y `resolver_anio_pedido`;
+  ver su "Avance").
 - **Hecho aparte, la noche del 2026-09-30:** el arreglo de la hora
   (`2e77634` en este repo, `033c042` en el frontend). Cobros, cartera y
   alta de colegios usan la fecha de Colombia (`app/core/fechas.py`), y el
@@ -1858,12 +1905,14 @@ cosa, gana lo que se pueda verificar.
   correr si falta `$env:DATABASE_URL`. Antes de probar la app contra una
   rama, detener el backend local que esté corriendo; si no, el frontend
   sigue hablando con el que apunta a producción.
-- **Siguiente acción exacta:** **paso 3.1** (`GET /anios-lectivos` y la
-  regla común del año pedido), solo con el visto bueno del usuario al plan
-  de pasos y a ese paso. Antes de escribirlo, caracterización de lo que
-  toca. Las dos preguntas abiertas de la fase 3 (materias ocultas y crear
-  en el año en preparación) no bloquean los pasos 3.1 a 3.4; la primera
-  tiene que estar respondida antes del 3.5. La fase 3 tiene que estar en
+- **Siguiente acción exacta:** que el usuario revise y haga el commit del
+  paso 3.1. Después, **paso 3.2** (profesor y horarios solo del año: "mis
+  clases", cursos del profesor, inicio del profesor, listados de
+  asignaciones y horarios del admin, choques de horario y disponibilidad
+  por el año del curso), solo con su visto bueno. Antes de escribirlo,
+  caracterización de cada consulta que toca. Las dos preguntas abiertas de
+  la fase 3 (materias ocultas y crear en el año en preparación) no bloquean
+  los pasos 3.2 a 3.4; la primera tiene que estar respondida antes del 3.5. La fase 3 tiene que estar en
   producción **antes de crear el primer curso de 2027** (fase 5, meta:
   principios de noviembre). Sigue siendo recomendable subir la fase 2
   antes.

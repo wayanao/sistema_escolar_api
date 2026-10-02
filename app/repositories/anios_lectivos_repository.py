@@ -1,7 +1,8 @@
 """Acceso a datos del año lectivo. Ver docs/funcionalidades/ANIO_LECTIVO.md.
 
 Fase 1: lo minimo para que toda fila nueva nazca con su año. Fase 2: leer un
-año pedido, para cobrar en un año que no es el activo. Como el resto de
+año pedido, para cobrar en un año que no es el activo. Fase 3: listar los
+años, para que el frontend sepa cuales hay y cual es el activo. Como el resto de
 repositorios, cada funcion recibe el cursor de quien llama y no abre, confirma
 ni cierra nada.
 """
@@ -50,6 +51,24 @@ def leer_anio_lectivo(cursor, anio_lectivo_id):
     cursor.execute(
         "SELECT id, anio, estado FROM anios_lectivos WHERE id = %s",
         (anio_lectivo_id,),
+    )
+    return cursor.fetchone()
+
+
+def listar_anios_lectivos(cursor):
+    """Todos los años lectivos como `(id, anio, estado)`, el mas reciente primero.
+
+    El mas reciente primero porque es el orden de un selector de año: el que
+    se prepara, luego el activo, luego los cerrados.
+    """
+    cursor.execute("SELECT id, anio, estado FROM anios_lectivos ORDER BY anio DESC")
+    return cursor.fetchall()
+
+
+def leer_anio_activo(cursor):
+    """El año activo como `(id, anio, estado)`, o `None` si el colegio no tiene."""
+    cursor.execute(
+        "SELECT id, anio, estado FROM anios_lectivos WHERE estado = 'activo'"
     )
     return cursor.fetchone()
 

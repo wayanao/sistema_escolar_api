@@ -1,6 +1,6 @@
 # Roles y Permisos Backend
 
-Ultima revision documental: 2026-09-22.
+Ultima revision documental: 2026-10-02.
 
 ## Roles actuales
 
@@ -150,6 +150,14 @@ Usan `get_current_user` y permisos por ownership:
 - observaciones
 - plantillas de lectura
 - branding de lectura
+
+Con usuario autenticado y alcance por rol, sin ownership:
+
+- años lectivos (`GET /anios-lectivos`): el admin ve todos los años y el
+  profesor solo el activo. La regla vive en `app/services/anio_lectivo.py`
+  (`listar_anios_visibles`), junto con `resolver_anio_pedido`, que los
+  listados por año usaran para negar con 403 a un profesor que pida otro
+  año. Ver `docs/funcionalidades/ANIO_LECTIVO.md`, decisiones 3 y 4.
 
 ## Riesgos pendientes documentados
 

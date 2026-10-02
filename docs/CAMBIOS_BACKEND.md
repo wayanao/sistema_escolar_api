@@ -1,10 +1,35 @@
 # Cambios Backend
 
-Ultima revision documental: 2026-10-01.
+Ultima revision documental: 2026-10-02.
 
 ## Proposito
 
 Bitacora de cambios documentales y tecnicos observables del backend.
+
+## 2026-10-02 - Año lectivo: lista de años y regla del año pedido
+
+Fase 3, paso 3.1, de `docs/funcionalidades/ANIO_LECTIVO.md`. Primer paso de
+las lecturas por año. Ninguna respuesta existente cambia: todo es nuevo.
+
+### Que cambia
+
+- Ruta nueva `GET /anios-lectivos`, para admin y profesor: el admin recibe
+  todos los años (`id`, `anio`, `estado`, el mas reciente primero) y el
+  profesor solo el activo.
+- `app/services/anio_lectivo.py` gana `listar_anios_visibles` y
+  `resolver_anio_pedido`, la regla comun que usaran los listados por año:
+  sin año, el activo y ninguna consulta extra; año inexistente, error; un
+  profesor que pide otro año, `AnioLectivoNoPermitidoError` (403).
+- Archivos nuevos: `app/routes/anios_lectivos.py` y
+  `app/controllers/anios_lectivos_controller.py`. El repositorio del año
+  suma `listar_anios_lectivos` y `leer_anio_activo`.
+
+### Pruebas
+
+21 nuevas en `tests/test_anio_lectivo_lecturas.py`. Cinco versiones dañadas
+del codigo (orden, rol desconocido, consulta sin año, profesor con otro año,
+router sin proteccion) las hacen fallar. `scripts/verify.py`: 1569 pasan, 0
+fallan.
 
 ## 2026-10-01 - Año lectivo: la deuda de años anteriores se ve aparte
 

@@ -1,6 +1,6 @@
 # API Endpoints
 
-Ultima revision documental: 2026-10-01.
+Ultima revision documental: 2026-10-02.
 
 ## Routers
 
@@ -71,6 +71,22 @@ Notas:
 ## Uploads
 
 - `GET /uploads/{file_path:path}`
+
+## Años lectivos
+
+- `GET /anios-lectivos`
+
+Notas:
+
+- Fase 3, paso 3.1, de `docs/funcionalidades/ANIO_LECTIVO.md`. Admin y
+  profesor. El admin recibe todos los años; el profesor, solo el activo
+  (lista vacia si el colegio no tuviera año activo).
+- Respuesta: lista de `{ "id": 2, "anio": 2026, "estado": "activo" }`, el
+  año mas reciente primero. Estados: `preparacion`, `activo`, `cerrado`,
+  `reabierto`.
+- Es la lista del selector de año del frontend (su fase 4). Los listados
+  que acepten `?anio_lectivo_id=` (pasos 3.2 a 3.5) usan el activo si no
+  llega; un profesor que pida otro año recibira 403.
 
 ## Estudiantes
 

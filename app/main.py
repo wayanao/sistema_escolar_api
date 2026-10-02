@@ -28,6 +28,7 @@ from app.services.storage import (
 )
 
 from app.routes import (
+    anios_lectivos,
     asignaciones,
     asistencia,
     auth,
@@ -235,5 +236,6 @@ app.include_router(branding.router)
 app.include_router(plantillas.router)
 app.include_router(cartera.router)
 app.include_router(listas_seguimiento.router)
+app.include_router(anios_lectivos.router)
 
 

@@ -1,7 +1,7 @@
-from typing import List, Literal, Optional
+from typing import Annotated, List, Literal, Optional
 from datetime import date
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field, conint, confloat, model_validator
 
 from app.dependencies import get_current_active_admin, HTTPException
@@ -21,6 +21,7 @@ from app.controllers.tipos_pagos_controller import (
     eliminar_valor_personalizado_estudiante,
     MigracionPendienteError,
     ConfiguracionTipoPagoInvalidaError,
+    CursoDeOtroAnioError,
     TipoPagoDuplicadoError,
     TipoPagoInfraestructuraError,
 )
@@ -101,8 +102,12 @@ def create_tipo_pago(tipo: TipoPago):
 
 
 @router.get('/tipos-pagos')
-def get_tipos_pagos():
-    return listar_tipos_pagos()
+def get_tipos_pagos(anio_lectivo_id: Annotated[Optional[int], Query(gt=0)] = None):
+    """Sin `anio_lectivo_id`, los conceptos del año activo."""
+    try:
+        return listar_tipos_pagos(anio_lectivo_id=anio_lectivo_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 @router.put('/tipos-pagos/{id}')
@@ -129,9 +134,15 @@ def delete_tipo_pago(id: int):
 # Configuración avanzada
 # -----------------------------------------------------------------------------
 @router.get('/tipos-pagos/detallado')
-def get_tipos_pagos_detallado():
-    """Lista todos los tipos de pago con configuración financiera y cursos."""
-    return listar_tipos_pagos_detallado()
+def get_tipos_pagos_detallado(anio_lectivo_id: Annotated[Optional[int], Query(gt=0)] = None):
+    """Tipos de pago de un año con configuración financiera y cursos.
+
+    Sin `anio_lectivo_id`, los del año activo.
+    """
+    try:
+        return listar_tipos_pagos_detallado(anio_lectivo_id=anio_lectivo_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 @router.get('/tipos-pagos/{id}/detalle')
@@ -175,6 +186,8 @@ def get_cursos_asignados(id: int):
 def put_cursos_asignados(id: int, payload: CursoAsignacionPayload):
     try:
         res = upsert_cursos_asignados(id, [c.model_dump() for c in payload.cursos])
+    except CursoDeOtroAnioError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except TipoPagoInfraestructuraError:
         raise HTTPException(status_code=500, detail=_ERROR_INTERNO_TIPOS_PAGO)
 

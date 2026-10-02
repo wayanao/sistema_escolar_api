@@ -2,9 +2,9 @@
 
 ## Control
 
-- Estado: **Fase 3 en curso: inventario y plan del 2026-10-02; paso 3.1
-  en el commit `fea2e83`; paso 3.2 (profesor y horarios solo del año)
-  escrito y probado, sin commit.**
+- Estado: **Fase 3 en curso: inventario y plan del 2026-10-02; pasos 3.1 y
+  3.2 en los commits `fea2e83` y `43764f2`; paso 3.3 (cursos y conceptos
+  por año) escrito y probado, sin commit.**
   **Fase 2 con el código completo el
   2026-10-01, sin desplegar.**
   Pasos 2.1 (las cuotas se cuentan en el año del concepto), 2.2 (cada año
@@ -1694,6 +1694,75 @@ desplegar):**
   el admin, la lista de asignaciones, los horarios y la disponibilidad de un
   profesor al crear una clase. **No crear ni editar clases en local**: eso
   escribe en la base real.
+- Commit `43764f2` (hecho por el usuario el 2026-10-02).
+
+**Avance del 2026-10-02 — paso 3.3, cursos y conceptos por año (sin
+desplegar):**
+
+- Aprobado por el usuario el 2026-10-02 ("continúa"). Toca conceptos de
+  pago (zona de dinero): cambio mínimo y ninguna consulta nueva.
+- Código:
+  - Cursos (`curso_controller.py`, `routes/cursos.py`): `GET /cursos` (con
+    y sin paginar) acepta `?anio_lectivo_id=`; sin él, el activo, con
+    `condicion_anio` al final de los filtros (sin parámetro nuevo). El
+    nombre repetido (`_validar_curso_unico`) compara dentro del año: el
+    activo al crear (el curso nace ahí), el del propio curso al editar.
+  - Conceptos (`tipos_pagos_controller.py`, `routes/tipos_pagos.py`): `GET
+    /tipos-pagos` y `GET /tipos-pagos/detallado` con `?anio_lectivo_id=`; el
+    nombre repetido al crear (año activo) y al editar (año del concepto,
+    hallazgo 4). Al guardar precios por curso (`upsert_cursos_asignados`),
+    la consulta que ya miraba si el concepto existe ahora también devuelve
+    los cursos pedidos que son de otro año; si hay alguno, error nuevo
+    `CursoDeOtroAnioError` → 400 con sus nombres, y no se guarda nada. Se
+    atrapa antes del `except Exception` para que no salga como fallo
+    interno (500).
+  - Listas de seguimiento: `contar_cursos_activos` y
+    `crear_columna_en_cursos_activos` limitadas a un año, y `POST
+    /listas-seguimiento/columnas-en-todos-los-cursos` acepta
+    `?anio_lectivo_id=` (por defecto el activo; si no existe, 404 sin
+    escribir).
+  - Reporte general (`reportes_repository.consultar_reporte_general`):
+    `total_cursos` y `estudiantes_por_curso`, solo del año activo, sin
+    parámetro: los estudiantes por curso salen de `estudiantes.curso_id`,
+    que ya es del año activo. Lo de dinero no se tocó.
+- No se tocó: `GET /tipos-pagos/{id}/cursos` y `/detalle` (parten de un
+  concepto), la segunda consulta de `listar_tipos_pagos_detallado` (trae
+  los precios de todos los conceptos y se queda con los del año; el
+  resultado es el mismo) y los valores especiales por estudiante (fase 5).
+- Pruebas:
+  - `tests/test_anio_lectivo_lecturas.py`, 32 nuevas, con tres bases
+    simuladas de dos años que, como PostgreSQL, solo separan por año si la
+    consulta trae el filtro: "PRIMERO A" puede existir una vez en 2026 y
+    otra en 2027, pero no dos en el mismo año (cursos y conceptos, al crear
+    y al editar); un concepto de 2027 acepta precios de cursos de 2027 y
+    rechaza uno de 2026 sin escribir nada; guardar precios sigue costando 5
+    consultas. Más: listados con y sin año (sin año, los parámetros de
+    siempre), listas de seguimiento, y las rutas por HTTP (pasan el año, 422
+    con 0, 404 si no existe, 400 con el mensaje de precios).
+  - Ajustadas a propósito, sin cambiar la respuesta que comprueban: en
+    `test_anio_lectivo_listados_caracterizacion.py`, el texto de las dos
+    consultas de conceptos y "todos sin `WHERE`" (ahora: sin filtro de
+    estado, con el del año); el texto de las dos consultas del reporte en
+    `test_reportes_simple_controllers.py`; los dos dobles de la ruta de
+    cursos (`test_catalogos_pagination.py`); el doble del repositorio de
+    listas (`test_listas_seguimiento_controlador.py`, recibe el año); y las
+    bases simuladas de `test_pagos_escrituras_caracterizacion.py` y
+    `test_threadpool_capacity.py`, que no conocían la consulta de precios.
+    Las demás pruebas pasaron sin tocarlas.
+  - Diecisiete versiones dañadas del código las hacen fallar. Una primera
+    vuelta encontró un hueco: invertir la comparación de año en los precios
+    (`<>` por `=`) no lo detectaba ninguna, porque la base simulada decidía
+    sola qué cursos eran de otro año. Se corrigió para que solo separe por
+    año si la consulta trae esa comparación exacta.
+- Documentación: `docs/API_ENDPOINTS.md` (Cursos, Reportes, Tipos de pagos y
+  Listas de seguimiento) y `docs/CAMBIOS_BACKEND.md`.
+- Verificación: `scripts/verify.py` → **1635 pasan, 0 fallan** (antes
+  1603); ruff y `pip check` limpios; `git diff --check` limpio.
+- Efecto al desplegar: ninguno visible mientras haya un solo año. Revisión
+  en local recomendada (solo lectura): Cursos, Tipos de pago (lista y
+  detalle de un concepto con sus precios) y la pantalla de reportes con
+  "estudiantes por curso", iguales que en producción. **No crear, editar ni
+  guardar precios en local**: escribe en la base real.
 
 ### Fase 4 — Selector de año en el frontend
 
@@ -1938,9 +2007,11 @@ cosa, gana lo que se pueda verificar.
   pasos" en la fase 3. El inventario encontró seis cosas que no estaban en
   la lista; la más importante, los choques de horario del profesor, que sin
   filtro por año bloquearían la carga académica de 2027. Paso 3.1 en el
-  commit `fea2e83` (`GET /anios-lectivos` y `resolver_anio_pedido`). **Paso
-  3.2 escrito y probado, sin commit** (lo que ve el profesor, los listados
-  del admin y los choques de horario, por año; ver su "Avance").
+  commit `fea2e83` (`GET /anios-lectivos` y `resolver_anio_pedido`); paso
+  3.2 en `43764f2` (lo que ve el profesor, los listados del admin y los
+  choques de horario, por año). **Paso 3.3 escrito y probado, sin commit**
+  (cursos, conceptos, precios por curso, listas de seguimiento y reporte
+  general, por año; ver su "Avance").
 - **Hecho aparte, la noche del 2026-09-30:** el arreglo de la hora
   (`2e77634` en este repo, `033c042` en el frontend). Cobros, cartera y
   alta de colegios usan la fecha de Colombia (`app/core/fechas.py`), y el
@@ -1973,12 +2044,13 @@ cosa, gana lo que se pueda verificar.
   rama, detener el backend local que esté corriendo; si no, el frontend
   sigue hablando con el que apunta a producción.
 - **Siguiente acción exacta:** que el usuario revise y haga el commit del
-  paso 3.2. Después, **paso 3.3** (cursos y conceptos por año: listados de
-  cursos, nombre repetido de cursos y conceptos dentro del año, listado y
-  detalle de conceptos, cursos para precios y concepto y curso del mismo
-  año al guardar un precio, listas de seguimiento "en todos los cursos" y
-  reporte general), solo con su visto bueno. Antes de escribirlo,
-  caracterización de cada consulta que toca. Las preguntas abiertas se le
+  paso 3.3. Después, **paso 3.4** (estudiantes y cartera desde las
+  matrículas, zona de dinero: listado y conteo de estudiantes del año
+  pedido con los mismos resultados de hoy para el activo, incluidos los sin
+  curso; `GET /cartera/mora` y su resumen con `?anio_lectivo_id=`; estado
+  de cuenta por curso con el año de ese curso), solo con su visto bueno.
+  Antes de escribirlo, caracterización de cada consulta que toca y medición
+  de consultas, como en el paso 2.4. Las preguntas abiertas se le
   hacen al usuario justo antes del paso que las necesita (lo pidió así el
   2026-10-02): la de materias ocultas, antes del 3.5; la de crear en el año
   en preparación, antes de la fase 5. La fase 3 tiene que estar en

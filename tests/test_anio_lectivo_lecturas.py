@@ -25,11 +25,23 @@ from contextlib import contextmanager
 import pytest
 
 from app.controllers import anios_lectivos_controller as controlador
-from app.controllers import asignacion_controller
-from app.repositories import asignaciones_repository, dashboard_repository
+from app.controllers import (
+    asignacion_controller,
+    curso_controller,
+    listas_seguimiento_controller,
+    tipos_pagos_controller,
+)
+from app.repositories import (
+    asignaciones_repository,
+    dashboard_repository,
+    listas_seguimiento_repository,
+)
 from app.repositories.anios_lectivos_repository import ANIO_ACTIVO_ID_SQL, condicion_anio
 from app.routes import anios_lectivos as rutas
 from app.routes import asignaciones as rutas_asignaciones
+from app.routes import cursos as rutas_cursos
+from app.routes import listas_seguimiento as rutas_listas
+from app.routes import tipos_pagos as rutas_tipos_pagos
 from app.services.anio_lectivo import (
     AnioLectivoNoPermitidoError,
     listar_anios_visibles,
@@ -197,25 +209,35 @@ def test_la_respuesta_del_profesor_trae_solo_el_activo(cursor_del_controlador):
 
 def peticion_get(aplicacion, ruta):
     """Una peticion GET real contra la app. Devuelve (status, cuerpo)."""
+    return peticion(aplicacion, "GET", ruta)
+
+
+def peticion(aplicacion, metodo, ruta, cuerpo=None):
+    """Una peticion HTTP real contra la app. Devuelve (status, cuerpo)."""
     ruta, _, consulta = ruta.partition("?")
+    crudo = json.dumps(cuerpo).encode() if cuerpo is not None else b""
     scope = {
         "type": "http",
         "asgi": {"version": "3.0", "spec_version": "2.1"},
         "http_version": "1.1",
-        "method": "GET",
+        "method": metodo,
         "scheme": "http",
         "path": ruta,
         "raw_path": ruta.encode(),
         "query_string": consulta.encode(),
         "root_path": "",
-        "headers": [(b"host", b"testserver")],
+        "headers": [
+            (b"host", b"testserver"),
+            (b"content-type", b"application/json"),
+            (b"content-length", str(len(crudo)).encode()),
+        ],
         "client": ("127.0.0.1", 12345),
         "server": ("testserver", 80),
     }
     salida = {"status": None, "body": b""}
 
     async def receive():
-        return {"type": "http.request", "body": b"", "more_body": False}
+        return {"type": "http.request", "body": crudo, "more_body": False}
 
     async def send(mensaje):
         if mensaje["type"] == "http.response.start":
@@ -726,3 +748,552 @@ def test_las_rutas_del_admin_responden_404_si_el_anio_no_existe(app_admin_con_co
 
     assert status == 404
     assert cuerpo == {"detail": "El año lectivo seleccionado no existe."}
+
+
+# ===========================================================================
+# Paso 3.3: cursos y conceptos por año.
+# ===========================================================================
+
+# En las bases simuladas, el año 1 es 2026 (activo) y el 2 es 2027.
+ANIO_DEL_CURSO_SQL = "anio_lectivo_id = (SELECT anio_lectivo_id FROM cursos WHERE id = %s)"
+ANIO_DEL_CONCEPTO_SQL = (
+    "anio_lectivo_id = (SELECT anio_lectivo_id FROM tipos_de_pagos WHERE id = %s)"
+)
+ANIO_ACTIVO_SQL = _normalizar(f"anio_lectivo_id = {ANIO_ACTIVO_ID_SQL}")
+
+
+class BaseDeCursos:
+    """Contesta la consulta de nombre repetido de cursos como PostgreSQL.
+
+    Filtra por nombre, jornada y el curso que se edita; y por año **solo si la
+    consulta trae el filtro**: el activo, o el del curso del ultimo parametro.
+    """
+
+    def __init__(self, cursos):
+        self.cursos = cursos  # (id, nombre, jornada, anio)
+        self.consultas = []
+        self._filas = []
+
+    def execute(self, sql, params=None):
+        sql = _normalizar(sql)
+        self.consultas.append((sql, params))
+        nombre, jornada, curso_id = params[0], params[1], params[2]
+        filas = [
+            c for c in self.cursos
+            if c[1] == nombre and c[2].lower() == jornada.lower()
+            and (curso_id is None or c[0] != curso_id)
+        ]
+        if ANIO_ACTIVO_SQL in sql:
+            filas = [c for c in filas if c[3] == 1]
+        elif ANIO_DEL_CURSO_SQL in sql:
+            anio = next(c[3] for c in self.cursos if c[0] == params[-1])
+            filas = [c for c in filas if c[3] == anio]
+        self._filas = [(c[0],) for c in filas]
+
+    def fetchone(self):
+        return self._filas[0] if self._filas else None
+
+
+CURSOS_DE_DOS_ANIOS = [
+    (1, "PRIMERO A", "Mañana", 1),
+    (3, "SEGUNDO A", "Mañana", 1),
+    (2, "PRIMERO B", "Mañana", 2),
+    (4, "SEGUNDO B", "Mañana", 2),
+]
+
+
+def test_editar_un_curso_de_2027_con_el_nombre_de_uno_de_2026_no_es_repetido():
+    base = BaseDeCursos(CURSOS_DE_DOS_ANIOS)
+
+    curso_controller._validar_curso_unico(base, "PRIMERO A", "Mañana", curso_id=2)
+
+
+def test_dentro_del_mismo_anio_el_nombre_repetido_se_sigue_rechazando():
+    base = BaseDeCursos(CURSOS_DE_DOS_ANIOS)
+
+    with pytest.raises(curso_controller.CursoDuplicadoError):
+        curso_controller._validar_curso_unico(base, "PRIMERO A", "Mañana", curso_id=3)
+    with pytest.raises(curso_controller.CursoDuplicadoError):
+        curso_controller._validar_curso_unico(base, "PRIMERO B", "Mañana", curso_id=4)
+
+
+def test_un_curso_nuevo_se_compara_con_los_del_anio_activo():
+    base = BaseDeCursos(CURSOS_DE_DOS_ANIOS)
+
+    with pytest.raises(curso_controller.CursoDuplicadoError):
+        curso_controller._validar_curso_unico(base, "PRIMERO A", "Mañana")
+    # "PRIMERO B" solo existe en 2027: en el año activo no es repetido.
+    curso_controller._validar_curso_unico(base, "PRIMERO B", "Mañana")
+
+
+def test_el_nombre_repetido_de_cursos_sigue_costando_una_consulta():
+    base = BaseDeCursos(CURSOS_DE_DOS_ANIOS)
+
+    curso_controller._validar_curso_unico(base, "TERCERO A", "Mañana")
+    curso_controller._validar_curso_unico(base, "TERCERO A", "Mañana", curso_id=2)
+
+    nuevo, editado = base.consultas
+    assert nuevo[1] == ("TERCERO A", "Mañana", None, None)
+    assert editado[1] == ("TERCERO A", "Mañana", 2, 2, 2)
+
+
+def _cursos(monkeypatch, funcion, una=(), **kwargs):
+    cursor = CursorQueAnota(una=una)
+    monkeypatch.setattr(curso_controller, "get_connection", lambda: ConexionFalsa(cursor))
+    funcion(**kwargs)
+    return cursor.consultas
+
+
+def test_la_lista_de_cursos_sin_anio_es_del_activo_y_sin_parametro_nuevo(monkeypatch):
+    [(sql, params)] = _cursos(monkeypatch, curso_controller.obtener_cursos_controller)
+
+    assert ANIO_ACTIVO_SQL in sql
+    assert params == ["activo"]
+
+
+def test_la_lista_de_cursos_con_anio_lo_valida_y_lo_usa(monkeypatch):
+    anio, (sql, params) = _cursos(
+        monkeypatch,
+        curso_controller.obtener_cursos_controller,
+        una=[(5, 2027, "preparacion")],
+        anio_lectivo_id=5,
+    )
+
+    assert anio == (SQL_POR_ID, (5,))
+    assert "anio_lectivo_id = %s" in sql
+    assert ANIO_ACTIVO_ID_SQL not in sql
+    assert params == ["activo", 5]
+
+
+def test_el_paginado_de_cursos_con_anio_lo_pasa_antes_de_limit(monkeypatch):
+    anio, conteo, pagina = _cursos(
+        monkeypatch,
+        curso_controller.obtener_cursos_paginado_controller,
+        una=[(5, 2027, "preparacion"), (0,)],
+        limit=10,
+        offset=20,
+        busqueda="pri",
+        anio_lectivo_id=5,
+    )
+
+    assert anio == (SQL_POR_ID, (5,))
+    assert conteo[1] == ["%pri%", "activo", 5]
+    assert pagina[1] == ["%pri%", "activo", 5, 10, 20]
+
+
+# ---------------------------------------------------------------------------
+# Conceptos de pago (dinero: zona sensible).
+# ---------------------------------------------------------------------------
+
+
+class BaseDeConceptos:
+    """Contesta el nombre repetido de conceptos como PostgreSQL, y las escrituras.
+
+    Para el nombre repetido filtra por nombre (sin mayusculas ni espacios), el
+    concepto que se edita y, **solo si la consulta trae el filtro**, el año: el
+    activo o el del concepto que se edita.
+    """
+
+    def __init__(self, conceptos):
+        self.conceptos = conceptos  # (id, nombre, anio)
+        self.consultas = []
+        self._filas = []
+
+    def execute(self, sql, params=None):
+        sql = _normalizar(sql)
+        self.consultas.append((sql, params))
+        if sql.startswith(("INSERT", "UPDATE")):
+            self._filas = [(99,)]
+            return
+        nombre = params[0].strip().lower()
+        excluido = params[1] if "id <> %s" in sql else None
+        filas = [
+            c for c in self.conceptos
+            if c[1].strip().lower() == nombre and c[0] != excluido
+        ]
+        if ANIO_ACTIVO_SQL in sql:
+            filas = [c for c in filas if c[2] == 1]
+        elif ANIO_DEL_CONCEPTO_SQL in sql:
+            anio = next(c[2] for c in self.conceptos if c[0] == params[-1])
+            filas = [c for c in filas if c[2] == anio]
+        self._filas = [(c[0],) for c in filas]
+
+    def fetchone(self):
+        return self._filas[0] if self._filas else None
+
+    def close(self):
+        pass
+
+
+# MENSUALIDAD existe en 2026 (1) y su copia en 2027 (2); MATRICULA solo en 2027.
+CONCEPTOS_DE_DOS_ANIOS = [
+    (1, "MENSUALIDAD", 1),
+    (2, "MENSUALIDAD", 2),
+    (3, "MATRICULA", 2),
+]
+
+
+def _conceptos(monkeypatch):
+    base = BaseDeConceptos(CONCEPTOS_DE_DOS_ANIOS)
+    monkeypatch.setattr(tipos_pagos_controller, "get_connection", lambda: ConexionFalsa(base))
+    return base
+
+
+def test_la_copia_de_2027_de_un_concepto_puede_llamarse_igual_que_la_de_2026(monkeypatch):
+    """Es lo que la copia de conceptos de la fase 5 necesita (decision 17)."""
+    _conceptos(monkeypatch)
+
+    assert tipos_pagos_controller.actualizar_tipo_pago(2, "MENSUALIDAD", 0) is True
+
+
+def test_dentro_de_un_anio_el_nombre_de_concepto_repetido_se_rechaza(monkeypatch):
+    base = _conceptos(monkeypatch)
+
+    with pytest.raises(tipos_pagos_controller.TipoPagoDuplicadoError):
+        tipos_pagos_controller.actualizar_tipo_pago(3, "mensualidad", 0)
+    with pytest.raises(tipos_pagos_controller.TipoPagoDuplicadoError):
+        tipos_pagos_controller.crear_tipo_pago("Mensualidad ", 0)
+    assert not any(sql.startswith(("INSERT", "UPDATE")) for sql, _ in base.consultas)
+
+
+def test_un_concepto_nuevo_se_compara_con_los_del_anio_activo(monkeypatch):
+    base = _conceptos(monkeypatch)
+
+    # MATRICULA solo existe en 2027: en el año activo no es repetida.
+    tipos_pagos_controller.crear_tipo_pago("MATRICULA", 300000)
+
+    duplicado, insercion = base.consultas
+    assert ANIO_ACTIVO_SQL in duplicado[0]
+    assert duplicado[1] == ("MATRICULA",)
+    assert insercion[0].startswith("INSERT INTO tipos_de_pagos")
+
+
+def test_editar_un_concepto_compara_con_los_de_su_anio(monkeypatch):
+    base = _conceptos(monkeypatch)
+
+    tipos_pagos_controller.actualizar_tipo_pago(3, "PENSION", 0)
+
+    duplicado = base.consultas[0]
+    assert ANIO_DEL_CONCEPTO_SQL in duplicado[0]
+    assert duplicado[1] == ("PENSION", 3, 3)
+
+
+@pytest.mark.parametrize(
+    ("listar", "sql_esperado"),
+    [
+        (
+            tipos_pagos_controller.listar_tipos_pagos,
+            "SELECT id, nombre, valor FROM tipos_de_pagos WHERE anio_lectivo_id = %s ORDER BY nombre",
+        ),
+        (
+            tipos_pagos_controller.listar_tipos_pagos_detallado,
+            "SELECT * FROM tipos_de_pagos WHERE anio_lectivo_id = %s ORDER BY nombre",
+        ),
+    ],
+)
+def test_los_conceptos_con_anio_son_los_de_ese_anio(monkeypatch, listar, sql_esperado):
+    cursor = CursorQueAnota(una=[(5, 2027, "preparacion")])
+    monkeypatch.setattr(tipos_pagos_controller, "get_connection", lambda: ConexionFalsa(cursor))
+
+    listar(anio_lectivo_id=5)
+
+    assert cursor.consultas[0] == (SQL_POR_ID, (5,))
+    assert (sql_esperado, (5,)) in cursor.consultas
+
+
+class BaseDePrecios:
+    """Contesta las consultas de guardar precios por curso, como PostgreSQL.
+
+    La primera dice si el concepto existe y que cursos pedidos son de otro año.
+    Solo separa por año **si la consulta trae exactamente esa comparacion**; si
+    no, contesta que todos los pedidos lo son, como haria una consulta sin el
+    filtro correcto.
+    """
+
+    COMPARACION_DE_ANIO = "AND c.anio_lectivo_id <> tp.anio_lectivo_id"
+
+    # curso -> (nombre, anio); concepto -> anio
+    CURSOS = {4: ("PRIMERO A", 1), 40: ("PRIMERO A", 2), 41: ("SEGUNDO A", 2)}
+    CONCEPTOS = {1: 1, 2: 2}
+
+    def __init__(self):
+        self.consultas = []
+        self._filas = []
+
+    def execute(self, sql, params=None):
+        sql = _normalizar(sql)
+        self.consultas.append((sql, params))
+        if "AS cursos_de_otro_anio" in sql:
+            curso_ids, concepto = params
+            if concepto not in self.CONCEPTOS:
+                self._filas = []
+                return
+            separa_por_anio = self.COMPARACION_DE_ANIO in sql
+            nombres = sorted(
+                self.CURSOS[c][0] for c in curso_ids
+                if not separa_por_anio or self.CURSOS[c][1] != self.CONCEPTOS[concepto]
+            )
+            self._filas = [{"cursos_de_otro_anio": nombres}]
+        elif "information_schema.tables" in sql:
+            self._filas = [{"table_name": "tipos_pagos_cursos"}]
+        else:
+            self._filas = []
+
+    def fetchone(self):
+        return self._filas[0] if self._filas else None
+
+    def fetchall(self):
+        return list(self._filas)
+
+    def close(self):
+        pass
+
+
+@pytest.fixture
+def precios(monkeypatch):
+    base = BaseDePrecios()
+    conexion = ConexionQueCuenta(base)
+    monkeypatch.setattr(tipos_pagos_controller, "get_connection", lambda: conexion)
+    return base, conexion
+
+
+class ConexionQueCuenta(ConexionFalsa):
+    def __init__(self, cursor):
+        super().__init__(cursor)
+        self.commits = 0
+        self.rollbacks = 0
+
+    def commit(self):
+        self.commits += 1
+
+    def rollback(self):
+        self.rollbacks += 1
+
+
+def _escrituras(base):
+    return [sql for sql, _ in base.consultas if sql.startswith(("INSERT", "DELETE"))]
+
+
+def test_un_concepto_de_2027_acepta_precios_de_cursos_de_2027(precios):
+    base, conexion = precios
+
+    resultado = tipos_pagos_controller.upsert_cursos_asignados(
+        2, [{"curso_id": 40, "valor": 350000}, {"curso_id": 41, "valor": 350000}]
+    )
+
+    assert resultado == []
+    assert len(_escrituras(base)) == 3  # un DELETE y dos INSERT
+    assert conexion.commits == 1
+
+
+def test_un_concepto_de_2027_no_acepta_precio_en_un_curso_de_2026(precios):
+    base, conexion = precios
+
+    with pytest.raises(tipos_pagos_controller.CursoDeOtroAnioError) as error:
+        tipos_pagos_controller.upsert_cursos_asignados(
+            2, [{"curso_id": 4, "valor": 350000}, {"curso_id": 40, "valor": 350000}]
+        )
+
+    assert str(error.value) == (
+        "Estos cursos no son del año lectivo del concepto: PRIMERO A."
+    )
+    assert _escrituras(base) == []
+    assert conexion.rollbacks == 1
+    assert conexion.commits == 0
+
+
+def test_guardar_precios_no_agrega_consultas(precios):
+    """La comprobacion del año va en la misma consulta que ya miraba si el
+    concepto existe: no hay una ida mas a la base."""
+    base, _ = precios
+
+    tipos_pagos_controller.upsert_cursos_asignados(1, [{"curso_id": 4, "valor": 300000}])
+
+    primera, _params = base.consultas[0]
+    assert "FROM tipos_de_pagos tp WHERE tp.id = %s" in primera
+    assert "AS cursos_de_otro_anio" in primera
+    assert not any("SELECT 1 FROM tipos_de_pagos" in sql for sql, _ in base.consultas)
+    # Concepto + DELETE + INSERT + tablas + relectura, como antes.
+    assert len(base.consultas) == 5
+
+
+def test_un_concepto_que_no_existe_sigue_respondiendo_none(precios):
+    base, _ = precios
+
+    assert tipos_pagos_controller.upsert_cursos_asignados(99, [{"curso_id": 4}]) is None
+    assert _escrituras(base) == []
+
+
+# ---------------------------------------------------------------------------
+# Listas de seguimiento: "todos los cursos" son los de un año.
+# ---------------------------------------------------------------------------
+
+
+def test_contar_los_cursos_de_las_listas_sin_anio_es_el_activo():
+    cursor = CursorQueAnota(una=[(11,)])
+
+    assert listas_seguimiento_repository.contar_cursos_activos(cursor) == 11
+
+    [(sql, params)] = cursor.consultas
+    assert SOLO_EL_ACTIVO in sql
+    assert params is None
+
+
+def test_contar_los_cursos_de_las_listas_con_anio():
+    cursor = CursorQueAnota(una=[(4,)])
+
+    listas_seguimiento_repository.contar_cursos_activos(cursor, 5)
+
+    [(sql, params)] = cursor.consultas
+    assert SOLO_EL_PEDIDO in sql
+    assert params == (5,)
+
+
+class CursorConFilas(CursorQueAnota):
+    rowcount = 3
+
+
+def test_crear_la_columna_en_todos_los_cursos_sin_anio_es_en_el_activo():
+    cursor = CursorConFilas()
+
+    listas_seguimiento_repository.crear_columna_en_cursos_activos(cursor, "Excursion")
+
+    [(sql, params)] = cursor.consultas
+    assert sql.endswith(SOLO_EL_ACTIVO)
+    assert params == ("Excursion", "Excursion")
+
+
+def test_crear_la_columna_en_todos_los_cursos_con_anio():
+    cursor = CursorConFilas()
+
+    listas_seguimiento_repository.crear_columna_en_cursos_activos(cursor, "Excursion", 5)
+
+    [(sql, params)] = cursor.consultas
+    assert sql.endswith(SOLO_EL_PEDIDO)
+    assert params == ("Excursion", "Excursion", 5)
+
+
+def test_el_alta_en_todos_los_cursos_valida_el_anio_y_lo_pasa(monkeypatch):
+    cursor = CursorConFilas(una=[(5, 2027, "preparacion"), (4,)])
+
+    @contextmanager
+    def get_cursor_falso(commit=False, cursor_factory=None):
+        yield cursor
+
+    monkeypatch.setattr(listas_seguimiento_controller, "get_cursor", get_cursor_falso)
+
+    respuesta = listas_seguimiento_controller.crear_columna_en_todos_los_cursos_controller(
+        "Excursion", anio_lectivo_id=5
+    )
+
+    anio, alta, conteo = cursor.consultas
+    assert anio == (SQL_POR_ID, (5,))
+    assert alta[1] == ("Excursion", "Excursion", 5)
+    assert conteo[1] == (5,)
+    assert respuesta == {"creadas": 3, "omitidas": 1, "total": 4}
+
+
+def test_el_alta_en_todos_los_cursos_de_un_anio_que_no_existe_no_escribe(monkeypatch):
+    cursor = CursorConFilas()
+
+    @contextmanager
+    def get_cursor_falso(commit=False, cursor_factory=None):
+        yield cursor
+
+    monkeypatch.setattr(listas_seguimiento_controller, "get_cursor", get_cursor_falso)
+
+    with pytest.raises(ValueError, match="El año lectivo seleccionado no existe."):
+        listas_seguimiento_controller.crear_columna_en_todos_los_cursos_controller(
+            "Excursion", anio_lectivo_id=99
+        )
+
+    assert cursor.consultas == [(SQL_POR_ID, (99,))]
+
+
+# ---------------------------------------------------------------------------
+# Las rutas del paso 3.3, por HTTP.
+# ---------------------------------------------------------------------------
+
+# ruta -> (metodo, modulo, controlador, cuerpo)
+RUTAS_CON_ANIO_33 = {
+    "/cursos": ("GET", rutas_cursos, "obtener_cursos_controller", None),
+    "/tipos-pagos": ("GET", rutas_tipos_pagos, "listar_tipos_pagos", None),
+    "/tipos-pagos/detallado": ("GET", rutas_tipos_pagos, "listar_tipos_pagos_detallado", None),
+    "/listas-seguimiento/columnas-en-todos-los-cursos": (
+        "POST",
+        rutas_listas,
+        "crear_columna_en_todos_los_cursos_controller",
+        {"nombre": "Excursion"},
+    ),
+}
+
+
+@pytest.fixture
+def app_admin_33(monkeypatch):
+    from app.dependencies import get_current_user
+    from app.main import app
+
+    recibido = []
+
+    def doblar(ruta, error=None):
+        _metodo, modulo, nombre, _cuerpo = RUTAS_CON_ANIO_33[ruta]
+
+        def falso(*args, **kwargs):
+            recibido.append(kwargs.get("anio_lectivo_id"))
+            if error is not None:
+                raise error
+            return []
+
+        monkeypatch.setattr(modulo, nombre, falso)
+
+    app.dependency_overrides[get_current_user] = lambda: ADMIN
+    try:
+        yield app, doblar, recibido
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+
+
+def _pedir(app, ruta, anio=None):
+    metodo, _modulo, _nombre, cuerpo = RUTAS_CON_ANIO_33[ruta]
+    destino = ruta if anio is None else _con_anio(ruta, anio)
+    return peticion(app, metodo, destino, cuerpo)
+
+
+@pytest.mark.parametrize("ruta", sorted(RUTAS_CON_ANIO_33))
+def test_las_rutas_del_paso_33_pasan_el_anio(app_admin_33, ruta):
+    app, doblar, recibido = app_admin_33
+    doblar(ruta)
+
+    assert _pedir(app, ruta)[0] == 200
+    assert _pedir(app, ruta, 5)[0] == 200
+    assert _pedir(app, ruta, 0)[0] == 422
+    assert recibido == [None, 5]
+
+
+@pytest.mark.parametrize("ruta", sorted(RUTAS_CON_ANIO_33))
+def test_las_rutas_del_paso_33_responden_404_si_el_anio_no_existe(app_admin_33, ruta):
+    app, doblar, _ = app_admin_33
+    doblar(ruta, error=ValueError("El año lectivo seleccionado no existe."))
+
+    status, cuerpo = _pedir(app, ruta, 99)
+
+    assert status == 404
+    assert cuerpo == {"detail": "El año lectivo seleccionado no existe."}
+
+
+def test_un_precio_en_un_curso_de_otro_anio_responde_400_con_el_mensaje(app_admin_33, monkeypatch):
+    app, _, _ = app_admin_33
+
+    def falso(*args, **kwargs):
+        raise tipos_pagos_controller.CursoDeOtroAnioError(
+            "Estos cursos no son del año lectivo del concepto: PRIMERO A."
+        )
+
+    monkeypatch.setattr(rutas_tipos_pagos, "upsert_cursos_asignados", falso)
+
+    status, cuerpo = peticion(
+        app, "PUT", "/tipos-pagos/2/cursos", {"cursos": [{"curso_id": 4, "valor": 1}]}
+    )
+
+    assert status == 400
+    assert cuerpo == {"detail": "Estos cursos no son del año lectivo del concepto: PRIMERO A."}

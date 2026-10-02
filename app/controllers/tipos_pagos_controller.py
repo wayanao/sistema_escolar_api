@@ -1,7 +1,8 @@
 import logging
 
 from app.database import get_connection
-from app.repositories.anios_lectivos_repository import ANIO_ACTIVO_ID_SQL
+from app.repositories.anios_lectivos_repository import ANIO_ACTIVO_ID_SQL, condicion_anio
+from app.services.anio_lectivo import exigir_anio_lectivo
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +19,10 @@ class TipoPagoDuplicadoError(Exception):
 class TipoPagoInfraestructuraError(RuntimeError):
     """Encapsula un fallo inesperado sin exponer detalles internos por HTTP."""
 
+
+class CursoDeOtroAnioError(Exception):
+    """Se lanza al poner precio a un concepto en un curso de otro año lectivo."""
+
 # =============================================================================
 # CRUD básico (NO modificar firmas: usado por flujos existentes)
 # =============================================================================
@@ -27,8 +32,12 @@ def crear_tipo_pago(nombre, valor=0):
     cursor = conn.cursor()
     try:
         nombre_limpio = (nombre or "").strip()
+        # Fase 3 del año lectivo: el nombre se repite una vez por año, como el
+        # indice unico de la migracion A. El concepto nace en el año activo, asi
+        # que se compara con los de ese año.
         cursor.execute(
-            "SELECT id FROM tipos_de_pagos WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(%s))",
+            "SELECT id FROM tipos_de_pagos WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(%s))"
+            f" AND anio_lectivo_id = {ANIO_ACTIVO_ID_SQL}",
             (nombre_limpio,),
         )
         if cursor.fetchone():
@@ -53,11 +62,18 @@ def crear_tipo_pago(nombre, valor=0):
         cursor.close()
         conn.close()
 
-def listar_tipos_pagos():
+def listar_tipos_pagos(anio_lectivo_id=None):
+    """Conceptos de un año; sin `anio_lectivo_id`, del activo (decision 17)."""
     conn = get_connection()
     cursor = conn.cursor()
     try:
-        cursor.execute('SELECT id, nombre, valor FROM tipos_de_pagos ORDER BY nombre')
+        if anio_lectivo_id is not None:
+            exigir_anio_lectivo(cursor, anio_lectivo_id)
+        condicion, params = condicion_anio("anio_lectivo_id", anio_lectivo_id)
+        cursor.execute(
+            f'SELECT id, nombre, valor FROM tipos_de_pagos WHERE {condicion} ORDER BY nombre',
+            params or None,
+        )
         rows = cursor.fetchall()
     finally:
         cursor.close()
@@ -69,14 +85,17 @@ def actualizar_tipo_pago(id, nombre, valor=0):
     cursor = conn.cursor()
     try:
         nombre_limpio = (nombre or "").strip()
+        # Fase 3 del año lectivo: se compara con los conceptos del mismo año
+        # que el que se edita.
         cursor.execute(
             """
             SELECT id
             FROM tipos_de_pagos
             WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(%s))
               AND id <> %s
+              AND anio_lectivo_id = (SELECT anio_lectivo_id FROM tipos_de_pagos WHERE id = %s)
             """,
-            (nombre_limpio, id),
+            (nombre_limpio, id, id),
         )
         if cursor.fetchone():
             raise TipoPagoDuplicadoError(f"Ya existe un tipo de pago llamado '{nombre_limpio}'.")
@@ -201,15 +220,24 @@ def obtener_tipo_pago(id):
         conn.close()
 
 
-def listar_tipos_pagos_detallado():
-    """Lista todos los tipos de pago con configuración avanzada y cursos asignados."""
+def listar_tipos_pagos_detallado(anio_lectivo_id=None):
+    """Lista los tipos de pago de un año con configuración avanzada y cursos asignados.
+
+    Sin `anio_lectivo_id`, los del año activo (decision 17).
+    """
     from psycopg2.extras import RealDictCursor
 
     conn = get_connection()
     cursor = conn.cursor(cursor_factory=RealDictCursor)
     try:
+        if anio_lectivo_id is not None:
+            exigir_anio_lectivo(cursor, anio_lectivo_id)
         columnas = _columnas_existentes(cursor, "tipos_de_pagos")
-        cursor.execute("SELECT * FROM tipos_de_pagos ORDER BY nombre")
+        condicion, params = condicion_anio("anio_lectivo_id", anio_lectivo_id)
+        cursor.execute(
+            f"SELECT * FROM tipos_de_pagos WHERE {condicion} ORDER BY nombre",
+            params or None,
+        )
         tipos = [_serializar_tipo(r, columnas) for r in cursor.fetchall()]
 
         if not tipos:
@@ -440,13 +468,34 @@ def upsert_cursos_asignados(tipo_pago_id, asignaciones):
     conn = get_connection()
     cursor = conn.cursor(cursor_factory=RealDictCursor)
     try:
-        cursor.execute(
-            "SELECT 1 FROM tipos_de_pagos WHERE id = %s", (tipo_pago_id,)
-        )
-        if not cursor.fetchone():
-            return None
-
         curso_ids = [a["curso_id"] for a in asignaciones]
+
+        # Una sola consulta responde dos cosas: si el concepto existe y que
+        # cursos de los pedidos son de otro año. Fase 3 del año lectivo: el
+        # precio de un concepto de 2027 solo se pone en cursos de 2027 (ver
+        # "tipos_de_pagos.anio_lectivo_id" en docs/funcionalidades/ANIO_LECTIVO.md).
+        cursor.execute(
+            """
+            SELECT ARRAY(
+                SELECT c.nombre
+                FROM cursos c
+                WHERE c.id = ANY(%s::int[])
+                  AND c.anio_lectivo_id <> tp.anio_lectivo_id
+                ORDER BY c.nombre
+            ) AS cursos_de_otro_anio
+            FROM tipos_de_pagos tp
+            WHERE tp.id = %s
+            """,
+            (curso_ids, tipo_pago_id),
+        )
+        concepto = cursor.fetchone()
+        if not concepto:
+            return None
+        if concepto["cursos_de_otro_anio"]:
+            raise CursoDeOtroAnioError(
+                "Estos cursos no son del año lectivo del concepto: "
+                f"{', '.join(concepto['cursos_de_otro_anio'])}."
+            )
 
         if curso_ids:
             cursor.execute(
@@ -481,6 +530,9 @@ def upsert_cursos_asignados(tipo_pago_id, asignaciones):
         asignados = _consultar_cursos_asignados(cursor, tipo_pago_id)
         conn.commit()
         return asignados
+    except CursoDeOtroAnioError:
+        conn.rollback()
+        raise
     except Exception as exc:
         logger.exception(
             "Fallo inesperado al asignar cursos al tipo de pago %s", tipo_pago_id

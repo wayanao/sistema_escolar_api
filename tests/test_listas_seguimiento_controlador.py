@@ -104,11 +104,14 @@ class RepositorioFalso:
             raise self.error_al_crear
         return 7
 
-    def contar_cursos_activos(self, cursor):
+    # Año lectivo, fase 3 (paso 3.3): las dos reciben el año. Aqui no se
+    # anota porque estas pruebas no tratan del año; lo cubre
+    # test_anio_lectivo_lecturas.py.
+    def contar_cursos_activos(self, cursor, anio_lectivo_id=None):
         self._anotar("contar_cursos_activos")
         return self.cursos_activos
 
-    def crear_columna_en_cursos_activos(self, cursor, nombre):
+    def crear_columna_en_cursos_activos(self, cursor, nombre, anio_lectivo_id=None):
         self._anotar("crear_columna_en_cursos_activos", nombre)
         if self.error_al_crear:
             raise self.error_al_crear

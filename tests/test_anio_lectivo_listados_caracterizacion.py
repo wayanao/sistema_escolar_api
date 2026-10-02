@@ -27,6 +27,7 @@ from decimal import Decimal
 import pytest
 
 from app.controllers import curso_controller, tipos_pagos_controller
+from app.repositories.anios_lectivos_repository import ANIO_ACTIVO_ID_SQL
 
 
 class CursorEspia:
@@ -132,7 +133,11 @@ def test_cursos_listado_con_todos_no_filtra(conexion_de):
     respuesta = curso_controller.obtener_cursos_controller(estado="todos")
 
     assert respuesta == []
-    assert "WHERE" not in cursor.sql[0]
+    # Fase 3, paso 3.3: "todos" sigue sin filtrar por estado, pero ahora
+    # si filtra por año (el activo, sin parametro). Antes se pedia que no
+    # hubiera ningun WHERE; lo que importa es que no se filtre el estado.
+    assert "COALESCE(LOWER(estado), 'activo') = %s" not in cursor.sql[0]
+    assert f"WHERE anio_lectivo_id = {ANIO_ACTIVO_ID_SQL}" in cursor.sql[0]
     assert cursor.parametros[0] == []
 
 
@@ -188,7 +193,11 @@ def test_conceptos_listado_simple_respuesta_completa(conexion_de):
         {"id": 2, "nombre": "MATRICULA", "valor": 300000.0},
         {"id": 1, "nombre": "MENSUALIDAD", "valor": 0},
     ]
-    assert cursor.sql == ["SELECT id, nombre, valor FROM tipos_de_pagos ORDER BY nombre"]
+    # Fase 3, paso 3.3: solo los conceptos del año activo, sin parametro nuevo.
+    assert cursor.sql == [
+        "SELECT id, nombre, valor FROM tipos_de_pagos"
+        f" WHERE anio_lectivo_id = {ANIO_ACTIVO_ID_SQL} ORDER BY nombre"
+    ]
     assert cursor.parametros == [None]
 
 
@@ -281,7 +290,12 @@ def test_conceptos_detallado_respuesta_completa_con_cursos(conexion_de):
         },
     ]
     assert len(cursor.ejecutadas) == 4
-    assert "SELECT * FROM tipos_de_pagos ORDER BY nombre" in cursor.sql[1]
+    # Fase 3, paso 3.3: solo los conceptos del año activo, sin parametro nuevo.
+    assert (
+        f"SELECT * FROM tipos_de_pagos WHERE anio_lectivo_id = {ANIO_ACTIVO_ID_SQL} ORDER BY nombre"
+        in cursor.sql[1]
+    )
+    assert cursor.parametros[1] is None
     assert "FROM tipos_pagos_cursos tpc" in cursor.sql[3]
     assert "ORDER BY c.nombre" in cursor.sql[3]
 

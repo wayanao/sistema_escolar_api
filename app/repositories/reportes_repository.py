@@ -2,11 +2,14 @@ from app.repositories.anios_lectivos_repository import ANIO_ACTIVO_ID_SQL
 
 
 def consultar_reporte_general(cursor):
-    cursor.execute("""
+    # Fase 3 del año lectivo: los cursos que se cuentan y se listan son los del
+    # año activo. Los estudiantes por curso salen de `estudiantes.curso_id`,
+    # que ya es el curso del año activo. Lo demas (dinero, egresos) va por fecha.
+    cursor.execute(f"""
             SELECT
                 (SELECT COUNT(*) FROM estudiantes) as total_estudiantes,\x20\x20\x20\x20\x20\x20\x20\x20
                 (SELECT COUNT(*) FROM profesor) as total_profesores,
-                (SELECT COUNT(*) FROM cursos) as total_cursos,
+                (SELECT COUNT(*) FROM cursos WHERE anio_lectivo_id = {ANIO_ACTIVO_ID_SQL}) as total_cursos,
                 (SELECT COUNT(*) FROM materias) as total_materias,
                 (SELECT COALESCE(SUM(monto), 0) FROM pagos WHERE COALESCE(estado, 'Pagado') <> 'Anulado') as total_ingresos,
                 (
@@ -24,12 +27,13 @@ def consultar_reporte_general(cursor):
         """)
     stats = cursor.fetchone()
 
-    cursor.execute("""
+    cursor.execute(f"""
             SELECT
                 c.nombre as curso,
                 COUNT(e.id) as cantidad_estudiantes
             FROM cursos c
             LEFT JOIN estudiantes e ON c.id = e.curso_id
+            WHERE c.anio_lectivo_id = {ANIO_ACTIVO_ID_SQL}
             GROUP BY c.id, c.nombre
             ORDER BY c.nombre
         """)

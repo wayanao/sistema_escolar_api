@@ -59,21 +59,29 @@ def test_actualizar_estado_profesor_route_returns_controller_result(monkeypatch)
 def test_cursos_keeps_legacy_list_response(monkeypatch):
     calls = []
 
-    def fake_listado(estado="activo"):
-        calls.append(estado)
+    # Año lectivo, fase 3 (paso 3.3): el controlador recibe el año pedido.
+    # Sin `anio_lectivo_id` le llega None, que es el año activo.
+    def fake_listado(estado="activo", anio_lectivo_id=None):
+        calls.append((estado, anio_lectivo_id))
         return [{"id": 1}]
 
     monkeypatch.setattr(cursos, "obtener_cursos_controller", fake_listado)
 
     assert cursos.obtener_cursos() == [{"id": 1}]
-    assert calls == ["activo"]
+    assert calls == [("activo", None)]
 
 
 def test_cursos_returns_paginated_response_when_limit_is_sent(monkeypatch):
     calls = []
 
-    def fake(limit, offset, busqueda, estado):
-        calls.append({"limit": limit, "offset": offset, "busqueda": busqueda, "estado": estado})
+    def fake(limit, offset, busqueda, estado, anio_lectivo_id):
+        calls.append({
+            "limit": limit,
+            "offset": offset,
+            "busqueda": busqueda,
+            "estado": estado,
+            "anio_lectivo_id": anio_lectivo_id,
+        })
         return {"total": 1, "limit": limit, "offset": offset, "items": [{"id": 9}]}
 
     monkeypatch.setattr(cursos, "obtener_cursos_paginado_controller", fake)
@@ -81,7 +89,14 @@ def test_cursos_returns_paginated_response_when_limit_is_sent(monkeypatch):
     response = cursos.obtener_cursos(limit=25, offset=50, busqueda="primero", estado="inactivo")
 
     assert response == {"total": 1, "limit": 25, "offset": 50, "items": [{"id": 9}]}
-    assert calls == [{"limit": 25, "offset": 50, "busqueda": "primero", "estado": "inactivo"}]
+    # Año lectivo, fase 3 (paso 3.3): sin año, None, que es el activo.
+    assert calls == [{
+        "limit": 25,
+        "offset": 50,
+        "busqueda": "primero",
+        "estado": "inactivo",
+        "anio_lectivo_id": None,
+    }]
 
 
 def test_cursos_rejects_invalid_estado_filter():

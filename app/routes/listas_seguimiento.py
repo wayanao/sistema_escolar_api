@@ -19,8 +19,12 @@ traduce sus errores a codigos HTTP. Todo lo que decide vive en
 `observador.py`: los cuatro errores que se atrapan aqui llevan mensajes que
 son constantes escritas a mano en el controlador, no texto de PostgreSQL. El
 controlador se encarga de que nunca lo sean, y tiene prueba que lo verifica.
+El quinto, el `ValueError` de un año lectivo que no existe, trae la constante
+de `app/services/anio_lectivo.py`.
 """
-from fastapi import APIRouter, Depends, HTTPException, status
+from typing import Annotated, Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.controllers.listas_seguimiento_controller import (
     ColumnaDuplicadaError,
@@ -82,7 +86,10 @@ def crear_columna(curso_id: int, columna: ColumnaSeguimientoCreate):
 
 
 @router.post("/columnas-en-todos-los-cursos")
-def crear_columna_en_todos_los_cursos(columna: ColumnaSeguimientoCreate):
+def crear_columna_en_todos_los_cursos(
+    columna: ColumnaSeguimientoCreate,
+    anio_lectivo_id: Annotated[Optional[int], Query(gt=0)] = None,
+):
     """Crea la columna en todos los cursos activos que aun no la tengan.
 
     **Sin `curso_id` en la ruta, a proposito**: no actua sobre un curso sino
@@ -97,12 +104,21 @@ def crear_columna_en_todos_los_cursos(columna: ColumnaSeguimientoCreate):
     El 409 de aqui no es "ya existe esa columna" sino la carrera entre dos
     peticiones simultaneas; el controlador le pone su propio mensaje, que
     invita a reintentar porque reintentar funciona.
+
+    "Todos los cursos" son los del año `?anio_lectivo_id=` o, sin el, los del
+    activo (fase 3 del año lectivo). Un año que no existe da 404.
     """
     try:
-        return crear_columna_en_todos_los_cursos_controller(columna.nombre)
+        return crear_columna_en_todos_los_cursos_controller(
+            columna.nombre, anio_lectivo_id=anio_lectivo_id
+        )
     except ColumnaDuplicadaError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
         ) from exc
 
 

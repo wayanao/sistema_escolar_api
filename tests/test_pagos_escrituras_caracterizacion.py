@@ -135,6 +135,11 @@ class CursorFalso:
             return [(True,)]
 
         # --- catalogo y asignaciones ---
+        # Al guardar precios por curso, la misma consulta que confirma que el
+        # concepto existe dice que cursos son de otro año (fase 3 del año
+        # lectivo, paso 3.3). Aqui todos son del año del concepto.
+        if "as cursos_de_otro_anio" in query:
+            return [{"cursos_de_otro_anio": []}]
         if "from tipos_de_pagos tp" in query and "order by tp.id" in query:
             return [fila_tipo_pago(self.tipo_cobro)]
         if "from tipos_de_pagos" in query and "lower(trim(nombre))" in query:

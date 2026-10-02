@@ -27,6 +27,7 @@ from psycopg2 import IntegrityError
 
 from app.database import get_cursor
 from app.repositories import listas_seguimiento_repository as repositorio
+from app.services.anio_lectivo import exigir_anio_lectivo
 
 
 CURSO_NO_ENCONTRADO = "Ese curso no existe."
@@ -148,8 +149,11 @@ def crear_columna_controller(curso_id, nombre):
         raise ColumnaDuplicadaError(COLUMNA_DUPLICADA) from exc
 
 
-def crear_columna_en_todos_los_cursos_controller(nombre):
-    """Crea la columna en los cursos activos que aun no la tengan.
+def crear_columna_en_todos_los_cursos_controller(nombre, anio_lectivo_id=None):
+    """Crea la columna en los cursos activos de un año que aun no la tengan.
+
+    Sin `anio_lectivo_id`, los del año activo (fase 3 del año lectivo). Un año
+    que no existe lanza `ValueError` antes de escribir nada.
 
     Devuelve `{"creadas", "omitidas", "total"}`, que es lo que la pantalla
     necesita para decir algo honesto: "Creada en 9 cursos. 2 ya la tenian."
@@ -178,8 +182,14 @@ def crear_columna_en_todos_los_cursos_controller(nombre):
     """
     try:
         with get_cursor(commit=True) as cursor:
-            creadas = repositorio.crear_columna_en_cursos_activos(cursor, nombre)
-            total = repositorio.contar_cursos_activos(cursor)
+            if anio_lectivo_id is not None:
+                exigir_anio_lectivo(cursor, anio_lectivo_id)
+            creadas = repositorio.crear_columna_en_cursos_activos(
+                cursor, nombre, anio_lectivo_id=anio_lectivo_id
+            )
+            total = repositorio.contar_cursos_activos(
+                cursor, anio_lectivo_id=anio_lectivo_id
+            )
 
             return {
                 "creadas": creadas,

@@ -50,11 +50,22 @@ def obtener_cursos(
     offset: Annotated[int, Query(ge=0)] = 0,
     busqueda: Optional[str] = None,
     estado: str = "activo",
+    anio_lectivo_id: Annotated[Optional[int], Query(gt=0)] = None,
 ):
+    """Sin `anio_lectivo_id`, los cursos del año activo."""
     estado = validar_estado_filtro(estado)
-    if limit is not None:
-        return obtener_cursos_paginado_controller(limit=limit, offset=offset, busqueda=busqueda, estado=estado)
-    return obtener_cursos_controller(estado=estado)
+    try:
+        if limit is not None:
+            return obtener_cursos_paginado_controller(
+                limit=limit,
+                offset=offset,
+                busqueda=busqueda,
+                estado=estado,
+                anio_lectivo_id=anio_lectivo_id,
+            )
+        return obtener_cursos_controller(estado=estado, anio_lectivo_id=anio_lectivo_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 @router.put("/cursos/{curso_id}")

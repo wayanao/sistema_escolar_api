@@ -3,18 +3,21 @@ import datetime
 import pytest
 
 from app.controllers import reportes_controller
+from app.repositories.anios_lectivos_repository import ANIO_ACTIVO_ID_SQL
 
 
 def _normalize_sql(query):
     return " ".join(query.split())
 
 
+# Año lectivo, fase 3 (paso 3.3): los cursos que se cuentan y se listan son
+# los del año activo. Lo demas no cambia.
 GENERAL_STATS_SQL = _normalize_sql(
-    """
+    f"""
     SELECT
         (SELECT COUNT(*) FROM estudiantes) as total_estudiantes,
         (SELECT COUNT(*) FROM profesor) as total_profesores,
-        (SELECT COUNT(*) FROM cursos) as total_cursos,
+        (SELECT COUNT(*) FROM cursos WHERE anio_lectivo_id = {ANIO_ACTIVO_ID_SQL}) as total_cursos,
         (SELECT COUNT(*) FROM materias) as total_materias,
         (SELECT COALESCE(SUM(monto), 0) FROM pagos WHERE COALESCE(estado, 'Pagado') <> 'Anulado') as total_ingresos,
         (
@@ -33,12 +36,13 @@ GENERAL_STATS_SQL = _normalize_sql(
 )
 
 GENERAL_STUDENTS_SQL = _normalize_sql(
-    """
+    f"""
     SELECT
         c.nombre as curso,
         COUNT(e.id) as cantidad_estudiantes
     FROM cursos c
     LEFT JOIN estudiantes e ON c.id = e.curso_id
+    WHERE c.anio_lectivo_id = {ANIO_ACTIVO_ID_SQL}
     GROUP BY c.id, c.nombre
     ORDER BY c.nombre
     """

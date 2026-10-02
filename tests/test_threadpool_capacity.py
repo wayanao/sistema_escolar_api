@@ -281,6 +281,10 @@ class _ControllerCursor:
         self.query = query
 
     def fetchone(self):
+        if "AS cursos_de_otro_anio" in self.query:
+            # El concepto existe y ningun curso es de otro año (fase 3 del año
+            # lectivo, paso 3.3).
+            return {"cursos_de_otro_anio": []}
         if "SELECT curso_id FROM estudiantes" in self.query:
             # Los upsert usan RealDictCursor desde que dejaron de anidar
             # conexiones, asi que leen la columna por nombre.

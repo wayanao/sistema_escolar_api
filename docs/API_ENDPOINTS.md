@@ -221,6 +221,12 @@ Notas:
 - `POST /cursos`, `PUT /cursos/{curso_id}` y el listado aceptan/devuelven
   `director_grupo_id` (opcional, `int` o `null`; referencia a `profesor.id`).
   Ver `docs/funcionalidades/DIRECTOR_GRUPO.md`.
+- Año lectivo (fase 3, paso 3.3): `GET /cursos` acepta `?anio_lectivo_id=`
+  opcional (con y sin `limit`). Sin el, devuelve solo los cursos del año
+  activo; un año que no existe da `404`. `estado=todos` sigue sin filtrar por
+  estado, dentro del año. El `409` de nombre repetido compara solo con los
+  cursos del mismo año: el del año activo al crear, el del propio curso al
+  editar. Mientras haya un solo año, todo responde igual que antes.
 
 ## Profesores
 
@@ -485,6 +491,10 @@ Notas:
 - `GET /reportes/ingresos-rango`
 - `GET /reportes/egresos-rango`
 
+Año lectivo (fase 3, paso 3.3): en `GET /reportes/general`, `total_cursos` y
+`estudiantes_por_curso` cuentan solo los cursos del año activo. Los demas
+totales no cambian (dinero y egresos van por fecha).
+
 ## Tipos de pagos
 
 - `POST /tipos-pagos`
@@ -536,6 +546,20 @@ responde `400` con
 `mes_final` antes de aplicar `20260910_tipos_pagos_mes_final.sql`, responde
 `409` e indica el comando de migracion. Las lecturas conservan `12` como
 fallback mientras la columna no exista.
+
+Año lectivo (fase 3, paso 3.3; cada concepto es de un año, decision 17):
+
+- `GET /tipos-pagos` y `GET /tipos-pagos/detallado` aceptan
+  `?anio_lectivo_id=` opcional. Sin el, devuelven solo los conceptos del año
+  activo; un año que no existe da `404`.
+- El `409` de nombre repetido de `POST` y `PUT /tipos-pagos` compara solo con
+  los conceptos del mismo año: el activo al crear, el del propio concepto al
+  editar.
+- `PUT /tipos-pagos/{id}/cursos` responde `400` si algun curso es de otro año
+  que el concepto, con el mensaje `Estos cursos no son del año lectivo del
+  concepto: <nombres>.`, y no guarda nada. La comprobacion va en la misma
+  consulta que ya miraba si el concepto existe.
+- Mientras haya un solo año, todo responde igual que antes.
 
 Valores personalizados por estudiante:
 
@@ -717,6 +741,9 @@ Tres cosas que no son evidentes:
   `COALESCE(LOWER(estado), 'activo') = 'activo'`, o sea que un curso con
   `estado` nulo **si** cuenta. Asi los cursos sobre los que actua son
   exactamente los que el admin ve en su selector.
+- **Solo en los cursos de un año** (año lectivo, fase 3, paso 3.3): el de
+  `?anio_lectivo_id=` o, sin el, el activo. Un año que no existe da `404`
+  sin escribir nada.
 
 Nacen columnas **independientes**, una por curso, no una compartida: son
 copias con el mismo nombre y a partir de ahi cada una va por su lado. No hay

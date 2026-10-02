@@ -6,6 +6,36 @@ Ultima revision documental: 2026-10-02.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
+## 2026-10-02 - Año lectivo: cursos y conceptos por año
+
+Fase 3, paso 3.3, de `docs/funcionalidades/ANIO_LECTIVO.md`. Mientras haya un
+solo año, ninguna respuesta cambia y ninguna consulta se agrega.
+
+### Que cambia
+
+- `GET /cursos`, `GET /tipos-pagos` y `GET /tipos-pagos/detallado` aceptan
+  `?anio_lectivo_id=` (sin el, el activo; año inexistente, 404).
+- El nombre repetido de cursos y de conceptos se compara solo dentro del año,
+  como ya lo permite la base desde la migracion A. Sin esto, la copia de
+  cursos y conceptos a 2027 (fase 5) fallaria como "repetido".
+- `PUT /tipos-pagos/{id}/cursos` rechaza con 400 un curso de otro año que el
+  concepto, en la misma consulta que ya confirmaba que el concepto existe.
+- "Crear la columna en todos los cursos" de listas de seguimiento actua sobre
+  los cursos de un año (`?anio_lectivo_id=`, por defecto el activo).
+- `GET /reportes/general`: `total_cursos` y `estudiantes_por_curso`, solo del
+  año activo.
+
+### Pruebas
+
+32 nuevas en `tests/test_anio_lectivo_lecturas.py`, con bases simuladas de
+dos años para el nombre repetido de cursos y conceptos y para los precios por
+curso. Se ajustaron a proposito, sin cambiar la respuesta que comprueban: tres
+pruebas de la fase 0 y la del reporte general que fijan el texto de la
+consulta, dos dobles de la ruta de cursos, el doble del repositorio de listas
+y dos bases simuladas que no conocian la consulta nueva de precios. Diecisiete
+versiones dañadas del codigo hacen fallar las nuevas. `scripts/verify.py`:
+1635 pasan, 0 fallan.
+
 ## 2026-10-02 - Año lectivo: el profesor y los horarios, solo del año
 
 Fase 3, paso 3.2, de `docs/funcionalidades/ANIO_LECTIVO.md`. Mientras haya un

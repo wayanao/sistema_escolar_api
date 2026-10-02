@@ -29,7 +29,12 @@ nombre duplicado use **exactamente** la misma expresion que el indice unico de
 la migracion, porque si las dos se separan el 409 deja de coincidir con lo que
 la base acepta. `tests/test_listas_seguimiento_repositorio.py` lo comprueba
 leyendo el propio archivo .sql.
+
+"Todos los cursos" son los de un año (fase 3 del año lectivo, ver
+`docs/funcionalidades/ANIO_LECTIVO.md`): el pedido o, sin el, el activo.
 """
+
+from app.repositories.anios_lectivos_repository import condicion_anio
 
 
 def _nombre_normalizado(expresion):
@@ -200,15 +205,19 @@ def crear_columna(cursor, curso_id, nombre):
     return cursor.fetchone()[0]
 
 
-def contar_cursos_activos(cursor):
-    """Cuantos cursos activos hay.
+def contar_cursos_activos(cursor, anio_lectivo_id=None):
+    """Cuantos cursos activos hay en un año (sin `anio_lectivo_id`, el activo).
 
     Solo alimenta el mensaje de la pantalla -"creada en 9 de 11 cursos"-; no
     decide nada. Quien decide en que cursos se crea es la propia sentencia de
     `crear_columna_en_cursos_activos`, con el mismo filtro y en un solo paso,
     asi que no hay ventana entre mirar y escribir.
     """
-    cursor.execute(f"SELECT COUNT(*) FROM cursos c WHERE {_CURSO_ACTIVO}")
+    condicion, params = condicion_anio("c.anio_lectivo_id", anio_lectivo_id)
+    cursor.execute(
+        f"SELECT COUNT(*) FROM cursos c WHERE {_CURSO_ACTIVO} AND {condicion}",
+        params or None,
+    )
     return cursor.fetchone()[0]
 
 
@@ -235,8 +244,12 @@ _CREAR_EN_CURSOS_ACTIVOS = f"""
 """
 
 
-def crear_columna_en_cursos_activos(cursor, nombre):
+def crear_columna_en_cursos_activos(cursor, nombre, anio_lectivo_id=None):
     """Crea la columna en los cursos activos que aun no la tengan. Devuelve cuantas.
+
+    Solo en los cursos de un año: el pedido o, sin el, el activo (fase 3 del
+    año lectivo). La condicion del año va al final, asi que su parametro va
+    detras de los dos nombres.
 
     Los cursos que ya tenian una columna con ese nombre **se saltan en
     silencio**, no dan error. Es lo que vuelve repetible el boton de la
@@ -254,7 +267,11 @@ def crear_columna_en_cursos_activos(cursor, nombre):
 
     El `commit` es de quien llama.
     """
-    cursor.execute(_CREAR_EN_CURSOS_ACTIVOS, (nombre, nombre))
+    condicion, params_anio = condicion_anio("c.anio_lectivo_id", anio_lectivo_id)
+    cursor.execute(
+        _CREAR_EN_CURSOS_ACTIVOS + f"      AND {condicion}\n",
+        (nombre, nombre, *params_anio),
+    )
     return cursor.rowcount
 
 

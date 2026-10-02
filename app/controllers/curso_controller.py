@@ -1,5 +1,6 @@
 from app.database import get_connection
-from app.repositories.anios_lectivos_repository import ANIO_ACTIVO_ID_SQL
+from app.repositories.anios_lectivos_repository import ANIO_ACTIVO_ID_SQL, condicion_anio
+from app.services.anio_lectivo import exigir_anio_lectivo
 from psycopg2 import IntegrityError
 
 ESTADOS_CURSO = {"activo", "inactivo"}
@@ -24,17 +25,27 @@ def _validar_nombre_obligatorio(nombre):
 
 
 def _validar_curso_unico(cursor, nombre, jornada, curso_id=None):
+    # Fase 3 del año lectivo: el nombre se repite una vez por año, como el
+    # indice unico de la migracion A. Un curso nuevo nace en el año activo; uno
+    # que se edita se compara con los de su propio año. Sin esto, copiar los
+    # cursos a 2027 (fase 5) fallaria como "repetido".
+    if curso_id is None:
+        anio_sql, params_anio = ANIO_ACTIVO_ID_SQL, ()
+    else:
+        anio_sql = "(SELECT anio_lectivo_id FROM cursos WHERE id = %s)"
+        params_anio = (curso_id,)
     cursor.execute(
-        """
+        f"""
         SELECT id
         FROM cursos
         WHERE UPPER(REGEXP_REPLACE(TRIM(nombre), '[[:space:]]+', ' ', 'g')) = %s
           AND LOWER(COALESCE(NULLIF(TRIM(jornada), ''), 'Mañana')) =
               LOWER(COALESCE(NULLIF(TRIM(%s), ''), 'Mañana'))
           AND (%s IS NULL OR id <> %s)
+          AND anio_lectivo_id = {anio_sql}
         LIMIT 1
         """,
-        (nombre, jornada, curso_id, curso_id),
+        (nombre, jornada, curso_id, curso_id, *params_anio),
     )
     if cursor.fetchone():
         raise CursoDuplicadoError(
@@ -54,6 +65,14 @@ def _agregar_filtro_estado(filtros, params, estado):
 
     filtros.append("COALESCE(LOWER(estado), 'activo') = %s")
     params.append(_normalizar_estado(estado_filtro))
+
+
+def _agregar_filtro_anio(filtros, params, anio_lectivo_id):
+    # Fase 3 del año lectivo: solo los cursos de un año. Sin año, el activo y
+    # ningun parametro nuevo. Va el ultimo, despues de busqueda y estado.
+    condicion, params_anio = condicion_anio("anio_lectivo_id", anio_lectivo_id)
+    filtros.append(condicion)
+    params.extend(params_anio)
 
 
 # 🎯 Crear curso
@@ -110,14 +129,18 @@ def _formatear_curso(row):
 
 
 # 🎯 Listar cursos
-def obtener_cursos_controller(estado=ESTADO_CURSO_DEFAULT):
-
+def obtener_cursos_controller(estado=ESTADO_CURSO_DEFAULT, anio_lectivo_id=None):
+    """Cursos de un año; sin `anio_lectivo_id`, del activo."""
     conn = get_connection()
     cursor = conn.cursor()
     try:
+        if anio_lectivo_id is not None:
+            exigir_anio_lectivo(cursor, anio_lectivo_id)
+
         filtros = []
         params = []
         _agregar_filtro_estado(filtros, params, estado)
+        _agregar_filtro_anio(filtros, params, anio_lectivo_id)
         where_sql = f"WHERE {' AND '.join(filtros)}" if filtros else ""
 
         cursor.execute("""
@@ -134,11 +157,17 @@ def obtener_cursos_controller(estado=ESTADO_CURSO_DEFAULT):
 
     return [_formatear_curso(row) for row in resultado]
 
-def obtener_cursos_paginado_controller(limit=50, offset=0, busqueda=None, estado=ESTADO_CURSO_DEFAULT):
+def obtener_cursos_paginado_controller(
+    limit=50, offset=0, busqueda=None, estado=ESTADO_CURSO_DEFAULT, anio_lectivo_id=None
+):
+    """Pagina de cursos de un año; sin `anio_lectivo_id`, del activo."""
     conn = get_connection()
     cursor = conn.cursor()
 
     try:
+        if anio_lectivo_id is not None:
+            exigir_anio_lectivo(cursor, anio_lectivo_id)
+
         filtros = []
         params = []
 
@@ -147,6 +176,7 @@ def obtener_cursos_paginado_controller(limit=50, offset=0, busqueda=None, estado
             params.append(f"%{busqueda}%")
 
         _agregar_filtro_estado(filtros, params, estado)
+        _agregar_filtro_anio(filtros, params, anio_lectivo_id)
 
         where_sql = f"WHERE {' AND '.join(filtros)}" if filtros else ""
 

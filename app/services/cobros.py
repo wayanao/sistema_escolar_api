@@ -45,11 +45,31 @@ def _anio_sql(anio_lectivo_id):
     return "%s", (int(anio_lectivo_id),)
 
 
-def _filtro_anios_lectivos(anio_lectivo_id):
-    """Filtro sobre `anios_lectivos al`: el año activo, o el pedido."""
+def _filtro_anios_lectivos(anio_lectivo_id, alias="al"):
+    """Filtro sobre `anios_lectivos <alias>`: el año activo, o el pedido."""
     if anio_lectivo_id is None:
-        return "al.estado = 'activo'", ()
-    return "al.id = %s", (int(anio_lectivo_id),)
+        return f"{alias}.estado = 'activo'", ()
+    return f"{alias}.id = %s", (int(anio_lectivo_id),)
+
+
+def _concepto_desde_fila(row) -> dict:
+    """Un concepto de pago a partir de una fila con las columnas de
+    `obtener_tipos_pago`, en ese orden."""
+    return {
+        "id": row[0],
+        "nombre": row[1],
+        "valor": float(row[2] or 0),
+        "tipo_cobro": row[3] or "unico",
+        "activo": bool(row[4]) if row[4] is not None else True,
+        "mes_inicial": row[5],
+        "mes_final": int(row[6]) if row[6] is not None else 12,
+        "frecuencia_meses": int(row[7]) if row[7] is not None else 1,
+        "dia_limite_mes": row[8],
+        "dias_gracia": int(row[9]) if row[9] is not None else 0,
+        "mora_tipo": row[10],
+        "mora_valor": float(row[11] or 0),
+        "anio": int(row[12]),
+    }
 
 
 def obtener_tipos_pago(cursor, anio_lectivo_id=None) -> list[dict]:
@@ -95,24 +115,7 @@ def obtener_tipos_pago(cursor, anio_lectivo_id=None) -> list[dict]:
     else:
         cursor.execute(consulta)
 
-    return [
-        {
-            "id": row[0],
-            "nombre": row[1],
-            "valor": float(row[2] or 0),
-            "tipo_cobro": row[3] or "unico",
-            "activo": bool(row[4]) if row[4] is not None else True,
-            "mes_inicial": row[5],
-            "mes_final": int(row[6]) if row[6] is not None else 12,
-            "frecuencia_meses": int(row[7]) if row[7] is not None else 1,
-            "dia_limite_mes": row[8],
-            "dias_gracia": int(row[9]) if row[9] is not None else 0,
-            "mora_tipo": row[10],
-            "mora_valor": float(row[11] or 0),
-            "anio": int(row[12]),
-        }
-        for row in cursor.fetchall()
-    ]
+    return [_concepto_desde_fila(row) for row in cursor.fetchall()]
 
 
 def _tabla_puente_existe(cursor) -> bool:
@@ -615,6 +618,191 @@ def calcular_deudas_desde_contexto(
         pagos_aplicados=pagos_aplicados,
         hoy=hoy,
     )
+
+
+def _conceptos_por_anio(cursor, anio_lectivo_ids: tuple[int, ...]) -> dict[int, list[dict]]:
+    """Los conceptos de varios años en una consulta, agrupados por `anio`.
+
+    A diferencia de `obtener_tipos_pago`, no revisa columnas: los años
+    anteriores solo existen en colegios con todas las migraciones aplicadas.
+    """
+    cursor.execute(
+        """
+        SELECT tp.id, tp.nombre, tp.valor, tp.tipo_cobro, tp.activo,
+            tp.mes_inicial, tp.mes_final, tp.frecuencia_meses, tp.dia_limite_mes,
+            tp.dias_gracia, tp.mora_tipo, tp.mora_valor, al.anio
+        FROM tipos_de_pagos tp
+        JOIN anios_lectivos al ON al.id = tp.anio_lectivo_id
+        WHERE tp.anio_lectivo_id IN %s
+        ORDER BY tp.id
+        """,
+        (anio_lectivo_ids,),
+    )
+    conceptos = {}
+    for row in cursor.fetchall():
+        concepto = _concepto_desde_fila(row)
+        conceptos.setdefault(concepto["anio"], []).append(concepto)
+    return conceptos
+
+
+def _asignaciones_de_cursos(cursor, curso_ids: tuple[int, ...]) -> dict[int, dict[int, float]]:
+    """Los precios por concepto de varios cursos, en una consulta."""
+    cursor.execute(
+        """
+        SELECT curso_id, tipo_pago_id, valor
+        FROM tipos_pagos_cursos
+        WHERE curso_id IN %s AND activo = TRUE
+        """,
+        (curso_ids,),
+    )
+    asignaciones = {}
+    for curso_id, tipo_pago_id, valor in cursor.fetchall():
+        asignaciones.setdefault(curso_id, {})[tipo_pago_id] = float(valor or 0)
+    return asignaciones
+
+
+def _pagado_por_estudiante_y_anio(cursor, estudiante_ids, anio_lectivo_ids, hoy):
+    """Lo pagado por concepto, agrupado por estudiante y año, en tres consultas.
+
+    Las mismas reglas de `obtener_pagos_por_concepto_estudiantes` (sin
+    anulados, los adelantos aparte y solo los meses ya maduros), pero para
+    varios años a la vez. Cada resultado va por `(estudiante_id,
+    anio_lectivo_id)`.
+    """
+    sumas = []
+    for columna, solo_con_texto in (("tipo_pago", ""), ("descripcion", "AND descripcion IS NOT NULL")):
+        cursor.execute(
+            f"""
+            SELECT estudiante_id, anio_lectivo_id, LOWER(COALESCE({columna}, '')),
+                   COALESCE(SUM(monto), 0)
+            FROM pagos
+            WHERE estudiante_id IN %s
+              AND anio_lectivo_id IN %s
+              {solo_con_texto}
+              AND COALESCE(estado, 'Pagado') <> 'Anulado'
+              AND NOT EXISTS (
+                  SELECT 1 FROM pagos_aplicaciones pa
+                  WHERE pa.pago_id = pagos.id
+              )
+            GROUP BY estudiante_id, anio_lectivo_id, LOWER(COALESCE({columna}, ''))
+            """,
+            (estudiante_ids, anio_lectivo_ids),
+        )
+        suma = {}
+        for estudiante_id, anio_lectivo_id, concepto, monto in cursor.fetchall():
+            suma.setdefault((estudiante_id, anio_lectivo_id), {})[concepto] = float(monto or 0)
+        sumas.append(suma)
+
+    mes_actual = (hoy or hoy_en_colombia()).replace(day=1)
+    cursor.execute(
+        """
+        SELECT pa.estudiante_id, tp.anio_lectivo_id, LOWER(TRIM(tp.nombre)),
+               COALESCE(SUM(pa.monto), 0)
+        FROM pagos_aplicaciones pa
+        JOIN pagos p ON p.id = pa.pago_id
+        JOIN tipos_de_pagos tp ON tp.id = pa.tipo_pago_id
+        WHERE pa.estudiante_id IN %s
+          AND tp.anio_lectivo_id IN %s
+          AND pa.activo = TRUE
+          AND pa.periodo <= %s
+          AND COALESCE(p.estado, 'Pagado') <> 'Anulado'
+        GROUP BY pa.estudiante_id, tp.anio_lectivo_id, LOWER(TRIM(tp.nombre))
+        """,
+        (estudiante_ids, anio_lectivo_ids, mes_actual),
+    )
+    aplicados = {}
+    for estudiante_id, anio_lectivo_id, concepto, monto in cursor.fetchall():
+        aplicados.setdefault((estudiante_id, anio_lectivo_id), {})[concepto] = float(monto or 0)
+
+    pagos_nombre, pagos_descripcion = sumas
+    return pagos_nombre, pagos_descripcion, aplicados
+
+
+def calcular_deudas_anios_anteriores(
+    cursor,
+    estudiante_ids: tuple[int, ...],
+    *,
+    hoy: Optional[date] = None,
+    anio_lectivo_id=None,
+    asignaciones_por_curso: Optional[dict[int, dict[int, float]]] = None,
+    valores_por_estudiante: Optional[dict[int, dict[int, float]]] = None,
+) -> dict[int, list[dict]]:
+    """La deuda de cada año anterior en que cada estudiante tuvo matricula.
+
+    Decision 2 de docs/funcionalidades/ANIO_LECTIVO.md: la deuda de años
+    anteriores se sigue viendo, aparte de la del año. "Anterior" es anterior
+    al año que se mira (`anio_lectivo_id`; sin el, el activo). Cada año se
+    calcula con la misma regla de siempre (`_calcular_deudas`) y con sus
+    propios conceptos, el curso de su matricula, sus precios y sus pagos.
+
+    Devuelve `{estudiante_id: [{anio_lectivo_id, anio, curso_id, deudas,
+    total_deuda}, ...]}`, del año mas viejo al mas nuevo, solo con los años
+    y los conceptos que tienen deuda.
+
+    Mientras no haya años anteriores hace una sola consulta. Si los hay,
+    calcula todos los estudiantes y años de una vez: las consultas no crecen
+    con los estudiantes. Quien ya cargo los precios por curso o los valores
+    por estudiante (cartera) los pasa y se ahorra esas consultas.
+    """
+    if not estudiante_ids:
+        return {}
+
+    filtro_anio, params_anio = _filtro_anios_lectivos(anio_lectivo_id, alias="referencia")
+    cursor.execute(
+        f"""
+        SELECT m.estudiante_id, m.anio_lectivo_id, al.anio, m.curso_id
+        FROM matriculas m
+        JOIN anios_lectivos al ON al.id = m.anio_lectivo_id
+        WHERE m.estudiante_id IN %s
+          AND m.curso_id IS NOT NULL
+          AND al.anio < (
+              SELECT referencia.anio FROM anios_lectivos referencia
+              WHERE {filtro_anio}
+          )
+        ORDER BY m.estudiante_id, al.anio
+        """,
+        (estudiante_ids, *params_anio),
+    )
+    matriculas = cursor.fetchall()
+    if not matriculas:
+        return {}
+
+    anio_lectivo_ids = tuple(sorted({fila[1] for fila in matriculas}))
+    conceptos = _conceptos_por_anio(cursor, anio_lectivo_ids)
+    if asignaciones_por_curso is None:
+        asignaciones_por_curso = _asignaciones_de_cursos(
+            cursor, tuple(sorted({fila[3] for fila in matriculas})),
+        )
+    if valores_por_estudiante is None:
+        valores_por_estudiante = obtener_valores_personalizados_por_estudiantes(
+            cursor, tuple(estudiante_ids),
+        )
+    pagos_nombre, pagos_descripcion, pagos_aplicados = _pagado_por_estudiante_y_anio(
+        cursor, tuple(estudiante_ids), anio_lectivo_ids, hoy,
+    )
+
+    resultado = {}
+    for estudiante_id, anio_id, anio, curso_id in matriculas:
+        clave = (estudiante_id, anio_id)
+        resumen = _calcular_deudas(
+            tipos_pago=conceptos.get(anio, []),
+            asignaciones_curso=asignaciones_por_curso.get(curso_id, {}),
+            valores_estudiante=valores_por_estudiante.get(estudiante_id, {}),
+            pagos_nombre=pagos_nombre.get(clave, {}),
+            pagos_descripcion=pagos_descripcion.get(clave, {}),
+            pagos_aplicados=pagos_aplicados.get(clave, {}),
+            hoy=hoy,
+        )
+        deudas = [deuda for deuda in resumen["deudas"] if deuda["deuda"] > 0]
+        if deudas:
+            resultado.setdefault(estudiante_id, []).append({
+                "anio_lectivo_id": anio_id,
+                "anio": anio,
+                "curso_id": curso_id,
+                "deudas": deudas,
+                "total_deuda": sum(deuda["deuda"] for deuda in deudas),
+            })
+    return resultado
 
 
 def obtener_saldo_concepto(cursor, estudiante_id: int, concepto, anio_lectivo_id=None) -> float:

@@ -2,10 +2,11 @@
 
 ## Control
 
-- Estado: **Fase 2 en curso.** Paso 2.1 (las cuotas se cuentan en el año
-  del concepto, commit `b2362f1`), paso 2.2 (cada año cuenta solo sus
-  pagos, commit `34712dd`) y paso 2.3 (pagar en otro año, sin commit)
-  escritos y probados el 2026-10-01, sin desplegar. Fase 1
+- Estado: **Fase 2 con el código completo el 2026-10-01, sin desplegar.**
+  Pasos 2.1 (las cuotas se cuentan en el año del concepto), 2.2 (cada año
+  cuenta solo sus pagos) y 2.3 (pagar en otro año) en los commits
+  `b2362f1`, `34712dd` y `b5f4099`; paso 2.4 (deuda de años anteriores)
+  sin commit. Fase 1
   terminada el 2026-10-01: migración A (2026-09-30) y migración B
   (2026-10-01) aplicadas en producción, código que escribe el año
   desplegado en Render (`67b2d4b`, Live), esquema base regenerado. Fase 0
@@ -1162,8 +1163,11 @@ Paso 2.4 — Deuda de años anteriores (decisión 2).
   la deuda de cada año anterior en que el estudiante tuvo matrícula,
   calculada con la misma función. Queda vacío mientras haya un solo año.
 - Los estudiantes de cartera, y los de cada año anterior, salen de las
-  matrículas (pasado aquí desde el 2.2).
-  Antes de escribirlo se mide cuántas consultas agrega, y el usuario decide
+  matrículas (pasado aquí desde el 2.2). *Ajustado al hacerlo (2026-10-01):*
+  los de cada año anterior sí; la lista de cartera del año pasó a la fase
+  3, donde cartera recibe el año como parámetro. "Anterior" es anterior al
+  año que se mira (por defecto, el activo).
+- Antes de escribirlo se mide cuántas consultas agrega, y el usuario decide
   si se acepta.
 - Pruebas: caso A completo con dos años (2027 activo: matrícula 2027 +
   febrero y marzo; 2026 en "años anteriores") y caso B después de activar
@@ -1323,6 +1327,72 @@ año siguiente (sin desplegar):**
 - Efecto al desplegar: ninguno visible, porque el frontend todavía no manda
   el año. Queda listo para el selector "Año del pago" de la fase 5 del
   frontend.
+- Commit `b5f4099` (hecho por el usuario el 2026-10-01).
+
+**Avance del 2026-10-01 — paso 2.4, deuda de años anteriores (sin
+desplegar):**
+
+- Medición previa y decisión del usuario (2026-10-01), como pedía el plan.
+  Medido antes: deudas de un estudiante 11 consultas; cartera 12 con
+  estudiantes y 5 sin ellos. Calculado sobre el diseño: +1 en cada pantalla
+  mientras haya un solo año; con años anteriores, +8 en deudas y +5 en
+  cartera, sin crecer con los estudiantes. El usuario lo aceptó. Medido
+  después, ya escrito: **exactamente esos números** (12 y 13 hoy; 19 y 17
+  con un año anterior). Quedan fijados en pruebas.
+- Código:
+  - `app/services/cobros.py`: `calcular_deudas_anios_anteriores(cursor,
+    estudiante_ids, ...)` calcula para varios estudiantes a la vez. Una
+    consulta busca las matrículas de años anteriores al que se mira; si no
+    hay, termina ahí. Si hay, trae en una consulta los conceptos de esos
+    años, los precios de esos cursos y los valores por estudiante (o los
+    recibe ya cargados, como hace cartera) y, en tres, lo pagado por
+    estudiante y año. Cada año se calcula con `_calcular_deudas`, la misma
+    regla de siempre, y solo se devuelven años y conceptos con deuda. Se
+    sacó `_concepto_desde_fila` para no repetir la lectura de un concepto.
+  - `app/controllers/estudiante_controller.py`: `GET
+    /estudiantes/{id}/deudas` trae `deuda_anios_anteriores`, aparte de
+    `total_deuda`.
+  - `app/controllers/cartera_mora_controller.py`: cada estudiante trae
+    `deuda_anios_anteriores`, aparte de `total`. Un estudiante que solo debe
+    de años anteriores también aparece (con `total` 0), y el resumen suma
+    `total_anios_anteriores`.
+- Pruebas:
+  - `tests/test_anio_lectivo_cobros_por_anio.py`, 10 nuevas, con una base
+    simulada de dos años (2026 cerrado y 2027 activo) y el reloj fijado en
+    el 15 de enero de 2027:
+    - **caso B completo**: con 2027 activo, la matrícula de 2027 en la deuda
+      del año y octubre y noviembre de 2026 ($400.000) aparte;
+    - **caso A completo**: con 2026 pagado entero, no hay deuda de años
+      anteriores (lo de 2027 quedó probado en el paso 2.2);
+    - cartera con deuda de 2026 y con un estudiante que solo debe de 2026;
+    - una sola consulta sin años anteriores, y ninguna sin estudiantes;
+    - y los conteos medidos.
+  - Ajustadas a propósito, por el campo nuevo y el costo aceptado: el
+    conteo de cartera en `test_reportes_query_counts.py` (12 → 13, con la
+    consulta nueva reconocida), y la respuesta de deudas en
+    `test_asignaciones_estudiantes_caracterizacion.py` y en la prueba del
+    paso 2.3.
+  - Contra el código del paso 2.3: fallan las 10 nuevas y la del 2.3
+    ajustada; pasan las otras 37.
+- Documentación: `docs/API_ENDPOINTS.md` (los campos nuevos de deudas y
+  cartera).
+- Verificación: `scripts/verify.py` → **1548 pasan, 0 fallan**; ruff y
+  `pip check` limpios; `git diff --check` limpio.
+- Efecto al desplegar: ninguno visible mientras haya un solo año. Hoy, una
+  consulta más en las deudas de un estudiante y en cartera (unos 60 ms).
+  El frontend tiene que mostrar `deuda_anios_anteriores` antes de activar
+  2027 (fase 6).
+
+**Con esto, el código de la fase 2 queda completo (2026-10-01).** Se
+cumplen las condiciones del punto 9:
+- Las caracterizaciones de "dentro del año" siguen iguales.
+- Los casos A y B dan el resultado correcto: A, debe la matrícula 2027,
+  febrero y marzo; B, los $400.000 de 2026 se ven como deuda anterior.
+- Hay pruebas de pago a un año cerrado, pago a uno en preparación y precio
+  del curso de 2027.
+- `verify.py` pasa.
+
+Falta que el usuario lo revise en local y lo despliegue.
 
 ### Fase 3 — Lecturas por año y guardia de escritura
 
@@ -1350,6 +1420,12 @@ profesores verían las clases de 2027.
      pasa a leer por `matriculas` del año pedido. Con el año activo debe
      devolver exactamente lo mismo que hoy, incluidos los estudiantes sin
      curso (lo exige la caracterización).
+   - Cartera y estado de cuenta (pasado aquí desde la fase 2, 2026-10-01):
+     `GET /cartera/mora` acepta `?anio_lectivo_id=`, y su lista de
+     estudiantes sale de las matrículas de ese año
+     (`cartera_mora_controller.py`). El estado de cuenta por curso
+     (`estado_cuenta_controller.py`, `reportes_controller.py`) usa el año
+     de ese curso. Los cálculos ya aceptan el año desde el paso 2.3.
    - Boletín, certificados y puesto en el curso (`boletin_repository.py`):
      el curso sale de la matrícula del año pedido, no de `e.curso_id`. Esto
      arregla el punto 3 del diagnóstico. El filtro de materias inactivas
@@ -1599,25 +1675,24 @@ cosa, gana lo que se pueda verificar.
   (`df53299`) está desplegado en Render (`67b2d4b`, Live); esquema base
   regenerado tras cada una. Detalle y verificación de cada paso en los
   "Avance" de las fases 0 y 1.
-- **Fase 2:** la pregunta de los conceptos desactivados quedó respondida
-  (se deja como está y se corrige después, aparte), y el plan por pasos
-  (2.1 a 2.4) está escrito en la fase 2. **Pasos 2.1 y 2.2** en los
-  commits `b2362f1` y `34712dd`, todavía sin subir al 2026-10-01. **Paso
-  2.3** escrito y probado, sin commit. Ver los "Avance" de cada uno.
+- **Fase 2, código completo:** la pregunta de los conceptos desactivados
+  quedó respondida (se deja como está y se corrige después, aparte). Los
+  cuatro pasos del plan están escritos y probados: 2.1, 2.2 y 2.3 en los
+  commits `b2362f1`, `34712dd` y `b5f4099`, todavía sin subir al
+  2026-10-01, y 2.4 sin commit. Ver los "Avance" de cada uno.
 - **Hecho aparte, la noche del 2026-09-30:** el arreglo de la hora
   (`2e77634` en este repo, `033c042` en el frontend). Cobros, cartera y
   alta de colegios usan la fecha de Colombia (`app/core/fechas.py`), y el
   frontend propone fechas de Colombia (`src/utils/fechaColombia.js`). Ver
   el hallazgo correspondiente y `docs/CAMBIOS_BACKEND.md`.
 - **Pendiente del usuario:**
-  - Pasos 2.1 a 2.3: revisarlos en local (Cartera vencida, la pantalla de
+  - Pasos 2.1 a 2.4: revisarlos en local (Cartera vencida, la pantalla de
     Pagos y el detalle de un estudiante deben mostrar los mismos números
-    que producción, y registrar un pago debe funcionar igual), el commit
-    del 2.3 y después el push. Las consultas nuevas solo se probaron con
-    bases simuladas, y esa revisión es la que las corre contra la base
-    real. Ojo: registrar un pago en local escribe en la base real; para
-    probar el registro, usar una rama de Neon. El push despliega; no
-    cambia nada visible mientras haya un solo año.
+    que producción), el commit del 2.4 y después el push. Las consultas
+    nuevas solo se probaron con bases simuladas, y esa revisión es la que
+    las corre contra la base real (solo lectura). No registrar pagos en
+    local: escribe en la base real; para eso, una rama de Neon. El push
+    despliega; no cambia nada visible mientras haya un solo año.
   - Borrar la rama `prueba-anio-lectivo-b` de Neon, si no se borró sola.
   - Si no se hizo todavía, **rotar la contraseña** de `neondb_owner` (ver
     el punto siguiente).
@@ -1636,10 +1711,12 @@ cosa, gana lo que se pueda verificar.
   correr si falta `$env:DATABASE_URL`. Antes de probar la app contra una
   rama, detener el backend local que esté corriendo; si no, el frontend
   sigue hablando con el que apunta a producción.
-- **Siguiente acción exacta:** **paso 2.4 de la fase 2** (deuda de años
-  anteriores; ver el plan en la fase 2), solo con la autorización explícita
-  del usuario para ese paso. Antes de escribirlo hay que medir cuántas
-  consultas agrega y que el usuario decida si lo acepta (lo dice el plan).
-  Zona sensible: dinero. La fase 2 completa tiene fecha límite antes del 1
-  de noviembre y, en todo caso, antes del 1 de enero de 2027.
+- **Siguiente acción exacta:** **fase 3, lecturas por año y guardia de
+  escritura** (ver la fase 3), solo con la autorización explícita del
+  usuario para empezarla. Tiene que estar en producción **antes de crear el
+  primer curso de 2027**, es decir, antes de la fase 5 (meta: principios de
+  noviembre). Empieza por confirmar con `grep` el inventario de la fase 3,
+  que ya incluye cartera y estado de cuenta, pasados desde la fase 2.
+  Ninguna pregunta abierta la bloquea. Antes, conviene que la fase 2 esté
+  desplegada.
 - Prompt para retomar: `docs/funcionalidades/PROMPT_CONTINUACION_ANIO_LECTIVO.md`.

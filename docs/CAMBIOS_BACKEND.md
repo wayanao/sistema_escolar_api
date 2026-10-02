@@ -6,6 +6,35 @@ Ultima revision documental: 2026-10-01.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
+## 2026-10-01 - Año lectivo: la deuda de años anteriores se ve aparte
+
+Fase 2, paso 2.4, de `docs/funcionalidades/ANIO_LECTIVO.md`. Con el, el
+codigo de la fase 2 queda completo: cuando 2027 este activo, lo que se deba de
+2026 no desaparece y se muestra separado de lo de 2027.
+
+### Que cambia
+
+- `GET /estudiantes/{id}/deudas` y cada estudiante de `GET /cartera/mora`
+  traen `deuda_anios_anteriores`: la deuda de cada año anterior en que el
+  estudiante tuvo matricula, con la misma regla de siempre. Un estudiante que
+  solo debe de años anteriores tambien aparece en cartera, y el resumen suma
+  `total_anios_anteriores`.
+- `cobros.calcular_deudas_anios_anteriores` calcula todos los estudiantes y
+  años de una vez.
+
+### Consultas (medidas, el usuario acepto el costo antes de escribirlo)
+
+Mientras haya un solo año: una mas en cada pantalla (deudas 11 -> 12, cartera
+12 -> 13). Con años anteriores: deudas 19 y cartera 17, sin crecer con los
+estudiantes. Fijado en pruebas.
+
+### Pruebas
+
+10 nuevas en `tests/test_anio_lectivo_cobros_por_anio.py`, entre ellas los
+casos A y B completos con dos años. Se ajustaron el conteo de cartera y dos
+pruebas que fijan la respuesta de deudas. `scripts/verify.py`: 1548 pasan, 0
+fallan.
+
 ## 2026-10-01 - Año lectivo: pagar en otro año y adelantar meses del siguiente
 
 Fase 2, paso 2.3, de `docs/funcionalidades/ANIO_LECTIVO.md`. Prepara el cobro

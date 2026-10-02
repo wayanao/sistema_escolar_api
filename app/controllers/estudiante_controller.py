@@ -3,7 +3,11 @@ import logging
 from app.database import get_connection, get_cursor
 from app.repositories import anios_lectivos_repository, estudiantes_repository
 from app.services.anio_lectivo import exigir_anio_lectivo
-from app.services.cobros import calcular_deudas_estudiante, con_anio
+from app.services.cobros import (
+    calcular_deudas_anios_anteriores,
+    calcular_deudas_estudiante,
+    con_anio,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -266,13 +270,22 @@ def actualizar_estado_estudiante_controller(est_id, estado):
 
 
 def obtener_deudas_estudiante_controller(est_id, anio_lectivo_id=None):
-    """Deudas del estudiante en un año; sin `anio_lectivo_id`, en el activo."""
+    """Deudas del estudiante en un año; sin `anio_lectivo_id`, en el activo.
+
+    `deuda_anios_anteriores` trae aparte lo que debe de los años anteriores
+    a ese (decision 2 del año lectivo); vacio mientras haya un solo año.
+    """
     with get_cursor() as cursor:
         if anio_lectivo_id is not None:
             exigir_anio_lectivo(cursor, anio_lectivo_id)
         resumen_cobros = calcular_deudas_estudiante(cursor, est_id, **con_anio(anio_lectivo_id))
+        anteriores = calcular_deudas_anios_anteriores(
+            cursor, (est_id,), **con_anio(anio_lectivo_id),
+        )
 
-    return _formatear_resumen_deudas(est_id, resumen_cobros)
+    respuesta = _formatear_resumen_deudas(est_id, resumen_cobros)
+    respuesta["deuda_anios_anteriores"] = anteriores.get(est_id, [])
+    return respuesta
 
 
 def _formatear_resumen_deudas(est_id, resumen_cobros):

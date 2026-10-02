@@ -105,6 +105,10 @@ Notas:
   de la matricula de ese año y sus pagos. Sin el parametro, el año activo, como
   antes. Año inexistente o estudiante sin matricula en ese año: `404` con el
   mensaje.
+- Desde el paso 2.4 del año lectivo la respuesta trae ademas
+  `deuda_anios_anteriores`: la deuda de cada año anterior al que se mira, en
+  que el estudiante tuvo matricula, aparte de `total_deuda`. Mismo formato que
+  en cartera; vacia mientras haya un solo año.
 
 ## Cuentas
 
@@ -785,6 +789,16 @@ Notas:
 
 - `GET /cartera/mora`
 - `GET /cartera/mora/resumen`
+
+Notas:
+
+- Año lectivo (fase 2, paso 2.4): cada estudiante de `GET /cartera/mora` trae
+  `deuda_anios_anteriores`, la deuda de cada año anterior al activo en que
+  tuvo matricula (`anio_lectivo_id`, `anio`, `curso_id`, `deudas`,
+  `total_deuda`), aparte de `total`, que sigue siendo la del año. Un
+  estudiante que solo debe de años anteriores tambien aparece, con `total` 0.
+  `GET /cartera/mora/resumen` suma esa deuda en `total_anios_anteriores`.
+  Mientras haya un solo año, la lista viene vacia y el total en 0.
 
 ## Paginacion compatible existente
 

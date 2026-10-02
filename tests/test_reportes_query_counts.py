@@ -80,6 +80,10 @@ class QueryCountingCursor:
             return self.students
         if "select id, nombre, apellido" in query and "where curso_id" in query:
             return self.students
+        # Matriculas de años anteriores (fase 2 del año lectivo, paso 2.4):
+        # mientras haya un solo año, ninguna.
+        if "from matriculas m" in query and "al.anio <" in query:
+            return []
         # El curso que fija los precios sale de la matricula del año activo
         # (fase 2 del año lectivo, paso 2.2); el conteo no cambia.
         if "from matriculas m" in query and "where m.estudiante_id" in query:
@@ -225,7 +229,10 @@ def test_account_course_consumer_characterizes_twelve_queries_per_student(
 
 @pytest.mark.parametrize(
     ("student_count", "expected_queries"),
-    [(0, 5), (1, 12), (3, 12)],
+    # 12 -> 13 con estudiantes desde el paso 2.4 del año lectivo, aceptado
+    # por el usuario el 2026-10-01: una consulta para saber si hay años
+    # anteriores con deuda. Sigue sin crecer con los estudiantes.
+    [(0, 5), (1, 13), (3, 13)],
 )
 def test_overdue_portfolio_keeps_grouped_query_count_constant(
     monkeypatch,

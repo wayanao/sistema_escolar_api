@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from app.database import get_connection
 from app.services.cobros import (
+    calcular_deudas_anios_anteriores,
     calcular_deudas_desde_contexto,
     obtener_pagos_por_concepto_estudiantes,
     obtener_tipos_pago,
@@ -47,7 +48,14 @@ def reporte_cartera_vencida(curso_id: int | None = None):
         "ventas_pendientes": [
             {"venta_id": int, "fecha": str, "saldo": float}, ...
         ],
+        "deuda_anios_anteriores": [     # aparte de la del año (año lectivo)
+            {"anio_lectivo_id": int, "anio": int, "curso_id": int,
+             "deudas": [...], "total_deuda": float}, ...
+        ],
     }
+
+    Un estudiante que solo debe de años anteriores tambien aparece: esa deuda
+    se sigue viendo (decision 2 de docs/funcionalidades/ANIO_LECTIVO.md).
     """
     conn = get_connection()
     cursor = conn.cursor()
@@ -136,7 +144,16 @@ def reporte_cartera_vencida(curso_id: int | None = None):
                 }
             )
 
-        # 7. Calcular deuda academica por estudiante
+        # 7. Deuda de años anteriores (año lectivo), con los precios y valores
+        # ya cargados: una sola consulta mientras haya un solo año.
+        anteriores = calcular_deudas_anios_anteriores(
+            cursor,
+            est_ids,
+            asignaciones_por_curso=asignaciones_por_curso,
+            valores_por_estudiante=valores_por_estudiante,
+        )
+
+        # 8. Calcular deuda academica por estudiante
         resultado = []
 
         for est in estudiantes:
@@ -168,8 +185,9 @@ def reporte_cartera_vencida(curso_id: int | None = None):
             ventas_pendientes = ventas_por_est.get(est_id, [])
             deuda_inventario = sum(v["saldo"] for v in ventas_pendientes)
             total = deuda_academica + deuda_inventario
+            deuda_anios_anteriores = anteriores.get(est_id, [])
 
-            if total <= 0:
+            if total <= 0 and not deuda_anios_anteriores:
                 continue
 
             resultado.append(
@@ -186,6 +204,7 @@ def reporte_cartera_vencida(curso_id: int | None = None):
                     "cuotas_vencidas": cuotas_vencidas_total,
                     "conceptos": conceptos,
                     "ventas_pendientes": ventas_pendientes,
+                    "deuda_anios_anteriores": deuda_anios_anteriores,
                 }
             )
 
@@ -206,6 +225,10 @@ def resumen_cartera_vencida():
     total_academico = sum(i["deuda_academica"] for i in items)
     total_inventario = sum(i["deuda_inventario"] for i in items)
     total_mora = sum(i["mora"] for i in items)
+    # Aparte del total del año, como en cada estudiante (año lectivo).
+    total_anios_anteriores = sum(
+        anio["total_deuda"] for i in items for anio in i["deuda_anios_anteriores"]
+    )
     top_5 = items[:5]
 
     # Distribución por curso
@@ -226,6 +249,7 @@ def resumen_cartera_vencida():
         "total_academico": round(total_academico, 2),
         "total_inventario": round(total_inventario, 2),
         "total_mora": round(total_mora, 2),
+        "total_anios_anteriores": round(total_anios_anteriores, 2),
         "top_5": top_5,
         "distribucion_cursos": distribucion_cursos,
     }

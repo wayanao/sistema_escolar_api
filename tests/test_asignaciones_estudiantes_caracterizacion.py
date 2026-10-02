@@ -775,6 +775,9 @@ def test_deudas_de_estudiante_solo_devuelve_las_positivas(cursor_de, monkeypatch
         "curso_id": 4,
         "deudas": [{"concepto": "Pension", "deuda": 100}],
         "total_deuda": 100,
+        # Campo agregado en el paso 2.4 del año lectivo: vacio mientras haya
+        # un solo año.
+        "deuda_anios_anteriores": [],
     }
 
 

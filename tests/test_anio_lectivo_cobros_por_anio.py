@@ -19,6 +19,10 @@ Tres grupos:
    pago en el año de la deuda que salda (cerrado o en preparacion) y para
    adelantar en diciembre meses del año siguiente. Sin año, todo sigue como
    antes: las pruebas que ya existian no se tocaron.
+5. Paso 2.4: la deuda de años anteriores se ve aparte, en las deudas del
+   estudiante y en cartera. Aqui quedan medidas las consultas que cuesta:
+   una mas mientras haya un solo año; con años anteriores, un numero fijo
+   que no crece con los estudiantes.
 
 Los casos A y B del diagnostico estan en
 tests/test_anio_lectivo_cobros_caracterizacion.py.
@@ -34,7 +38,13 @@ import pytest
 from fastapi.routing import APIRoute
 from pydantic import ValidationError
 
-from app.controllers import estado_cuenta_controller, estudiante_controller, pagos_controller
+from app.controllers import (
+    cartera_mora_controller,
+    estado_cuenta_controller,
+    estudiante_controller,
+    pagos_controller,
+)
+from app.core import fechas
 from app.repositories import pagos_repository, reportes_repository
 from app.routes import estudiantes as rutas_estudiantes
 from app.routes import pagos as rutas_pagos
@@ -829,6 +839,7 @@ def test_las_deudas_del_estudiante_en_otro_anio(monkeypatch):
         "curso_id": 30,
         "deudas": [{"concepto": "MATRICULA", "deuda": 350_000.0}],
         "total_deuda": 350_000.0,
+        "deuda_anios_anteriores": [],  # paso 2.4
     }
     with pytest.raises(ValueError, match="El año lectivo seleccionado no existe."):
         estudiante_controller.obtener_deudas_estudiante_controller(7, anio_lectivo_id=99)
@@ -891,3 +902,243 @@ def test_el_cuerpo_del_pago_y_del_adelanto_acepta_el_anio_opcional():
     assert PagoAdelantadoCreate(**adelanto, anio_lectivo_id=ID_2027).anio_lectivo_id == ID_2027
     with pytest.raises(ValidationError):
         PagoAdelantadoCreate(**adelanto, anio_lectivo_id=-1)
+
+
+# ---------------------------------------------------------------------------
+# 5. Paso 2.4: deuda de años anteriores.
+# ---------------------------------------------------------------------------
+
+ID_2026 = 1  # cerrado, en los escenarios con 2027 activo
+
+
+def test_sin_estudiantes_no_consulta_nada():
+    cursor = CursorQueAnota()
+
+    assert cobros.calcular_deudas_anios_anteriores(cursor, ()) == {}
+    assert cursor.consultas == []
+
+
+def test_sin_anios_anteriores_hace_una_sola_consulta():
+    cursor = CursorQueAnota()
+
+    assert cobros.calcular_deudas_anios_anteriores(cursor, (7, 8)) == {}
+
+    assert len(cursor.consultas) == 1
+    consulta, params = cursor.consultas[0]
+    assert (
+        "AND al.anio < ( SELECT referencia.anio FROM anios_lectivos referencia "
+        "WHERE referencia.estado = 'activo' )"
+    ) in consulta
+    assert params == ((7, 8),)
+
+
+def test_los_anios_anteriores_son_los_de_antes_del_anio_que_se_mira():
+    cursor = CursorQueAnota()
+
+    cobros.calcular_deudas_anios_anteriores(cursor, (7,), anio_lectivo_id=ID_2027)
+
+    consulta, params = cursor.consultas[0]
+    assert "WHERE referencia.id = %s )" in consulta
+    assert params == ((7,), ID_2027)
+
+
+class BaseDosAnios:
+    """2026 cerrado (id 1) y 2027 activo (id 2).
+
+    El estudiante 7 estuvo en el curso 3 en 2026 y esta en el curso 30 en
+    2027. En 2026, mensualidad de 200.000 de febrero a noviembre con limite
+    el 5, y `pagado_2026` pagado. En 2027, matricula de 350.000 en su curso,
+    sin pagar. Con `con_anio_anterior=False` es un colegio de un solo año.
+    """
+
+    def __init__(self, *, con_anio_anterior=True, pagado_2026=8 * 200_000):
+        self.con_anio_anterior = con_anio_anterior
+        self.pagado_2026 = pagado_2026
+        self.consultas = []
+        self._filas = []
+
+    def _responder(self, consulta):
+        if "information_schema.columns" in consulta:
+            return [(columna,) for columna in COLUMNAS_TIPOS_PAGO]
+        if "information_schema.tables" in consulta:
+            return [(1,)]
+        if "from matriculas m" in consulta and "al.anio <" in consulta:
+            return [(7, ID_2026, 2026, 3)] if self.con_anio_anterior else []
+        if "from matriculas m" in consulta:
+            return [(30,)]
+        if "from tipos_pagos_cursos" in consulta and "curso_id in %s" in consulta:
+            return [(3, 2, 200_000)]
+        if "from tipos_pagos_cursos" in consulta:
+            return [(12, 350_000)]
+        if "from tipos_pagos_estudiantes" in consulta:
+            return []
+        if "from tipos_de_pagos tp" in consulta and "tp.anio_lectivo_id in %s" in consulta:
+            return [(2, "MENSUALIDAD", 200_000, "mensual", True, 2, 11, 1, 5, 0, None, 0, 2026)]
+        if "from tipos_de_pagos tp" in consulta:
+            return [(12, "MATRICULA", 300_000, "anual", True, 2, 12, 1, None, 0, None, 0, 2027)]
+        if "group by estudiante_id, anio_lectivo_id, lower(coalesce(descripcion" in consulta:
+            return [(7, ID_2026, "mensualidad", self.pagado_2026)]
+        if "group by estudiante_id, anio_lectivo_id" in consulta:
+            return [(7, ID_2026, "efectivo", self.pagado_2026)]
+        if "lower(coalesce(" in consulta or "from pagos_aplicaciones pa" in consulta:
+            return []
+        raise AssertionError(f"Consulta no caracterizada: {consulta}")
+
+    def execute(self, query, params=None):
+        consulta = " ".join(str(query).lower().split())
+        self.consultas.append((consulta, params))
+        self._filas = self._responder(consulta)
+
+    def fetchall(self):
+        return list(self._filas)
+
+    def fetchone(self):
+        return self._filas[0] if self._filas else None
+
+    def close(self):
+        pass
+
+
+@pytest.fixture
+def enero_de_2027(monkeypatch):
+    """Hoy es el 15 de enero de 2027 en Colombia."""
+    instante = datetime.datetime(2027, 1, 15, 15, 0, tzinfo=datetime.timezone.utc)
+    monkeypatch.setattr(fechas, "_ahora_utc", lambda: instante)
+
+
+def _deudas_del_estudiante(monkeypatch, base):
+    @contextmanager
+    def cursor_de_prueba(*_args, **_kwargs):
+        yield base
+
+    monkeypatch.setattr(estudiante_controller, "get_cursor", cursor_de_prueba)
+    return estudiante_controller.obtener_deudas_estudiante_controller(7)
+
+
+def test_con_un_solo_anio_las_deudas_de_un_estudiante_hacen_12_consultas(
+    monkeypatch, enero_de_2027,
+):
+    """Medido: las 11 de siempre y 1 para saber que no hay años anteriores."""
+    base = BaseDosAnios(con_anio_anterior=False)
+
+    respuesta = _deudas_del_estudiante(monkeypatch, base)
+
+    assert respuesta["deuda_anios_anteriores"] == []
+    assert len(base.consultas) == 12
+
+
+def test_caso_b_despues_de_activar_2027_la_deuda_de_2026_se_ve_aparte(
+    monkeypatch, enero_de_2027,
+):
+    """Caso B del diagnostico, completo: en enero de 2027, con 2027 activo,
+    la deuda de octubre y noviembre de 2026 sigue a la vista, separada de la
+    de 2027 (decision 2)."""
+    base = BaseDosAnios()
+
+    respuesta = _deudas_del_estudiante(monkeypatch, base)
+
+    # El año activo, 2027: su matricula, con el precio de su curso.
+    assert respuesta["curso_id"] == 30
+    assert [(d["concepto"], d["deuda"]) for d in respuesta["deudas"]] == [("MATRICULA", 350_000)]
+    assert respuesta["total_deuda"] == 350_000
+    # Aparte, 2026: 8 de 10 cuotas pagadas; debe octubre y noviembre.
+    (anio_2026,) = respuesta["deuda_anios_anteriores"]
+    assert (anio_2026["anio_lectivo_id"], anio_2026["anio"], anio_2026["curso_id"]) == (
+        ID_2026, 2026, 3,
+    )
+    assert [(d["concepto"], d["cuotas_vencidas"], d["deuda"]) for d in anio_2026["deudas"]] == [
+        ("MENSUALIDAD", 10, 400_000),
+    ]
+    assert anio_2026["total_deuda"] == 400_000
+    # Medido: las 11 del año activo y 8 de años anteriores.
+    assert len(base.consultas) == 19
+
+
+def test_caso_a_con_2026_pagado_completo_no_hay_deuda_de_anios_anteriores(
+    monkeypatch, enero_de_2027,
+):
+    base = BaseDosAnios(pagado_2026=10 * 200_000)
+
+    respuesta = _deudas_del_estudiante(monkeypatch, base)
+
+    assert respuesta["deuda_anios_anteriores"] == []
+
+
+def test_con_precios_y_valores_ya_cargados_cuesta_cinco_consultas(enero_de_2027):
+    """Lo que paga cartera, que ya trae precios y valores: no crece con los
+    estudiantes."""
+    base = BaseDosAnios()
+
+    anteriores = cobros.calcular_deudas_anios_anteriores(
+        base, (7, 8, 9),
+        asignaciones_por_curso={3: {2: 200_000}},
+        valores_por_estudiante={},
+    )
+
+    assert [a["total_deuda"] for a in anteriores[7]] == [400_000]
+    assert len(base.consultas) == 5
+
+
+class CarteraDosAnios(BaseDosAnios):
+    """La misma base, con lo que lee cartera. Con `pagada_2027` el
+    estudiante ya pago la matricula de 2027 y solo debe lo de 2026."""
+
+    def __init__(self, *, pagada_2027=False, **kwargs):
+        super().__init__(**kwargs)
+        self.pagada_2027 = pagada_2027
+
+    def _responder(self, consulta):
+        if "select curso_id, tipo_pago_id, valor from tipos_pagos_cursos where activo" in consulta:
+            return [(3, 2, 200_000), (30, 12, 350_000)]
+        if "c.id as curso_id" in consulta and "from estudiantes e" in consulta:
+            return [(7, "Ana", "Rios", "Activo", 30, "PRIMERO A")]
+        if "from ventas" in consulta:
+            return []
+        if (
+            self.pagada_2027
+            and "lower(coalesce(descripcion" in consulta
+            and "anio_lectivo_id," not in consulta
+        ):
+            return [(7, "matricula", 350_000)]
+        return super()._responder(consulta)
+
+
+def _cartera(monkeypatch, base):
+    monkeypatch.setattr(cartera_mora_controller, "get_connection", lambda: ConexionDePagos(base))
+    return cartera_mora_controller.reporte_cartera_vencida()
+
+
+def test_cartera_muestra_aparte_la_deuda_de_2026(monkeypatch, enero_de_2027):
+    base = CarteraDosAnios()
+
+    (item,) = _cartera(monkeypatch, base)
+
+    assert item["total"] == 350_000
+    assert [a["total_deuda"] for a in item["deuda_anios_anteriores"]] == [400_000]
+    # Medido: las 12 de siempre y 5 de años anteriores.
+    assert len(base.consultas) == 17
+
+
+def test_cartera_muestra_a_quien_solo_debe_de_años_anteriores(monkeypatch, enero_de_2027):
+    base = CarteraDosAnios(pagada_2027=True)
+
+    (item,) = _cartera(monkeypatch, base)
+
+    assert item["total"] == 0
+    assert item["conceptos"] == []
+    assert [a["total_deuda"] for a in item["deuda_anios_anteriores"]] == [400_000]
+
+    resumen = cartera_mora_controller.resumen_cartera_vencida()
+    assert resumen["total_estudiantes"] == 1
+    assert resumen["total_deuda"] == 0
+    assert resumen["total_anios_anteriores"] == 400_000
+
+
+def test_cartera_con_un_solo_anio_no_agrega_el_campo_lleno(monkeypatch, enero_de_2027):
+    base = CarteraDosAnios(con_anio_anterior=False)
+
+    (item,) = _cartera(monkeypatch, base)
+
+    assert item["deuda_anios_anteriores"] == []
+    assert len(base.consultas) == 13
+    assert cartera_mora_controller.resumen_cartera_vencida()["total_anios_anteriores"] == 0

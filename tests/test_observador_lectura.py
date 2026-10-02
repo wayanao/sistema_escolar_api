@@ -280,7 +280,10 @@ def test_el_filtro_de_periodo_va_en_la_union_y_no_en_el_where(monkeypatch):
     observador.obtener_observador(55, 2, PROFESOR)
 
     consulta = cursor.calls[-1][0]
-    antes_del_where, _, despues_del_where = consulta.partition("WHERE")
+    # Año lectivo, fase 3 (paso 3.5b): el filtro del año activo, tambien en el
+    # `ON`, trae una subconsulta con su propio `WHERE`. Se parte en el `WHERE`
+    # principal, el del estudiante.
+    antes_del_where, _, despues_del_where = consulta.partition("WHERE e.id")
     assert "a.periodo = %s" in antes_del_where
     assert "a.periodo" not in despues_del_where
 

@@ -282,7 +282,9 @@ def test_domain_boundary_is_five_own_product_files():
     }
 
     assert discovered == DOMAIN_FILES
-    assert sum(len(_source(path).splitlines()) for path in DOMAIN_FILES) == 1382
+    # 1382 -> 1395: año lectivo, fase 3 (paso 3.5b), la lista de planes del
+    # admin por año (repositorio y ruta).
+    assert sum(len(_source(path).splitlines()) for path in DOMAIN_FILES) == 1395
     own_source = "\n".join(_source(path) for path in DOMAIN_FILES)
     assert "planeador_anual" not in own_source
     assert "app.routes.observaciones" not in own_source

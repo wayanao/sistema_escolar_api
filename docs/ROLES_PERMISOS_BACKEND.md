@@ -158,6 +158,10 @@ Con usuario autenticado y alcance por rol, sin ownership:
   (`listar_anios_visibles`), junto con `resolver_anio_pedido`, que los
   listados por año usaran para negar con 403 a un profesor que pida otro
   año. Ver `docs/funcionalidades/ANIO_LECTIVO.md`, decisiones 3 y 4.
+- observador (`GET /observador/{estudiante_id}?anio_lectivo_id=`, desde el
+  paso 3.5b): ademas del ownership de siempre, un profesor solo puede pedir
+  el año activo (`anio_distinto_del_activo` con el usuario); otro año da 403.
+  El admin puede pedir cualquiera.
 
 ## Riesgos pendientes documentados
 

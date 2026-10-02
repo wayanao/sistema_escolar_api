@@ -499,7 +499,11 @@ de un año nadie dude de a qué tabla escribir.
    proyecto el admin se salte los guards.
 4. **`profesor_id` sale del token**, jamás del cuerpo de la petición.
 5. **Cambiar de periodo no oculta historial.** El periodo es etiqueta, no
-   filtro obligatorio.
+   filtro obligatorio. *Precisado el 2026-10-02 por el año lectivo (fase 3,
+   paso 3.5b, ver `docs/funcionalidades/ANIO_LECTIVO.md`):* el historial es
+   el del año. `GET /observador/{estudiante_id}` devuelve las anotaciones del
+   año activo; el admin consulta otro con `?anio_lectivo_id=`, y un profesor
+   que lo intente recibe 403 (los profesores solo ven el año activo).
 6. **Ningún borrado administrativo arrastra anotaciones**: sin
    `ON DELETE CASCADE` hacia `asignaciones`.
 

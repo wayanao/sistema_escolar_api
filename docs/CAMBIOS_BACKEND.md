@@ -6,6 +6,34 @@ Ultima revision documental: 2026-10-02.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
+## 2026-10-02 - Año lectivo: observador, expediente y planes del admin por año
+
+Fase 3, paso 3.5b, de `docs/funcionalidades/ANIO_LECTIVO.md`. Con esto, todas
+las lecturas de la fase 3 quedan por año.
+
+### Que cambia
+
+- `GET /observador/{estudiante_id}`: las anotaciones del año activo (filtro
+  en el `ON`, como el del periodo). El admin puede pedir otro año; un
+  profesor que lo intente recibe 403 (decision 4). Es la primera ruta que usa
+  la regla del profesor de `app/services/anio_lectivo.py`.
+- `GET /estudiantes/{id}/detalles?anio_lectivo_id=`: notas, faltas,
+  observaciones y deuda del año. Las faltas sin clase registrada se siguen
+  contando en el año activo, para que nada cambie hoy.
+- `GET /admin/plan-de-clases?anio_lectivo_id=`: los planes del año (sin
+  validar que exista: abre su propia conexion).
+- Sin año, mismos parametros y mismo numero de consultas en las tres.
+
+### Pruebas
+
+18 nuevas en `tests/test_anio_lectivo_lecturas.py`, con bases simuladas de dos
+años (bitacora, faltas con una sin clase). Ajustadas a proposito: el contador
+de consultas de `test_observaciones_caracterizacion.py` (como el del boletin),
+la prueba que partia la bitacora en su primer `WHERE` (ahora en el del
+estudiante), el total de lineas del dominio de planes (1382 -> 1395) y el doble
+de la ruta de planes. Catorce versiones dañadas del codigo hacen fallar las
+nuevas. `scripts/verify.py`: 1705 pasan, 0 fallan.
+
 ## 2026-10-02 - Año lectivo: boletin, reporte parcial y puesto por año
 
 Fase 3, paso 3.5a, de `docs/funcionalidades/ANIO_LECTIVO.md`. El paso 3.5 se

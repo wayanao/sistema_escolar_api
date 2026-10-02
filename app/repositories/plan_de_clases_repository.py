@@ -1,4 +1,5 @@
 from app.database import get_cursor
+from app.repositories.anios_lectivos_repository import condicion_anio
 from app.services.asignacion_academica import resolver_asignacion_academica_id_cursor
 
 
@@ -326,7 +327,12 @@ def listar_planes_admin(
     estado_revision=None,
     limit=50,
     offset=0,
+    anio_lectivo_id=None,
 ):
+    """Planes para revisar, de un año: el pedido o, sin el, el activo (año
+    lectivo, fase 3, paso 3.5b). No valida que el año exista, porque abre su
+    propia conexion y hacerlo costaria otra: un año inexistente da una lista
+    vacia."""
     condiciones = []
     parametros = []
 
@@ -363,6 +369,10 @@ def listar_planes_admin(
         else:
             condiciones.append("pdc.estado_revision = %s")
             parametros.append(estado_revision)
+
+    condicion, params_anio = condicion_anio("c.anio_lectivo_id", anio_lectivo_id)
+    condiciones.append(condicion)
+    parametros.extend(params_anio)
 
     where_sql = " WHERE " + " AND ".join(condiciones) if condiciones else ""
 

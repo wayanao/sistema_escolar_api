@@ -16,6 +16,7 @@ from app.controllers.estudiante_controller import (
     actualizar_estado_estudiante_controller,
     obtener_estudiante_por_id_controller
 )
+from app.services.anio_lectivo import AnioLectivoInexistenteError
 
 router = APIRouter(tags=["Estudiantes"], dependencies=[Depends(get_current_active_admin)])
 
@@ -70,8 +71,17 @@ def obtener_estudiantes(
 
 # 🔍 Obtener detalles de un estudiante
 @router.get("/estudiantes/{estudiante_id}/detalles")
-def obtener_detalles_estudiante(estudiante_id: int):
-    return obtener_detalles_estudiante_controller(estudiante_id)
+def obtener_detalles_estudiante(
+    estudiante_id: int,
+    anio_lectivo_id: Annotated[Optional[int], Query(gt=0)] = None,
+):
+    """Sin `anio_lectivo_id`, el expediente del año activo."""
+    try:
+        return obtener_detalles_estudiante_controller(
+            estudiante_id, anio_lectivo_id=anio_lectivo_id
+        )
+    except AnioLectivoInexistenteError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 # 🔍 Obtener deudas academicas de un estudiante
 @router.get("/estudiantes/{estudiante_id}/deudas")

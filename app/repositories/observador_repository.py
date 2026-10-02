@@ -46,6 +46,11 @@ from app.repositories.anios_lectivos_repository import ANIO_ACTIVO_ID_SQL
 #   - `observador_anotaciones`, que es justo lo que permite el caso de arriba.
 #
 # Ninguna de las dos anade una ida y vuelta: siguen siendo una sola consulta.
+#
+# Año lectivo (fase 3, paso 3.5b): las anotaciones son las de un año, con el
+# filtro tambien en el `ON`, por lo mismo que el del periodo. Sin año, el
+# activo y ningun parametro nuevo; el curso del nivel sigue siendo
+# `e.curso_id`. Con otro año, el curso de su matricula de ese año.
 _SELECT = """
     SELECT c.nivel,
            a.id,
@@ -62,10 +67,23 @@ _SELECT = """
            a.editada_en,
            a.editada_por
     FROM estudiantes e
-    LEFT JOIN cursos c ON c.id = e.curso_id
+    LEFT JOIN cursos c ON c.id = {curso}
     LEFT JOIN observador_anotaciones a
            ON a.estudiante_id = e.id
+          AND a.anio_lectivo_id = {anio}
 """
+
+
+def _select_del_anio(anio_lectivo_id):
+    """`_SELECT` con su año, y los parametros que agrega (van primero)."""
+    if anio_lectivo_id is None:
+        return _SELECT.format(curso="e.curso_id", anio=ANIO_ACTIVO_ID_SQL), ()
+    curso = (
+        "(SELECT m.curso_id FROM matriculas m"
+        " WHERE m.estudiante_id = e.id AND m.anio_lectivo_id = %s)"
+    )
+    return _SELECT.format(curso=curso, anio="%s"), (anio_lectivo_id, anio_lectivo_id)
+
 
 # El filtro de periodo va en el ON de la union, NO en el WHERE. En el WHERE
 # descartaria tambien la fila del estudiante cuando ese periodo no tuviera
@@ -79,7 +97,7 @@ _RESTO = """
 """
 
 
-def leer_bitacora(cursor, estudiante_id, periodo=None):
+def leer_bitacora(cursor, estudiante_id, periodo=None, anio_lectivo_id=None):
     """El nivel del curso del estudiante y todas sus anotaciones.
 
     Devuelve las filas crudas. Quien llama distingue las anotaciones reales de
@@ -101,13 +119,18 @@ def leer_bitacora(cursor, estudiante_id, periodo=None):
     instante de la transaccion y no el de la fila. Sin el, su orden entre si
     quedaria a criterio de PostgreSQL y podria cambiar entre dos lecturas
     identicas.
+
+    Las anotaciones son las de un año (fase 3 del año lectivo): sin
+    `anio_lectivo_id`, el activo, que es lo unico que ve un profesor
+    (decision 4).
     """
+    select, params_anio = _select_del_anio(anio_lectivo_id)
     if periodo is None:
-        cursor.execute(_SELECT + _RESTO, (estudiante_id,))
+        cursor.execute(select + _RESTO, (*params_anio, estudiante_id))
     else:
         cursor.execute(
-            _SELECT + _FILTRO_PERIODO + _RESTO,
-            (periodo, estudiante_id),
+            select + _FILTRO_PERIODO + _RESTO,
+            (*params_anio, periodo, estudiante_id),
         )
     return cursor.fetchall()
 

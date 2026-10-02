@@ -21,6 +21,8 @@ año. Sin el, su SQL es el de siempre, letra por letra; con el, va por otro
 camino que lee las matriculas de ese año. Ver `_MATRICULAS_DEL_ANIO`.
 """
 
+from app.repositories.anios_lectivos_repository import condicion_anio
+
 
 def insertar_estudiante(cursor, valores):
     """Inserta un estudiante con sus 35 columnas y devuelve su id.
@@ -292,39 +294,61 @@ def actualizar_estado_estudiante(cursor, estado, est_id):
 #
 # Si algun dia existe un repositorio de esos dominios con dos consumidores
 # reales, este bloque es lo que se mueve.
+#
+# Año lectivo (fase 3, paso 3.5b): notas, faltas y observaciones son las de un
+# año, por el curso de su clase. Sin año, el activo, sin parametro nuevo; con
+# 2027 activo, el expediente ya no suma lo de 2026.
 # ---------------------------------------------------------------------------
 
 
-def leer_promedios_por_materia(cursor, est_id):
+def leer_promedios_por_materia(cursor, est_id, anio_lectivo_id=None):
     """Promedio de cada materia del estudiante, redondeado a un decimal en SQL.
 
     El promedio general NO sale de aqui: el controlador promedia estos
     promedios y redondea otra vez en Python.
     """
-    cursor.execute('''
+    condicion, params_anio = condicion_anio("c.anio_lectivo_id", anio_lectivo_id)
+    cursor.execute(f'''
                 SELECT m.nombre, ROUND(AVG(n.nota), 1) as promedio
                 FROM notas_detalle n
                 JOIN asignaciones a ON n.asignacion_id = a.id
                 JOIN materias m ON a.materia_id = m.id
-                WHERE n.estudiante_id = %s GROUP BY m.id
-            ''', (est_id,))
+                JOIN cursos c ON c.id = a.curso_id
+                WHERE n.estudiante_id = %s AND {condicion} GROUP BY m.id
+            ''', (est_id, *params_anio))
     return cursor.fetchall()
 
 
-def contar_inasistencias(cursor, est_id):
-    """Numero de ausencias. El filtro es `ILIKE 'ausente'`, no una igualdad."""
-    cursor.execute('''
+def contar_inasistencias(cursor, est_id, anio_lectivo_id=None):
+    """Numero de ausencias. El filtro es `ILIKE 'ausente'`, no una igualdad.
+
+    Las de un año, por el curso de su clase. `asistencia.asignacion_id` admite
+    nulos y hoy esas filas se cuentan: en el año activo se siguen contando, para
+    que nada cambie; en otro año no, porque no se sabe de que año son.
+    """
+    condicion, params_anio = condicion_anio("c.anio_lectivo_id", anio_lectivo_id)
+    sin_clase = "asignacion_id IS NULL OR " if anio_lectivo_id is None else ""
+    cursor.execute(f'''
                 SELECT count(*) FROM asistencia
                 WHERE estudiante_id = %s AND estado ILIKE 'ausente'
-            ''', (est_id,))
+                  AND ({sin_clase}asignacion_id IN (
+                      SELECT a.id FROM asignaciones a
+                      JOIN cursos c ON c.id = a.curso_id
+                      WHERE {condicion}
+                  ))
+            ''', (est_id, *params_anio))
     return cursor.fetchone()[0]
 
 
-def leer_observaciones(cursor, est_id):
-    """Observaciones del estudiante con su materia y profesor, mas recientes primero."""
-    cursor.execute('''
-                SELECT o.id, o.periodo, o.conductual, o.cognitivo, o.lenguaje, m.nombre AS materia_nombre, p.nombre || ' ' || p.apellido AS profesor_nombre FROM observaciones o JOIN asignaciones a ON o.asignacion_id = a.id JOIN materias m ON a.materia_id = m.id JOIN profesor p ON a.profesor_id = p.id WHERE o.estudiante_id = %s ORDER BY o.periodo DESC
-            ''', (est_id,))
+def leer_observaciones(cursor, est_id, anio_lectivo_id=None):
+    """Observaciones del estudiante con su materia y profesor, mas recientes primero.
+
+    Las de un año, por el curso de su clase.
+    """
+    condicion, params_anio = condicion_anio("c.anio_lectivo_id", anio_lectivo_id)
+    cursor.execute(f'''
+                SELECT o.id, o.periodo, o.conductual, o.cognitivo, o.lenguaje, m.nombre AS materia_nombre, p.nombre || ' ' || p.apellido AS profesor_nombre FROM observaciones o JOIN asignaciones a ON o.asignacion_id = a.id JOIN materias m ON a.materia_id = m.id JOIN profesor p ON a.profesor_id = p.id JOIN cursos c ON c.id = a.curso_id WHERE o.estudiante_id = %s AND {condicion} ORDER BY o.periodo DESC
+            ''', (est_id, *params_anio))
     return cursor.fetchall()
 
 

@@ -1,4 +1,4 @@
-from typing import Literal, Optional
+from typing import Annotated, Literal, Optional
 
 from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, Query
 
@@ -130,7 +130,9 @@ def listar_planes_admin(
     ] = None,
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
+    anio_lectivo_id: Annotated[Optional[int], Query(gt=0)] = None,
 ):
+    """Sin `anio_lectivo_id`, los planes del año activo."""
     try:
         return listar_planes_admin_controller(
             profesor_id=profesor_id,
@@ -140,6 +142,7 @@ def listar_planes_admin(
             estado_revision=estado_revision,
             limit=limit,
             offset=offset,
+            anio_lectivo_id=anio_lectivo_id,
         )
     except Exception:
         raise HTTPException(status_code=500, detail="No se pudieron cargar los planes de clases")

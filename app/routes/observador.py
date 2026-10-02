@@ -8,6 +8,7 @@ Convive con `app/routes/observaciones.py`, que sirve la pantalla vieja. Esa
 sigue funcionando y no se toca hasta que esta este verificada.
 """
 import logging
+from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
@@ -16,6 +17,11 @@ from app.database import get_cursor
 from app.dependencies import get_current_user
 from app.repositories import observador_repository
 from app.schemas.observador import AnotacionCreate, AnotacionUpdate
+from app.services.anio_lectivo import (
+    AnioLectivoInexistenteError,
+    AnioLectivoNoPermitidoError,
+    anio_distinto_del_activo,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -159,6 +165,7 @@ def obtener_observador(
         description="Etiqueta opcional. Sin ella devuelve el ano entero.",
     ),
     current_user: dict = Depends(get_current_user),
+    anio_lectivo_id: Annotated[Optional[int], Query(gt=0)] = None,
 ):
     """La bitacora completa de un estudiante, la anotacion mas nueva primero.
 
@@ -171,6 +178,10 @@ def obtener_observador(
 
     Sin `periodo` devuelve **todas**, que es el caso por defecto: cambiar de
     periodo en la pantalla no puede ocultar historial.
+
+    Año lectivo (fase 3, paso 3.5b): las anotaciones son las del año activo,
+    o las de `?anio_lectivo_id=` si lo pide el admin. Un profesor que pide otro
+    año recibe 403 (decision 4); un año que no existe, 404.
 
     Quien puede leerla: cualquier profesor que comparta curso con el alumno, y
     el admin siempre. Un profesor ve **todas** las anotaciones, tambien las de
@@ -188,7 +199,10 @@ def obtener_observador(
     try:
         with get_cursor() as cursor:
             require_estudiante_access(estudiante_id, current_user, cursor=cursor)
-            filas = observador_repository.leer_bitacora(cursor, estudiante_id, periodo)
+            anio = anio_distinto_del_activo(cursor, anio_lectivo_id, current_user)
+            filas = observador_repository.leer_bitacora(
+                cursor, estudiante_id, periodo, anio_lectivo_id=anio
+            )
 
             # Sin filas el estudiante no existe. Uno real sin anotaciones trae
             # una fila de relleno, con el nivel y el resto en NULL.
@@ -196,6 +210,12 @@ def obtener_observador(
                 raise HTTPException(status_code=404, detail=_ERROR_NO_EXISTE)
     except HTTPException:
         raise
+    # Sus mensajes son constantes de app/services/anio_lectivo.py, no texto de
+    # PostgreSQL: se pueden mostrar.
+    except AnioLectivoInexistenteError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except AnioLectivoNoPermitidoError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except Exception:
         logger.exception(
             "Fallo al consultar el observador del estudiante %s, periodo %s",

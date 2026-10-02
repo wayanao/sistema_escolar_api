@@ -3,9 +3,10 @@
 ## Control
 
 - Estado: **Fase 3 en curso: inventario y plan del 2026-10-02; pasos 3.1 a
-  3.4 en los commits `fea2e83`, `43764f2`, `da4da87` y `c9554af`; paso 3.5a
-  (boletín, reporte parcial y puesto por año) escrito y probado, sin
-  commit.**
+  3.5a en los commits `fea2e83`, `43764f2`, `da4da87`, `c9554af` y
+  `eb835e3`; paso 3.5b (observador, expediente y planes del admin por año)
+  escrito y probado, sin commit. Con él, todas las lecturas quedan por año;
+  faltan 3.6 (aviso al renombrar materia) y 3.7 (guardia de escritura).**
   **Fase 2 con el código completo el
   2026-10-01, sin desplegar.**
   Pasos 2.1 (las cuotas se cuentan en el año del concepto), 2.2 (cada año
@@ -1909,6 +1910,77 @@ año (sin desplegar):**
 - Efecto al desplegar: ninguno visible mientras haya un solo año. Revisión
   en local recomendada (solo lectura): generar el boletín de un estudiante
   (comprobar el puesto) y un certificado, iguales que en producción.
+- Commit `eb835e3` (hecho por el usuario el 2026-10-02).
+
+**Avance del 2026-10-02 — paso 3.5b, observador, expediente y planes del
+admin por año (sin desplegar). Con él, todas las lecturas de la fase 3
+(punto 2) quedan por año:**
+
+- Código:
+  - `anio_distinto_del_activo(cursor, anio_lectivo_id, usuario=None)`: con
+    el usuario aplica además la regla del profesor (`resolver_anio_pedido`,
+    403 si pide otro año). Primer uso: el observador.
+  - Observador (`observador_repository.leer_bitacora`, `routes/observador.py`):
+    las anotaciones son las del año activo, con el filtro en el `ON` como el
+    del periodo (no esconde al estudiante sin anotaciones); con otro año, las
+    de ese año y el `nivel` del curso de su matrícula. Sin año, los
+    parámetros son los de siempre. Admin: cualquier año; profesor: solo el
+    activo (403 con el mensaje del servicio); año inexistente: 404. El año va
+    al final de la firma de la ruta, porque las pruebas la llaman por
+    posición.
+  - Expediente (`estudiantes_repository`, `estudiante_controller`, `GET
+    /estudiantes/{id}/detalles`): notas, faltas y observaciones filtradas por
+    el año del curso de cada clase, y la deuda con `con_anio`. El año se
+    valida antes de las secciones: un año inexistente es 404, no una sección
+    "que no se pudo cargar". Los productos de inventario no cambian.
+  - **Faltas sin clase:** `asistencia.asignacion_id` admite nulos (esquema
+    base) y hoy esas filas se cuentan en el expediente. En el año activo se
+    siguen contando (`asignacion_id IS NULL OR ...`), así que nada cambia hoy
+    tenga los datos que tenga; en otro año no, porque no se sabe de qué año
+    son. Pendiente medir si existen (consulta abajo); si hay, después de
+    activar 2027 se sumarían a las faltas de 2027.
+  - Planes del admin (`plan_de_clases_repository.listar_planes_admin`, su
+    ruta): por año, con `condicion_anio`. No valida que el año exista, porque
+    el repositorio abre su propia conexión y validarlo costaría otra: un año
+    inexistente da la lista vacía.
+- Consultas: sin año, las mismas (observador 2 con el permiso; expediente 4;
+  planes 2). Con año, una más para validarlo, salvo en planes.
+- Pruebas:
+  - `tests/test_anio_lectivo_lecturas.py`, 18 nuevas: la bitácora con dos
+    años (sin año, la anotación de 2027; con 2026, la de 2026 y el curso de
+    su matrícula); el profesor ve solo el activo y recibe 403 al pedir otro
+    sin leer nada; las faltas con una de 2026, una de 2027 y una sin clase
+    (año activo: 2; 2026: 1); notas y observaciones con y sin año; el
+    expediente pide todo en el año (menos el inventario) y rechaza un año
+    inexistente antes de leer; los planes con y sin año; las rutas.
+  - Ajustadas a propósito: el contador de consultas de
+    `test_observaciones_caracterizacion.py` (como el del boletín); la prueba
+    de `test_observador_lectura.py` que partía la consulta en su primer
+    `WHERE` (la subconsulta del año activo trae uno propio; ahora parte en el
+    del estudiante); el total de líneas del dominio de planes (1382 → 1395)
+    en `test_plan_de_clases_caracterizacion.py`; el doble de la ruta de
+    planes en `test_plan_de_clases_routes.py`.
+  - Catorce versiones dañadas del código las hacen fallar.
+- Documentación: `docs/API_ENDPOINTS.md` (Estudiantes, Observador nueva,
+  Plan de clases), `docs/ROLES_PERMISOS_BACKEND.md`,
+  `docs/funcionalidades/OBSERVADOR_ESTUDIANTE.md` (invariante 5, precisado)
+  y `docs/CAMBIOS_BACKEND.md`.
+- Verificación: `scripts/verify.py` → **1705 pasan, 0 fallan** (antes
+  1687); ruff y `pip check` limpios; `git diff --check` limpio.
+- Comprobación pendiente del usuario (solo lectura, en el SQL Editor de Neon
+  con `production`): cuántas faltas no tienen clase.
+
+  ```sql
+  SELECT 'faltas sin clase' AS dato, COUNT(*) FROM tenant_2005.asistencia WHERE asignacion_id IS NULL
+  UNION ALL SELECT 'faltas en total', COUNT(*) FROM tenant_2005.asistencia;
+  ```
+
+  Si da 0, el caso no existe y no hay nada más que hacer. Si no, decidir
+  antes de activar 2027 (fase 6) a qué año pertenecen.
+- Efecto al desplegar: ninguno visible mientras haya un solo año. Revisión
+  en local recomendada (solo lectura): la bitácora de un estudiante con un
+  profesor y con el admin, el detalle de un estudiante y la bandeja de
+  planes del admin, iguales que en producción.
 
 ### Fase 4 — Selector de año en el frontend
 
@@ -2156,9 +2228,11 @@ cosa, gana lo que se pueda verificar.
   choques de horario, por año); paso 3.3 en `da4da87` (cursos, conceptos,
   precios por curso, listas de seguimiento y reporte general, por año); paso
   3.4 en `c9554af` (lista de estudiantes, cartera y estado de cuenta por
-  curso, por año; decisiones 18 y 19). **Paso 3.5a escrito y probado, sin
-  commit** (boletín, reporte parcial y puesto por año; el puesto ya no
-  mezcla años; ver su "Avance").
+  curso, por año; decisiones 18 y 19); paso 3.5a en `eb835e3` (boletín,
+  reporte parcial y puesto por año; el puesto ya no mezcla años). **Paso
+  3.5b escrito y probado, sin commit** (observador, expediente y planes del
+  admin por año; ver su "Avance", que deja una consulta de solo lectura
+  pendiente sobre faltas sin clase).
 - **Hecho aparte, la noche del 2026-09-30:** el arreglo de la hora
   (`2e77634` en este repo, `033c042` en el frontend). Cobros, cartera y
   alta de colegios usan la fecha de Colombia (`app/core/fechas.py`), y el
@@ -2191,15 +2265,11 @@ cosa, gana lo que se pueda verificar.
   rama, detener el backend local que esté corriendo; si no, el frontend
   sigue hablando con el que apunta a producción.
 - **Siguiente acción exacta:** que el usuario revise y haga el commit del
-  paso 3.5a. Después, **paso 3.5b** (observador por año, para admin y
-  profesor, con `resolver_anio_pedido`; detalle del estudiante, hallazgo 3;
-  planes de clase del admin, hallazgo 5), solo con su visto bueno. Ya
-  revisado para él: la bitácora del observador hoy trae todas las
-  anotaciones del estudiante (filtro de año en el `ON`, como el del
-  periodo); el detalle del estudiante tiene cuatro lecturas en
-  `estudiantes_repository` y la deuda por `calcular_deudas_estudiante`; la
-  lista de planes del admin vive en `plan_de_clases_repository` y abre su
-  propio cursor, y su ruta convierte todo error en 500. Las preguntas abiertas se le
+  paso 3.5b, y si puede, corra la consulta de faltas sin clase (ver el
+  "Avance" del 3.5b). Después, **paso 3.6** (aviso al renombrar una materia
+  que se usa en otro año o en uno cerrado, decisión 12: 409 con código
+  propio y el mensaje del punto 3 de la fase 3; con confirmación, guarda como
+  hoy; mientras haya un solo año, nunca avisa), solo con su visto bueno. Las preguntas abiertas se le
   hacen al usuario justo antes del paso que las necesita (lo pidió así el
   2026-10-02): la de materias ocultas, antes del 3.5; la de crear en el año
   en preparación, antes de la fase 5. La fase 3 tiene que estar en

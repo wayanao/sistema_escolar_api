@@ -414,6 +414,8 @@ def test_admin_list_delegates_all_filters_without_transforming_payload(monkeypat
         "estado_revision": "con_observaciones",
         "limit": 25,
         "offset": 50,
+        # Año lectivo, fase 3 (paso 3.5b): sin año, None, que es el activo.
+        "anio_lectivo_id": None,
     }
 
 

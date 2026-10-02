@@ -35,7 +35,9 @@ from app.controllers import (
 from app.repositories import (
     asignaciones_repository,
     dashboard_repository,
+    estudiantes_repository,
     listas_seguimiento_repository,
+    observador_repository,
 )
 from app.repositories.anios_lectivos_repository import ANIO_ACTIVO_ID_SQL, condicion_anio
 from app.routes import anios_lectivos as rutas
@@ -2077,3 +2079,356 @@ def test_otro_valueerror_del_boletin_sigue_siendo_500_sin_su_texto(app_admin_bol
 
     assert status == 500
     assert "detalle interno" not in cuerpo["detail"]
+
+
+# ===========================================================================
+# Paso 3.5b: observador, detalle del estudiante y planes del admin por año.
+# ===========================================================================
+
+ANOTACIONES_DEL_ACTIVO = _normalizar(f"AND a.anio_lectivo_id = {ANIO_ACTIVO_ID_SQL}")
+
+
+class BaseDeBitacora:
+    """La bitacora de Ana (55): una anotacion de 2026 (año 1) y una de 2027
+    (año 2, activo). Solo deja las de un año si el `ON` trae el filtro."""
+
+    ANOTACIONES = [(901, 1), (902, 2)]  # (id, año)
+
+    def __init__(self):
+        self.consultas = []
+        self._filas = []
+
+    def execute(self, sql, params=None):
+        sql = _normalizar(sql)
+        self.consultas.append((sql, params))
+        if sql == SQL_POR_ID:
+            self._filas = [ANIOS_DOS[params[0]]] if params[0] in ANIOS_DOS else []
+            return
+        if "FROM estudiantes e JOIN asignaciones a" in sql:  # permiso del profesor
+            self._filas = [(1,)]
+            return
+        if ANOTACIONES_DEL_ACTIVO in sql:
+            anio = 2
+        elif "AND a.anio_lectivo_id = %s" in sql:
+            anio = params[1]
+        else:
+            anio = None
+        self._filas = [
+            ("primaria", id_, 7, "Ana", "Ruiz", None, 1, None, None, None, None, None, None, None)
+            for id_, anio_anotacion in self.ANOTACIONES
+            if anio is None or anio_anotacion == anio
+        ]
+
+    def fetchone(self):
+        return self._filas[0] if self._filas else None
+
+    def fetchall(self):
+        return list(self._filas)
+
+    def close(self):
+        pass
+
+
+def test_la_bitacora_sin_anio_es_la_del_anio_activo_con_los_parametros_de_siempre():
+    base = BaseDeBitacora()
+
+    filas = observador_repository.leer_bitacora(base, 55)
+    observador_repository.leer_bitacora(base, 55, 2)
+
+    assert [f[1] for f in filas] == [902]
+    (sin_periodo, p1), (con_periodo, p2) = base.consultas
+    assert ANOTACIONES_DEL_ACTIVO in sin_periodo
+    assert "LEFT JOIN cursos c ON c.id = e.curso_id" in sin_periodo
+    assert p1 == (55,) and p2 == (2, 55)
+    # Los dos filtros, el del año y el del periodo, van en el ON.
+    antes, _, _ = con_periodo.partition("WHERE e.id")
+    assert ANOTACIONES_DEL_ACTIVO in antes and "a.periodo = %s" in antes
+
+
+def test_la_bitacora_de_2026_son_sus_anotaciones_con_el_curso_de_2026():
+    base = BaseDeBitacora()
+
+    filas = observador_repository.leer_bitacora(base, 55, None, anio_lectivo_id=1)
+    observador_repository.leer_bitacora(base, 55, 3, anio_lectivo_id=1)
+
+    assert [f[1] for f in filas] == [901]
+    (sql, p1), (_sql, p2) = base.consultas
+    assert CURSO_DE_LA_MATRICULA in sql
+    assert p1 == (1, 1, 55) and p2 == (1, 1, 3, 55)
+
+
+@pytest.fixture
+def ruta_del_observador(monkeypatch):
+    from app.routes import observador
+
+    base = BaseDeBitacora()
+
+    @contextmanager
+    def get_cursor_falso(commit=False, cursor_factory=None):
+        yield base
+
+    monkeypatch.setattr(observador, "get_cursor", get_cursor_falso)
+    return observador, base
+
+
+def test_el_admin_lee_la_bitacora_de_2026(ruta_del_observador):
+    observador, _ = ruta_del_observador
+
+    respuesta = observador.obtener_observador(55, None, ADMIN, 1)
+
+    assert [a["id"] for a in respuesta["anotaciones"]] == [901]
+
+
+def test_el_profesor_ve_solo_las_anotaciones_del_anio_activo(ruta_del_observador):
+    observador, _ = ruta_del_observador
+
+    respuesta = observador.obtener_observador(55, None, PROFESOR)
+    con_el_activo = observador.obtener_observador(55, None, PROFESOR, 2)
+
+    assert [a["id"] for a in respuesta["anotaciones"]] == [902]
+    assert [a["id"] for a in con_el_activo["anotaciones"]] == [902]
+
+
+def test_el_profesor_no_puede_pedir_la_bitacora_de_otro_anio(ruta_del_observador):
+    from fastapi import HTTPException
+
+    observador, base = ruta_del_observador
+
+    with pytest.raises(HTTPException) as error:
+        observador.obtener_observador(55, None, PROFESOR, 1)
+
+    assert error.value.status_code == 403
+    assert error.value.detail == "Solo se puede consultar el año lectivo activo."
+    assert not any("observador_anotaciones" in sql for sql, _ in base.consultas)
+
+
+def test_la_bitacora_de_un_anio_que_no_existe_da_404(ruta_del_observador):
+    from fastapi import HTTPException
+
+    observador, _ = ruta_del_observador
+
+    with pytest.raises(HTTPException) as error:
+        observador.obtener_observador(55, None, ADMIN, 99)
+
+    assert error.value.status_code == 404
+    assert error.value.detail == "El año lectivo seleccionado no existe."
+
+
+# ---------------------------------------------------------------------------
+# Detalle del estudiante.
+# ---------------------------------------------------------------------------
+
+
+class BaseDeExpediente:
+    """Las faltas de Ana (55): una en una clase de 2026 (asignacion 300), una
+    en 2027 (3000, activo) y una vieja sin clase. Separa por año solo si la
+    consulta trae el filtro, y cuenta las sin clase solo si lo pide."""
+
+    FALTAS = [300, 3000, None]
+    ANIO_DE_ASIGNACION = {300: 1, 3000: 2}
+
+    def __init__(self):
+        self.consultas = []
+        self._filas = []
+
+    def execute(self, sql, params=None):
+        sql = _normalizar(sql)
+        self.consultas.append((sql, params))
+        if "FROM asistencia" not in sql:
+            self._filas = []
+            return
+        if SOLO_EL_ACTIVO in sql:
+            anio = 2
+        elif SOLO_EL_PEDIDO in sql:
+            anio = params[1]
+        else:
+            anio = None
+        cuenta_sin_clase = "asignacion_id IS NULL OR" in sql
+        total = sum(
+            1 for asignacion in self.FALTAS
+            if anio is None
+            or (asignacion is None and cuenta_sin_clase)
+            or (asignacion is not None and self.ANIO_DE_ASIGNACION[asignacion] == anio)
+        )
+        self._filas = [(total,)]
+
+    def fetchone(self):
+        return self._filas[0] if self._filas else None
+
+    def fetchall(self):
+        return list(self._filas)
+
+
+def test_las_faltas_del_anio_activo_siguen_contando_las_que_no_tienen_clase():
+    """Hoy esas filas se cuentan: en el año activo se siguen contando."""
+    base = BaseDeExpediente()
+
+    assert estudiantes_repository.contar_inasistencias(base, 55) == 2
+    [(_sql, params)] = base.consultas
+    assert params == (55,)
+
+
+def test_las_faltas_de_2026_son_solo_las_de_sus_clases():
+    base = BaseDeExpediente()
+
+    assert estudiantes_repository.contar_inasistencias(base, 55, anio_lectivo_id=1) == 1
+    [(sql, params)] = base.consultas
+    assert "asignacion_id IS NULL" not in sql
+    assert params == (55, 1)
+
+
+@pytest.mark.parametrize("leer", ["leer_promedios_por_materia", "leer_observaciones"])
+def test_notas_y_observaciones_del_expediente_son_del_anio(leer):
+    cursor = CursorQueAnota()
+
+    getattr(estudiantes_repository, leer)(cursor, 55)
+    getattr(estudiantes_repository, leer)(cursor, 55, anio_lectivo_id=1)
+
+    (activo, p1), (otro, p2) = cursor.consultas
+    assert SOLO_EL_ACTIVO in activo and p1 == (55,)
+    assert SOLO_EL_PEDIDO in otro and p2 == (55, 1)
+
+
+@pytest.fixture
+def expediente(monkeypatch):
+    base = BaseDeBitacora()  # solo responde a la validacion del año
+    llamadas = []
+
+    def calcular(cursor, estudiante_id, **kwargs):
+        llamadas.append(kwargs)
+        return {"deudas": [], "curso_id": 3}
+
+    monkeypatch.setattr(estudiante_controller, "get_connection", lambda: ConexionFalsa(base))
+    monkeypatch.setattr(estudiante_controller, "calcular_deudas_estudiante", calcular)
+    for nombre in (
+        "leer_promedios_por_materia", "contar_inasistencias",
+        "leer_observaciones", "leer_cargos_de_inventario",
+    ):
+        def falso(cursor, est_id, anio_lectivo_id="no-se-paso", _nombre=nombre):
+            llamadas.append((_nombre, anio_lectivo_id))
+            return 0 if _nombre == "contar_inasistencias" else []
+        monkeypatch.setattr(estudiante_controller.estudiantes_repository, nombre, falso)
+    return llamadas
+
+
+def test_el_expediente_de_2026_pide_todo_en_2026_menos_el_inventario(expediente):
+    estudiante_controller.obtener_detalles_estudiante_controller(55, anio_lectivo_id=1)
+
+    assert expediente == [
+        ("leer_promedios_por_materia", 1),
+        ("contar_inasistencias", 1),
+        ("leer_observaciones", 1),
+        {"anio_lectivo_id": 1},
+        ("leer_cargos_de_inventario", "no-se-paso"),
+    ]
+
+
+def test_el_expediente_con_el_activo_es_el_de_siempre(expediente):
+    estudiante_controller.obtener_detalles_estudiante_controller(55, anio_lectivo_id=2)
+
+    assert expediente == [
+        ("leer_promedios_por_materia", None),
+        ("contar_inasistencias", None),
+        ("leer_observaciones", None),
+        {},
+        ("leer_cargos_de_inventario", "no-se-paso"),
+    ]
+
+
+def test_el_expediente_de_un_anio_que_no_existe_no_se_disfraza_de_seccion_rota(expediente):
+    """Un año invalido no es una seccion que falla: la peticion entera se rechaza."""
+    from app.services.anio_lectivo import AnioLectivoInexistenteError
+
+    with pytest.raises(AnioLectivoInexistenteError):
+        estudiante_controller.obtener_detalles_estudiante_controller(55, anio_lectivo_id=99)
+
+    assert expediente == []
+
+
+# ---------------------------------------------------------------------------
+# Planes de clase del admin.
+# ---------------------------------------------------------------------------
+
+
+def _planes(monkeypatch, **filtros):
+    from app.repositories import plan_de_clases_repository
+
+    cursor = CursorQueAnota(una=[(0,)])
+
+    @contextmanager
+    def get_cursor_falso(commit=False, cursor_factory=None):
+        yield cursor
+
+    monkeypatch.setattr(plan_de_clases_repository, "get_cursor", get_cursor_falso)
+    plan_de_clases_repository.listar_planes_admin(profesor_id=7, **filtros)
+    return cursor.consultas
+
+
+def test_los_planes_del_admin_sin_anio_son_del_activo_con_los_parametros_de_siempre(monkeypatch):
+    (conteo, p1), (pagina, p2) = _planes(monkeypatch)
+
+    assert SOLO_EL_ACTIVO in conteo and SOLO_EL_ACTIVO in pagina
+    assert p1 == (7,) and p2 == (7, 50, 0)
+
+
+def test_los_planes_del_admin_de_otro_anio(monkeypatch):
+    (conteo, p1), (pagina, p2) = _planes(monkeypatch, anio_lectivo_id=1)
+
+    assert SOLO_EL_PEDIDO in conteo and SOLO_EL_PEDIDO in pagina
+    assert p1 == (7, 1) and p2 == (7, 1, 50, 0)
+
+
+# ---------------------------------------------------------------------------
+# Las rutas del 3.5b, por HTTP.
+# ---------------------------------------------------------------------------
+
+RUTAS_DEL_35B = {
+    "/estudiantes/55/detalles": ("routes.estudiantes", "obtener_detalles_estudiante_controller"),
+    "/admin/plan-de-clases": ("routes.plan_de_clases", "listar_planes_admin_controller"),
+}
+
+
+@pytest.mark.parametrize("ruta", sorted(RUTAS_DEL_35B))
+def test_las_rutas_del_35b_pasan_el_anio(monkeypatch, ruta):
+    import importlib
+
+    from app.dependencies import get_current_user
+    from app.main import app
+
+    modulo, nombre = RUTAS_DEL_35B[ruta]
+    recibido = []
+
+    def falso(*args, **kwargs):
+        recibido.append(kwargs.get("anio_lectivo_id"))
+        return {}
+
+    monkeypatch.setattr(importlib.import_module(f"app.{modulo}"), nombre, falso)
+    app.dependency_overrides[get_current_user] = lambda: ADMIN
+    try:
+        assert peticion_get(app, ruta)[0] == 200
+        assert peticion_get(app, _con_anio(ruta, 5))[0] == 200
+        assert peticion_get(app, _con_anio(ruta, 0))[0] == 422
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+
+    assert recibido == [None, 5]
+
+
+def test_el_detalle_de_un_anio_que_no_existe_responde_404(monkeypatch):
+    from app.dependencies import get_current_user
+    from app.main import app
+    from app.routes import estudiantes
+    from app.services.anio_lectivo import AnioLectivoInexistenteError
+
+    def falso(*args, **kwargs):
+        raise AnioLectivoInexistenteError("El año lectivo seleccionado no existe.")
+
+    monkeypatch.setattr(estudiantes, "obtener_detalles_estudiante_controller", falso)
+    app.dependency_overrides[get_current_user] = lambda: ADMIN
+    try:
+        status, cuerpo = peticion_get(app, "/estudiantes/55/detalles?anio_lectivo_id=99")
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+
+    assert status == 404
+    assert cuerpo == {"detail": "El año lectivo seleccionado no existe."}

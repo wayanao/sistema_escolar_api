@@ -128,6 +128,12 @@ Notas:
   Con otro año: los matriculados de ese año, cada uno con su `curso_id` de ese
   año; el filtro `estado` se aplica igual, sobre el estado de hoy. Año
   inexistente: `404`.
+- `GET /estudiantes/{estudiante_id}/detalles?anio_lectivo_id=` (opcional,
+  paso 3.5b): notas, faltas, observaciones y deuda del año activo o del
+  pedido, por el curso de cada clase; los productos de inventario salen igual
+  siempre. Las faltas sin clase registrada (`asistencia.asignacion_id` nulo)
+  se cuentan en el año activo, como antes, y no en otros años. Año
+  inexistente: `404`.
 - Desde el paso 2.4 del año lectivo la respuesta trae ademas
   `deuda_anios_anteriores`: la deuda de cada año anterior al que se mira, en
   que el estudiante tuvo matricula, aparte de `total_deuda`. Mismo formato que
@@ -379,6 +385,21 @@ Notas:
 opcionales con valor vacio por defecto, pero exige contenido en al menos una
 dimension. Los textos se normalizan antes de crear o actualizar el registro.
 
+## Observador
+
+Ver `docs/funcionalidades/OBSERVADOR_ESTUDIANTE.md`.
+
+- `GET /observador/mis-estudiantes`
+- `GET /observador/{estudiante_id}?periodo=`
+- `POST /observador`
+- `PUT /observador/{anotacion_id}`
+
+Año lectivo (fase 3, paso 3.5b): `GET /observador/{estudiante_id}` devuelve
+las anotaciones del año activo (antes, todas; con un solo año es lo mismo). El
+admin puede pedir otro con `?anio_lectivo_id=` (y el `nivel` sale del curso de
+ese año); un profesor que pida otro año recibe `403` con `Solo se puede
+consultar el año lectivo activo.`; un año que no existe, `404`.
+
 ## Plan de clases
 
 - `POST /plan-de-clases`
@@ -421,6 +442,9 @@ Notas:
   consolidada, `pendiente` agrupa también el estado interno `visto` y
   `revisado` agrupa también `con_observaciones`; los dos valores internos se
   conservan por compatibilidad.
+- Año lectivo (fase 3, paso 3.5b): `GET /admin/plan-de-clases` devuelve los
+  planes de cursos del año activo, o del de `?anio_lectivo_id=`. No valida que
+  el año exista: uno inexistente da la lista vacia.
 - Marcar un plan como visto o revisado requiere `{ "estado", "version" }`.
   Cuando `estado` es `revisado`, admite además `comentario` opcional de hasta
   3000 caracteres. Si se envía, el comentario y la aprobación se guardan en la

@@ -322,7 +322,13 @@ def _registrar_error_detalle(detalles, seccion, exc):
     detalles.setdefault("errores", {})[seccion] = "No se pudo cargar esta seccion."
 
 
-def obtener_detalles_estudiante_controller(est_id):
+def obtener_detalles_estudiante_controller(est_id, anio_lectivo_id=None):
+    """El expediente del estudiante en un año; sin `anio_lectivo_id`, o con el
+    activo, el de siempre (año lectivo, fase 3, paso 3.5b). Un año que no existe
+    lanza `AnioLectivoInexistenteError` antes de leer nada.
+
+    Los productos de inventario no son de ningun año y salen igual siempre.
+    """
     conn = get_connection()
     cursor = conn.cursor()
     detalles = {
@@ -336,9 +342,15 @@ def obtener_detalles_estudiante_controller(est_id):
     }
 
     try:
+        # Fuera de las secciones: un año que no existe no es una seccion que
+        # falla, es una peticion invalida.
+        anio = anio_distinto_del_activo(cursor, anio_lectivo_id)
+
         try:
             # Notas por materia (promediando los detalles de la planilla)
-            filas_notas = estudiantes_repository.leer_promedios_por_materia(cursor, est_id)
+            filas_notas = estudiantes_repository.leer_promedios_por_materia(
+                cursor, est_id, anio_lectivo_id=anio
+            )
 
             notas_list = [{'materia': r[0], 'promedio': float(r[1])} for r in filas_notas]
             detalles['notas'] = notas_list
@@ -352,14 +364,16 @@ def obtener_detalles_estudiante_controller(est_id):
 
         try:
             detalles['inasistencias'] = estudiantes_repository.contar_inasistencias(
-                cursor, est_id
+                cursor, est_id, anio_lectivo_id=anio
             )
         except Exception as exc:
             conn.rollback()
             _registrar_error_detalle(detalles, "asistencia", exc)
 
         try:
-            filas_observaciones = estudiantes_repository.leer_observaciones(cursor, est_id)
+            filas_observaciones = estudiantes_repository.leer_observaciones(
+                cursor, est_id, anio_lectivo_id=anio
+            )
 
             detalles['observaciones'] = [
                 {
@@ -380,7 +394,7 @@ def obtener_detalles_estudiante_controller(est_id):
         try:
             resumen_cobros = _formatear_resumen_deudas(
                 est_id,
-                calcular_deudas_estudiante(cursor, est_id),
+                calcular_deudas_estudiante(cursor, est_id, **con_anio(anio)),
             )
             detalles['deudas'] = resumen_cobros["deudas"]
             detalles['total_deuda'] = resumen_cobros["total_deuda"]

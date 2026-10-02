@@ -101,6 +101,14 @@ def _sql_del_modulo(ruta_relativa):
             valor = nodo.args[0].value
             if isinstance(valor, str):
                 literales.append(valor)
+        elif nodo.args and isinstance(nodo.args[0], ast.JoinedStr):
+            # Año lectivo, fase 3 (paso 3.5b): la lectura de observaciones de
+            # `estudiantes_repository` lleva un hueco para el año. Sigue siendo
+            # una sentencia; se cuenta con su texto fijo y el hueco marcado.
+            literales.append("".join(
+                parte.value if isinstance(parte, ast.Constant) else "{...}"
+                for parte in nodo.args[0].values
+            ))
     return literales
 
 

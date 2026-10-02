@@ -37,17 +37,24 @@ def exigir_anio_lectivo(cursor, anio_lectivo_id):
     return anio
 
 
-def anio_distinto_del_activo(cursor, anio_lectivo_id):
+def anio_distinto_del_activo(cursor, anio_lectivo_id, usuario=None):
     """El año pedido si no es el activo; `None` si no se pidio o es el activo.
 
     Es la regla de "con el año activo, las consultas de siempre": quien recibe
     `None` sigue su camino de hoy, letra por letra, y solo un año distinto
     toma el camino que lee por matriculas. Sin año no consulta nada; con año,
     una consulta para validarlo (`AnioLectivoInexistenteError` si no existe).
+
+    Con `usuario`, para las rutas que tambien usa el profesor, aplica ademas
+    `resolver_anio_pedido`: si no es admin y pide otro año,
+    `AnioLectivoNoPermitidoError`.
     """
     if anio_lectivo_id is None:
         return None
-    anio = exigir_anio_lectivo(cursor, anio_lectivo_id)
+    if usuario is None:
+        anio = exigir_anio_lectivo(cursor, anio_lectivo_id)
+    else:
+        anio = resolver_anio_pedido(cursor, anio_lectivo_id, usuario)
     return None if anio[2] == "activo" else anio_lectivo_id
 
 

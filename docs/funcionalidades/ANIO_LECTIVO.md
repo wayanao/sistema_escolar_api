@@ -2,9 +2,11 @@
 
 ## Control
 
-- Estado: **Fase 4 (frontend) iniciada el 2026-10-03:** inventario y plan
-  por pasos en `frontend-react/docs/funcionalidades/ANIO_LECTIVO.md`; en
-  este repo no tiene trabajo. **Fase 3 terminada el 2026-10-02 y subida a
+- Estado: **Fase 4 (frontend) en curso desde el 2026-10-03:** inventario y
+  plan por pasos (commit `dbb0e48` del frontend) y paso 4.1 (la base del
+  selector) escrito y probado, sin commit; ver
+  `frontend-react/docs/funcionalidades/ANIO_LECTIVO.md`. En este repo no
+  tiene trabajo. **Fase 3 terminada el 2026-10-02 y subida a
   producción por el usuario el 2026-10-03** (`origin/main` en `9edbe5d`):
   pasos 3.1 a 3.5b en los commits `fea2e83`, `43764f2`, `da4da87`,
   `c9554af`, `eb835e3` y `8716fc5` (todas las lecturas quedan por año); 3.6
@@ -2523,11 +2525,11 @@ cuando los profesores empiezan a ver sus clases nuevas.
   en el año en preparación. ¿Se agrega `anio_lectivo_id` opcional a esas dos
   rutas, y en qué fase? No bloquea los pasos 3.1 a 3.4. **Sin respuesta del
   usuario.**
-- Fase 4 (frontend), antes de su paso 4.1: en las pantallas que no
-  dependen del año, ¿el selector se esconde o se muestra desactivado? Y
-  antes de su paso 4.2 (encontrada el 2026-10-03): ¿qué puede hacer el
-  admin mirando un año en preparación? Las dos, con su detalle, en el
-  documento del frontend.
+- ~~Fase 4 (frontend), antes de su paso 4.1: en las pantallas que no
+  dependen del año, ¿el selector se esconde o se muestra desactivado?~~
+  **Respondida el 2026-10-03: se esconde.** Sigue abierta, antes de su paso
+  4.2 (encontrada el 2026-10-03): ¿qué puede hacer el admin mirando un año
+  en preparación? Detalle en el documento del frontend.
 - Antes de la fase 6: ¿un estudiante del último grado que termina se marca
   "no continúa" (retirado) o hace falta un estado distinto como "egresado"?
   Dato encontrado el 2026-10-01, para cuando se decida: el estado
@@ -2575,10 +2577,12 @@ cosa, gana lo que se pueda verificar.
   (`57b3710` a `9edbe5d`) están en GitHub desde el 2026-10-03: los subió el
   usuario, que dijo haberlos subido a producción.
 - **Fase 4 (frontend), iniciada el 2026-10-03** con la autorización del
-  usuario: inventario y plan por pasos (4.1 a 4.7) en el documento del
-  frontend, todavía sin código. En este repo no tiene trabajo. Su inventario
-  dejó un hallazgo para la fase 5 de este repo: crear o editar un
-  estudiante no valida el año del curso (ver "Ojo" en la fase 5).
+  usuario: inventario y plan por pasos (4.1 a 4.7, commit `dbb0e48` del
+  frontend) y **paso 4.1** (la base: lista de años, selector y aviso; con
+  un año no cambia nada visible) escrito y probado, sin commit. En este
+  repo no tiene trabajo. Su inventario dejó un hallazgo para la fase 5 de
+  este repo: crear o editar un estudiante no valida el año del curso (ver
+  "Ojo" en la fase 5).
 - **Hecho aparte, la noche del 2026-09-30:** el arreglo de la hora
   (`2e77634` en este repo, `033c042` en el frontend). Cobros, cartera y
   alta de colegios usan la fecha de Colombia (`app/core/fechas.py`), y el
@@ -2608,13 +2612,13 @@ cosa, gana lo que se pueda verificar.
   correr si falta `$env:DATABASE_URL`. Antes de probar la app contra una
   rama, detener el backend local que esté corriendo; si no, el frontend
   sigue hablando con el que apunta a producción.
-- **Siguiente acción exacta:** en el frontend, que el usuario revise y
-  apruebe el plan por pasos de la fase 4 (en su documento). Después, el
-  paso 4.1, solo con su visto bueno. Las preguntas abiertas se le hacen al
-  usuario justo antes del paso que las necesita (lo pidió así el
-  2026-10-02): la del selector, antes del 4.1; la de qué puede hacer el
-  admin en un año en preparación, antes del 4.2; la de crear cursos y
-  conceptos nuevos en el año en preparación, antes de la fase 5. En este
+- **Siguiente acción exacta:** en el frontend, que el usuario revise y haga
+  el commit del paso 4.1. Después, el paso 4.2 (Administración y horarios),
+  solo con su visto bueno. Las preguntas abiertas se le hacen al usuario
+  justo antes del paso que las necesita (lo pidió así el 2026-10-02): la de
+  qué puede hacer el admin en un año en preparación, antes del 4.2; la de
+  crear cursos y conceptos nuevos en el año en preparación, antes de la
+  fase 5. En este
   repo no hay trabajo hasta la fase 5 (meta: principios de noviembre); su
   plan tiene que cerrar el hallazgo del estudiante (ver "Ojo" en la fase 5)
   antes de crear el primer curso de 2027.

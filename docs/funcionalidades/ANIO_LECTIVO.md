@@ -2,12 +2,15 @@
 
 ## Control
 
-- Estado: **Fase 3 terminada el 2026-10-02, sin subir a GitHub: pasos 3.1
-  a 3.5b en los commits `fea2e83`, `43764f2`, `da4da87`, `c9554af`,
-  `eb835e3` y `8716fc5` (todas las lecturas quedan por año); 3.6 (aviso al
-  renombrar una materia) en `0110359`; 3.7 (guardia de escritura): medición
-  `50d9f53`, 3.7a (rutas del profesor) `fcb18ef`, 3.7b (rutas de solo
-  admin) escrito y probado, sin commit.**
+- Estado: **Fase 4 (frontend) iniciada el 2026-10-03:** inventario y plan
+  por pasos en `frontend-react/docs/funcionalidades/ANIO_LECTIVO.md`; en
+  este repo no tiene trabajo. **Fase 3 terminada el 2026-10-02 y subida a
+  producción por el usuario el 2026-10-03** (`origin/main` en `9edbe5d`):
+  pasos 3.1 a 3.5b en los commits `fea2e83`, `43764f2`, `da4da87`,
+  `c9554af`, `eb835e3` y `8716fc5` (todas las lecturas quedan por año); 3.6
+  (aviso al renombrar una materia) en `0110359`; 3.7 (guardia de
+  escritura): medición `50d9f53`, 3.7a (rutas del profesor) `fcb18ef` y
+  3.7b (rutas de solo admin) `9edbe5d`.
   **Fase 2 con el código completo el
   2026-10-01, subida a GitHub.**
   Pasos 2.1 (las cuotas se cuentan en el año del concepto), 2.2 (cada año
@@ -43,7 +46,7 @@
   fase 1, el relleno los marcaría como 2026; entre la fase 1 y la 5 no existe
   todavía un año 2027 donde ponerlos. Al 2026-09-30 no hay ninguno
   registrado (confirmado por el usuario).
-- Última actualización: 2026-10-02.
+- Última actualización: 2026-10-03.
 
 ## Objetivo
 
@@ -2269,6 +2272,7 @@ profesor (sin desplegar):**
   del curso.
 - Efecto al desplegar: ninguno visible mientras haya un solo año; unos 60 ms
   más en cada guardado de estas pantallas del admin.
+- Commit `9edbe5d` (hecho por el usuario el 2026-10-02).
 
 **Con esto la fase 3 queda terminada (2026-10-02).** Se cumple su punto 5:
 - Con el año activo, las respuestas son las de antes: lo fijan las
@@ -2280,6 +2284,9 @@ profesor (sin desplegar):**
 - `verify.py` pasa.
 - Falta, del usuario: revisarla en local y subirla. Tiene que estar en
   producción **antes de crear el primer curso de 2027** (fase 5).
+  *Hecho el 2026-10-03:* el usuario la subió a producción (`origin/main` en
+  `9edbe5d`, visto con `git fetch`); que Render la haya desplegado no se ve
+  desde el repo.
 
 ### Fase 4 — Selector de año en el frontend
 
@@ -2287,6 +2294,10 @@ Ver `frontend-react/docs/funcionalidades/ANIO_LECTIVO.md`. En el backend no
 hay trabajo nuevo: usa lo de la fase 3. Va antes de la fase 5 porque,
 mientras se prepara 2027, el admin necesita las pantallas existentes
 (Cursos, Tipos de pago, Estudiantes, Horarios) mirando 2027.
+
+Iniciada el 2026-10-03, con la autorización del usuario: inventario y plan
+por pasos (4.1 a 4.7) en ese documento. Su inventario dejó un hallazgo para
+la fase 5 de este repo (ver "Ojo" en la fase 5).
 
 ### Fase 5 — Preparar el año siguiente (meta: principios de noviembre)
 
@@ -2325,6 +2336,22 @@ propuestos bajo `/anios-lectivos`:
    2026.
 6. Terminado cuando: en una rama de Neon con copia de producción se puede
    preparar 2027 completo sin que ninguna pantalla del año activo cambie.
+
+**Ojo, hallazgo del 2026-10-03** (inventario de la fase 4 del frontend):
+crear o editar un estudiante (`estudiante_controller.py`) no valida de qué
+año es el curso. Guarda `estudiantes.curso_id` con el curso que llegue, y
+`sincronizar_matricula_del_anio_activo` solo actúa si ese curso es del año
+activo. Con un curso de 2027, el estudiante quedaría con ese curso y su
+matrícula de 2026 sin cambiar: la consulta de control dejaría de dar 0 y el
+estudiante desaparecería de las pantallas de sus profesores de 2026. Hoy no
+puede pasar: todos los cursos son de 2026, y `GET /cursos` sin año solo
+ofrece los del activo. El frontend, además, deja Estudiantes en solo
+consulta mientras se mira otro año (su paso 4.4). Hay que cerrarlo en el
+backend **antes de crear el primer curso de 2027**: mientras la dirección
+siga siendo estudiante → matrícula, rechazar un curso que no sea del año
+activo; con la dirección definitiva de esta fase (matrícula →
+`estudiantes.curso_id`), el estudiante nuevo de un año en preparación
+recibe solo su matrícula (punto 3).
 
 ### Fase 6 — Activar el año nuevo, cerrar y reabrir (antes de iniciar clases 2027)
 
@@ -2496,8 +2523,11 @@ cuando los profesores empiezan a ver sus clases nuevas.
   en el año en preparación. ¿Se agrega `anio_lectivo_id` opcional a esas dos
   rutas, y en qué fase? No bloquea los pasos 3.1 a 3.4. **Sin respuesta del
   usuario.**
-- Antes de la fase 4 (frontend): en las pantallas que no dependen del año,
-  ¿el selector se esconde o se muestra desactivado?
+- Fase 4 (frontend), antes de su paso 4.1: en las pantallas que no
+  dependen del año, ¿el selector se esconde o se muestra desactivado? Y
+  antes de su paso 4.2 (encontrada el 2026-10-03): ¿qué puede hacer el
+  admin mirando un año en preparación? Las dos, con su detalle, en el
+  documento del frontend.
 - Antes de la fase 6: ¿un estudiante del último grado que termina se marca
   "no continúa" (retirado) o hace falta un estado distinto como "egresado"?
   Dato encontrado el 2026-10-01, para cuando se decida: el estado
@@ -2507,7 +2537,7 @@ cuando los profesores empiezan a ver sus clases nuevas.
 
 ## Entrega para el siguiente chat
 
-Estado al 2026-10-02. Si `git status` o el historial de git dicen otra
+Estado al 2026-10-03. Si `git status` o el historial de git dicen otra
 cosa, gana lo que se pueda verificar.
 
 - **Hecho:** fase 0 y **fase 1 completas**. Migración A (2026-09-30) y
@@ -2538,20 +2568,27 @@ cosa, gana lo que se pueda verificar.
   "Avance" deja una consulta de solo lectura pendiente sobre faltas sin
   clase); paso 3.6 en `0110359` (aviso al renombrar una materia que se usa
   en otro año). Paso 3.7: medición y costo aceptado en `50d9f53`; 3.7a en
-  `fcb18ef` (la guardia en las rutas que usa el profesor); **paso 3.7b
-  escrito y probado, sin commit** (las rutas de solo admin). **Con él, la
-  fase 3 queda terminada.** Sus avances dejan un hallazgo para la fase 6
-  (comprobaciones de estudiantes con `estudiantes.curso_id`). Los diez
-  commits de la fase 3 (`57b3710` a `fcb18ef`) no están en GitHub.
+  `fcb18ef` (la guardia en las rutas que usa el profesor); paso 3.7b en
+  `9edbe5d` (las rutas de solo admin). **Con él, la fase 3 queda
+  terminada.** Sus avances dejan un hallazgo para la fase 6 (comprobaciones
+  de estudiantes con `estudiantes.curso_id`). Los once commits de la fase 3
+  (`57b3710` a `9edbe5d`) están en GitHub desde el 2026-10-03: los subió el
+  usuario, que dijo haberlos subido a producción.
+- **Fase 4 (frontend), iniciada el 2026-10-03** con la autorización del
+  usuario: inventario y plan por pasos (4.1 a 4.7) en el documento del
+  frontend, todavía sin código. En este repo no tiene trabajo. Su inventario
+  dejó un hallazgo para la fase 5 de este repo: crear o editar un
+  estudiante no valida el año del curso (ver "Ojo" en la fase 5).
 - **Hecho aparte, la noche del 2026-09-30:** el arreglo de la hora
   (`2e77634` en este repo, `033c042` en el frontend). Cobros, cartera y
   alta de colegios usan la fecha de Colombia (`app/core/fechas.py`), y el
   frontend propone fechas de Colombia (`src/utils/fechaColombia.js`). Ver
   el hallazgo correspondiente y `docs/CAMBIOS_BACKEND.md`.
 - **Pendiente del usuario:**
-  - Fase 2: ya en GitHub. Confirmar en Render que el despliegue de
-    `f03b032` quedó **Live** y que Cartera vencida, Pagos y el detalle de
-    un estudiante muestran los mismos números que antes.
+  - Fases 2 y 3: en producción según el usuario (2026-10-03). Confirmar en
+    Render que el despliegue de `9edbe5d` quedó **Live** y que Cartera
+    vencida, Pagos y el detalle de un estudiante muestran los mismos
+    números que antes.
   - Consulta de faltas sin clase (solo lectura; en el "Avance" del 3.5b).
   - Borrar la rama `prueba-anio-lectivo-b` de Neon, si no se borró sola.
   - Si no se hizo todavía, **rotar la contraseña** de `neondb_owner` (ver
@@ -2571,17 +2608,14 @@ cosa, gana lo que se pueda verificar.
   correr si falta `$env:DATABASE_URL`. Antes de probar la app contra una
   rama, detener el backend local que esté corriendo; si no, el frontend
   sigue hablando con el que apunta a producción.
-- **Siguiente acción exacta:** que el usuario revise y haga el commit del
-  paso 3.7b (y del documento del frontend, que ya trae el contrato completo
-  de la fase 3). Después, **subir la fase 3** (once commits; el push a
-  `main` despliega en Render) tras revisarla en local en modo lectura: las
-  pantallas de cursos, estudiantes, pagos, cartera, boletines, horarios y
-  la bandeja de planes deben verse igual que en producción. Luego, en el
-  frontend, la **fase 4** (selector de año), solo con su visto bueno. Las
-  preguntas abiertas se le hacen al usuario justo antes del paso que las
-  necesita (lo pidió así el 2026-10-02): la del selector (¿esconderlo o
-  desactivarlo en las pantallas que no dependen del año?), antes de la fase
-  4; la de crear cursos y conceptos nuevos en el año en preparación, antes
-  de la fase 5. La fase 3 tiene que estar en producción **antes de crear el
-  primer curso de 2027** (fase 5, meta: principios de noviembre).
+- **Siguiente acción exacta:** en el frontend, que el usuario revise y
+  apruebe el plan por pasos de la fase 4 (en su documento). Después, el
+  paso 4.1, solo con su visto bueno. Las preguntas abiertas se le hacen al
+  usuario justo antes del paso que las necesita (lo pidió así el
+  2026-10-02): la del selector, antes del 4.1; la de qué puede hacer el
+  admin en un año en preparación, antes del 4.2; la de crear cursos y
+  conceptos nuevos en el año en preparación, antes de la fase 5. En este
+  repo no hay trabajo hasta la fase 5 (meta: principios de noviembre); su
+  plan tiene que cerrar el hallazgo del estudiante (ver "Ojo" en la fase 5)
+  antes de crear el primer curso de 2027.
 - Prompt para retomar: `docs/funcionalidades/PROMPT_CONTINUACION_ANIO_LECTIVO.md`.

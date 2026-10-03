@@ -197,6 +197,28 @@ def peticion(usuario, metodo, ruta, cuerpo=None, formulario=None):
 
 IMAGEN = [("SELECT imagen1, estado_revision", ("planes/x.png", "pendiente"), [])]
 
+# Respuestas puntuales para las rutas de solo admin (paso 3.7b).
+ASIGNACION = {
+    "profesor_id": 7, "curso_id": 2, "materia_id": 10,
+    "dia": "Lunes", "hora_inicio": "07:00", "hora_fin": "08:00",
+}
+NUEVA_ASIGNACION = [
+    ("FROM asignaciones a JOIN profesor p", None, []),
+    ("SELECT 1 FROM asignaciones WHERE profesor_id = %s AND curso_id", None, []),
+    ("SELECT jornada FROM cursos WHERE id", ("Mañana",), []),
+    ("SELECT nombre FROM materias WHERE id", ("MATEMATICAS",), []),
+]
+COLUMNAS_CONCEPTO = (
+    "id nombre valor descripcion tipo_cobro fecha_limite dia_limite_mes dias_gracia "
+    "mora_tipo mora_valor mes_inicial frecuencia_meses generacion_automatica activo "
+    "created_at updated_at mes_final anio_lectivo_id"
+).split()
+CONCEPTO = {c: None for c in COLUMNAS_CONCEPTO} | {"id": 4, "nombre": "MENSUALIDAD", "valor": 0}
+TABLAS = [(
+    "FROM information_schema.tables", Comodin(),
+    [(t,) for t in ("tipos_de_pagos", "tipos_pagos_cursos", "tipos_pagos_estudiantes")],
+)]
+
 # nombre -> (metodo, ruta, cuerpo, formulario, respuestas)
 RUTAS = {
     "POST /notas": (
@@ -244,6 +266,71 @@ RUTAS = {
     "DELETE /admin/plan-de-clases/{id}/imagen": (
         "DELETE", "/admin/plan-de-clases/20/imagen?slot=imagen1", None, None, IMAGEN,
     ),
+    # --- Paso 3.7b: rutas de solo admin ---
+    "POST /asignaciones": ("POST", "/asignaciones", ASIGNACION, None, NUEVA_ASIGNACION),
+    "PUT /asignaciones/{id}": (
+        "PUT", "/asignaciones/9", ASIGNACION, None,
+        [("SELECT profesor_id, curso_id, materia_id, activo", (7, 2, 10, True, 9), [])]
+        + NUEVA_ASIGNACION,
+    ),
+    "DELETE /asignaciones/{id}": ("DELETE", "/asignaciones/9", None, None, []),
+    "DELETE /asignaciones/{profesor}/{curso}": ("DELETE", "/asignaciones/7/2", None, None, []),
+    "PUT /cursos/{id}/orden-boletin": (
+        "PUT", "/cursos/2/orden-boletin", {"materias": [{"materia_id": 10}, {"materia_id": 12}]},
+        None, [("SELECT DISTINCT materia_id FROM asignaciones", Comodin(), [(10,), (12,)])],
+    ),
+    "PUT /cursos/{id}": (
+        "PUT", "/cursos/2", {"nombre": "PRIMERO A", "jornada": "Mañana"}, None,
+        [("SELECT id FROM cursos WHERE UPPER", None, [])],
+    ),
+    "PATCH /cursos/{id}/estado": ("PATCH", "/cursos/2/estado", {"estado": "inactivo"}, None, []),
+    "POST /listas-seguimiento/{curso}/columnas": (
+        "POST", "/listas-seguimiento/2/columnas", {"nombre": "Tarea"}, None,
+        [("SELECT 1 FROM listas_seguimiento_columnas", None, [])],
+    ),
+    "POST /listas-seguimiento/columnas-en-todos-los-cursos": (
+        "POST", "/listas-seguimiento/columnas-en-todos-los-cursos", {"nombre": "Tarea"}, None, [],
+    ),
+    "DELETE /listas-seguimiento/{curso}/columnas/{id}": (
+        "DELETE", "/listas-seguimiento/2/columnas/5", None, None, [],
+    ),
+    "POST /listas-seguimiento/{curso}/marcas": (
+        "POST", "/listas-seguimiento/2/marcas",
+        [{"columna_id": 5, "estudiante_id": 3, "marcado": True}], None,
+        [
+            ("SELECT id, nombre FROM listas_seguimiento_columnas", Comodin(), [(5, "Tarea")]),
+            ("SELECT id, nombre, apellido FROM estudiantes", Comodin(), [(3, "Ana", "Paz")]),
+        ],
+    ),
+    "PATCH /admin/plan-de-clases/{id}/revision": (
+        "PATCH", "/admin/plan-de-clases/20/revision", {"estado": "visto", "version": 1}, None, [],
+    ),
+    "POST /admin/plan-de-clases/{id}/observaciones": (
+        "POST", "/admin/plan-de-clases/20/observaciones",
+        {"observacion": "Revisar", "version": 1}, None, [],
+    ),
+    "PUT /tipos-pagos/{id}": (
+        "PUT", "/tipos-pagos/4", {"nombre": "MENSUALIDAD", "valor": 0}, None,
+        [("SELECT id FROM tipos_de_pagos WHERE LOWER(TRIM(nombre))", None, [])],
+    ),
+    "PUT /tipos-pagos/{id}/configuracion": (
+        "PUT", "/tipos-pagos/4/configuracion", {"dias_gracia": 5}, None,
+        [
+            ("FROM information_schema.columns", Comodin(), [(c,) for c in COLUMNAS_CONCEPTO]),
+            ("FROM tipos_de_pagos", CONCEPTO, []),
+        ],
+    ),
+    "PUT /tipos-pagos/{id}/cursos": (
+        "PUT", "/tipos-pagos/4/cursos", {"cursos": [{"curso_id": 2, "valor": 200000}]}, None,
+        [("SELECT ARRAY(", {"cursos_de_otro_anio": []}, [])],
+    ),
+    "DELETE /tipos-pagos/{id}/cursos/{curso}": ("DELETE", "/tipos-pagos/4/cursos/2", None, None, []),
+    "PUT /estudiantes/{id}/valores-pago-personalizados/{concepto}": (
+        "PUT", "/estudiantes/3/valores-pago-personalizados/4", {"valor": 150000}, None, TABLAS,
+    ),
+    "DELETE /estudiantes/{id}/valores-pago-personalizados/{concepto}": (
+        "DELETE", "/estudiantes/3/valores-pago-personalizados/4", None, None, TABLAS,
+    ),
 }
 
 # (ruta, rol) -> (conexiones, consultas), medido el 2026-10-02 antes de la guardia.
@@ -269,6 +356,26 @@ ANTES = {
     ("DELETE /plan-de-clases/{id}/imagen", "admin"): (1, 2),
     ("PATCH /plan-de-clases/{id}/observaciones/{id}/vista", "profesor"): (2, 2),
     ("DELETE /admin/plan-de-clases/{id}/imagen", "admin"): (1, 2),
+    # Paso 3.7b, solo admin.
+    ("POST /asignaciones", "admin"): (1, 12),
+    ("PUT /asignaciones/{id}", "admin"): (1, 11),
+    ("DELETE /asignaciones/{id}", "admin"): (1, 2),
+    ("DELETE /asignaciones/{profesor}/{curso}", "admin"): (1, 2),
+    ("PUT /cursos/{id}/orden-boletin", "admin"): (1, 6),
+    ("PUT /cursos/{id}", "admin"): (1, 2),
+    ("PATCH /cursos/{id}/estado", "admin"): (1, 1),
+    ("POST /listas-seguimiento/{curso}/columnas", "admin"): (1, 3),
+    ("POST /listas-seguimiento/columnas-en-todos-los-cursos", "admin"): (1, 2),
+    ("DELETE /listas-seguimiento/{curso}/columnas/{id}", "admin"): (1, 1),
+    ("POST /listas-seguimiento/{curso}/marcas", "admin"): (1, 3),
+    ("PATCH /admin/plan-de-clases/{id}/revision", "admin"): (1, 3),
+    ("POST /admin/plan-de-clases/{id}/observaciones", "admin"): (1, 4),
+    ("PUT /tipos-pagos/{id}", "admin"): (1, 2),
+    ("PUT /tipos-pagos/{id}/configuracion", "admin"): (2, 4),
+    ("PUT /tipos-pagos/{id}/cursos", "admin"): (1, 4),
+    ("DELETE /tipos-pagos/{id}/cursos/{curso}", "admin"): (1, 1),
+    ("PUT /estudiantes/{id}/valores-pago-personalizados/{concepto}", "admin"): (1, 8),
+    ("DELETE /estudiantes/{id}/valores-pago-personalizados/{concepto}", "admin"): (1, 2),
 }
 
 # Rutas que ya llevan la guardia. Paso 3.7a: las que usa el profesor (el
@@ -286,6 +393,27 @@ CON_GUARDIA = {
     "DELETE /plan-de-clases/{id}/imagen",
     "PATCH /plan-de-clases/{id}/observaciones/{id}/vista",
     "DELETE /admin/plan-de-clases/{id}/imagen",
+    # Paso 3.7b: las de solo admin. "Columna en todos los cursos" no esta:
+    # sin año pedido usa el activo, y con año la validacion que ya hacia trae
+    # el estado, asi que su guardia no cuesta ninguna consulta.
+    "POST /asignaciones",
+    "PUT /asignaciones/{id}",
+    "DELETE /asignaciones/{id}",
+    "DELETE /asignaciones/{profesor}/{curso}",
+    "PUT /cursos/{id}/orden-boletin",
+    "PUT /cursos/{id}",
+    "PATCH /cursos/{id}/estado",
+    "POST /listas-seguimiento/{curso}/columnas",
+    "DELETE /listas-seguimiento/{curso}/columnas/{id}",
+    "POST /listas-seguimiento/{curso}/marcas",
+    "PATCH /admin/plan-de-clases/{id}/revision",
+    "POST /admin/plan-de-clases/{id}/observaciones",
+    "PUT /tipos-pagos/{id}",
+    "PUT /tipos-pagos/{id}/configuracion",
+    "PUT /tipos-pagos/{id}/cursos",
+    "DELETE /tipos-pagos/{id}/cursos/{curso}",
+    "PUT /estudiantes/{id}/valores-pago-personalizados/{concepto}",
+    "DELETE /estudiantes/{id}/valores-pago-personalizados/{concepto}",
 }
 
 USUARIOS = {"profesor": PROFESOR, "admin": ADMIN}

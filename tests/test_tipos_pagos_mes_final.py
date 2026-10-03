@@ -27,6 +27,9 @@ class CursorConfiguracion:
         self.ejecutadas.append((normalizada, params))
         if "from information_schema.columns" in normalizada:
             self.filas = [(columna,) for columna in self.columnas]
+        elif normalizada.startswith("select al.anio, al.estado"):
+            # Año lectivo, paso 3.7: la guardia de escritura ve 2026 activo.
+            self.filas = [(2026, "activo")]
         elif normalizada.startswith("select tipo_cobro, mes_inicial, mes_final"):
             self.filas = [self.configuracion]
         elif normalizada.startswith("update tipos_de_pagos"):

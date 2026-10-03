@@ -1,6 +1,6 @@
 from app.database import get_connection
 from app.repositories.anios_lectivos_repository import ANIO_ACTIVO_ID_SQL, condicion_anio
-from app.services.anio_lectivo import exigir_anio_lectivo
+from app.services.anio_lectivo import exigir_anio_lectivo, exigir_cursos_editables_para_admin
 from psycopg2 import IntegrityError
 
 ESTADOS_CURSO = {"activo", "inactivo"}
@@ -209,6 +209,9 @@ def actualizar_curso_controller(curso_id, curso):
         nombre = _upper_text(curso.nombre)
         jornada = _normalizar_jornada(curso.jornada)
         _validar_nombre_obligatorio(nombre)
+        # Año lectivo, paso 3.7: antes de la primera consulta, en la conexion
+        # que ya se abrio.
+        exigir_cursos_editables_para_admin(cursor, [curso_id])
         _validar_curso_unico(cursor, nombre, jornada, curso_id)
 
         cursor.execute('''
@@ -247,6 +250,8 @@ def actualizar_estado_curso_controller(curso_id, estado):
     cursor = conn.cursor()
 
     try:
+        # Año lectivo, paso 3.7: lo primero, en la conexion que ya se abrio.
+        exigir_cursos_editables_para_admin(cursor, [curso_id])
         estado_normalizado = _normalizar_estado(estado)
         cursor.execute(
             """

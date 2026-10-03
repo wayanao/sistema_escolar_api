@@ -2,7 +2,11 @@ import logging
 
 from app.database import get_connection
 from app.repositories.anios_lectivos_repository import ANIO_ACTIVO_ID_SQL, condicion_anio
-from app.services.anio_lectivo import exigir_anio_lectivo
+from app.services.anio_lectivo import (
+    AnioLectivoNoEditableError,
+    exigir_anio_lectivo,
+    exigir_concepto_editable_para_admin,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +88,8 @@ def actualizar_tipo_pago(id, nombre, valor=0):
     conn = get_connection()
     cursor = conn.cursor()
     try:
+        # Año lectivo, paso 3.7: lo primero, en la conexion que ya se abrio.
+        exigir_concepto_editable_para_admin(cursor, id)
         nombre_limpio = (nombre or "").strip()
         # Fase 3 del año lectivo: se compara con los conceptos del mismo año
         # que el que se edita.
@@ -105,7 +111,7 @@ def actualizar_tipo_pago(id, nombre, valor=0):
             conn.commit()
             return True
         return False
-    except TipoPagoDuplicadoError:
+    except (TipoPagoDuplicadoError, AnioLectivoNoEditableError):
         conn.rollback()
         raise
     except Exception as exc:
@@ -347,6 +353,8 @@ def actualizar_configuracion_tipo_pago(id, config):
     conn = get_connection()
     cursor = conn.cursor()
     try:
+        # Año lectivo, paso 3.7: lo primero, en la conexion que ya se abrio.
+        exigir_concepto_editable_para_admin(cursor, id)
         columnas = _columnas_existentes(cursor, "tipos_de_pagos")
 
         # Si NO existe NINGUNA columna avanzada, la migración está pendiente.
@@ -386,7 +394,7 @@ def actualizar_configuracion_tipo_pago(id, config):
             conn.commit()
             return True
         return False
-    except (MigracionPendienteError, ConfiguracionTipoPagoInvalidaError):
+    except (MigracionPendienteError, ConfiguracionTipoPagoInvalidaError, AnioLectivoNoEditableError):
         conn.rollback()
         raise
     except Exception as exc:
@@ -468,6 +476,8 @@ def upsert_cursos_asignados(tipo_pago_id, asignaciones):
     conn = get_connection()
     cursor = conn.cursor(cursor_factory=RealDictCursor)
     try:
+        # Año lectivo, paso 3.7: lo primero, en la conexion que ya se abrio.
+        exigir_concepto_editable_para_admin(cursor, tipo_pago_id)
         curso_ids = [a["curso_id"] for a in asignaciones]
 
         # Una sola consulta responde dos cosas: si el concepto existe y que
@@ -530,7 +540,7 @@ def upsert_cursos_asignados(tipo_pago_id, asignaciones):
         asignados = _consultar_cursos_asignados(cursor, tipo_pago_id)
         conn.commit()
         return asignados
-    except CursoDeOtroAnioError:
+    except (CursoDeOtroAnioError, AnioLectivoNoEditableError):
         conn.rollback()
         raise
     except Exception as exc:
@@ -548,6 +558,8 @@ def eliminar_curso_asignado(tipo_pago_id, curso_id):
     conn = get_connection()
     cursor = conn.cursor()
     try:
+        # Año lectivo, paso 3.7: lo primero, en la conexion que ya se abrio.
+        exigir_concepto_editable_para_admin(cursor, tipo_pago_id)
         cursor.execute(
             "DELETE FROM tipos_pagos_cursos WHERE tipo_pago_id = %s AND curso_id = %s RETURNING id",
             (tipo_pago_id, curso_id),
@@ -556,6 +568,9 @@ def eliminar_curso_asignado(tipo_pago_id, curso_id):
             conn.commit()
             return True
         return False
+    except AnioLectivoNoEditableError:
+        conn.rollback()
+        raise
     except Exception as exc:
         logger.exception(
             "Fallo inesperado al desasignar el curso %s del tipo de pago %s",
@@ -659,6 +674,8 @@ def upsert_valor_personalizado_estudiante(
     conn = get_connection()
     cursor = conn.cursor(cursor_factory=RealDictCursor)
     try:
+        # Año lectivo, paso 3.7: lo primero, en la conexion que ya se abrio.
+        exigir_concepto_editable_para_admin(cursor, tipo_pago_id)
         _exigir_tabla_valores_estudiantes(cursor)
 
         cursor.execute(
@@ -718,7 +735,7 @@ def upsert_valor_personalizado_estudiante(
         valores = _consultar_valores_personalizados(cursor, estudiante_id)
         conn.commit()
         return valores
-    except (MigracionPendienteError, ValueError):
+    except (MigracionPendienteError, ValueError, AnioLectivoNoEditableError):
         conn.rollback()
         raise
     except Exception as exc:
@@ -739,6 +756,8 @@ def eliminar_valor_personalizado_estudiante(estudiante_id, tipo_pago_id):
     conn = get_connection()
     cursor = conn.cursor()
     try:
+        # Año lectivo, paso 3.7: lo primero, en la conexion que ya se abrio.
+        exigir_concepto_editable_para_admin(cursor, tipo_pago_id)
         _exigir_tabla_valores_estudiantes(cursor)
         cursor.execute(
             """
@@ -757,7 +776,7 @@ def eliminar_valor_personalizado_estudiante(estudiante_id, tipo_pago_id):
             return True
         conn.rollback()
         return False
-    except MigracionPendienteError:
+    except (MigracionPendienteError, AnioLectivoNoEditableError):
         conn.rollback()
         raise
     except Exception as exc:

@@ -1,6 +1,10 @@
 from app.database import get_cursor
 from app.repositories.anios_lectivos_repository import condicion_anio
-from app.services.anio_lectivo import exigir_asignacion_editable, exigir_plan_editable
+from app.services.anio_lectivo import (
+    exigir_asignacion_editable,
+    exigir_plan_editable,
+    exigir_plan_editable_para_admin,
+)
 from app.services.asignacion_academica import resolver_asignacion_academica_id_cursor
 
 
@@ -435,6 +439,8 @@ def actualizar_estado_revision_plan(
     comentario=None,
 ):
     with get_cursor(commit=True) as cursor:
+        # Año lectivo, paso 3.7: lo primero, en la conexion que ya se abrio.
+        exigir_plan_editable_para_admin(cursor, plan_id)
         bloqueo = _bloquear_version_plan(cursor, plan_id, version)
         if bloqueo["resultado"] != "ok":
             return bloqueo
@@ -515,6 +521,8 @@ def actualizar_estado_revision_plan(
 
 def agregar_observacion_plan(plan_id, admin_id, version, observacion):
     with get_cursor(commit=True) as cursor:
+        # Año lectivo, paso 3.7: lo primero, en la conexion que ya se abrio.
+        exigir_plan_editable_para_admin(cursor, plan_id)
         bloqueo = _bloquear_version_plan(cursor, plan_id, version)
         if bloqueo["resultado"] != "ok":
             return bloqueo

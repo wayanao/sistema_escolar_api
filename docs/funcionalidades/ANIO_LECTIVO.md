@@ -2,13 +2,12 @@
 
 ## Control
 
-- Estado: **Fase 3 en curso: inventario y plan del 2026-10-02; pasos 3.1 a
-  3.5b en los commits `fea2e83`, `43764f2`, `da4da87`, `c9554af`,
-  `eb835e3` y `8716fc5` (todas las lecturas quedan por año); paso 3.6
-  (aviso al renombrar una materia) en `0110359`. Paso 3.7 (guardia de
-  escritura): medido y costo aceptado (`50d9f53`); 3.7a, las rutas del
-  profesor, escrito y probado, sin commit; falta 3.7b, las de solo admin.
-  Ningún commit de la fase 3 está en GitHub.**
+- Estado: **Fase 3 terminada el 2026-10-02, sin subir a GitHub: pasos 3.1
+  a 3.5b en los commits `fea2e83`, `43764f2`, `da4da87`, `c9554af`,
+  `eb835e3` y `8716fc5` (todas las lecturas quedan por año); 3.6 (aviso al
+  renombrar una materia) en `0110359`; 3.7 (guardia de escritura): medición
+  `50d9f53`, 3.7a (rutas del profesor) `fcb18ef`, 3.7b (rutas de solo
+  admin) escrito y probado, sin commit.**
   **Fase 2 con el código completo el
   2026-10-01, subida a GitHub.**
   Pasos 2.1 (las cuotas se cuentan en el año del concepto), 2.2 (cada año
@@ -2198,6 +2197,89 @@ profesor (sin desplegar):**
   (asignaciones 5, cursos 2, listas de seguimiento 4 —la de "todos los
   cursos" sin consulta extra—, revisión y observaciones de planes 2,
   conceptos 4 y valores por estudiante 2), con el mismo método.
+- Commit `fcb18ef` (hecho por el usuario el 2026-10-02).
+
+**Avance del 2026-10-02 — paso 3.7b, la guardia en las rutas de solo admin
+(sin desplegar). Con él, la fase 3 queda completa:**
+
+- Aprobado por el usuario el 2026-10-02 ("continúa"). Toca conceptos de
+  pago y valores por estudiante (zona de dinero): solo se agrega la guardia;
+  ningún cálculo ni consulta de cobro cambia.
+- Caracterización primero: las 19 rutas entraron en
+  `tests/test_anio_lectivo_guardia_conteos.py` con sus conexiones y
+  consultas de la medición previa; pasaron (40 de 40) contra el código
+  anterior.
+- Código:
+  - Regla: como estas rutas ya exigen admin en su router, la guardia aplica
+    la regla del admin (`exigir_anio_editable_para_admin`: solo un año
+    cerrado frena, con 409) y no hace falta pasar el usuario por las capas.
+    Variantes por lo que se guarda: `exigir_cursos_editables_para_admin`,
+    `exigir_asignacion_editable_para_admin`,
+    `exigir_plan_editable_para_admin` y
+    `exigir_concepto_editable_para_admin`. Si alguna de estas rutas se
+    abriera algún día a profesores, tendría que pasar a la versión con
+    usuario (anotado en el servicio).
+  - Lecturas nuevas en el repositorio del año: `leer_anios_de_cursos` (uno o
+    varios cursos en una consulta) y `leer_anio_de_concepto` (el concepto
+    guarda su año, decisión 17).
+  - Dónde va: lo primero de la transacción en crear clase, desactivar
+    (por id y por profesor y curso), orden del boletín, estado del curso,
+    listas (crear y borrar columna, marcas), revisión y observaciones de
+    planes, y las seis escrituras de conceptos y valores. Editar curso: tras
+    validar que el nombre no está vacío (no consulta), antes de la primera
+    consulta. Editar clase: justo después de leerla, porque mira **el curso
+    de antes y el nuevo** a la vez (no se puede sacar una clase de un año
+    cerrado ni meterla en uno).
+  - "Columna en todos los cursos" con `?anio_lectivo_id=`: la validación
+    del año que ya hacía devuelve su estado, así que la guardia no cuesta
+    consulta. Sin año, son los cursos del activo, siempre editable.
+  - Conceptos y valores: sus funciones convierten cualquier error en "error
+    interno" (500). Se agregó `AnioLectivoNoEditableError` a la lista de
+    errores que se dejan pasar, para que el 409 llegue tal cual.
+- Consultas, medidas: +1 y 0 conexiones en 18 rutas; +0 en "todos los
+  cursos".
+- Pruebas:
+  - `tests/test_anio_lectivo_guardia.py`, 103 nuevas: la regla del admin
+    (cuatro estados), las dos lecturas, y por HTTP en cada una de las 19
+    rutas: año cerrado → 409, nada escrito y ningún `commit`; preparación y
+    reabierto → el admin guarda; activo → como siempre; lo que mira cada
+    guardia (curso 2, clase 9, plan 20, concepto 4; editar clase, los dos
+    cursos en una consulta); y "todos los cursos" sin año no consulta la
+    guardia.
+  - Ajustadas a propósito, **64 pruebas en 10 archivos**, con el criterio
+    del 3.7a (si el archivo dobla los ayudantes, se dobla la guardia; si
+    cuenta consultas reales, la guardia corre y se cuenta). Además, el total
+    de líneas del dominio de planes (1413 → 1421).
+  - Treinta versiones dañadas del código hacen fallar alguna prueba: quitar
+    la guardia de cada uno de los 19 sitios, el 409 convertido en "error
+    interno" en cada una de las seis escrituras de dinero, editar clase
+    mirando solo el curso nuevo, la regla del admin tratándolo como
+    profesor, la consulta del concepto sin unir su año, la de cursos con un
+    solo id y sin cursor de diccionarios.
+- Documentación: `docs/API_ENDPOINTS.md` ("Guardia de escritura"),
+  `docs/ROLES_PERMISOS_BACKEND.md` y `docs/CAMBIOS_BACKEND.md`; en el
+  frontend, `docs/funcionalidades/ANIO_LECTIVO.md` con el contrato completo
+  de la fase 3.
+- Verificación: `scripts/verify.py` → **2016 pasan, 0 fallan** (antes
+  1913); ruff y `pip check` limpios; `git diff --check` limpio.
+- Hallazgo, se suma al del 3.7a para la fase 6: las marcas de las listas de
+  seguimiento también validan a los estudiantes con `estudiantes.curso_id`
+  (los del año activo). En un año reabierto, el admin no podría marcar a
+  los estudiantes de ese año. Mismo arreglo: que mire la matrícula del año
+  del curso.
+- Efecto al desplegar: ninguno visible mientras haya un solo año; unos 60 ms
+  más en cada guardado de estas pantallas del admin.
+
+**Con esto la fase 3 queda terminada (2026-10-02).** Se cumple su punto 5:
+- Con el año activo, las respuestas son las de antes: lo fijan las
+  caracterizaciones de cada paso, que siguieron pasando (las que se
+  ajustaron lo fueron solo por consultas nuevas o por el año como
+  parámetro, nunca por la respuesta).
+- Con otro año, cada listado devuelve solo lo de ese año (pasos 3.1 a 3.5,
+  con bases simuladas de dos años), y nadie escribe donde no debe (3.7).
+- `verify.py` pasa.
+- Falta, del usuario: revisarla en local y subirla. Tiene que estar en
+  producción **antes de crear el primer curso de 2027** (fase 5).
 
 ### Fase 4 — Selector de año en el frontend
 
@@ -2261,7 +2343,8 @@ propuestos bajo `/anios-lectivos`:
    asistencia, boletín y observaciones comprueban en la ruta que el
    estudiante sea del curso de la clase con `estudiantes.curso_id`; en un
    año reabierto eso rechaza al admin antes de llegar a guardar. Hay que
-   hacer que esa comprobación mire la matrícula del año de la clase.
+   hacer que esa comprobación mire la matrícula del año de la clase. Lo
+   mismo las marcas de las listas de seguimiento (hallazgo del 3.7b).
 5. Terminado cuando: el ensayo completo de activación en una rama de Neon
    con copia de producción deja la consulta de control en 0 filas, los
    profesores ven solo 2027 y el admin puede consultar e imprimir 2026.
@@ -2454,10 +2537,12 @@ cosa, gana lo que se pueda verificar.
   en `8716fc5` (observador, expediente y planes del admin por año; su
   "Avance" deja una consulta de solo lectura pendiente sobre faltas sin
   clase); paso 3.6 en `0110359` (aviso al renombrar una materia que se usa
-  en otro año). Paso 3.7: medición y costo aceptado en `50d9f53`; **paso
-  3.7a escrito y probado, sin commit** (la guardia en las rutas que usa el
-  profesor; ver su "Avance", que deja un hallazgo para la fase 6). Los
-  nueve commits de la fase 3 (`57b3710` a `50d9f53`) no están en GitHub.
+  en otro año). Paso 3.7: medición y costo aceptado en `50d9f53`; 3.7a en
+  `fcb18ef` (la guardia en las rutas que usa el profesor); **paso 3.7b
+  escrito y probado, sin commit** (las rutas de solo admin). **Con él, la
+  fase 3 queda terminada.** Sus avances dejan un hallazgo para la fase 6
+  (comprobaciones de estudiantes con `estudiantes.curso_id`). Los diez
+  commits de la fase 3 (`57b3710` a `fcb18ef`) no están en GitHub.
 - **Hecho aparte, la noche del 2026-09-30:** el arreglo de la hora
   (`2e77634` en este repo, `033c042` en el frontend). Cobros, cartera y
   alta de colegios usan la fecha de Colombia (`app/core/fechas.py`), y el
@@ -2487,16 +2572,16 @@ cosa, gana lo que se pueda verificar.
   rama, detener el backend local que esté corriendo; si no, el frontend
   sigue hablando con el que apunta a producción.
 - **Siguiente acción exacta:** que el usuario revise y haga el commit del
-  paso 3.7a. Después, con su visto bueno, **paso 3.7b**: la guardia en las
-  19 rutas de solo admin (lista al final del "Avance" del 3.7a), con el
-  mismo método: conteo antes en `test_anio_lectivo_guardia_conteos.py`, la
-  guardia dentro de la transacción del guardado, +1 consulta y 0
-  conexiones. Con el 3.7b se cierra la fase 3; entonces se anota el
-  contrato completo en el documento del frontend. Las preguntas abiertas se le hacen al usuario justo antes
-  del paso que las necesita (lo pidió así el 2026-10-02): la de crear en el
-  año en preparación, antes de la fase 5; la del selector, antes de la fase
-  4. Al cerrar la fase 3 se anota el contrato completo en el documento del
-  frontend (rutas con `?anio_lectivo_id=` y el aviso de materias). La fase 3
-  tiene que estar en producción **antes de crear el primer curso de 2027**
-  (fase 5, meta: principios de noviembre).
+  paso 3.7b (y del documento del frontend, que ya trae el contrato completo
+  de la fase 3). Después, **subir la fase 3** (once commits; el push a
+  `main` despliega en Render) tras revisarla en local en modo lectura: las
+  pantallas de cursos, estudiantes, pagos, cartera, boletines, horarios y
+  la bandeja de planes deben verse igual que en producción. Luego, en el
+  frontend, la **fase 4** (selector de año), solo con su visto bueno. Las
+  preguntas abiertas se le hacen al usuario justo antes del paso que las
+  necesita (lo pidió así el 2026-10-02): la del selector (¿esconderlo o
+  desactivarlo en las pantallas que no dependen del año?), antes de la fase
+  4; la de crear cursos y conceptos nuevos en el año en preparación, antes
+  de la fase 5. La fase 3 tiene que estar en producción **antes de crear el
+  primer curso de 2027** (fase 5, meta: principios de noviembre).
 - Prompt para retomar: `docs/funcionalidades/PROMPT_CONTINUACION_ANIO_LECTIVO.md`.

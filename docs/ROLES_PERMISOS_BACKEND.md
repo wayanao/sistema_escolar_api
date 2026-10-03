@@ -167,8 +167,11 @@ Con usuario autenticado y alcance por rol, sin ownership:
   Nadie escribe en un año `cerrado` (409); el profesor solo en el `activo`
   (403 en `preparacion` o `reabierto`); el admin en el activo, el de
   preparacion y uno reabierto. Corre dentro de la transaccion del guardado,
-  antes de escribir. Paso 3.7a: las rutas de escritura que usa el profesor
-  (lista en `docs/API_ENDPOINTS.md`, "Guardia de escritura").
+  antes de escribir. Paso 3.7a: las rutas de escritura que usa el profesor.
+  Paso 3.7b: las de solo admin, con la regla del admin (`*_para_admin`: solo
+  un año cerrado las frena), porque su router ya exige admin; si alguna se
+  abriera a profesores, tendria que pasar a la version con usuario. Lista
+  completa en `docs/API_ENDPOINTS.md`, "Guardia de escritura".
 
 ## Riesgos pendientes documentados
 

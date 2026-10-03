@@ -4,8 +4,8 @@ Fase 1: lo minimo para que toda fila nueva nazca con su año. Fase 2: leer un
 año pedido, para cobrar en un año que no es el activo. Fase 3: listar los
 años, para que el frontend sepa cuales hay y cual es el activo,
 `condicion_anio`, el filtro por año que comparten los listados, en que años
-se dicta una materia (aviso al renombrarla) y el año de una clase, un plan o
-una anotacion (guardia de escritura). Como el resto de
+se dicta una materia (aviso al renombrarla) y el año de una clase, un plan,
+una anotacion, un curso o un concepto (guardia de escritura). Como el resto de
 repositorios, cada funcion recibe el cursor de quien llama y no abre, confirma
 ni cierra nada.
 """
@@ -158,6 +158,45 @@ def leer_anio_de_anotacion(cursor, anotacion_id):
         WHERE o.id = %s
         """,
         (anotacion_id,),
+    )
+
+
+def leer_anios_de_cursos(cursor, curso_ids):
+    """Los años de uno o varios cursos, como lista de `(anio, estado)`.
+
+    Una fila por curso, en una sola consulta; los cursos que no existen no
+    aportan fila. Varios cursos a la vez sirve para editar una clase, que toca
+    su curso de antes y el nuevo.
+    """
+    cursor.execute(
+        """
+        SELECT al.anio, al.estado
+        FROM cursos c
+        JOIN anios_lectivos al ON al.id = c.anio_lectivo_id
+        WHERE c.id = ANY(%s)
+        """,
+        (list(curso_ids),),
+    )
+    return [
+        (fila["anio"], fila["estado"]) if isinstance(fila, dict) else tuple(fila)
+        for fila in cursor.fetchall()
+    ]
+
+
+def leer_anio_de_concepto(cursor, tipo_pago_id):
+    """El año de un concepto de pago como `(anio, estado)`, o `None` si no existe.
+
+    El concepto guarda su propio año (decision 17).
+    """
+    return _anio_y_estado(
+        cursor,
+        """
+        SELECT al.anio, al.estado
+        FROM tipos_de_pagos tp
+        JOIN anios_lectivos al ON al.id = tp.anio_lectivo_id
+        WHERE tp.id = %s
+        """,
+        (tipo_pago_id,),
     )
 
 

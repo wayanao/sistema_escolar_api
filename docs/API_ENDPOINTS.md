@@ -111,6 +111,22 @@ el del plan o el de la anotacion) y aplica esta regla:
   `DELETE /plan-de-clases/{plan_id}/imagen`, `PATCH
   /plan-de-clases/{plan_id}/observaciones/{observacion_id}/vista` y, porque
   comparte el guardado, `DELETE /admin/plan-de-clases/{plan_id}/imagen`.
+- Paso 3.7b (rutas de solo admin; su router ya exige admin, asi que solo un
+  año `cerrado` las frena con `409`): asignaciones (`POST /asignaciones`,
+  `PUT /asignaciones/{id}` —mira el curso de antes y el nuevo—, `DELETE
+  /asignaciones/{id}`, `DELETE /asignaciones/{profesor_id}/{curso_id}`, `PUT
+  /cursos/{curso_id}/orden-boletin`), cursos (`PUT /cursos/{curso_id}`,
+  `PATCH /cursos/{curso_id}/estado`), listas de seguimiento (crear y borrar
+  columna, guardar marcas, y `POST
+  /listas-seguimiento/columnas-en-todos-los-cursos?anio_lectivo_id=`),
+  planes del admin (`PATCH .../revision`, `POST .../observaciones`),
+  conceptos (`PUT /tipos-pagos/{id}`, `PUT .../configuracion`, `PUT` y
+  `DELETE .../cursos`) y valores por estudiante (`PUT` y `DELETE
+  /estudiantes/{id}/valores-pago-personalizados/{tipo_pago_id}`).
+- Sin guardia, a proposito: `POST /cursos` y `POST /tipos-pagos` (siempre
+  crean en el año activo), materias (no tienen año; ver el aviso al
+  renombrar), estudiantes y pagos (un pago se registra en el año de la deuda,
+  aunque este cerrado: decision 6). `DELETE /tipos-pagos/{id}` nunca escribe.
 - `POST /observador` no la lleva: la anotacion nueva nace siempre en el año
   activo.
 - En asistencia, boletin y observaciones, la comprobacion de que el

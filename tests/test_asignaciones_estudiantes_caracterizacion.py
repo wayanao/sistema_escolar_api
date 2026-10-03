@@ -30,8 +30,17 @@ from app.controllers import asignacion_controller, estudiante_controller
 from app.schemas.asignacion import AsignacionCreate, AsignacionEdit, OrdenBoletinUpdate
 
 
+# Año lectivo, paso 3.7: la guardia de escritura lee el año del curso antes de
+# escribir. Aqui corre de verdad y se cuenta; responde 2026 activo.
+SQL_GUARDIA = "SELECT al.anio, al.estado"
+
+
 class CursorEspia:
-    """Cursor doble que registra cada execute y sirve respuestas en orden."""
+    """Cursor doble que registra cada execute y sirve respuestas en orden.
+
+    La consulta de la guardia del año lectivo responde "2026 activo" sin gastar
+    las respuestas preparadas.
+    """
 
     def __init__(self, una=None, todas=None, description=None, fallar_si=None):
         self.ejecutadas = []
@@ -46,10 +55,17 @@ class CursorEspia:
         if self._fallar_si is not None:
             self._fallar_si(query)
 
+    def _es_la_guardia(self):
+        return bool(self.ejecutadas) and SQL_GUARDIA in self.ejecutadas[-1][0]
+
     def fetchone(self):
+        if self._es_la_guardia():
+            return (2026, "activo")
         return self._una.pop(0) if self._una else None
 
     def fetchall(self):
+        if self._es_la_guardia():
+            return [(2026, "activo")]
         return self._todas.pop(0) if self._todas else []
 
     def close(self):
@@ -180,11 +196,14 @@ def test_asignar_profesor_camino_feliz_cuesta_trece_consultas(conexion_de):
     respuesta = asignacion_controller.asignar_profesor_controller(_asignacion())
 
     assert respuesta == {"mensaje": "Asignación creada", "id": 77}
-    assert len(cursor.ejecutadas) == 13
-    assert "FOR NO KEY UPDATE" in cursor.sql[0].upper()
-    assert "FROM profesor" in cursor.sql[0]
+    # Año lectivo, paso 3.7: la guardia (el año del curso) va primero. 13 -> 14.
+    assert len(cursor.ejecutadas) == 14
+    assert SQL_GUARDIA in cursor.sql[0]
+    assert cursor.parametros[0] == ([4],)
     assert "FOR NO KEY UPDATE" in cursor.sql[1].upper()
-    assert "FROM cursos" in cursor.sql[1]
+    assert "FROM profesor" in cursor.sql[1]
+    assert "FOR NO KEY UPDATE" in cursor.sql[2].upper()
+    assert "FROM cursos" in cursor.sql[2]
     assert conn.commits == 1
     assert conn.cerrada is True
     assert cursor.cerrado is True
@@ -214,7 +233,8 @@ def test_asignar_profesor_hereda_la_asignacion_academica_existente(conexion_de):
     asignacion_controller.asignar_profesor_controller(_asignacion())
 
     # Sin UPDATE de autorreferencia: hereda el 5 y ahorra una consulta.
-    assert len(cursor.ejecutadas) == 12
+    # Año lectivo, paso 3.7: +1, la guardia del año del curso.
+    assert len(cursor.ejecutadas) == 13
     insert_sql, insert_params = cursor.ejecutadas[-1]
     assert "INSERT INTO asignaciones" in insert_sql
     assert insert_params[6] == 5
@@ -253,7 +273,8 @@ def test_asignar_profesor_rechaza_materia_de_otro_profesor(conexion_de):
 
     assert "Ana Ríos" in str(exc.value)
     assert conn.commits == 0
-    assert len(cursor.ejecutadas) == 4
+    # Año lectivo, paso 3.7: +1, la guardia del año del curso.
+    assert len(cursor.ejecutadas) == 5
 
 
 def test_asignar_profesor_rechaza_horario_identico_repetido(conexion_de):
@@ -350,8 +371,9 @@ def test_asignar_profesor_sin_horario_omite_las_validaciones_de_cruce(conexion_d
 
     assert respuesta == {"mensaje": "Asignación creada", "id": 77}
     # Sin horario, validar_horario_unico sale sin consultar y no hay jornada ni
-    # los dos cruces: 12 - 4 = 8 consultas.
-    assert len(cursor.ejecutadas) == 8
+    # los dos cruces: 12 - 4 = 8 consultas, mas la guardia del año lectivo
+    # (paso 3.7): 9.
+    assert len(cursor.ejecutadas) == 9
     assert conn.commits == 1
 
 
@@ -384,7 +406,8 @@ def test_editar_bloquea_el_cambio_academico_si_ya_hay_historial(conexion_de):
         )
     }
     assert conn.commits == 0
-    assert len(cursor.ejecutadas) == 6
+    # Año lectivo, paso 3.7: +1, la guardia del año del curso.
+    assert len(cursor.ejecutadas) == 7
     assert not any("UPDATE asignaciones" in sql for sql in cursor.sql)
 
 
@@ -442,11 +465,14 @@ def test_editar_permite_cambiar_solo_el_horario_con_historial(conexion_de):
 
     assert respuesta == {"mensaje": "Asignación actualizada"}
     assert conn.commits == 1
-    assert len(cursor.ejecutadas) == 11
-    assert "FOR NO KEY UPDATE" in cursor.sql[1].upper()
-    assert "FROM profesor" in cursor.sql[1]
+    # Año lectivo, paso 3.7: +1, la guardia del año del curso, justo despues
+    # de leer la clase (sql[1]); todo lo demas se corre una posicion.
+    assert len(cursor.ejecutadas) == 12
+    assert SQL_GUARDIA in cursor.sql[1]
     assert "FOR NO KEY UPDATE" in cursor.sql[2].upper()
-    assert "FROM cursos" in cursor.sql[2]
+    assert "FROM profesor" in cursor.sql[2]
+    assert "FOR NO KEY UPDATE" in cursor.sql[3].upper()
+    assert "FROM cursos" in cursor.sql[3]
     # No se consulta el historial porque la relacion academica no cambia.
     assert not any("information_schema.columns" in sql for sql in cursor.sql)
     update_sql, update_params = cursor.ejecutadas[-1]
@@ -488,7 +514,10 @@ def test_editar_rechaza_una_asignacion_inactiva(conexion_de):
     respuesta = asignacion_controller.editar_asignacion_controller(55, _asignacion_edit())
 
     assert respuesta == {"error": "No se puede editar una asignación inactiva."}
-    assert len(cursor.ejecutadas) == 1
+    # La lectura de la clase y la guardia del año lectivo (paso 3.7), que mira
+    # el curso de antes y el nuevo antes de cualquier otra cosa.
+    assert len(cursor.ejecutadas) == 2
+    assert cursor.parametros[1] == ([4, 4],)
     assert conn.commits == 0
 
 
@@ -544,7 +573,8 @@ def test_orden_boletin_reinicia_a_cien_y_luego_numera(conexion_de):
     assert conn.commits == 1
     # Curso activo, materias asignadas, reinicio, dos posiciones y relectura:
     # el coste crece con el numero de materias reordenadas.
-    assert len(cursor.ejecutadas) == 6
+    # Año lectivo, paso 3.7: +1, la guardia del año del curso.
+    assert len(cursor.ejecutadas) == 7
 
 
 def test_orden_boletin_rechaza_materias_repetidas(conexion_de):
@@ -555,7 +585,8 @@ def test_orden_boletin_rechaza_materias_repetidas(conexion_de):
     )
 
     assert respuesta == {"error": "El orden enviado contiene materias repetidas."}
-    assert len(cursor.ejecutadas) == 1
+    # La guardia del año lectivo (paso 3.7) y el curso activo.
+    assert len(cursor.ejecutadas) == 2
     assert conn.commits == 0
 
 
@@ -584,7 +615,8 @@ def test_orden_boletin_rechaza_curso_inactivo(conexion_de):
     )
 
     assert respuesta == {"error": "Curso no encontrado o inactivo."}
-    assert len(cursor.ejecutadas) == 1
+    # La guardia del año lectivo (paso 3.7) y el curso activo.
+    assert len(cursor.ejecutadas) == 2
     assert conn.commits == 0
 
 

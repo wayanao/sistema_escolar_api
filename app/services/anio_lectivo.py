@@ -11,8 +11,10 @@ from app.repositories.anios_lectivos_repository import (
     leer_anio_activo,
     leer_anio_de_anotacion,
     leer_anio_de_asignacion,
+    leer_anio_de_concepto,
     leer_anio_de_plan,
     leer_anio_lectivo,
+    leer_anios_de_cursos,
     listar_anios_lectivos,
 )
 
@@ -162,6 +164,39 @@ def exigir_plan_editable(cursor, plan_id, usuario):
 def exigir_anotacion_editable(cursor, anotacion_id, usuario):
     """Guardia para una anotacion del observador. Una consulta, en el cursor dado."""
     exigir_anio_editable(leer_anio_de_anotacion(cursor, anotacion_id), usuario)
+
+
+# Paso 3.7b: rutas de solo admin. Su router ya exige admin, asi que la regla
+# es la del admin (todo menos un año cerrado) y no hace falta pasar el usuario
+# por cada capa. Si una de esas rutas se abriera algun dia a profesores, tiene
+# que pasar a las versiones con usuario.
+_ADMIN = {"rol": "admin"}
+
+
+def exigir_anio_editable_para_admin(anio_y_estado):
+    """La regla del admin sobre un `(anio, estado)` ya leido: 409 si esta cerrado."""
+    exigir_anio_editable(anio_y_estado, _ADMIN)
+
+
+def exigir_cursos_editables_para_admin(cursor, curso_ids):
+    """Guardia de solo admin para uno o varios cursos. Una consulta."""
+    for anio_y_estado in leer_anios_de_cursos(cursor, curso_ids):
+        exigir_anio_editable_para_admin(anio_y_estado)
+
+
+def exigir_asignacion_editable_para_admin(cursor, asignacion_id):
+    """Guardia de solo admin para una clase. Una consulta."""
+    exigir_anio_editable_para_admin(leer_anio_de_asignacion(cursor, asignacion_id))
+
+
+def exigir_plan_editable_para_admin(cursor, plan_id):
+    """Guardia de solo admin para un plan de clases. Una consulta."""
+    exigir_anio_editable_para_admin(leer_anio_de_plan(cursor, plan_id))
+
+
+def exigir_concepto_editable_para_admin(cursor, tipo_pago_id):
+    """Guardia de solo admin para un concepto de pago. Una consulta."""
+    exigir_anio_editable_para_admin(leer_anio_de_concepto(cursor, tipo_pago_id))
 
 
 def listar_anios_visibles(cursor, usuario):

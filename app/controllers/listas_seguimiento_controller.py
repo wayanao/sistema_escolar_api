@@ -27,7 +27,11 @@ from psycopg2 import IntegrityError
 
 from app.database import get_cursor
 from app.repositories import listas_seguimiento_repository as repositorio
-from app.services.anio_lectivo import exigir_anio_lectivo
+from app.services.anio_lectivo import (
+    exigir_anio_editable_para_admin,
+    exigir_anio_lectivo,
+    exigir_cursos_editables_para_admin,
+)
 
 
 CURSO_NO_ENCONTRADO = "Ese curso no existe."
@@ -138,6 +142,8 @@ def crear_columna_controller(curso_id, nombre):
     """
     try:
         with get_cursor(commit=True) as cursor:
+            # Año lectivo, paso 3.7: lo primero, en la conexion que ya se abrio.
+            exigir_cursos_editables_para_admin(cursor, [curso_id])
             if not repositorio.existe_curso(cursor, curso_id):
                 raise CursoNoEncontradoError(CURSO_NO_ENCONTRADO)
 
@@ -183,7 +189,11 @@ def crear_columna_en_todos_los_cursos_controller(nombre, anio_lectivo_id=None):
     try:
         with get_cursor(commit=True) as cursor:
             if anio_lectivo_id is not None:
-                exigir_anio_lectivo(cursor, anio_lectivo_id)
+                # Año lectivo, paso 3.7: la validacion ya trae el estado del
+                # año, asi que la guardia no cuesta consulta. Sin año es el
+                # activo, que siempre se puede editar.
+                _id, anio, estado = exigir_anio_lectivo(cursor, anio_lectivo_id)
+                exigir_anio_editable_para_admin((anio, estado))
             creadas = repositorio.crear_columna_en_cursos_activos(
                 cursor, nombre, anio_lectivo_id=anio_lectivo_id
             )
@@ -212,6 +222,8 @@ def eliminar_columna_controller(curso_id, columna_id):
     tipos de pago, no hay historial financiero que proteger.
     """
     with get_cursor(commit=True) as cursor:
+        # Año lectivo, paso 3.7: lo primero, en la conexion que ya se abrio.
+        exigir_cursos_editables_para_admin(cursor, [curso_id])
         if not repositorio.eliminar_columna(cursor, curso_id, columna_id):
             raise ColumnaNoEncontradaError(COLUMNA_NO_ENCONTRADA)
 
@@ -248,6 +260,8 @@ def guardar_marcas_controller(curso_id, marcas):
     puede borrar entre medias una columna que se acaba de dar por buena.
     """
     with get_cursor(commit=True) as cursor:
+        # Año lectivo, paso 3.7: lo primero, en la conexion que ya se abrio.
+        exigir_cursos_editables_para_admin(cursor, [curso_id])
         columnas_del_curso = {
             columna_id
             for columna_id, _ in repositorio.leer_columnas_del_curso(cursor, curso_id)

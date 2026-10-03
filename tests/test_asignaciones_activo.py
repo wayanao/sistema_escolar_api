@@ -12,6 +12,10 @@ class FakeCursor:
         self.queries.append((query, params))
 
     def fetchone(self):
+        # Año lectivo, paso 3.7: la guardia de escritura ve 2026 activo sin
+        # gastar las respuestas preparadas.
+        if self.queries and "SELECT al.anio, al.estado" in self.queries[-1][0]:
+            return (2026, "activo")
         if self.fetchone_values:
             return self.fetchone_values.pop(0)
         return None

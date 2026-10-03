@@ -140,6 +140,21 @@ class ContadorDeConexiones:
         yield "cursor-falso"
 
 
+@pytest.fixture(autouse=True)
+def guardia_del_anio(monkeypatch):
+    """Año lectivo, paso 3.7: la guardia de escritura se dobla aqui, igual que
+    el repositorio. Sus pruebas viven en `test_anio_lectivo_guardia.py` y la
+    cuenta `test_anio_lectivo_guardia_conteos.py`; aqui solo se anota sobre que
+    cursos se pidio."""
+    llamadas = []
+    monkeypatch.setattr(
+        controlador,
+        "exigir_cursos_editables_para_admin",
+        lambda _cursor, curso_ids: llamadas.append(list(curso_ids)),
+    )
+    return llamadas
+
+
 @pytest.fixture
 def entorno(monkeypatch):
     def montar(**kwargs):
@@ -438,7 +453,7 @@ def test_el_lote_valido_llega_al_repositorio_como_tuplas(entorno):
     assert conexiones.commits == [True]
 
 
-def test_leer_validar_y_escribir_ocurren_en_la_misma_conexion(entorno):
+def test_leer_validar_y_escribir_ocurren_en_la_misma_conexion(entorno, guardia_del_anio):
     """Si se validara en una conexion y se escribiera en otra, entre las dos
     podrian borrar la columna que se acaba de dar por buena."""
     repo, conexiones = entorno(guardadas=1)
@@ -451,6 +466,9 @@ def test_leer_validar_y_escribir_ocurren_en_la_misma_conexion(entorno):
         "guardar_marcas",
     ]
     assert conexiones.abiertas == 1
+    # Y la guardia del año lectivo (paso 3.7), sobre ese curso y en esa misma
+    # conexion: es la unica que se abrio.
+    assert guardia_del_anio == [[12]]
 
 
 # ---------------------------------------------------------------------------

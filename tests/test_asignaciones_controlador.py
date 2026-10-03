@@ -103,8 +103,12 @@ def test_eliminar_asignacion_desactiva_sin_borrar_historial(cursor_de):
 
     resultado = asignacion_controller.eliminar_asignacion_controller(9, 4)
 
-    consulta, params_consulta = cursor.calls[0]
-    actualizacion, params_actualizacion = cursor.calls[1]
+    # calls[0] es la guardia del año lectivo (paso 3.7), sobre el curso 4.
+    guardia, params_guardia = cursor.calls[0]
+    assert "SELECT al.anio, al.estado" in guardia
+    assert params_guardia == ([4],)
+    consulta, params_consulta = cursor.calls[1]
+    actualizacion, params_actualizacion = cursor.calls[2]
     assert "SELECT id FROM asignaciones" in consulta
     assert params_consulta == (9, 4)
     assert "UPDATE asignaciones" in actualizacion
@@ -121,8 +125,9 @@ def test_eliminar_asignacion_inexistente_no_actualiza_nada(cursor_de):
 
     resultado = asignacion_controller.eliminar_asignacion_controller(9, 4)
 
-    assert len(cursor.calls) == 1
-    consulta, _ = cursor.calls[0]
+    # La guardia del año lectivo (paso 3.7) y la busqueda.
+    assert len(cursor.calls) == 2
+    consulta, _ = cursor.calls[1]
     assert "SELECT id FROM asignaciones" in consulta
     assert resultado == {"mensaje": "Asignación no encontrada"}
     # El bloque se abre pidiendo commit y el return temprano lo deja confirmar una

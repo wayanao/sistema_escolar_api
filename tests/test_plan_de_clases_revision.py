@@ -12,6 +12,12 @@ from app.schemas.plan_de_clases import PlanObservacionCreate, PlanRevisionUpdate
 from scripts import auditar_plan_de_clases_revision
 
 
+# Año lectivo, paso 3.7: la guardia de escritura lee el año del plan, la
+# primera consulta de la revision y de la observacion. Aqui corre de verdad y
+# se cuenta.
+SQL_GUARDIA = "SELECT al.anio, al.estado"
+
+
 class ScriptedCursor:
     def __init__(self, rows=None, all_rows=None):
         self.calls = []
@@ -22,6 +28,8 @@ class ScriptedCursor:
         self.calls.append((query, params))
 
     def fetchone(self):
+        if self.calls and SQL_GUARDIA in self.calls[-1][0]:
+            return (2026, "activo")
         return next(self.rows)
 
     def fetchall(self):
@@ -81,13 +89,16 @@ def test_marcar_plan_visto_bloquea_y_valida_version(monkeypatch):
     assert resultado["resultado"] == "ok"
     assert resultado["estado_revision"] == "visto"
     assert resultado["version_revision"] == 4
-    assert "FOR UPDATE" in cursor.calls[0][0]
-    assert cursor.calls[1][1] == (8, 21)
+    # calls[0] es la guardia del año lectivo (paso 3.7), sobre el plan 21.
+    assert SQL_GUARDIA in cursor.calls[0][0]
+    assert cursor.calls[0][1] == (21,)
+    assert "FOR UPDATE" in cursor.calls[1][0]
+    assert cursor.calls[2][1] == (8, 21)
     # Marcar como visto tambien apaga la campanita del admin para ese plan.
-    consulta_notificaciones = cursor.calls[2][0]
+    consulta_notificaciones = cursor.calls[3][0]
     assert "plan_de_clases_notificaciones_admin" in consulta_notificaciones
     assert "SET leida_at = COALESCE(leida_at, CURRENT_TIMESTAMP)" in consulta_notificaciones
-    assert cursor.calls[2][1] == (21, 4)
+    assert cursor.calls[3][1] == (21, 4)
 
 
 def test_revision_rechaza_version_desactualizada_sin_actualizar(monkeypatch):
@@ -106,7 +117,8 @@ def test_revision_rechaza_version_desactualizada_sin_actualizar(monkeypatch):
     )
 
     assert resultado == {"resultado": "version_desactualizada", "version_actual": 5}
-    assert len(cursor.calls) == 1
+    # La guardia del año lectivo (paso 3.7) y el bloqueo; nada se escribe.
+    assert len(cursor.calls) == 2
 
 
 def test_revision_con_comentario_guarda_mensaje_y_aprobacion_juntos(monkeypatch):
@@ -136,9 +148,10 @@ def test_revision_con_comentario_guarda_mensaje_y_aprobacion_juntos(monkeypatch)
     assert resultado["estado_revision"] == "revisado"
     assert resultado["observacion"]["observacion"] == "Muy bien."
     assert resultado["observacion"]["plan_version"] == 4
-    assert "INSERT INTO plan_de_clases_observaciones" in cursor.calls[1][0]
-    assert "estado_revision = 'revisado'" in cursor.calls[2][0]
-    assert "plan_de_clases_notificaciones_admin" in cursor.calls[3][0]
+    # Una posicion corrida por la guardia del año lectivo (paso 3.7).
+    assert "INSERT INTO plan_de_clases_observaciones" in cursor.calls[2][0]
+    assert "estado_revision = 'revisado'" in cursor.calls[3][0]
+    assert "plan_de_clases_notificaciones_admin" in cursor.calls[4][0]
 
 
 def test_observacion_queda_ligada_a_version_y_actualiza_estado(monkeypatch):
@@ -165,8 +178,10 @@ def test_observacion_queda_ligada_a_version_y_actualiza_estado(monkeypatch):
     assert resultado["resultado"] == "ok"
     assert resultado["estado_revision"] == "con_observaciones"
     assert resultado["observacion"]["plan_version"] == 3
-    assert cursor.calls[1][1] == (21, 8, 3, "Reforzar el cierre.")
-    assert "estado_revision = 'con_observaciones'" in cursor.calls[2][0]
+    # Una posicion corrida por la guardia del año lectivo (paso 3.7).
+    assert SQL_GUARDIA in cursor.calls[0][0]
+    assert cursor.calls[2][1] == (21, 8, 3, "Reforzar el cierre.")
+    assert "estado_revision = 'con_observaciones'" in cursor.calls[3][0]
 
 
 def test_controlador_convierte_conflicto_de_version_en_http_409(monkeypatch):

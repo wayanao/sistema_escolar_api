@@ -4,6 +4,7 @@ Ver `docs/funcionalidades/ANIO_LECTIVO.md`, "La guardia de escritura". Nadie
 escribe en un año cerrado (409); el profesor solo escribe en el activo (403 en
 uno en preparacion o reabierto); el admin escribe en el activo, en el de
 preparacion y en uno reabierto. Con el año activo, como hoy, todo sigue igual.
+Paso 3.7a: las rutas que usa el profesor. Paso 3.7b: las de solo admin.
 
 Tres bloques:
 
@@ -28,13 +29,16 @@ from app.db import session
 from app.repositories.anios_lectivos_repository import (
     leer_anio_de_anotacion,
     leer_anio_de_asignacion,
+    leer_anio_de_concepto,
     leer_anio_de_plan,
+    leer_anios_de_cursos,
 )
 from app.services.anio_lectivo import (
     MENSAJE_ANIO_CERRADO,
     MENSAJE_SOLO_ANIO_ACTIVO,
     AnioLectivoNoEditableError,
     exigir_anio_editable,
+    exigir_anio_editable_para_admin,
 )
 
 PROFESOR = {"id": 7, "rol": "profesor"}
@@ -86,6 +90,21 @@ def test_el_mensaje_nombra_el_anio_cerrado():
     with pytest.raises(AnioLectivoNoEditableError) as error:
         exigir_anio_editable((2027, "cerrado"), ADMIN)
     assert error.value.detail == "El año lectivo 2027 está cerrado. Solo se puede consultar."
+
+
+@pytest.mark.parametrize(
+    ("estado", "codigo"),
+    [("activo", None), ("preparacion", None), ("reabierto", None), ("cerrado", 409)],
+)
+def test_la_regla_de_las_rutas_de_solo_admin(estado, codigo):
+    """Paso 3.7b: su router ya exige admin; solo un año cerrado lo frena."""
+    if codigo is None:
+        exigir_anio_editable_para_admin((2026, estado))
+        return
+    with pytest.raises(AnioLectivoNoEditableError) as error:
+        exigir_anio_editable_para_admin((2026, estado))
+    assert error.value.status_code == 409
+    assert error.value.detail == CERRADO
 
 
 def test_sin_fila_no_hace_nada():
@@ -160,7 +179,46 @@ def test_cada_lectura_es_una_consulta_por_id(leer, fragmentos):
     assert params == (15,)
 
 
-@pytest.mark.parametrize("leer", [leer_anio_de_asignacion, leer_anio_de_plan, leer_anio_de_anotacion])
+def test_el_anio_de_un_concepto_es_una_consulta_por_id():
+    cursor = CursorDeUnaFila((2027, "preparacion"))
+
+    assert leer_anio_de_concepto(cursor, 4) == (2027, "preparacion")
+
+    [(sql, params)] = cursor.consultas
+    assert sql.startswith("SELECT al.anio, al.estado FROM tipos_de_pagos tp")
+    assert "JOIN anios_lectivos al ON al.id = tp.anio_lectivo_id" in sql
+    assert "WHERE tp.id = %s" in sql
+    assert params == (4,)
+
+
+class CursorDeVariasFilas:
+    def __init__(self, filas):
+        self.filas = filas
+        self.consultas = []
+
+    def execute(self, sql, params=None):
+        self.consultas.append((" ".join(sql.split()), params))
+
+    def fetchall(self):
+        return list(self.filas)
+
+
+def test_los_anios_de_varios_cursos_son_una_sola_consulta():
+    """Editar una clase mira su curso de antes y el nuevo: una consulta."""
+    cursor = CursorDeVariasFilas([(2026, "cerrado"), {"anio": 2027, "estado": "activo"}])
+
+    assert leer_anios_de_cursos(cursor, [2, 40]) == [(2026, "cerrado"), (2027, "activo")]
+
+    [(sql, params)] = cursor.consultas
+    assert sql.startswith("SELECT al.anio, al.estado FROM cursos c")
+    assert "JOIN anios_lectivos al ON al.id = c.anio_lectivo_id" in sql
+    assert "WHERE c.id = ANY(%s)" in sql
+    assert params == ([2, 40],)
+
+
+@pytest.mark.parametrize(
+    "leer", [leer_anio_de_asignacion, leer_anio_de_plan, leer_anio_de_anotacion, leer_anio_de_concepto]
+)
 def test_cada_lectura_devuelve_tupla_tambien_con_cursor_de_diccionarios(leer):
     assert leer(CursorDeUnaFila({"anio": 2026, "estado": "activo"}), 15) == (2026, "activo")
     assert leer(CursorDeUnaFila(None), 15) is None
@@ -203,7 +261,8 @@ class Base:
         self.consultas = []
         self.ids_de_la_guardia = []
         self.commits = 0
-        self.respuestas = [(SQL_GUARDIA, anio, [])] + list(respuestas)
+        # La lectura de varios cursos usa `fetchall`; las demas, `fetchone`.
+        self.respuestas = [(SQL_GUARDIA, anio, [anio])] + list(respuestas)
 
     def getconn(self):
         return ConexionFalsa(self)
@@ -341,6 +400,35 @@ def peticion(usuario, metodo, ruta, cuerpo=None, formulario=None):
 
 IMAGEN = [("SELECT imagen1, estado_revision", ("planes/x.png", "pendiente"), [])]
 
+# Respuestas puntuales para las rutas de solo admin (paso 3.7b).
+ASIGNACION = {
+    "profesor_id": 7, "curso_id": 2, "materia_id": 10,
+    "dia": "Lunes", "hora_inicio": "07:00", "hora_fin": "08:00",
+}
+NUEVA_ASIGNACION = [
+    ("FROM asignaciones a JOIN profesor p", None, []),
+    ("SELECT 1 FROM asignaciones WHERE profesor_id = %s AND curso_id", None, []),
+    ("SELECT jornada FROM cursos WHERE id", ("Mañana",), []),
+    ("SELECT nombre FROM materias WHERE id", ("MATEMATICAS",), []),
+]
+COLUMNAS_CONCEPTO = (
+    "id nombre valor descripcion tipo_cobro fecha_limite dia_limite_mes dias_gracia "
+    "mora_tipo mora_valor mes_inicial frecuencia_meses generacion_automatica activo "
+    "created_at updated_at mes_final anio_lectivo_id"
+).split()
+CONCEPTO = {c: None for c in COLUMNAS_CONCEPTO} | {"id": 4, "nombre": "MENSUALIDAD", "valor": 0}
+TABLAS = [(
+    "FROM information_schema.tables", Comodin(),
+    [(t,) for t in ("tipos_de_pagos", "tipos_pagos_cursos", "tipos_pagos_estudiantes")],
+)]
+
+
+def _anio_pedido(anio):
+    """"Columna en todos los cursos" con `?anio_lectivo_id=5`: el año 5 es el
+    de la prueba. Su guardia usa la validacion que ya hacia; no consulta mas."""
+    return [("FROM anios_lectivos WHERE id = %s", (5,) + tuple(anio), [])]
+
+
 # nombre -> (roles, metodo, ruta, cuerpo, formulario, respuestas)
 RUTAS = {
     "POST /notas": (
@@ -390,6 +478,77 @@ RUTAS = {
     "DELETE /admin/plan-de-clases/{id}/imagen": (
         [ADMIN], "DELETE", "/admin/plan-de-clases/20/imagen?slot=imagen1", None, None, IMAGEN,
     ),
+    # --- Paso 3.7b: rutas de solo admin ---
+    "POST /asignaciones": ([ADMIN], "POST", "/asignaciones", ASIGNACION, None, NUEVA_ASIGNACION),
+    "PUT /asignaciones/{id}": (
+        [ADMIN], "PUT", "/asignaciones/9", ASIGNACION, None,
+        [("SELECT profesor_id, curso_id, materia_id, activo", (7, 2, 10, True, 9), [])]
+        + NUEVA_ASIGNACION,
+    ),
+    "DELETE /asignaciones/{id}": ([ADMIN], "DELETE", "/asignaciones/9", None, None, []),
+    "DELETE /asignaciones/{profesor}/{curso}": ([ADMIN], "DELETE", "/asignaciones/7/2", None, None, []),
+    "PUT /cursos/{id}/orden-boletin": (
+        [ADMIN], "PUT", "/cursos/2/orden-boletin",
+        {"materias": [{"materia_id": 10}, {"materia_id": 12}]}, None,
+        [("SELECT DISTINCT materia_id FROM asignaciones", Comodin(), [(10,), (12,)])],
+    ),
+    "PUT /cursos/{id}": (
+        [ADMIN], "PUT", "/cursos/2", {"nombre": "PRIMERO A", "jornada": "Mañana"}, None,
+        [("SELECT id FROM cursos WHERE UPPER", None, [])],
+    ),
+    "PATCH /cursos/{id}/estado": ([ADMIN], "PATCH", "/cursos/2/estado", {"estado": "inactivo"}, None, []),
+    "POST /listas-seguimiento/{curso}/columnas": (
+        [ADMIN], "POST", "/listas-seguimiento/2/columnas", {"nombre": "Tarea"}, None,
+        [("SELECT 1 FROM listas_seguimiento_columnas", None, [])],
+    ),
+    "POST /listas-seguimiento/columnas-en-todos-los-cursos?anio_lectivo_id=5": (
+        [ADMIN], "POST", "/listas-seguimiento/columnas-en-todos-los-cursos?anio_lectivo_id=5",
+        {"nombre": "Tarea"}, None, _anio_pedido,
+    ),
+    "DELETE /listas-seguimiento/{curso}/columnas/{id}": (
+        [ADMIN], "DELETE", "/listas-seguimiento/2/columnas/5", None, None, [],
+    ),
+    "POST /listas-seguimiento/{curso}/marcas": (
+        [ADMIN], "POST", "/listas-seguimiento/2/marcas",
+        [{"columna_id": 5, "estudiante_id": 3, "marcado": True}], None,
+        [
+            ("SELECT id, nombre FROM listas_seguimiento_columnas", Comodin(), [(5, "Tarea")]),
+            ("SELECT id, nombre, apellido FROM estudiantes", Comodin(), [(3, "Ana", "Paz")]),
+        ],
+    ),
+    "PATCH /admin/plan-de-clases/{id}/revision": (
+        [ADMIN], "PATCH", "/admin/plan-de-clases/20/revision", {"estado": "visto", "version": 1},
+        None, [],
+    ),
+    "POST /admin/plan-de-clases/{id}/observaciones": (
+        [ADMIN], "POST", "/admin/plan-de-clases/20/observaciones",
+        {"observacion": "Revisar", "version": 1}, None, [],
+    ),
+    "PUT /tipos-pagos/{id}": (
+        [ADMIN], "PUT", "/tipos-pagos/4", {"nombre": "MENSUALIDAD", "valor": 0}, None,
+        [("SELECT id FROM tipos_de_pagos WHERE LOWER(TRIM(nombre))", None, [])],
+    ),
+    "PUT /tipos-pagos/{id}/configuracion": (
+        [ADMIN], "PUT", "/tipos-pagos/4/configuracion", {"dias_gracia": 5}, None,
+        [
+            ("FROM information_schema.columns", Comodin(), [(c,) for c in COLUMNAS_CONCEPTO]),
+            ("FROM tipos_de_pagos", CONCEPTO, []),
+        ],
+    ),
+    "PUT /tipos-pagos/{id}/cursos": (
+        [ADMIN], "PUT", "/tipos-pagos/4/cursos", {"cursos": [{"curso_id": 2, "valor": 200000}]},
+        None, [("SELECT ARRAY(", {"cursos_de_otro_anio": []}, [])],
+    ),
+    "DELETE /tipos-pagos/{id}/cursos/{curso}": (
+        [ADMIN], "DELETE", "/tipos-pagos/4/cursos/2", None, None, [],
+    ),
+    "PUT /estudiantes/{id}/valores-pago-personalizados/{concepto}": (
+        [ADMIN], "PUT", "/estudiantes/3/valores-pago-personalizados/4", {"valor": 150000}, None,
+        TABLAS,
+    ),
+    "DELETE /estudiantes/{id}/valores-pago-personalizados/{concepto}": (
+        [ADMIN], "DELETE", "/estudiantes/3/valores-pago-personalizados/4", None, None, TABLAS,
+    ),
 }
 
 CASOS = [(ruta, usuario["rol"]) for ruta, datos in RUTAS.items() for usuario in datos[0]]
@@ -398,6 +557,8 @@ USUARIOS = {"profesor": PROFESOR, "admin": ADMIN}
 
 def _guardar(con_anio, ruta, rol, anio):
     _roles, metodo, url, cuerpo, formulario, respuestas = RUTAS[ruta]
+    if callable(respuestas):
+        respuestas = respuestas(anio)
     base = con_anio(anio, respuestas)
     status, respuesta = peticion(USUARIOS[rol], metodo, url, cuerpo, formulario)
     return base, status, respuesta
@@ -432,12 +593,34 @@ def test_el_profesor_solo_guarda_en_el_anio_activo_y_el_admin_tambien_en_los_otr
         assert base.commits >= 1
 
 
-# Lo que mira la guardia en cada ruta: la clase, el plan o la anotacion.
-ID_QUE_MIRA = {
-    "PUT /observador/{id}": 15,
-    "DELETE /plan-de-clases/{id}/imagen": 20,
-    "PATCH /plan-de-clases/{id}/observaciones/{id}/vista": 20,
-    "DELETE /admin/plan-de-clases/{id}/imagen": 20,
+# Lo que mira la guardia en cada ruta (sus parametros): la clase 9 si no se
+# dice otra cosa, el plan 20, la anotacion 15, el curso 2 o el concepto 4.
+PARAMETROS_DE_LA_GUARDIA = {
+    "PUT /observador/{id}": [(15,)],
+    "DELETE /plan-de-clases/{id}/imagen": [(20,)],
+    "PATCH /plan-de-clases/{id}/observaciones/{id}/vista": [(20,)],
+    "DELETE /admin/plan-de-clases/{id}/imagen": [(20,)],
+    "POST /asignaciones": [([2],)],
+    # El curso de antes (2, el de la clase) y el nuevo (2), en una consulta.
+    "PUT /asignaciones/{id}": [([2, 2],)],
+    "DELETE /asignaciones/{id}": [(9,)],
+    "DELETE /asignaciones/{profesor}/{curso}": [([2],)],
+    "PUT /cursos/{id}/orden-boletin": [([2],)],
+    "PUT /cursos/{id}": [([2],)],
+    "PATCH /cursos/{id}/estado": [([2],)],
+    "POST /listas-seguimiento/{curso}/columnas": [([2],)],
+    # Sin consulta propia: usa la validacion del año que ya hacia.
+    "POST /listas-seguimiento/columnas-en-todos-los-cursos?anio_lectivo_id=5": [],
+    "DELETE /listas-seguimiento/{curso}/columnas/{id}": [([2],)],
+    "POST /listas-seguimiento/{curso}/marcas": [([2],)],
+    "PATCH /admin/plan-de-clases/{id}/revision": [(20,)],
+    "POST /admin/plan-de-clases/{id}/observaciones": [(20,)],
+    "PUT /tipos-pagos/{id}": [(4,)],
+    "PUT /tipos-pagos/{id}/configuracion": [(4,)],
+    "PUT /tipos-pagos/{id}/cursos": [(4,)],
+    "DELETE /tipos-pagos/{id}/cursos/{curso}": [(4,)],
+    "PUT /estudiantes/{id}/valores-pago-personalizados/{concepto}": [(4,)],
+    "DELETE /estudiantes/{id}/valores-pago-personalizados/{concepto}": [(4,)],
 }
 
 
@@ -445,8 +628,21 @@ ID_QUE_MIRA = {
 def test_la_guardia_mira_lo_que_se_guarda(con_anio, ruta, rol):
     base, _status, _ = _guardar(con_anio, ruta, rol, (2026, "activo"))
 
-    # Clase 9 en las rutas que guardan sobre una clase.
-    assert base.ids_de_la_guardia == [(ID_QUE_MIRA.get(ruta, 9),)]
+    assert base.ids_de_la_guardia == PARAMETROS_DE_LA_GUARDIA.get(ruta, [(9,)])
+
+
+def test_columna_en_todos_los_cursos_sin_anio_no_consulta_la_guardia(con_anio):
+    """Sin `?anio_lectivo_id=` son los cursos del activo, que siempre se puede
+    editar: ni una consulta mas que antes."""
+    base = con_anio((2026, "cerrado"))
+
+    status, _ = peticion(
+        ADMIN, "POST", "/listas-seguimiento/columnas-en-todos-los-cursos", {"nombre": "Tarea"}
+    )
+
+    assert status == 200
+    assert base.ids_de_la_guardia == []
+    assert not any(c.startswith(SQL_GUARDIA) for c in base.consultas)
 
 
 @pytest.mark.parametrize(("ruta", "rol"), CASOS, ids=lambda v: str(v))

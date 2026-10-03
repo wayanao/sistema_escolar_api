@@ -4,7 +4,11 @@ from app.core.nivel_academico import es_asignacion_de_jornada
 from app.database import get_connection, get_cursor
 from app.repositories import asignaciones_repository
 from app.repositories.anios_lectivos_repository import condicion_anio
-from app.services.anio_lectivo import exigir_anio_lectivo
+from app.services.anio_lectivo import (
+    exigir_anio_lectivo,
+    exigir_asignacion_editable_para_admin,
+    exigir_cursos_editables_para_admin,
+)
 
 
 ASIGNACION_OTRO_PROFESOR_MENSAJE = (
@@ -230,6 +234,8 @@ def actualizar_orden_boletin_curso_controller(curso_id, data):
     conn = get_connection()
     cursor = conn.cursor()
     try:
+        # Año lectivo, paso 3.7: lo primero, en la conexion que ya se abrio.
+        exigir_cursos_editables_para_admin(cursor, [curso_id])
         if not asignaciones_repository.buscar_curso_activo_para_orden(cursor, curso_id):
             return {"error": "Curso no encontrado o inactivo."}
 
@@ -271,6 +277,9 @@ def asignar_profesor_controller(asignacion):
     cursor = conn.cursor()
 
     try:
+        # Año lectivo, paso 3.7: lo primero, en la conexion que ya se abrio.
+        exigir_cursos_editables_para_admin(cursor, [asignacion.curso_id])
+
         if not profesor_activo(cursor, asignacion.profesor_id):
             return {"error": "No se puede asignar un profesor inactivo."}
 
@@ -415,6 +424,8 @@ def obtener_horarios_admin_controller(anio_lectivo_id=None):
 def eliminar_asignacion_controller(profesor_id, curso_id):
 
     with get_cursor(commit=True) as cursor:
+        # Año lectivo, paso 3.7: lo primero, en la conexion que ya se abrio.
+        exigir_cursos_editables_para_admin(cursor, [curso_id])
         asignacion = asignaciones_repository.buscar_ultima_asignacion_activa(
             cursor, profesor_id, curso_id
         )
@@ -447,6 +458,8 @@ def eliminar_asignacion_por_id_controller(asignacion_id):
     cursor = conn.cursor()
 
     try:
+        # Año lectivo, paso 3.7: lo primero, en la conexion que ya se abrio.
+        exigir_asignacion_editable_para_admin(cursor, asignacion_id)
         if not asignaciones_repository.buscar_asignacion_activa(cursor, asignacion_id):
             return {"error": "Asignación no encontrada"}
 
@@ -525,6 +538,9 @@ def editar_asignacion_controller(asignacion_id, asignacion):
         actual = asignaciones_repository.leer_asignacion_para_editar(cursor, asignacion_id)
         if not actual:
             return {"error": "Asignación no encontrada"}
+        # Año lectivo, paso 3.7: el año del curso de antes y el del nuevo,
+        # antes de escribir nada.
+        exigir_cursos_editables_para_admin(cursor, [actual[1], asignacion.curso_id])
         if actual[3] is not True:
             return {"error": "No se puede editar una asignación inactiva."}
 

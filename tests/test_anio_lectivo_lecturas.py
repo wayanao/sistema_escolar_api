@@ -305,7 +305,11 @@ SOLO_EL_PEDIDO = "c.anio_lectivo_id = %s"
 
 
 class CursorQueAnota:
-    """Anota cada consulta (con el SQL normalizado) y sirve respuestas en orden."""
+    """Anota cada consulta (con el SQL normalizado) y sirve respuestas en orden.
+
+    Paso 3.7: la consulta de la guardia de escritura responde "2026 activo"
+    sin gastar las respuestas preparadas.
+    """
 
     def __init__(self, una=(), todas=()):
         self.consultas = []
@@ -315,10 +319,19 @@ class CursorQueAnota:
     def execute(self, sql, params=None):
         self.consultas.append((_normalizar(sql), params))
 
+    def _es_la_guardia(self):
+        return bool(self.consultas) and self.consultas[-1][0].startswith(
+            "SELECT al.anio, al.estado"
+        )
+
     def fetchone(self):
+        if self._es_la_guardia():
+            return (2026, "activo")
         return self._una.pop(0) if self._una else None
 
     def fetchall(self):
+        if self._es_la_guardia():
+            return [(2026, "activo")]
         return self._todas.pop(0) if self._todas else []
 
     def close(self):
@@ -514,7 +527,8 @@ def _clase(**cambios):
 
 def test_crear_una_clase_busca_los_cruces_en_el_anio_de_su_curso(monkeypatch):
     """Las respuestas son las del camino feliz de
-    `test_asignaciones_estudiantes_caracterizacion.py` (13 consultas)."""
+    `test_asignaciones_estudiantes_caracterizacion.py` (13 consultas; 14 con la
+    guardia de escritura del paso 3.7)."""
     from app.schemas.asignacion import AsignacionCreate
 
     cursor = CursorQueAnota(
@@ -527,7 +541,7 @@ def test_crear_una_clase_busca_los_cruces_en_el_anio_de_su_curso(monkeypatch):
 
     cruces = [params for sql, params in cursor.consultas if FILTRO_DEL_MISMO_ANIO in sql]
     assert cruces == [(9, "Lunes", 4), (4, "Lunes", 4)]
-    assert len(cursor.consultas) == 13
+    assert len(cursor.consultas) == 14
 
 
 def test_editar_una_clase_busca_los_cruces_en_el_anio_de_su_curso(monkeypatch):
@@ -546,7 +560,8 @@ def test_editar_una_clase_busca_los_cruces_en_el_anio_de_su_curso(monkeypatch):
 
     cruces = [params for sql, params in cursor.consultas if FILTRO_DEL_MISMO_ANIO in sql]
     assert cruces == [(9, "Lunes", 55, 4), (4, "Lunes", 55, 4)]
-    assert len(cursor.consultas) == 11
+    # 11, mas la guardia de escritura del paso 3.7.
+    assert len(cursor.consultas) == 12
 
 
 def test_el_cruce_sigue_costando_una_consulta():
@@ -908,6 +923,10 @@ class BaseDeConceptos:
         if sql.startswith(("INSERT", "UPDATE")):
             self._filas = [(99,)]
             return
+        if sql.startswith("SELECT al.anio, al.estado"):
+            # Paso 3.7: la guardia de escritura; aqui, un año editable.
+            self._filas = [(2027, "preparacion")]
+            return
         nombre = params[0].strip().lower()
         excluido = params[1] if "id <> %s" in sql else None
         filas = [
@@ -976,7 +995,8 @@ def test_editar_un_concepto_compara_con_los_de_su_anio(monkeypatch):
 
     tipos_pagos_controller.actualizar_tipo_pago(3, "PENSION", 0)
 
-    duplicado = base.consultas[0]
+    # base.consultas[0] es la guardia de escritura del paso 3.7.
+    duplicado = base.consultas[1]
     assert ANIO_DEL_CONCEPTO_SQL in duplicado[0]
     assert duplicado[1] == ("PENSION", 3, 3)
 
@@ -1026,6 +1046,10 @@ class BaseDePrecios:
     def execute(self, sql, params=None):
         sql = _normalizar(sql)
         self.consultas.append((sql, params))
+        if sql.startswith("SELECT al.anio, al.estado"):
+            # Paso 3.7: la guardia de escritura; aqui, un año editable.
+            self._filas = [(2027, "preparacion")]
+            return
         if "AS cursos_de_otro_anio" in sql:
             curso_ids, concepto = params
             if concepto not in self.CONCEPTOS:
@@ -1106,18 +1130,23 @@ def test_un_concepto_de_2027_no_acepta_precio_en_un_curso_de_2026(precios):
 
 
 def test_guardar_precios_no_agrega_consultas(precios):
-    """La comprobacion del año va en la misma consulta que ya miraba si el
-    concepto existe: no hay una ida mas a la base."""
+    """La comprobacion de que los cursos son del año del concepto va en la
+    misma consulta que ya miraba si el concepto existe: no hay una ida mas a la
+    base por ella. La guardia de escritura del paso 3.7 si suma una (aceptado
+    por el usuario), y va primero."""
     base, _ = precios
 
     tipos_pagos_controller.upsert_cursos_asignados(1, [{"curso_id": 4, "valor": 300000}])
 
-    primera, _params = base.consultas[0]
-    assert "FROM tipos_de_pagos tp WHERE tp.id = %s" in primera
-    assert "AS cursos_de_otro_anio" in primera
+    guardia, params_guardia = base.consultas[0]
+    assert guardia.startswith("SELECT al.anio, al.estado")
+    assert params_guardia == (1,)
+    segunda, _params = base.consultas[1]
+    assert "FROM tipos_de_pagos tp WHERE tp.id = %s" in segunda
+    assert "AS cursos_de_otro_anio" in segunda
     assert not any("SELECT 1 FROM tipos_de_pagos" in sql for sql, _ in base.consultas)
-    # Concepto + DELETE + INSERT + tablas + relectura, como antes.
-    assert len(base.consultas) == 5
+    # Guardia + concepto + DELETE + INSERT + tablas + relectura.
+    assert len(base.consultas) == 6
 
 
 def test_un_concepto_que_no_existe_sigue_respondiendo_none(precios):

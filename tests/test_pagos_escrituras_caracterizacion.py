@@ -134,6 +134,11 @@ class CursorFalso:
         if "pg_advisory_xact_lock" in query:
             return [(True,)]
 
+        # --- guardia del año lectivo (paso 3.7) ---
+        # Antes de escribir en un concepto, su año; aqui, 2026 activo.
+        if query.startswith("select al.anio, al.estado"):
+            return [(2026, "activo")]
+
         # --- catalogo y asignaciones ---
         # Al guardar precios por curso, la misma consulta que confirma que el
         # concepto existe dice que cursos son de otro año (fase 3 del año

@@ -6,6 +6,42 @@ Ultima revision documental: 2026-10-02.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
+## 2026-10-02 - Año lectivo: guardia de escritura en las rutas de solo admin
+
+Fase 3, paso 3.7b, de `docs/funcionalidades/ANIO_LECTIVO.md`. Con este paso la
+fase 3 queda completa.
+
+### Que cambia
+
+- Las 19 rutas de escritura de solo admin (asignaciones, cursos, listas de
+  seguimiento, revision y observaciones de planes, conceptos de pago y
+  valores por estudiante) responden `409` si lo que se guarda es de un año
+  cerrado. Con el año activo, en preparacion o reabierto, todo igual. Lista
+  en `docs/API_ENDPOINTS.md`, "Guardia de escritura".
+- Servicio `anio_lectivo`: `exigir_anio_editable_para_admin` y sus variantes
+  para cursos, clases, planes y conceptos (sin pasar el usuario por las
+  capas: el router ya exige admin). Repositorio del año:
+  `leer_anios_de_cursos` (uno o varios cursos en una consulta; editar una
+  clase mira su curso de antes y el nuevo) y `leer_anio_de_concepto`.
+- Conceptos y valores por estudiante dejan pasar el `409` antes de su
+  `except Exception`, para que no salga como "error interno".
+- "Columna en todos los cursos" con `?anio_lectivo_id=` usa el estado que ya
+  leia al validar el año: ninguna consulta mas.
+- Costo, el aceptado por el usuario: una consulta mas por guardado, ninguna
+  conexion nueva.
+
+### Pruebas
+
+`tests/test_anio_lectivo_guardia_conteos.py`: 19 rutas mas, medidas antes del
+cambio (pasaron contra el codigo anterior) y despues: +1 consulta, 0
+conexiones (+0 en "todos los cursos"). `tests/test_anio_lectivo_guardia.py`:
+103 nuevas (la regla del admin, las dos lecturas, y por HTTP cada ruta: año
+cerrado 409 sin escribir, preparacion y reabierto guardan, activo como
+siempre, y lo que mira cada guardia). Ajustadas a proposito 64 pruebas de 10
+archivos que fijan llamadas y consultas de esos guardados, con el criterio
+del 3.7a. Treinta versiones dañadas del codigo hacen fallar alguna.
+`scripts/verify.py`: 2016 pasan, 0 fallan.
+
 ## 2026-10-02 - Año lectivo: guardia de escritura en las rutas del profesor
 
 Fase 3, paso 3.7a, de `docs/funcionalidades/ANIO_LECTIVO.md`.

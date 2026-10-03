@@ -281,6 +281,9 @@ class _ControllerCursor:
         self.query = query
 
     def fetchone(self):
+        if "SELECT al.anio, al.estado" in self.query:
+            # Año lectivo, paso 3.7: la guardia de escritura ve 2026 activo.
+            return (2026, "activo")
         if "AS cursos_de_otro_anio" in self.query:
             # El concepto existe y ningun curso es de otro año (fase 3 del año
             # lectivo, paso 3.3).

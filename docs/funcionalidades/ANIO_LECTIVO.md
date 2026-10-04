@@ -4,8 +4,9 @@
 
 - Estado: **Fase 4 (frontend) en curso desde el 2026-10-03:** inventario y
   plan por pasos (commit `dbb0e48` del frontend), paso 4.1 (la base del
-  selector, `4b14347`) y paso 4.2 (Administración y horarios por año)
-  escrito y probado, sin commit; ver
+  selector, `4b14347`), paso 4.2 (Administración y horarios por año,
+  `78c48f7`) y paso 4.3 (Tipos de pago y Cartera vencida por año) escrito y
+  probado, sin commit; ver
   `frontend-react/docs/funcionalidades/ANIO_LECTIVO.md`. En este repo no
   tiene trabajo. **Fase 3 terminada el 2026-10-02 y subida a
   producción por el usuario el 2026-10-03** (`origin/main` en `9edbe5d`):
@@ -2302,6 +2303,15 @@ Iniciada el 2026-10-03, con la autorización del usuario: inventario y plan
 por pasos (4.1 a 4.7) en ese documento. Su inventario dejó un hallazgo para
 la fase 5 de este repo (ver "Ojo" en la fase 5).
 
+Avance al 2026-10-03: pasos 4.1 y 4.2 con commit (`4b14347` y `78c48f7` del
+frontend); paso 4.3 (Tipos de pago y Cartera vencida por año) escrito y
+probado, sin commit. Usa sin cambios lo que este repo ya sirve por año
+(`GET /tipos-pagos`, `/tipos-pagos/detallado`, `/cursos` y
+`/cartera/mora` con su `/resumen`, todos con `?anio_lectivo_id=`). Mirando
+otro año, la Cartera del frontend no ofrece "Cobrar": Pagos cobra siempre en
+el año activo hasta que la fase 5 traiga el selector "Año del pago", que
+usará el `anio_lectivo_id` que este repo ya acepta desde el paso 2.3.
+
 ### Fase 5 — Preparar el año siguiente (meta: principios de noviembre)
 
 Endpoints nuevos, todos solo para admin (`get_current_active_admin`),
@@ -2582,12 +2592,14 @@ cosa, gana lo que se pueda verificar.
 - **Fase 4 (frontend), iniciada el 2026-10-03** con la autorización del
   usuario: inventario y plan por pasos (4.1 a 4.7, commit `dbb0e48` del
   frontend), **paso 4.1** (la base: lista de años, selector y aviso; commit
-  `4b14347`) y **paso 4.2** (Cursos, Asignaciones, Orden boletín y Horarios
+  `4b14347`), **paso 4.2** (Cursos, Asignaciones, Orden boletín y Horarios
   con el año elegido; el admin edita lo que ya existe en un año en
-  preparación) escrito y probado, sin commit. Con un año no cambia nada
-  visible. En este repo no tiene trabajo. Su inventario dejó un hallazgo para la fase 5 de
-  este repo: crear o editar un estudiante no valida el año del curso (ver
-  "Ojo" en la fase 5).
+  preparación; commit `78c48f7`) y **paso 4.3** (Tipos de pago y Cartera
+  vencida con el año elegido; mirando otro año, sin "Cobrar") escrito y
+  probado, sin commit. Con un año no cambia nada visible. En este repo no
+  tiene trabajo. Su inventario dejó un hallazgo para la fase 5 de este repo:
+  crear o editar un estudiante no valida el año del curso (ver "Ojo" en la
+  fase 5).
 - **Hecho aparte, la noche del 2026-09-30:** el arreglo de la hora
   (`2e77634` en este repo, `033c042` en el frontend). Cobros, cartera y
   alta de colegios usan la fecha de Colombia (`app/core/fechas.py`), y el
@@ -2618,9 +2630,9 @@ cosa, gana lo que se pueda verificar.
   rama, detener el backend local que esté corriendo; si no, el frontend
   sigue hablando con el que apunta a producción.
 - **Siguiente acción exacta:** en el frontend, que el usuario revise y haga
-  el commit del paso 4.2. Después, el paso 4.3 (Tipos de pago y cartera
-  vencida), solo con su visto bueno; es zona de dinero, así que antes de
-  tocarlo se le explica el cambio. Las preguntas
+  el commit del paso 4.3. Después, el paso 4.4 (Estudiantes: lista, ficha y
+  observador de la ficha, con la caracterización de `EstudiantesAdmin.jsx`
+  primero), solo con su visto bueno. Las preguntas
   abiertas se le hacen al usuario justo antes del paso que las necesita (lo
   pidió así el 2026-10-02): la de crear cursos y conceptos nuevos en el año
   en preparación, antes de la fase 5. En este

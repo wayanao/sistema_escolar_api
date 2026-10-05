@@ -6,8 +6,9 @@
   plan por pasos (commit `dbb0e48` del frontend), paso 4.1 (la base del
   selector, `4b14347`), paso 4.2 (Administración y horarios por año,
   `78c48f7`), paso 4.3 (Tipos de pago y Cartera vencida por año, `0798f21`),
-  paso 4.4 (Estudiantes por año, `c7f0622`) y paso 4.5 (Boletines y
-  certificados por año) escrito y probado, sin commit; ver
+  paso 4.4 (Estudiantes por año, `c7f0622`), paso 4.5 (Boletines y
+  certificados por año, `2140fae`) y paso 4.6 (Listas de seguimiento y
+  bandeja de planes por año) escrito y probado, sin commit; ver
   `frontend-react/docs/funcionalidades/ANIO_LECTIVO.md`. En este repo no
   tiene trabajo. **Fase 3 terminada el 2026-10-02 y subida a
   producción por el usuario el 2026-10-03** (`origin/main` en `9edbe5d`):
@@ -2323,7 +2324,7 @@ curso de otro año desde esa pantalla, que es el hallazgo de la fase 5 (ver
 "Ojo" allí), todavía abierto en este repo.
 
 Avance al 2026-10-05: paso 4.5 (Boletines y certificados por año) escrito y
-probado, sin commit. Usa sin cambios `GET /cursos`, `GET /estudiantes`,
+probado (commit `2140fae`, el mismo día). Usa sin cambios `GET /cursos`, `GET /estudiantes`,
 `/boletines/admin/generar/...` y `/boletines/admin/reporte-parcial/...` con
 `?anio_lectivo_id=` (pasos 3.3 a 3.5a). Hallazgo, de antes de esta función:
 esas dos pantallas piden `GET /estudiantes` sin `estado`, y este repo
@@ -2332,6 +2333,18 @@ responde entonces solo activos (su valor por defecto desde `6d4e75c`,
 después de activar 2027 (fase 6) hace falta que los listen; el arreglo
 propuesto es del frontend (que Certificados pida `?estado=todos`), sin
 cambios aquí. Ver la pregunta abierta en el documento del frontend.
+
+Avance al 2026-10-05: paso 4.6 (Listas de seguimiento y bandeja de planes
+por año) escrito y probado, sin commit. Usa sin cambios `GET /cursos`,
+`GET /admin/plan-de-clases` y la escritura
+`POST /listas-seguimiento/columnas-en-todos-los-cursos`, con
+`?anio_lectivo_id=` (pasos 3.3 y 3.5b). Hallazgo de este repo, para la fase
+6: `leer_estudiantes_del_curso` (`listas_seguimiento_repository.py`) toma
+los estudiantes de un curso con `estudiantes.curso_id`, así que la lista de
+un curso que no es del año activo sale sin estudiantes: los de 2027 en
+preparación hasta activarlo, y los de 2026 después. Amplía el hallazgo del
+paso 3.7b (las marcas validan con el mismo campo): la lectura también tiene
+que ir por matrícula si se quiere consultar las listas de 2026.
 
 ### Fase 5 — Preparar el año siguiente (meta: principios de noviembre)
 
@@ -2405,7 +2418,9 @@ recibe solo su matrícula (punto 3).
    estudiante sea del curso de la clase con `estudiantes.curso_id`; en un
    año reabierto eso rechaza al admin antes de llegar a guardar. Hay que
    hacer que esa comprobación mire la matrícula del año de la clase. Lo
-   mismo las marcas de las listas de seguimiento (hallazgo del 3.7b).
+   mismo las marcas de las listas de seguimiento (hallazgo del 3.7b) y la
+   lectura de la lista de un curso, que hoy sale sin estudiantes fuera del
+   año activo (hallazgo del paso 4.6 del frontend).
 5. Terminado cuando: el ensayo completo de activación en una rama de Neon
    con copia de producción deja la consulta de control en 0 filas, los
    profesores ven solo 2027 y el admin puede consultar e imprimir 2026.
@@ -2618,11 +2633,14 @@ cosa, gana lo que se pueda verificar.
   preparación; commit `78c48f7`), **paso 4.3** (Tipos de pago y Cartera
   vencida con el año elegido; mirando otro año, sin "Cobrar"; commit
   `0798f21`), **paso 4.4** (Estudiantes con el año elegido; mirando otro
-  año, solo consulta; commit `c7f0622`) y **paso 4.5** (Boletines y
-  certificados con el año elegido) escrito y probado, sin commit, el
-  2026-10-05. Con un año no cambia nada visible. El 4.5 dejó un hallazgo de
-  antes de esta función: Boletines y Certificados solo listan estudiantes
-  activos (ver su "Avance" en la fase 4 de este documento). En este repo no
+  año, solo consulta; commit `c7f0622`), **paso 4.5** (Boletines y
+  certificados con el año elegido; commit `2140fae`) y **paso 4.6** (Listas
+  de seguimiento y bandeja de planes con el año elegido) escrito y probado,
+  sin commit, el 2026-10-05. Con un año no cambia nada visible. Falta el 4.7
+  (diálogo de materias). El 4.5 dejó un hallazgo de antes de esta función
+  (Boletines y Certificados solo listan estudiantes activos) y el 4.6 uno de
+  este repo para la fase 6 (la lista de un curso sale sin estudiantes fuera
+  del año activo); ver sus "Avance" en la fase 4 de este documento. En este repo no
   tiene trabajo. Su inventario dejó un hallazgo para la fase 5 de este repo:
   crear o editar un estudiante no valida el año del curso (ver "Ojo" en la
   fase 5).
@@ -2656,9 +2674,10 @@ cosa, gana lo que se pueda verificar.
   rama, detener el backend local que esté corriendo; si no, el frontend
   sigue hablando con el que apunta a producción.
 - **Siguiente acción exacta:** en el frontend, que el usuario revise y haga
-  el commit del paso 4.5 y responda si se arregla aparte que Boletines y
-  Certificados solo listen activos. Después, el paso 4.6 (Listas de
-  seguimiento y bandeja de planes del admin), solo con su visto bueno. Las preguntas
+  el commit del paso 4.6. Después, el paso 4.7 (diálogo de materias, el
+  último de la fase 4), solo con su visto bueno. Sigue abierta la pregunta de
+  si se arregla aparte que Certificados solo liste activos (el usuario
+  respondió "continúa" sin decidirla). Las preguntas
   abiertas se le hacen al usuario justo antes del paso que las necesita (lo
   pidió así el 2026-10-02): la de crear cursos y conceptos nuevos en el año
   en preparación, antes de la fase 5. En este

@@ -2,13 +2,15 @@
 
 ## Control
 
-- Estado: **Fase 4 (frontend) en curso desde el 2026-10-03:** inventario y
+- Estado: **Fase 4 (frontend) con código completo:** iniciada el 2026-10-03;
+  inventario y
   plan por pasos (commit `dbb0e48` del frontend), paso 4.1 (la base del
   selector, `4b14347`), paso 4.2 (Administración y horarios por año,
   `78c48f7`), paso 4.3 (Tipos de pago y Cartera vencida por año, `0798f21`),
   paso 4.4 (Estudiantes por año, `c7f0622`), paso 4.5 (Boletines y
-  certificados por año, `2140fae`) y paso 4.6 (Listas de seguimiento y
-  bandeja de planes por año) escrito y probado, sin commit; ver
+  certificados por año, `2140fae`), paso 4.6 (Listas de seguimiento y
+  bandeja de planes por año, `72be3da`) y paso 4.7 (diálogo al renombrar
+  materias) escrito y probado, sin commit; ver
   `frontend-react/docs/funcionalidades/ANIO_LECTIVO.md`. En este repo no
   tiene trabajo. **Fase 3 terminada el 2026-10-02 y subida a
   producción por el usuario el 2026-10-03** (`origin/main` en `9edbe5d`):
@@ -2335,7 +2337,7 @@ propuesto es del frontend (que Certificados pida `?estado=todos`), sin
 cambios aquí. Ver la pregunta abierta en el documento del frontend.
 
 Avance al 2026-10-05: paso 4.6 (Listas de seguimiento y bandeja de planes
-por año) escrito y probado, sin commit. Usa sin cambios `GET /cursos`,
+por año) escrito y probado, commit `72be3da`. Usa sin cambios `GET /cursos`,
 `GET /admin/plan-de-clases` y la escritura
 `POST /listas-seguimiento/columnas-en-todos-los-cursos`, con
 `?anio_lectivo_id=` (pasos 3.3 y 3.5b). Hallazgo de este repo, para la fase
@@ -2345,6 +2347,19 @@ un curso que no es del año activo sale sin estudiantes: los de 2027 en
 preparación hasta activarlo, y los de 2026 después. Amplía el hallazgo del
 paso 3.7b (las marcas validan con el mismo campo): la lectura también tiene
 que ir por matrícula si se quiere consultar las listas de 2026.
+
+Avance al 2026-10-05: paso 4.7 (diálogo al renombrar materias) escrito y
+probado, sin commit. El frontend reconoce únicamente el `409` con código
+`materia_usada_en_otro_anio` que este repo sirve desde el paso 3.6: muestra
+el mensaje del backend y ofrece "Cambiar igual" (repite el `PUT` con
+`confirmar_cambio_nombre: true`) o "Crear una materia nueva" (cambia el
+formulario a creación sin guardar automáticamente). La petición normal de
+editar conserva el mismo cuerpo. Verificación del frontend:
+`pnpm run check:deploy`, 2210 pruebas en 341 archivos, lint y build limpios;
+`git diff --check` limpio. Con él, la fase 4 tiene el código completo. En
+este repo no cambió ningún endpoint ni lógica. Por la actualización de este
+documento principal, `scripts/verify.py` pasó con 2016 pruebas, ruff y
+`pip check` limpios, usando un `DATABASE_URL` ficticio.
 
 ### Fase 5 — Preparar el año siguiente (meta: principios de noviembre)
 
@@ -2588,7 +2603,7 @@ cuando los profesores empiezan a ver sus clases nuevas.
 
 ## Entrega para el siguiente chat
 
-Estado al 2026-10-03. Si `git status` o el historial de git dicen otra
+Estado al 2026-10-05. Si `git status` o el historial de git dicen otra
 cosa, gana lo que se pueda verificar.
 
 - **Hecho:** fase 0 y **fase 1 completas**. Migración A (2026-09-30) y
@@ -2625,7 +2640,8 @@ cosa, gana lo que se pueda verificar.
   de estudiantes con `estudiantes.curso_id`). Los once commits de la fase 3
   (`57b3710` a `9edbe5d`) están en GitHub desde el 2026-10-03: los subió el
   usuario, que dijo haberlos subido a producción.
-- **Fase 4 (frontend), iniciada el 2026-10-03** con la autorización del
+- **Fase 4 (frontend), con código completo** y autorizada paso a paso desde
+  el 2026-10-03:
   usuario: inventario y plan por pasos (4.1 a 4.7, commit `dbb0e48` del
   frontend), **paso 4.1** (la base: lista de años, selector y aviso; commit
   `4b14347`), **paso 4.2** (Cursos, Asignaciones, Orden boletín y Horarios
@@ -2634,10 +2650,11 @@ cosa, gana lo que se pueda verificar.
   vencida con el año elegido; mirando otro año, sin "Cobrar"; commit
   `0798f21`), **paso 4.4** (Estudiantes con el año elegido; mirando otro
   año, solo consulta; commit `c7f0622`), **paso 4.5** (Boletines y
-  certificados con el año elegido; commit `2140fae`) y **paso 4.6** (Listas
-  de seguimiento y bandeja de planes con el año elegido) escrito y probado,
-  sin commit, el 2026-10-05. Con un año no cambia nada visible. Falta el 4.7
-  (diálogo de materias). El 4.5 dejó un hallazgo de antes de esta función
+  certificados con el año elegido; commit `2140fae`), **paso 4.6** (Listas
+  de seguimiento y bandeja de planes con el año elegido; commit `72be3da`)
+  y **paso 4.7** (diálogo al renombrar materias) escrito y probado, sin
+  commit, el 2026-10-05. Con un año no cambia nada visible. El 4.5 dejó un
+  hallazgo de antes de esta función
   (Boletines y Certificados solo listan estudiantes activos) y el 4.6 uno de
   este repo para la fase 6 (la lista de un curso sale sin estudiantes fuera
   del año activo); ver sus "Avance" en la fase 4 de este documento. En este repo no
@@ -2674,14 +2691,14 @@ cosa, gana lo que se pueda verificar.
   rama, detener el backend local que esté corriendo; si no, el frontend
   sigue hablando con el que apunta a producción.
 - **Siguiente acción exacta:** en el frontend, que el usuario revise y haga
-  el commit del paso 4.6. Después, el paso 4.7 (diálogo de materias, el
-  último de la fase 4), solo con su visto bueno. Sigue abierta la pregunta de
+  el commit del paso 4.7. Después viene la fase 5, pero no se inicia sin su
+  autorización explícita y sin responder antes la pregunta de este repo
+  sobre crear cursos y conceptos nuevos en el año en preparación, además de
+  las preguntas del frontend sobre el año en el impreso/CSV de Cartera y en
+  el certificado de matrícula. Sigue abierta la pregunta de
   si se arregla aparte que Certificados solo liste activos (el usuario
-  respondió "continúa" sin decidirla). Las preguntas
-  abiertas se le hacen al usuario justo antes del paso que las necesita (lo
-  pidió así el 2026-10-02): la de crear cursos y conceptos nuevos en el año
-  en preparación, antes de la fase 5. En este
-  repo no hay trabajo hasta la fase 5 (meta: principios de noviembre); su
+  respondió "continúa" sin decidirla), necesaria antes de la fase 6. En
+  este repo no hay trabajo de código hasta la fase 5; su
   plan tiene que cerrar el hallazgo del estudiante (ver "Ojo" en la fase 5)
   antes de crear el primer curso de 2027.
 - Prompt para retomar: `docs/funcionalidades/PROMPT_CONTINUACION_ANIO_LECTIVO.md`.

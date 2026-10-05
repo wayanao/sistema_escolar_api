@@ -5,8 +5,8 @@
 - Estado: **Fase 4 (frontend) en curso desde el 2026-10-03:** inventario y
   plan por pasos (commit `dbb0e48` del frontend), paso 4.1 (la base del
   selector, `4b14347`), paso 4.2 (Administración y horarios por año,
-  `78c48f7`) y paso 4.3 (Tipos de pago y Cartera vencida por año) escrito y
-  probado, sin commit; ver
+  `78c48f7`), paso 4.3 (Tipos de pago y Cartera vencida por año, `0798f21`)
+  y paso 4.4 (Estudiantes por año) escrito y probado, sin commit; ver
   `frontend-react/docs/funcionalidades/ANIO_LECTIVO.md`. En este repo no
   tiene trabajo. **Fase 3 terminada el 2026-10-02 y subida a
   producción por el usuario el 2026-10-03** (`origin/main` en `9edbe5d`):
@@ -50,7 +50,7 @@
   fase 1, el relleno los marcaría como 2026; entre la fase 1 y la 5 no existe
   todavía un año 2027 donde ponerlos. Al 2026-09-30 no hay ninguno
   registrado (confirmado por el usuario).
-- Última actualización: 2026-10-03.
+- Última actualización: 2026-10-05.
 
 ## Objetivo
 
@@ -2305,12 +2305,20 @@ la fase 5 de este repo (ver "Ojo" en la fase 5).
 
 Avance al 2026-10-03: pasos 4.1 y 4.2 con commit (`4b14347` y `78c48f7` del
 frontend); paso 4.3 (Tipos de pago y Cartera vencida por año) escrito y
-probado, sin commit. Usa sin cambios lo que este repo ya sirve por año
-(`GET /tipos-pagos`, `/tipos-pagos/detallado`, `/cursos` y
+probado (commit `0798f21`, el mismo día). Usa sin cambios lo que este repo ya
+sirve por año (`GET /tipos-pagos`, `/tipos-pagos/detallado`, `/cursos` y
 `/cartera/mora` con su `/resumen`, todos con `?anio_lectivo_id=`). Mirando
 otro año, la Cartera del frontend no ofrece "Cobrar": Pagos cobra siempre en
 el año activo hasta que la fase 5 traiga el selector "Año del pago", que
 usará el `anio_lectivo_id` que este repo ya acepta desde el paso 2.3.
+
+Avance al 2026-10-05: paso 4.4 (Estudiantes por año: lista, ficha y
+observador de la ficha) escrito y probado, sin commit. Usa sin cambios
+`GET /estudiantes`, `/estudiantes/{id}/detalles`, `/estudiantes/{id}/deudas`
+y `/observador/{id}`, con `?anio_lectivo_id=`. Mirando otro año, Estudiantes
+queda en solo consulta en el frontend: así nadie le pone a un estudiante un
+curso de otro año desde esa pantalla, que es el hallazgo de la fase 5 (ver
+"Ojo" allí), todavía abierto en este repo.
 
 ### Fase 5 — Preparar el año siguiente (meta: principios de noviembre)
 
@@ -2594,9 +2602,11 @@ cosa, gana lo que se pueda verificar.
   frontend), **paso 4.1** (la base: lista de años, selector y aviso; commit
   `4b14347`), **paso 4.2** (Cursos, Asignaciones, Orden boletín y Horarios
   con el año elegido; el admin edita lo que ya existe en un año en
-  preparación; commit `78c48f7`) y **paso 4.3** (Tipos de pago y Cartera
-  vencida con el año elegido; mirando otro año, sin "Cobrar") escrito y
-  probado, sin commit. Con un año no cambia nada visible. En este repo no
+  preparación; commit `78c48f7`), **paso 4.3** (Tipos de pago y Cartera
+  vencida con el año elegido; mirando otro año, sin "Cobrar"; commit
+  `0798f21`) y **paso 4.4** (Estudiantes con el año elegido; mirando otro
+  año, solo consulta) escrito y probado, sin commit, el 2026-10-05. Con un
+  año no cambia nada visible. En este repo no
   tiene trabajo. Su inventario dejó un hallazgo para la fase 5 de este repo:
   crear o editar un estudiante no valida el año del curso (ver "Ojo" en la
   fase 5).
@@ -2630,9 +2640,8 @@ cosa, gana lo que se pueda verificar.
   rama, detener el backend local que esté corriendo; si no, el frontend
   sigue hablando con el que apunta a producción.
 - **Siguiente acción exacta:** en el frontend, que el usuario revise y haga
-  el commit del paso 4.3. Después, el paso 4.4 (Estudiantes: lista, ficha y
-  observador de la ficha, con la caracterización de `EstudiantesAdmin.jsx`
-  primero), solo con su visto bueno. Las preguntas
+  el commit del paso 4.4. Después, el paso 4.5 (Boletines y certificados
+  con el año elegido; pantallas de solo consulta), solo con su visto bueno. Las preguntas
   abiertas se le hacen al usuario justo antes del paso que las necesita (lo
   pidió así el 2026-10-02): la de crear cursos y conceptos nuevos en el año
   en preparación, antes de la fase 5. En este

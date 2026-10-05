@@ -2,7 +2,11 @@
 
 ## Control
 
-- Estado: **Fase 4 (frontend) con código completo:** iniciada el 2026-10-03;
+- Estado: **Fase 5 iniciada el 2026-10-05 con autorización explícita del
+  usuario; inventario y plan por pasos escritos, sin código todavía.** La
+  fase 4 (frontend) quedó completa y fue confirmada en los commits
+  `8eac0ce` del frontend y `ce8d7a7` de documentación en este repo. Se inició
+  el 2026-10-03;
   inventario y
   plan por pasos (commit `dbb0e48` del frontend), paso 4.1 (la base del
   selector, `4b14347`), paso 4.2 (Administración y horarios por año,
@@ -10,7 +14,7 @@
   paso 4.4 (Estudiantes por año, `c7f0622`), paso 4.5 (Boletines y
   certificados por año, `2140fae`), paso 4.6 (Listas de seguimiento y
   bandeja de planes por año, `72be3da`) y paso 4.7 (diálogo al renombrar
-  materias) escrito y probado, sin commit; ver
+  materias, `8eac0ce`); ver
   `frontend-react/docs/funcionalidades/ANIO_LECTIVO.md`. En este repo no
   tiene trabajo. **Fase 3 terminada el 2026-10-02 y subida a
   producción por el usuario el 2026-10-03** (`origin/main` en `9edbe5d`):
@@ -2399,6 +2403,89 @@ propuestos bajo `/anios-lectivos`:
 6. Terminado cuando: en una rama de Neon con copia de producción se puede
    preparar 2027 completo sin que ninguna pantalla del año activo cambie.
 
+**Inicio autorizado e inventario confirmado el 2026-10-05:**
+
+- El usuario autorizó expresamente la fase 5 y aprobó las tres decisiones que
+  la bloqueaban: `POST /cursos` y `POST /tipos-pagos` aceptarán
+  `anio_lectivo_id` opcional; el impreso y el nombre del CSV de Cartera
+  identificarán el año consultado; y el certificado de matrícula propondrá el
+  año que se está mirando. Si el año se omite, las peticiones y respuestas del
+  año activo conservan el contrato anterior.
+- Ambos repos estaban en `main` y limpios al iniciar. El backend estaba en
+  `ce8d7a7` y el frontend en `8eac0ce`, ambos `ahead 8` respecto de su remoto
+  conocido. No se hizo `fetch`, push, despliegue ni acceso a producción.
+- `POST /estudiantes` y `PUT /estudiantes/{id}` escriben hoy
+  `estudiantes.curso_id` directamente y después copian ese valor a la
+  matrícula activa. Antes de que pueda existir un curso de 2027 hay que
+  invertirlo: la matrícula será la fuente y solo
+  `sincronizar_curso_vigente` escribirá la copia del año activo. El camino
+  actual sin año conservará su cuerpo y su respuesta.
+- `POST /cursos` y `POST /tipos-pagos` fijan hoy el año activo dentro del SQL.
+  Sus validaciones de nombre ya están limitadas por año. El cambio opcional
+  puede conservar literalmente el camino actual cuando no se envía año y
+  usar `exigir_anio_editable` cuando sí se envía.
+- La copia necesita dos columnas aditivas todavía ausentes:
+  `cursos.curso_origen_id` y `tipos_de_pagos.tipo_pago_origen_id`. La guía de
+  migraciones exige escribir una migración incremental, probarla en una rama
+  de Neon y regenerar después el esquema base; el asistente no aplicará la
+  migración a ningún tenant ni se conectará a producción.
+- La carga académica vive en filas de `asignaciones`: varias franjas del mismo
+  profesor, curso y materia comparten `asignacion_academica_id`. La copia debe
+  conservar profesor, materia, día, horas, estado y orden de boletín, y rehacer
+  esa referencia entre las filas nuevas, nunca apuntar a la asignación de
+  2026.
+- Los pagos ya aceptan `anio_lectivo_id` desde la fase 2. Lo pendiente en el
+  backend es probar el recorrido completo con año en preparación y hacer que
+  los valores especiales consulten el curso de la matrícula de ese año, no
+  siempre `estudiantes.curso_id`.
+
+**Plan por pasos de la fase 5 (uno por vez):**
+
+1. **5.1 — Blindar la matrícula y el curso vigente.** Caracterización primero;
+   añadir `sincronizar_curso_vigente`, hacerla la única escritura de
+   `estudiantes.curso_id`, mantener idéntico el alta/edición del año activo y
+   rechazar en ese camino un curso que no sea del activo. La consulta de
+   control debe seguir dando 0.
+2. **5.2 — Migración de orígenes.** Pruebas de texto primero; agregar las dos
+   columnas autorreferentes, sus claves foráneas e índices. El asistente deja
+   el SQL listo, pero el usuario controla la prueba en una rama de Neon y la
+   regeneración del esquema base, como exige `docs/MIGRACIONES.md`.
+3. **5.3 — Crear el año y altas manuales en preparación.** `POST
+   /anios-lectivos` crea exactamente `N+1` en `preparacion`; `POST /cursos` y
+   `POST /tipos-pagos` aceptan el año opcional aprobado. Sin año ejecutan el
+   camino anterior; con año, el servidor valida existencia y edición.
+4. **5.4 — Copiar la configuración.** Endpoint transaccional para cursos y
+   conceptos; los conceptos siempre se copian y las opciones controlan
+   precios, carga académica y directores. Copia toda la configuración
+   documentada, rehace referencias y devuelve conteos claros; un choque
+   revierte todo e identifica el registro.
+5. **5.5 — Matricular.** Consultar candidatos por curso, promover solo los
+   estudiantes marcados, permitir alta de un estudiante directamente en el
+   año en preparación y devolver los valores especiales copiados como
+   “revisar”. El curso vigente no cambia mientras 2026 siga activo.
+6. **5.6 — Resumen y recorrido financiero del backend.** Resumen de lo
+   preparado, valores especiales por matrícula/año y prueba integral de una
+   matrícula 2027 pagada en 2026. No se cambia el cálculo ya cerrado en la
+   fase 2 salvo lo indispensable para ese recorrido.
+7. **5.7 — Pantalla base del frontend.** Servicio, ruta protegida, menú y
+   página `/admin/anios-lectivos` para crear y copiar; habilitar las altas
+   manuales de cursos y conceptos en preparación enviando el año solo allí.
+8. **5.8 — Matrículas y resumen en el frontend.** Promoción por curso,
+   selección de estudiantes, aviso de valores especiales por revisar, alta
+   de estudiante en 2027 y resumen sin botón de activar.
+9. **5.9 — Pagos y deudas anteriores.** Selector propio “Año del pago”,
+   activo por defecto; consultas y cuerpos llevan año solo al elegir otro.
+   Mostrar `deuda_anios_anteriores` en Pagos, Cartera y la ficha del
+   estudiante, sin mezclar ventas con otro año.
+10. **5.10 — Año en documentos.** Incluir el año consultado en el estado de
+    cartera y en el nombre del CSV, y proponerlo en el certificado de
+    matrícula, tal como aprobó el usuario.
+
+Cada paso termina con sus pruebas específicas, la verificación global del
+repo tocado y `git diff --check`; se documenta y se detiene antes del
+siguiente. Antes de cada cambio de dinero o migración se vuelve a explicar el
+alcance en palabras simples.
+
 **Ojo, hallazgo del 2026-10-03** (inventario de la fase 4 del frontend):
 crear o editar un estudiante (`estudiante_controller.py`) no valida de qué
 año es el curso. Guarda `estudiantes.curso_id` con el curso que llegue, y
@@ -2580,13 +2667,14 @@ cuando los profesores empiezan a ver sus clases nuevas.
   fase 6, cuando se cierra el primer año. Motivo: antes de la fase 6 no
   puede existir un año cerrado, así que no queda ningún caso sin cubrir, y
   el 3.5 no necesita migración.
-- Antes de la fase 5 (encontrada el 2026-10-02): `POST /cursos` y `POST
+- ~~Antes de la fase 5 (encontrada el 2026-10-02): `POST /cursos` y `POST
   /tipos-pagos` siempre crean en el año activo. La fase 4 dice que el admin
   prepara 2027 desde las pantallas existentes, pero ningún documento dice
   cómo se crea un curso o un concepto **nuevo** (que no venga de la copia)
   en el año en preparación. ¿Se agrega `anio_lectivo_id` opcional a esas dos
-  rutas, y en qué fase? No bloquea los pasos 3.1 a 3.4. **Sin respuesta del
-  usuario.**
+  rutas, y en qué fase?~~ **Respondida el 2026-10-05: sí, en la fase 5.** Si
+  se omite, se conserva el año activo y el contrato actual; si se envía, el
+  backend valida que ese año exista y sea editable para el admin.
 - ~~Fase 4 (frontend), antes de su paso 4.1: en las pantallas que no
   dependen del año, ¿el selector se esconde o se muestra desactivado?~~
   **Respondida el 2026-10-03: se esconde.** ~~Antes de su paso 4.2: ¿qué
@@ -2652,8 +2740,9 @@ cosa, gana lo que se pueda verificar.
   año, solo consulta; commit `c7f0622`), **paso 4.5** (Boletines y
   certificados con el año elegido; commit `2140fae`), **paso 4.6** (Listas
   de seguimiento y bandeja de planes con el año elegido; commit `72be3da`)
-  y **paso 4.7** (diálogo al renombrar materias) escrito y probado, sin
-  commit, el 2026-10-05. Con un año no cambia nada visible. El 4.5 dejó un
+  y **paso 4.7** (diálogo al renombrar materias, commit frontend `8eac0ce`;
+  documentación en este repo `ce8d7a7`), el 2026-10-05. Con un año no cambia
+  nada visible. El 4.5 dejó un
   hallazgo de antes de esta función
   (Boletines y Certificados solo listan estudiantes activos) y el 4.6 uno de
   este repo para la fase 6 (la lista de un curso sale sin estudiantes fuera
@@ -2661,6 +2750,17 @@ cosa, gana lo que se pueda verificar.
   tiene trabajo. Su inventario dejó un hallazgo para la fase 5 de este repo:
   crear o editar un estudiante no valida el año del curso (ver "Ojo" en la
   fase 5).
+- **Fase 5 iniciada el 2026-10-05 con autorización explícita del usuario:**
+  inventario y plan de diez pasos (5.1 a 5.10) escritos, todavía sin código.
+  El usuario aprobó que las altas manuales de cursos y conceptos acepten el
+  año opcional, que el impreso/CSV de Cartera identifique el año y que el
+  certificado de matrícula proponga el año consultado. Al iniciar, ambos
+  repos estaban en `main`, limpios y `ahead 8`: backend `ce8d7a7`, frontend
+  `8eac0ce`. Se leyó completa `docs/MIGRACIONES.md`; ninguna migración se
+  ejecutó ni se accedió a producción. Verificación del paso documental:
+  `scripts/verify.py`, 2016 pruebas, Ruff y `pip check` limpios; en el
+  frontend, `pnpm run check:deploy`, 2210 pruebas en 341 archivos, lint y
+  build limpios; `git diff --check` limpio en ambos repos.
 - **Hecho aparte, la noche del 2026-09-30:** el arreglo de la hora
   (`2e77634` en este repo, `033c042` en el frontend). Cobros, cartera y
   alta de colegios usan la fecha de Colombia (`app/core/fechas.py`), y el
@@ -2690,15 +2790,12 @@ cosa, gana lo que se pueda verificar.
   correr si falta `$env:DATABASE_URL`. Antes de probar la app contra una
   rama, detener el backend local que esté corriendo; si no, el frontend
   sigue hablando con el que apunta a producción.
-- **Siguiente acción exacta:** en el frontend, que el usuario revise y haga
-  el commit del paso 4.7. Después viene la fase 5, pero no se inicia sin su
-  autorización explícita y sin responder antes la pregunta de este repo
-  sobre crear cursos y conceptos nuevos en el año en preparación, además de
-  las preguntas del frontend sobre el año en el impreso/CSV de Cartera y en
-  el certificado de matrícula. Sigue abierta la pregunta de
-  si se arregla aparte que Certificados solo liste activos (el usuario
-  respondió "continúa" sin decidirla), necesaria antes de la fase 6. En
-  este repo no hay trabajo de código hasta la fase 5; su
-  plan tiene que cerrar el hallazgo del estudiante (ver "Ojo" en la fase 5)
-  antes de crear el primer curso de 2027.
+- **Siguiente acción exacta:** el usuario revisa y hace el commit de este
+  inventario/plan. Después, y solo con su autorización explícita para el
+  paso, viene **5.1 — Blindar la matrícula y el curso vigente**: pruebas de
+  caracterización primero, `sincronizar_curso_vigente` como única escritura
+  de `estudiantes.curso_id` y rechazo de cursos que no sean del activo en el
+  camino actual. No empezar todavía 5.2 ni crear 2027. Sigue abierta, para
+  antes de la fase 6, la pregunta separada de Certificados y estudiantes
+  retirados/egresados.
 - Prompt para retomar: `docs/funcionalidades/PROMPT_CONTINUACION_ANIO_LECTIVO.md`.

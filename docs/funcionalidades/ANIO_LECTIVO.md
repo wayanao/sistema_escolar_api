@@ -5,8 +5,9 @@
 - Estado: **Fase 4 (frontend) en curso desde el 2026-10-03:** inventario y
   plan por pasos (commit `dbb0e48` del frontend), paso 4.1 (la base del
   selector, `4b14347`), paso 4.2 (Administración y horarios por año,
-  `78c48f7`), paso 4.3 (Tipos de pago y Cartera vencida por año, `0798f21`)
-  y paso 4.4 (Estudiantes por año) escrito y probado, sin commit; ver
+  `78c48f7`), paso 4.3 (Tipos de pago y Cartera vencida por año, `0798f21`),
+  paso 4.4 (Estudiantes por año, `c7f0622`) y paso 4.5 (Boletines y
+  certificados por año) escrito y probado, sin commit; ver
   `frontend-react/docs/funcionalidades/ANIO_LECTIVO.md`. En este repo no
   tiene trabajo. **Fase 3 terminada el 2026-10-02 y subida a
   producción por el usuario el 2026-10-03** (`origin/main` en `9edbe5d`):
@@ -2313,12 +2314,24 @@ el año activo hasta que la fase 5 traiga el selector "Año del pago", que
 usará el `anio_lectivo_id` que este repo ya acepta desde el paso 2.3.
 
 Avance al 2026-10-05: paso 4.4 (Estudiantes por año: lista, ficha y
-observador de la ficha) escrito y probado, sin commit. Usa sin cambios
+observador de la ficha) escrito y probado (commit `c7f0622`, el mismo día).
+Usa sin cambios
 `GET /estudiantes`, `/estudiantes/{id}/detalles`, `/estudiantes/{id}/deudas`
 y `/observador/{id}`, con `?anio_lectivo_id=`. Mirando otro año, Estudiantes
 queda en solo consulta en el frontend: así nadie le pone a un estudiante un
 curso de otro año desde esa pantalla, que es el hallazgo de la fase 5 (ver
 "Ojo" allí), todavía abierto en este repo.
+
+Avance al 2026-10-05: paso 4.5 (Boletines y certificados por año) escrito y
+probado, sin commit. Usa sin cambios `GET /cursos`, `GET /estudiantes`,
+`/boletines/admin/generar/...` y `/boletines/admin/reporte-parcial/...` con
+`?anio_lectivo_id=` (pasos 3.3 a 3.5a). Hallazgo, de antes de esta función:
+esas dos pantallas piden `GET /estudiantes` sin `estado`, y este repo
+responde entonces solo activos (su valor por defecto desde `6d4e75c`,
+2026-06-03), así que no listan retirados ni egresados. Para imprimir 2026
+después de activar 2027 (fase 6) hace falta que los listen; el arreglo
+propuesto es del frontend (que Certificados pida `?estado=todos`), sin
+cambios aquí. Ver la pregunta abierta en el documento del frontend.
 
 ### Fase 5 — Preparar el año siguiente (meta: principios de noviembre)
 
@@ -2604,9 +2617,12 @@ cosa, gana lo que se pueda verificar.
   con el año elegido; el admin edita lo que ya existe en un año en
   preparación; commit `78c48f7`), **paso 4.3** (Tipos de pago y Cartera
   vencida con el año elegido; mirando otro año, sin "Cobrar"; commit
-  `0798f21`) y **paso 4.4** (Estudiantes con el año elegido; mirando otro
-  año, solo consulta) escrito y probado, sin commit, el 2026-10-05. Con un
-  año no cambia nada visible. En este repo no
+  `0798f21`), **paso 4.4** (Estudiantes con el año elegido; mirando otro
+  año, solo consulta; commit `c7f0622`) y **paso 4.5** (Boletines y
+  certificados con el año elegido) escrito y probado, sin commit, el
+  2026-10-05. Con un año no cambia nada visible. El 4.5 dejó un hallazgo de
+  antes de esta función: Boletines y Certificados solo listan estudiantes
+  activos (ver su "Avance" en la fase 4 de este documento). En este repo no
   tiene trabajo. Su inventario dejó un hallazgo para la fase 5 de este repo:
   crear o editar un estudiante no valida el año del curso (ver "Ojo" en la
   fase 5).
@@ -2640,8 +2656,9 @@ cosa, gana lo que se pueda verificar.
   rama, detener el backend local que esté corriendo; si no, el frontend
   sigue hablando con el que apunta a producción.
 - **Siguiente acción exacta:** en el frontend, que el usuario revise y haga
-  el commit del paso 4.4. Después, el paso 4.5 (Boletines y certificados
-  con el año elegido; pantallas de solo consulta), solo con su visto bueno. Las preguntas
+  el commit del paso 4.5 y responda si se arregla aparte que Boletines y
+  Certificados solo listen activos. Después, el paso 4.6 (Listas de
+  seguimiento y bandeja de planes del admin), solo con su visto bueno. Las preguntas
   abiertas se le hacen al usuario justo antes del paso que las necesita (lo
   pidió así el 2026-10-02): la de crear cursos y conceptos nuevos en el año
   en preparación, antes de la fase 5. En este

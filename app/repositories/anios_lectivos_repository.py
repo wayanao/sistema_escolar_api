@@ -310,6 +310,285 @@ def crear_anio_en_preparacion(cursor, anio):
     return cursor.fetchone()
 
 
+def leer_anio_lectivo_para_actualizar(cursor, anio_lectivo_id):
+    """Lee y bloquea un año mientras se copia su configuración."""
+    cursor.execute(
+        "SELECT id, anio, estado FROM anios_lectivos WHERE id = %s FOR UPDATE",
+        (anio_lectivo_id,),
+    )
+    return cursor.fetchone()
+
+
+def buscar_choque_curso_para_copia(cursor, anio_origen_id, anio_destino_id):
+    """Primer curso del origen cuyo nombre y jornada ya existen en destino."""
+    cursor.execute(
+        """
+        SELECT origen.nombre, origen.jornada
+        FROM cursos origen
+        JOIN cursos destino
+          ON destino.anio_lectivo_id = %s
+         AND UPPER(REGEXP_REPLACE(TRIM(destino.nombre), '[[:space:]]+', ' ', 'g')) =
+             UPPER(REGEXP_REPLACE(TRIM(origen.nombre), '[[:space:]]+', ' ', 'g'))
+         AND LOWER(COALESCE(NULLIF(TRIM(destino.jornada), ''), 'Mañana')) =
+             LOWER(COALESCE(NULLIF(TRIM(origen.jornada), ''), 'Mañana'))
+        WHERE origen.anio_lectivo_id = %s
+          AND COALESCE(LOWER(origen.estado), 'activo') = 'activo'
+        ORDER BY origen.id
+        LIMIT 1
+        """,
+        (anio_destino_id, anio_origen_id),
+    )
+    return cursor.fetchone()
+
+
+def buscar_choque_concepto_para_copia(cursor, anio_origen_id, anio_destino_id):
+    """Primer concepto del origen cuyo nombre ya existe en el destino."""
+    cursor.execute(
+        """
+        SELECT origen.nombre
+        FROM tipos_de_pagos origen
+        JOIN tipos_de_pagos destino
+          ON destino.anio_lectivo_id = %s
+         AND LOWER(TRIM(destino.nombre)) = LOWER(TRIM(origen.nombre))
+        WHERE origen.anio_lectivo_id = %s
+        ORDER BY origen.id
+        LIMIT 1
+        """,
+        (anio_destino_id, anio_origen_id),
+    )
+    return cursor.fetchone()
+
+
+def _filas_como_diccionarios(filas, columnas):
+    return [
+        dict(fila) if isinstance(fila, dict) else dict(zip(columnas, fila))
+        for fila in filas
+    ]
+
+
+def listar_cursos_para_copiar(cursor, anio_origen_id):
+    """Datos de curso definidos por el contrato de la fase 5."""
+    columnas = ("id", "nombre", "jornada", "nivel", "director_grupo_id")
+    cursor.execute(
+        """
+        SELECT id, nombre, jornada, nivel, director_grupo_id
+        FROM cursos
+        WHERE anio_lectivo_id = %s
+          AND COALESCE(LOWER(estado), 'activo') = 'activo'
+        ORDER BY id
+        """,
+        (anio_origen_id,),
+    )
+    return _filas_como_diccionarios(cursor.fetchall(), columnas)
+
+
+def insertar_curso_copiado(
+    cursor, curso, anio_destino_id, copiar_director
+):
+    """Crea el curso activo del destino y conserva el id de su origen."""
+    cursor.execute(
+        """
+        INSERT INTO cursos (
+            nombre, jornada, estado, nivel, director_grupo_id,
+            anio_lectivo_id, curso_origen_id
+        )
+        VALUES (%s, %s, 'activo', %s, %s, %s, %s)
+        RETURNING id
+        """,
+        (
+            curso["nombre"],
+            curso["jornada"],
+            curso["nivel"],
+            curso["director_grupo_id"] if copiar_director else None,
+            anio_destino_id,
+            curso["id"],
+        ),
+    )
+    return cursor.fetchone()[0]
+
+
+_COLUMNAS_CONCEPTO_COPIA = (
+    "id",
+    "nombre",
+    "valor",
+    "descripcion",
+    "tipo_cobro",
+    "fecha_limite",
+    "dia_limite_mes",
+    "dias_gracia",
+    "mora_tipo",
+    "mora_valor",
+    "mes_inicial",
+    "mes_final",
+    "frecuencia_meses",
+    "generacion_automatica",
+    "activo",
+)
+
+
+def listar_conceptos_para_copiar(cursor, anio_origen_id):
+    """Todos los conceptos y toda su configuración financiera."""
+    cursor.execute(
+        """
+        SELECT id, nombre, valor, descripcion, tipo_cobro, fecha_limite,
+               dia_limite_mes, dias_gracia, mora_tipo, mora_valor,
+               mes_inicial, mes_final, frecuencia_meses,
+               generacion_automatica, activo
+        FROM tipos_de_pagos
+        WHERE anio_lectivo_id = %s
+        ORDER BY id
+        """,
+        (anio_origen_id,),
+    )
+    return _filas_como_diccionarios(cursor.fetchall(), _COLUMNAS_CONCEPTO_COPIA)
+
+
+def insertar_concepto_copiado(cursor, concepto, anio_destino_id):
+    """Copia la configuración del concepto y conserva su origen."""
+    cursor.execute(
+        """
+        INSERT INTO tipos_de_pagos (
+            nombre, valor, descripcion, tipo_cobro, fecha_limite,
+            dia_limite_mes, dias_gracia, mora_tipo, mora_valor,
+            mes_inicial, mes_final, frecuencia_meses,
+            generacion_automatica, activo, anio_lectivo_id,
+            tipo_pago_origen_id
+        )
+        VALUES (
+            %s, %s, %s, %s, %s, %s, %s, %s,
+            %s, %s, %s, %s, %s, %s, %s, %s
+        )
+        RETURNING id
+        """,
+        (
+            concepto["nombre"],
+            concepto["valor"],
+            concepto["descripcion"],
+            concepto["tipo_cobro"],
+            concepto["fecha_limite"],
+            concepto["dia_limite_mes"],
+            concepto["dias_gracia"],
+            concepto["mora_tipo"],
+            concepto["mora_valor"],
+            concepto["mes_inicial"],
+            concepto["mes_final"],
+            concepto["frecuencia_meses"],
+            concepto["generacion_automatica"],
+            concepto["activo"],
+            anio_destino_id,
+            concepto["id"],
+        ),
+    )
+    return cursor.fetchone()[0]
+
+
+def listar_precios_para_copiar(cursor, anio_origen_id):
+    """Precios cuyos conceptos y cursos pertenecen al año de origen."""
+    columnas = ("tipo_pago_id", "curso_id", "valor", "activo")
+    cursor.execute(
+        """
+        SELECT tpc.tipo_pago_id, tpc.curso_id, tpc.valor, tpc.activo
+        FROM tipos_pagos_cursos tpc
+        JOIN tipos_de_pagos tp ON tp.id = tpc.tipo_pago_id
+        JOIN cursos c ON c.id = tpc.curso_id
+        WHERE tp.anio_lectivo_id = %s
+          AND c.anio_lectivo_id = %s
+          AND COALESCE(LOWER(c.estado), 'activo') = 'activo'
+        ORDER BY tpc.id
+        """,
+        (anio_origen_id, anio_origen_id),
+    )
+    return _filas_como_diccionarios(cursor.fetchall(), columnas)
+
+
+def insertar_precio_copiado(cursor, precio, tipo_pago_id, curso_id):
+    """Copia un precio apuntando al concepto y curso nuevos."""
+    cursor.execute(
+        """
+        INSERT INTO tipos_pagos_cursos (tipo_pago_id, curso_id, valor, activo)
+        VALUES (%s, %s, %s, %s)
+        RETURNING id
+        """,
+        (tipo_pago_id, curso_id, precio["valor"], precio["activo"]),
+    )
+    return cursor.fetchone()[0]
+
+
+_COLUMNAS_ASIGNACION_COPIA = (
+    "id",
+    "curso_id",
+    "materia_id",
+    "profesor_id",
+    "dia",
+    "horas",
+    "hora_inicio",
+    "hora_fin",
+    "activo",
+    "asignacion_academica_id",
+    "orden_boletin",
+)
+
+
+def listar_asignaciones_para_copiar(cursor, anio_origen_id):
+    """Carga académica completa de los cursos del año de origen."""
+    cursor.execute(
+        """
+        SELECT a.id, a.curso_id, a.materia_id, a.profesor_id, a.dia, a.horas,
+               a.hora_inicio, a.hora_fin, a.activo,
+               a.asignacion_academica_id, a.orden_boletin
+        FROM asignaciones a
+        JOIN cursos c ON c.id = a.curso_id
+        WHERE c.anio_lectivo_id = %s
+          AND COALESCE(LOWER(c.estado), 'activo') = 'activo'
+        ORDER BY a.id
+        """,
+        (anio_origen_id,),
+    )
+    return _filas_como_diccionarios(
+        cursor.fetchall(), _COLUMNAS_ASIGNACION_COPIA
+    )
+
+
+def insertar_asignacion_copiada(cursor, asignacion, curso_id):
+    """Copia una franja sin enlazarla todavía a una cabecera académica."""
+    cursor.execute(
+        """
+        INSERT INTO asignaciones (
+            curso_id, materia_id, profesor_id, dia, horas,
+            hora_inicio, hora_fin, activo, orden_boletin
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        RETURNING id
+        """,
+        (
+            curso_id,
+            asignacion["materia_id"],
+            asignacion["profesor_id"],
+            asignacion["dia"],
+            asignacion["horas"],
+            asignacion["hora_inicio"],
+            asignacion["hora_fin"],
+            asignacion["activo"],
+            asignacion["orden_boletin"],
+        ),
+    )
+    return cursor.fetchone()[0]
+
+
+def enlazar_asignacion_academica_copiada(
+    cursor, asignacion_id, asignacion_academica_id
+):
+    """Enlaza una franja nueva con la cabecera nueva de su grupo."""
+    cursor.execute(
+        """
+        UPDATE asignaciones
+        SET asignacion_academica_id = %s
+        WHERE id = %s
+        """,
+        (asignacion_academica_id, asignacion_id),
+    )
+
+
 def crear_anio_activo_inicial(cursor, anio):
     """Siembra el año activo de un colegio recien creado.
 

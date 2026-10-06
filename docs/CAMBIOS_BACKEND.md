@@ -6,6 +6,36 @@ Ultima revision documental: 2026-10-06.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
+## 2026-10-06 - Año lectivo 5.4: copiar la configuración al año siguiente
+
+Cuarto paso de la fase 5 de `docs/funcionalidades/ANIO_LECTIVO.md`.
+
+### Qué cambia
+
+- Nuevo `POST /anios-lectivos/{anio_lectivo_id}/copiar-configuracion`, solo
+  para admin. El servidor exige que el destino sea exactamente el año posterior
+  al activo y que esté en preparación.
+- Copia siempre los cursos activos, que nacen activos con
+  `curso_origen_id`, y todos los conceptos de pago, incluso inactivos, con su
+  configuración completa y `tipo_pago_origen_id`.
+- Tres opciones, apagadas por defecto, controlan precios por curso, carga
+  académica y directores de grupo. Los precios se enlazan al curso y concepto
+  nuevos. La carga conserva profesor, materia, horario, estado y orden de
+  boletín, y reconstruye `asignacion_academica_id` solo con ids nuevos.
+- La operación completa usa una sola transacción. Un curso o concepto
+  repetido se identifica en un `409`; cualquier choque o referencia inválida
+  revierte también todo lo copiado antes.
+- No cambia pagos, deudas ni cálculos financieros. No hay migración y no se
+  accedió a una base real.
+
+### Pruebas
+
+Antes del cambio pasaron 329 pruebas de caracterización. Las 16 pruebas
+iniciales fallaron porque no existían ruta, controlador ni repositorio; la red
+se amplió a 20 pruebas nuevas para cubrir permisos, carreras y solo cursos
+activos. Al final pasaron 349 pruebas específicas. `scripts/verify.py` pasó con
+2069 pruebas, Ruff y `pip check` limpios.
+
 ## 2026-10-06 - Año lectivo 5.3: crear y preparar el año siguiente
 
 Tercer paso de la fase 5 de `docs/funcionalidades/ANIO_LECTIVO.md`.

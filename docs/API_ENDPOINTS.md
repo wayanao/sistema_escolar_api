@@ -76,6 +76,7 @@ Notas:
 
 - `GET /anios-lectivos`
 - `POST /anios-lectivos` (solo admin)
+- `POST /anios-lectivos/{anio_lectivo_id}/copiar-configuracion` (solo admin)
 
 Notas:
 
@@ -96,6 +97,48 @@ Notas:
   activo o si el siguiente ya existe. La operación bloquea la fila activa y
   los índices únicos siguen siendo la última protección ante dos solicitudes
   simultáneas.
+- Fase 5, paso 5.4: copiar la configuración recibe el id del año destino, que
+  el backend exige que sea exactamente `N+1` y esté en `preparacion`. Cuerpo:
+
+```json
+{
+  "copiar_precios": false,
+  "copiar_carga_academica": false,
+  "copiar_directores": false
+}
+```
+
+- Las tres opciones son `false` por defecto. Los cursos activos del año
+  vigente se copian siempre con nombre, jornada y nivel, nacen activos y
+  guardan `curso_origen_id`. Los conceptos se copian siempre, también los
+  inactivos, con valor y toda su configuración, y guardan
+  `tipo_pago_origen_id`.
+- Si se eligen, los precios apuntan a los cursos y conceptos nuevos; los
+  directores se copian a su curso nuevo; y la carga académica conserva
+  profesor, materia, día, horas, estado y orden de boletín. Las franjas
+  reconstruyen `asignacion_academica_id` solo con ids del año nuevo.
+- Respuesta de ejemplo:
+
+```json
+{
+  "anio_origen_id": 2,
+  "anio_origen": 2026,
+  "anio_destino_id": 3,
+  "anio_destino": 2027,
+  "copiados": {
+    "cursos": 12,
+    "conceptos_pago": 2,
+    "precios_curso": 24,
+    "asignaciones": 267,
+    "directores_grupo": 12
+  }
+}
+```
+
+- Todo ocurre en una transacción. Un curso o concepto repetido responde `409`
+  identificándolo y revierte toda la copia. También responde `409` si el
+  destino no es el siguiente en preparación o si una referencia del origen no
+  puede reconstruirse; un id de año inexistente responde `404`.
 
 ### Guardia de escritura (paso 3.7)
 

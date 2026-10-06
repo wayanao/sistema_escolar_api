@@ -35,30 +35,53 @@ def condicion_anio(columna, anio_lectivo_id=None):
     return f"{columna} = %s", (anio_lectivo_id,)
 
 
-def sincronizar_matricula_del_anio_activo(cursor, estudiante_id):
-    """Deja la matricula del año activo igual al curso actual del estudiante.
+def matricular_en_curso_del_anio_activo(cursor, estudiante_id, curso_id):
+    """Crea o corrige la matricula activa solo si el curso pertenece a ella.
 
-    En la fase 1 `estudiantes.curso_id` sigue siendo lo que edita el
-    formulario, asi que la matricula del año activo es su copia: se crea si
-    falta y se corrige si el curso cambio. El año sale del curso, como en la
-    migracion A, para coincidir siempre con la clave foranea compuesta.
-
-    No hace nada si el curso no es del año activo (un curso creado antes de
-    desplegar este codigo, todavia sin año): la migracion B lo sincroniza.
-    Nunca borra: el curso es obligatorio en el formulario, asi que un
-    estudiante no se queda sin curso.
+    El `INSERT ... SELECT` hace la validacion y la escritura en una sola
+    sentencia. Si el curso no existe o no es del año activo, no inserta nada y
+    devuelve `False`; quien llama revierte toda la transaccion.
     """
     cursor.execute(
         """
         INSERT INTO matriculas (estudiante_id, curso_id, anio_lectivo_id)
-        SELECT e.id, e.curso_id, c.anio_lectivo_id
-        FROM estudiantes e
-        JOIN cursos c ON c.id = e.curso_id
+        SELECT %s, c.id, c.anio_lectivo_id
+        FROM cursos c
         JOIN anios_lectivos al ON al.id = c.anio_lectivo_id
-        WHERE e.id = %s
+        WHERE c.id = %s
           AND al.estado = 'activo'
         ON CONFLICT (estudiante_id, anio_lectivo_id)
         DO UPDATE SET curso_id = EXCLUDED.curso_id
+        RETURNING matriculas.curso_id
+        """,
+        (estudiante_id, curso_id),
+    )
+    return cursor.fetchone() is not None
+
+
+def sincronizar_curso_vigente(cursor, estudiante_id):
+    """Copia al estudiante el curso de su matricula del año activo.
+
+    Esta es la unica escritura de `estudiantes.curso_id` en la aplicacion. Si
+    el estudiante no tiene matricula activa, el valor queda en `NULL`; eso es
+    lo que necesitara un estudiante creado solo para un año en preparacion.
+    """
+    cursor.execute(
+        """
+        WITH curso_vigente AS (
+            SELECT e.id AS estudiante_id, m.curso_id
+            FROM estudiantes e
+            LEFT JOIN anios_lectivos al ON al.estado = 'activo'
+            LEFT JOIN matriculas m
+              ON m.estudiante_id = e.id
+             AND m.anio_lectivo_id = al.id
+            WHERE e.id = %s
+        )
+        UPDATE estudiantes e
+        SET curso_id = cv.curso_id
+        FROM curso_vigente cv
+        WHERE e.id = cv.estudiante_id
+          AND e.curso_id IS DISTINCT FROM cv.curso_id
         """,
         (estudiante_id,),
     )

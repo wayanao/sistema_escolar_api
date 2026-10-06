@@ -89,9 +89,11 @@ El codigo consulta o modifica tablas como:
 
 - `usuarios`
 - `profesor`
+- `anios_lectivos`
 - `cursos`
 - `materias`
 - `estudiantes`
+- `matriculas`
 - `asignaciones`
 - `notas`
 - `notas_detalle`
@@ -141,6 +143,18 @@ Nota sobre `asignaciones`:
   colegio no ha configurado prioridades.
 - Si una materia tiene varios horarios activos en el mismo curso, todos esos
   horarios deben compartir el mismo `orden_boletin`.
+
+Nota sobre año lectivo y matrículas:
+
+- `matriculas` guarda el curso del estudiante en cada año lectivo y es la
+  fuente de verdad.
+- `estudiantes.curso_id` conserva solo una copia del curso del año activo para
+  que las pantallas existentes y los permisos de profesores sigan funcionando.
+- Solo `sincronizar_curso_vigente` puede escribir esa copia. Crear o editar un
+  estudiante primero hace el upsert de su matrícula activa y después la
+  sincroniza, en la misma transacción.
+- La consulta de control documentada en
+  `docs/funcionalidades/ANIO_LECTIVO.md` debe devolver 0 filas.
 
 Nota sobre `plan_de_clases`:
 

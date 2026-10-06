@@ -1,10 +1,38 @@
 # Cambios Backend
 
-Ultima revision documental: 2026-10-02.
+Ultima revision documental: 2026-10-05.
 
 ## Proposito
 
 Bitacora de cambios documentales y tecnicos observables del backend.
+
+## 2026-10-05 - Año lectivo 5.1: la matrícula manda sobre el curso vigente
+
+Primer paso de la fase 5 de `docs/funcionalidades/ANIO_LECTIVO.md`.
+
+### Qué cambia
+
+- El cuerpo y la respuesta de `POST /estudiantes` y
+  `PUT /estudiantes/{id}` se conservan para el año activo.
+- El curso enviado se guarda primero en la matrícula activa mediante un upsert
+  y luego `sincronizar_curso_vigente` lo copia a
+  `estudiantes.curso_id`. Esa función es la única escritura de la copia.
+- Un curso inexistente o de otro año devuelve `409`; la transacción revierte
+  también los cambios globales del estudiante.
+- Si en el futuro un estudiante solo tiene matrícula en un año en preparación,
+  la sincronización deja `curso_id = NULL` hasta que ese año sea el activo.
+- No hay migración ni cambio de esquema en este paso.
+
+### Pruebas
+
+Se caracterizaron primero 27 pruebas existentes. Las 8 pruebas nuevas fallaron
+contra el código anterior por las funciones y el flujo ausentes; después, 36
+pruebas específicas cubren SQL, orden transaccional, rechazo y traducción HTTP.
+`scripts/verify.py` pasó con 2025 pruebas, Ruff y `pip check` limpios usando un
+`DATABASE_URL` ficticio; `git diff --check` también quedó limpio. Una primera
+ejecución aislada no pudo abrir la carpeta temporal de pytest; al repetirla sin
+esa restricción, la verificación pasó completa. El detalle queda registrado en
+el documento principal de la funcionalidad.
 
 ## 2026-10-02 - Año lectivo: guardia de escritura en las rutas de solo admin
 

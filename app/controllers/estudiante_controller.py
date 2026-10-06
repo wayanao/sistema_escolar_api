@@ -15,6 +15,10 @@ ESTADOS_ESTUDIANTE = {"activo", "retirado", "egresado", "inactivo"}
 ESTADOS_FILTRO_ESTUDIANTE = ESTADOS_ESTUDIANTE | {"todos"}
 
 
+class CursoNoPerteneceAlAnioActivoError(Exception):
+    """El formulario actual intento usar un curso que no es del año activo."""
+
+
 def normalizar_estado_estudiante(estado, default="activo"):
     valor = str(estado or default).strip().lower()
     if valor not in ESTADOS_ESTUDIANTE:
@@ -31,6 +35,18 @@ def _build_estado_filter(estado):
     return "COALESCE(LOWER(estado), 'activo') = %s", [estado_normalizado]
 
 
+def _guardar_curso_vigente(cursor, estudiante_id, curso_id):
+    """Guarda la matricula activa y actualiza su copia en el estudiante."""
+    matriculado = anios_lectivos_repository.matricular_en_curso_del_anio_activo(
+        cursor, estudiante_id, curso_id
+    )
+    if not matriculado:
+        raise CursoNoPerteneceAlAnioActivoError(
+            "El curso seleccionado debe pertenecer al año lectivo activo."
+        )
+    anios_lectivos_repository.sincronizar_curso_vigente(cursor, estudiante_id)
+
+
 # 🎯 Crear estudiante
 def crear_estudiante_controller(est):
 
@@ -42,7 +58,6 @@ def crear_estudiante_controller(est):
             est.apellido,
             est.documento_identidad,
             est.fecha_nacimiento,
-            est.curso_id,
             est.descuento_matricula,
             est.descuento_mensualidad,
             est.datos_medicos,
@@ -74,11 +89,9 @@ def crear_estudiante_controller(est):
             est.condicion_diagnostico,
             estado
         ))
-        # Fase 1 del año lectivo: su matricula del año activo, en la misma
-        # transaccion.
-        anios_lectivos_repository.sincronizar_matricula_del_anio_activo(
-            cursor, estudiante_id
-        )
+        # Fase 5.1: la matricula es la fuente; `curso_id` solo es su copia del
+        # año activo. Las tres escrituras comparten esta transaccion.
+        _guardar_curso_vigente(cursor, estudiante_id, est.curso_id)
 
     return {
     "mensaje": "Estudiante creado correctamente",
@@ -192,7 +205,6 @@ def actualizar_estudiante_controller(est_id, est):
             est.apellido,
             est.documento_identidad,
             est.fecha_nacimiento,
-            est.curso_id,
             est.descuento_matricula,
             est.descuento_mensualidad,
             est.datos_medicos,
@@ -225,12 +237,10 @@ def actualizar_estudiante_controller(est_id, est):
             estado,
             est_id
         ))
-        # Fase 1 del año lectivo: si cambio el curso, la matricula del año
-        # activo lo sigue, en la misma transaccion.
+        # Fase 5.1: si cambia el curso, primero cambia la matricula activa y
+        # despues se actualiza su copia. Un curso de otro año revierte todo.
         if resultado:
-            anios_lectivos_repository.sincronizar_matricula_del_anio_activo(
-                cursor, est_id
-            )
+            _guardar_curso_vigente(cursor, est_id, est.curso_id)
 
     if resultado:
         return {"mensaje": "Estudiante actualizado correctamente", "id": resultado[0]}

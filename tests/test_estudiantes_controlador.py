@@ -2,9 +2,10 @@
 
 Eran los dos ultimos sitios desprotegidos del programa.
 
-Las dos escriben 35 columnas, asi que se fija el orden completo de los
-parametros: un desplazamiento silencioso ahi guardaria el telefono del padre en
-el campo de la madre sin lanzar ningun error.
+Desde la fase 5.1 del año lectivo, las dos escriben 34 datos globales. El curso
+se guarda en `matriculas` y luego se copia desde el año activo. Se fija el orden
+completo: un desplazamiento silencioso guardaria el telefono del padre en el
+campo de la madre sin lanzar ningun error.
 
 Tambien se fija la regla de estado al actualizar: la consulta usa
 COALESCE(%s, estado, 'activo'), de modo que enviar None CONSERVA el estado
@@ -29,6 +30,7 @@ CAMPOS = [
     "documento_padre", "ocupacion_madre", "tipo_documento_madre",
     "documento_madre", "condicion_diagnostico",
 ]
+CAMPOS_GLOBALES = [campo for campo in CAMPOS if campo != "curso_id"]
 
 
 def _estudiante(**overrides):
@@ -67,7 +69,7 @@ def cursor_de(monkeypatch):
     return instalar
 
 
-def test_crear_estudiante_inserta_los_35_campos_en_orden(cursor_de):
+def test_crear_estudiante_inserta_los_34_datos_globales_en_orden(cursor_de):
     cursor, commits = cursor_de(fila=(55,))
 
     respuesta = estudiante_controller.crear_estudiante_controller(
@@ -77,9 +79,10 @@ def test_crear_estudiante_inserta_los_35_campos_en_orden(cursor_de):
     query, params = cursor.calls[0]
     assert "INSERT INTO estudiantes" in query
     assert "RETURNING id" in query
-    assert len(params) == 35
-    assert list(params[:34]) == CAMPOS
-    assert params[34] == "activo"
+    assert "curso_id" not in query
+    assert len(params) == 34
+    assert list(params[:33]) == CAMPOS_GLOBALES
+    assert params[33] == "activo"
     assert commits == [True]
     assert respuesta == {"mensaje": "Estudiante creado correctamente", "id": 55}
 
@@ -90,10 +93,10 @@ def test_crear_estudiante_normaliza_el_estado(cursor_de):
     estudiante_controller.crear_estudiante_controller(_estudiante(estado="  ACTIVO  "))
 
     _, params = cursor.calls[0]
-    assert params[34] == "activo"
+    assert params[33] == "activo"
 
 
-def test_actualizar_estudiante_envia_los_35_campos_y_el_id(cursor_de):
+def test_actualizar_estudiante_envia_los_34_datos_globales_y_el_id(cursor_de):
     cursor, commits = cursor_de(fila=(55,))
 
     respuesta = estudiante_controller.actualizar_estudiante_controller(
@@ -103,10 +106,11 @@ def test_actualizar_estudiante_envia_los_35_campos_y_el_id(cursor_de):
     query, params = cursor.calls[0]
     assert "UPDATE estudiantes" in query
     assert "RETURNING id" in query
-    assert len(params) == 36
-    assert list(params[:34]) == CAMPOS
-    assert params[34] == "inactivo"
-    assert params[35] == 55
+    assert "curso_id" not in query
+    assert len(params) == 35
+    assert list(params[:33]) == CAMPOS_GLOBALES
+    assert params[33] == "inactivo"
+    assert params[34] == 55
     assert commits == [True]
     assert respuesta == {"mensaje": "Estudiante actualizado correctamente", "id": 55}
 
@@ -119,7 +123,7 @@ def test_actualizar_sin_estado_conserva_el_actual(cursor_de):
     query, params = cursor.calls[0]
     # El None viaja hasta el COALESCE, que se queda con el estado ya guardado.
     assert "estado = COALESCE(%s, estado, 'activo')" in query
-    assert params[34] is None
+    assert params[33] is None
 
 
 def test_actualizar_estudiante_inexistente_avisa_sin_id(cursor_de):

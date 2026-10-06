@@ -123,10 +123,12 @@ el del plan o el de la anotacion) y aplica esta regla:
   conceptos (`PUT /tipos-pagos/{id}`, `PUT .../configuracion`, `PUT` y
   `DELETE .../cursos`) y valores por estudiante (`PUT` y `DELETE
   /estudiantes/{id}/valores-pago-personalizados/{tipo_pago_id}`).
-- Sin guardia, a proposito: `POST /cursos` y `POST /tipos-pagos` (siempre
-  crean en el año activo), materias (no tienen año; ver el aviso al
-  renombrar), estudiantes y pagos (un pago se registra en el año de la deuda,
-  aunque este cerrado: decision 6). `DELETE /tipos-pagos/{id}` nunca escribe.
+- Sin la guardia general, a proposito: `POST /cursos` y `POST /tipos-pagos`
+  (siempre crean en el año activo), materias (no tienen año; ver el aviso al
+  renombrar) y pagos (un pago se registra en el año de la deuda, aunque este
+  cerrado: decision 6). `POST /estudiantes` y `PUT /estudiantes/{id}` tienen
+  desde la fase 5.1 una proteccion mas concreta: el curso enviado debe ser del
+  año activo. `DELETE /tipos-pagos/{id}` nunca escribe.
 - `POST /observador` no la lleva: la anotacion nueva nace siempre en el año
   activo.
 - En asistencia, boletin y observaciones, la comprobacion de que el
@@ -160,6 +162,12 @@ Notas:
 ```
 
 - Estados validos: `activo`, `retirado`, `egresado`, `inactivo`.
+- En `POST /estudiantes` y `PUT /estudiantes/{estudiante_id}`, el cuerpo no
+  cambia: `curso_id` sigue siendo obligatorio. El servidor guarda ese curso
+  en la matrícula del año activo y después sincroniza
+  `estudiantes.curso_id`, que es solo su copia vigente. Un curso inexistente o
+  de otro año responde `409` con `El curso seleccionado debe pertenecer al año
+  lectivo activo.` Ninguna de las dos escrituras queda aplicada en ese caso.
 - `GET /estudiantes/{estudiante_id}/deudas` devuelve solo deuda academica
   pendiente del estudiante usando la logica central de cobros; no depende del
   resumen amplio de notas, observaciones o inventario.

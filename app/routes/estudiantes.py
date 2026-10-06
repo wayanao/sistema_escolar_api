@@ -6,6 +6,7 @@ from app.schemas.estudiante import EstudianteCreate, EstudianteEstadoUpdate
 
 # 👇 IMPORTAMOS CONTROLLER
 from app.controllers.estudiante_controller import (
+    CursoNoPerteneceAlAnioActivoError,
     ESTADOS_FILTRO_ESTUDIANTE,
     crear_estudiante_controller,
     obtener_deudas_estudiante_controller,
@@ -24,8 +25,10 @@ router = APIRouter(tags=["Estudiantes"], dependencies=[Depends(get_current_activ
 # 🚀 Crear estudiante
 @router.post("/estudiantes")
 def crear_estudiante(est: EstudianteCreate):
-
-    estudiante_id = crear_estudiante_controller(est)
+    try:
+        estudiante_id = crear_estudiante_controller(est)
+    except CursoNoPerteneceAlAnioActivoError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
     return {
         "mensaje": "Estudiante creado",
@@ -103,7 +106,10 @@ def obtener_estudiante_por_id(estudiante_id: int):
 # ✏️ Actualizar estudiante
 @router.put("/estudiantes/{estudiante_id}")
 def actualizar_estudiante(estudiante_id: int, est: EstudianteCreate):
-    return actualizar_estudiante_controller(estudiante_id, est)
+    try:
+        return actualizar_estudiante_controller(estudiante_id, est)
+    except CursoNoPerteneceAlAnioActivoError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
 @router.patch("/estudiantes/{estudiante_id}/estado")

@@ -78,6 +78,23 @@ Repositorio existente:
 
 La carpeta `app/repositories/README.md` indica que los repositorios deben recibir datos simples, devolver datos simples y no conocer detalles HTTP de FastAPI.
 
+### Año lectivo: matrícula y curso vigente
+
+Desde la fase 5.1, la matrícula es la fuente del curso de un estudiante por
+año. `estudiantes.curso_id` es únicamente la copia del curso del año activo:
+
+- `estudiante_controller` guarda primero la matrícula mediante
+  `matricular_en_curso_del_anio_activo`;
+- solo `anios_lectivos_repository.sincronizar_curso_vigente` escribe
+  `estudiantes.curso_id`;
+- el alta y la edición actuales conservan el mismo cuerpo y respuesta, pero
+  rechazan con `409` un curso que no pertenezca al año activo;
+- matrícula, copia vigente y datos globales se actualizan en una sola
+  transacción de `get_cursor(commit=True)`.
+
+La consulta de control de `docs/funcionalidades/ANIO_LECTIVO.md` debe devolver
+siempre 0 filas.
+
 ## Routers incluidos en `main.py`
 
 `main.py` incluye routers de:

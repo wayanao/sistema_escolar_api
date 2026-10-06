@@ -6,7 +6,9 @@ mismo INSERT (sin una consulta mas ni un parametro mas), y crear o editar un
 estudiante deja su matricula del año activo igual a su curso, en la misma
 transaccion. Los dos INSERT de pagos los fijan sus propias pruebas
 (`test_pagos_adelantados.py`, `test_pagos_escrituras_caracterizacion.py`) y la
-siembra del alta de colegios, `test_super_admin_caracterizacion.py`.
+siembra del alta de colegios, `test_super_admin_caracterizacion.py`. Desde la
+fase 5.1, crear o editar un estudiante guarda primero su matrícula activa y
+solo `sincronizar_curso_vigente` escribe la copia `estudiantes.curso_id`.
 """
 from contextlib import contextmanager
 from types import SimpleNamespace
@@ -67,23 +69,36 @@ def test_el_año_activo_es_una_subconsulta_por_estado():
     assert ANIO_ACTIVO_ID_SQL == SUBCONSULTA
 
 
-def test_sincronizar_crea_o_corrige_la_matricula_del_año_activo():
-    cursor = CursorEspia()
+def test_matricular_crea_o_corrige_la_matricula_del_año_activo():
+    cursor = CursorEspia(una=[(4,)])
 
-    anios_lectivos_repository.sincronizar_matricula_del_anio_activo(cursor, 55)
+    guardada = anios_lectivos_repository.matricular_en_curso_del_anio_activo(
+        cursor, 55, 4
+    )
 
     assert len(cursor.ejecutadas) == 1
     query, params = cursor.ejecutadas[0]
     sql = _normalizado(query)
-    assert params == (55,)
+    assert guardada is True
+    assert params == (55, 4)
     assert sql.startswith("INSERT INTO matriculas (estudiante_id, curso_id, anio_lectivo_id)")
-    # El año sale del curso, como en la migracion A: coincide siempre con la
-    # clave foranea compuesta (curso_id, anio_lectivo_id).
-    assert "SELECT e.id, e.curso_id, c.anio_lectivo_id FROM estudiantes e" in sql
-    assert "JOIN cursos c ON c.id = e.curso_id" in sql
+    assert "SELECT %s, c.id, c.anio_lectivo_id FROM cursos c" in sql
     assert "AND al.estado = 'activo'" in sql
     assert "ON CONFLICT (estudiante_id, anio_lectivo_id) DO UPDATE SET curso_id = EXCLUDED.curso_id" in sql
     assert "DELETE" not in sql.upper()
+
+
+def test_sincronizar_copia_al_estudiante_el_curso_de_la_matricula_activa():
+    cursor = CursorEspia()
+
+    anios_lectivos_repository.sincronizar_curso_vigente(cursor, 55)
+
+    query, params = cursor.ejecutadas[0]
+    sql = _normalizado(query)
+    assert params == (55,)
+    assert "LEFT JOIN matriculas m" in sql
+    assert "al.estado = 'activo'" in sql
+    assert "UPDATE estudiantes e SET curso_id = cv.curso_id" in sql
 
 
 def test_el_alta_siembra_el_año_como_activo():
@@ -191,6 +206,12 @@ def estudiante_espiado(monkeypatch):
         espia.eventos.append(("actualiza", cursor_recibido is cursor))
         return espia.resultado_actualizar
 
+    def matricular(cursor_recibido, estudiante_id, curso_id):
+        espia.eventos.append(
+            ("matricula", cursor_recibido is cursor, estudiante_id, curso_id)
+        )
+        return True
+
     def sincronizar(cursor_recibido, estudiante_id):
         espia.eventos.append(("sincroniza", cursor_recibido is cursor, estudiante_id))
 
@@ -199,7 +220,12 @@ def estudiante_espiado(monkeypatch):
     monkeypatch.setattr(estudiante_controller.estudiantes_repository, "actualizar_estudiante", actualizar)
     monkeypatch.setattr(
         estudiante_controller.anios_lectivos_repository,
-        "sincronizar_matricula_del_anio_activo",
+        "matricular_en_curso_del_anio_activo",
+        matricular,
+    )
+    monkeypatch.setattr(
+        estudiante_controller.anios_lectivos_repository,
+        "sincronizar_curso_vigente",
         sincronizar,
     )
     return espia
@@ -233,6 +259,7 @@ def test_crear_estudiante_sincroniza_su_matricula_en_la_misma_transaccion(estudi
     assert estudiante_espiado.eventos == [
         ("abre", True),
         ("inserta", True),
+        ("matricula", True, 55, 4),
         ("sincroniza", True, 55),
         ("cierra",),
     ]
@@ -245,6 +272,7 @@ def test_editar_estudiante_sincroniza_su_matricula_en_la_misma_transaccion(estud
     assert estudiante_espiado.eventos == [
         ("abre", True),
         ("actualiza", True),
+        ("matricula", True, 55, 4),
         ("sincroniza", True, 55),
         ("cierra",),
     ]

@@ -2,8 +2,10 @@
 
 ## Control
 
-- Estado: **Fase 5 iniciada el 2026-10-05 con autorización explícita del
-  usuario; inventario y plan por pasos escritos, sin código todavía.** La
+- Estado: **Fase 5 en curso; paso 5.1 terminado el 2026-10-05, pendiente de
+  revisión y commit del usuario.** La matrícula del año activo ya es la fuente
+  del curso vigente y solo `sincronizar_curso_vigente` escribe
+  `estudiantes.curso_id`. No se inició el paso 5.2 ni se creó 2027. La
   fase 4 (frontend) quedó completa y fue confirmada en los commits
   `8eac0ce` del frontend y `ce8d7a7` de documentación en este repo. Se inició
   el 2026-10-03;
@@ -2486,21 +2488,42 @@ repo tocado y `git diff --check`; se documenta y se detiene antes del
 siguiente. Antes de cada cambio de dinero o migración se vuelve a explicar el
 alcance en palabras simples.
 
-**Ojo, hallazgo del 2026-10-03** (inventario de la fase 4 del frontend):
-crear o editar un estudiante (`estudiante_controller.py`) no valida de qué
-año es el curso. Guarda `estudiantes.curso_id` con el curso que llegue, y
-`sincronizar_matricula_del_anio_activo` solo actúa si ese curso es del año
-activo. Con un curso de 2027, el estudiante quedaría con ese curso y su
-matrícula de 2026 sin cambiar: la consulta de control dejaría de dar 0 y el
-estudiante desaparecería de las pantallas de sus profesores de 2026. Hoy no
-puede pasar: todos los cursos son de 2026, y `GET /cursos` sin año solo
-ofrece los del activo. El frontend, además, deja Estudiantes en solo
-consulta mientras se mira otro año (su paso 4.4). Hay que cerrarlo en el
-backend **antes de crear el primer curso de 2027**: mientras la dirección
-siga siendo estudiante → matrícula, rechazar un curso que no sea del año
-activo; con la dirección definitiva de esta fase (matrícula →
-`estudiantes.curso_id`), el estudiante nuevo de un año en preparación
-recibe solo su matrícula (punto 3).
+**Avance del 2026-10-05 — paso 5.1 terminado, sin commit:**
+
+- Se caracterizó primero el camino existente: 27 pruebas pasaron antes del
+  cambio. Después se escribieron las pruebas del nuevo contrato y se comprobó
+  que fallaban contra el código anterior por las funciones y protecciones que
+  todavía no existían.
+- `POST /estudiantes` y `PUT /estudiantes/{id}` conservan su cuerpo y su
+  respuesta para el año activo. El alta o la edición guarda primero el curso
+  en `matriculas`; luego `sincronizar_curso_vigente` copia desde la matrícula
+  activa a `estudiantes.curso_id`, dentro de la misma transacción.
+- El `INSERT` y el `UPDATE` de los datos globales del estudiante ya no escriben
+  `curso_id`. Una búsqueda de todas las escrituras en `app/` confirma que
+  `sincronizar_curso_vigente` es la única que actualiza esa columna.
+- Si el curso no existe o no pertenece al año activo, el upsert no guarda
+  nada, la API responde `409` y la transacción revierte también el alta o la
+  edición global. Así la consulta de control no puede quedar descuadrada por
+  este camino.
+- No se cambió el esquema ni se creó una migración. Tampoco se consultó la
+  base real: la consulta de control de producción no se ejecutó, respetando la
+  prohibición de acceso. La dirección del SQL y sus pruebas garantizan que,
+  partiendo de control 0, crear o editar conserva ese 0.
+- Pruebas específicas: **36 pasaron** en
+  `test_estudiantes_controlador.py`, `test_anio_lectivo_escrituras.py`,
+  `test_anio_lectivo_matriculas.py` y
+  `test_migracion_anios_lectivos_obligatorio.py`. Verificación global con
+  `DATABASE_URL` ficticio: `scripts/verify.py` → **2025 pruebas pasan**, Ruff
+  y `pip check` limpios. La primera ejecución aislada tuvo 30 errores de
+  permisos al abrir la carpeta temporal de pytest; repetida fuera de esa
+  restricción pasó completa. `git diff --check` quedó limpio.
+
+**Resuelto en 5.1 — hallazgo del 2026-10-03:** crear o editar un estudiante ya
+no puede dejar `estudiantes.curso_id` apuntando a un curso de otro año. El
+frontend mantiene Estudiantes en solo consulta al mirar otro año, pero la
+protección decisiva está ahora en el backend. El flujo distinto para crear un
+estudiante directamente en un año en preparación corresponde al paso 5.5 y no
+se adelantó aquí.
 
 ### Fase 6 — Activar el año nuevo, cerrar y reabrir (antes de iniciar clases 2027)
 
@@ -2751,7 +2774,7 @@ cosa, gana lo que se pueda verificar.
   crear o editar un estudiante no valida el año del curso (ver "Ojo" en la
   fase 5).
 - **Fase 5 iniciada el 2026-10-05 con autorización explícita del usuario:**
-  inventario y plan de diez pasos (5.1 a 5.10) escritos, todavía sin código.
+  inventario y plan de diez pasos (5.1 a 5.10) escritos.
   El usuario aprobó que las altas manuales de cursos y conceptos acepten el
   año opcional, que el impreso/CSV de Cartera identifique el año y que el
   certificado de matrícula proponga el año consultado. Al iniciar, ambos
@@ -2761,6 +2784,15 @@ cosa, gana lo que se pueda verificar.
   `scripts/verify.py`, 2016 pruebas, Ruff y `pip check` limpios; en el
   frontend, `pnpm run check:deploy`, 2210 pruebas en 341 archivos, lint y
   build limpios; `git diff --check` limpio en ambos repos.
+- **Paso 5.1 terminado el 2026-10-05, pendiente de revisión y commit:** la
+  matrícula activa pasó a ser la fuente del curso vigente;
+  `sincronizar_curso_vigente` quedó como única escritura de
+  `estudiantes.curso_id`; y un curso inexistente o ajeno al año activo produce
+  `409` y revierte la transacción. El cuerpo y la respuesta existentes no
+  cambian. No hubo migración ni acceso a bases reales. Caracterización previa:
+  27 pruebas. Pruebas específicas finales: 36. Verificación global:
+  `scripts/verify.py`, 2025 pruebas, Ruff y `pip check` limpios, más
+  `git diff --check` limpio. Detalle en el "Avance" de la fase 5.
 - **Hecho aparte, la noche del 2026-09-30:** el arreglo de la hora
   (`2e77634` en este repo, `033c042` en el frontend). Cobros, cartera y
   alta de colegios usan la fecha de Colombia (`app/core/fechas.py`), y el
@@ -2790,12 +2822,13 @@ cosa, gana lo que se pueda verificar.
   correr si falta `$env:DATABASE_URL`. Antes de probar la app contra una
   rama, detener el backend local que esté corriendo; si no, el frontend
   sigue hablando con el que apunta a producción.
-- **Siguiente acción exacta:** el usuario revisa y hace el commit de este
-  inventario/plan. Después, y solo con su autorización explícita para el
-  paso, viene **5.1 — Blindar la matrícula y el curso vigente**: pruebas de
-  caracterización primero, `sincronizar_curso_vigente` como única escritura
-  de `estudiantes.curso_id` y rechazo de cursos que no sean del activo en el
-  camino actual. No empezar todavía 5.2 ni crear 2027. Sigue abierta, para
-  antes de la fase 6, la pregunta separada de Certificados y estudiantes
-  retirados/egresados.
+- **Siguiente acción exacta:** el usuario revisa y hace el commit del paso
+  5.1. Después, y solo con autorización explícita para ese paso, viene **5.2 —
+  Migración de orígenes**: pruebas de texto primero y SQL incremental para
+  `cursos.curso_origen_id` y `tipos_de_pagos.tipo_pago_origen_id`, con sus
+  claves foráneas e índices. Antes de tocarla hay que volver a explicar el
+  riesgo; el asistente no la ejecutará en Neon ni en producción y el usuario
+  controlará la rama y la posterior regeneración del esquema base. No empezar
+  todavía 5.2 ni crear 2027. Sigue abierta, para antes de la fase 6, la
+  pregunta separada de Certificados y estudiantes retirados/egresados.
 - Prompt para retomar: `docs/funcionalidades/PROMPT_CONTINUACION_ANIO_LECTIVO.md`.

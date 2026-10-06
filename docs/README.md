@@ -39,7 +39,8 @@ continuacion para retomarla en otro chat u otro LLM.
 - `funcionalidades/ANIO_LECTIVO.md`: años lectivos (cursos por año,
   matriculas, cobros por año, consulta de años cerrados, preparar y activar
   el año siguiente). Incluye un error de cobros que aparece el 2027-01-01.
-  **Disenado, nada implementado. Fecha limite: noviembre de 2026.**
+  **Fases 0 a 4 completas; fase 5 en curso, con el paso 5.1 terminado y
+  pendiente de commit. Fecha limite: noviembre de 2026.**
 
 ## Estado actual resumido
 

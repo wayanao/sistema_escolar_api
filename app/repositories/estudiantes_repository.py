@@ -6,11 +6,10 @@ la conexion, el cursor, el `commit`, el `rollback`, la normalizacion de estado,
 la construccion del filtro y el formateo de la respuesta siguen siendo del
 controlador, igual que en `pagos_repository`.
 
-Las cadenas SQL se conservan con su texto original, incluida la sangria, para
-que lo que recibe PostgreSQL no cambie. Cinco lineas del INSERT y del UPDATE
-terminan en un espacio en el codigo heredado; se conserva con `\\x20` explicito,
-como hicieron 4.3 y 5.2, para no alterar el valor y mantener limpio
-`git diff --check`.
+Las cadenas SQL heredadas conservan su sangria y los espacios significativos
+con `\\x20` explicito. Excepcion de producto: en la fase 5.1 del año lectivo,
+el INSERT y el UPDATE dejaron de incluir `curso_id`; ese valor vive en
+`matriculas` y solo se copia desde el año activo.
 
 Las consultas del filtro llegan ya construidas desde el controlador. El
 fragmento `where_sql` no es entrada del cliente: sale de literales del propio
@@ -25,10 +24,11 @@ from app.repositories.anios_lectivos_repository import condicion_anio
 
 
 def insertar_estudiante(cursor, valores):
-    """Inserta un estudiante con sus 35 columnas y devuelve su id.
+    """Inserta los 34 datos globales del estudiante y devuelve su id.
 
     El orden de `valores` es contrato: un desplazamiento guardaria el telefono
-    del padre en el campo de la madre sin lanzar ningun error.
+    del padre en el campo de la madre sin lanzar ningun error. El curso vive en
+    `matriculas`; `sincronizar_curso_vigente` mantiene aqui su copia activa.
     """
     cursor.execute("""
             INSERT INTO estudiantes
@@ -37,7 +37,6 @@ def insertar_estudiante(cursor, valores):
             apellido,
             documento_identidad,
             fecha_nacimiento,
-            curso_id,\x20
             descuento_matricula,\x20
             descuento_mensualidad,
             datos_medicos,
@@ -69,14 +68,14 @@ def insertar_estudiante(cursor, valores):
             condicion_diagnostico,
             estado
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
         """, valores)
     return cursor.fetchone()[0]
 
 
 def actualizar_estudiante(cursor, valores):
-    """Actualiza las 35 columnas de un estudiante y devuelve la fila afectada.
+    """Actualiza los 34 datos globales y devuelve la fila afectada.
 
     `estado = COALESCE(%s, estado, 'activo')` es lo que hace que enviar `None`
     conserve el estado guardado en vez de sobrescribirlo.
@@ -87,7 +86,6 @@ def actualizar_estudiante(cursor, valores):
             apellido = %s,
             documento_identidad = %s,
             fecha_nacimiento = %s,
-            curso_id = %s,\x20
             descuento_matricula = %s,\x20
             descuento_mensualidad = %s,
             datos_medicos = %s,

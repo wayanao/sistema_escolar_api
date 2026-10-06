@@ -768,5 +768,10 @@ Estado al 2026-10-06:
   columnas, las dos claves foráneas y los dos índices.
 - Verificación local final: 41 pruebas específicas y 2032 globales pasan; Ruff,
   `pip check` y `git diff --check` limpios.
-- **No aplicada en producción.** El usuario controla su publicación. La
-  migración y la base regenerada quedan juntas para el commit.
+- La migración y la base regenerada quedaron juntas en el commit `a6f3cc0`,
+  confirmado `Live` en Render antes de la aplicación productiva.
+- **Aplicada en producción el 2026-10-06** a `tenant_colegio_1` y
+  `tenant_2005`: simulación `PENDIENTE`, aplicación `OK` y simulación posterior
+  `OMITIDA (ya aplicada)` en ambos. No rellenó ni borró datos existentes.
+- A partir de aquí el archivo no se puede editar: el runner guarda su checksum.
+  Cualquier cambio posterior debe ir en una migración nueva.

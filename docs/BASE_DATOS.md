@@ -159,8 +159,9 @@ Nota sobre año lectivo y matrículas:
   opcionales `cursos.curso_origen_id` y
   `tipos_de_pagos.tipo_pago_origen_id`. Permitirán saber de qué registro del
   año anterior salió una copia; los registros creados desde cero tendrán
-  `NULL`. Al 2026-10-06 el usuario la probó y aplicó en una rama de Neon y
-  regeneró desde allí el esquema base; todavía no se aplicó en producción.
+  `NULL`. El 2026-10-06 el usuario la probó y aplicó en una rama de Neon,
+  regeneró desde allí el esquema base y después la aplicó y verificó en los
+  dos tenants de producción.
 
 Nota sobre `plan_de_clases`:
 

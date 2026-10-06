@@ -28,7 +28,11 @@ tenants pasaron por `PENDIENTE`, `OK` y después `OMITIDA (ya aplicada)`. Regene
 el esquema base desde `tenant_colegio_1`; conservó 34 tablas, 1 función y 1
 disparador, y el diff solo incorporó las dos columnas, claves e índices más la
 cabecera de la migración. Pasan 41 pruebas específicas y 2032 globales; Ruff,
-`pip check` y `git diff --check` están limpios. No se aplicó en producción.
+`pip check` y `git diff --check` están limpios. La migración y la base quedaron
+en `a6f3cc0`; el usuario confirmó el despliegue `Live` en Render y después la
+aplicó en producción. En `tenant_colegio_1` y `tenant_2005`, la secuencia fue
+`PENDIENTE` → `OK` → `OMITIDA (ya aplicada)`. No se rellenó ni borró ningún
+dato existente.
 
 ## 2026-10-05 - Año lectivo 5.1: la matrícula manda sobre el curso vigente
 

@@ -3,9 +3,10 @@
 ## Control
 
 - Estado: **Fase 5 en curso; paso 5.1 confirmado en el commit `d113e15` y
-  paso 5.2 terminado el 2026-10-06, pendiente de revisión y commit.** El
-  usuario probó la migración en una rama de Neon, la aplicó allí a los dos
-  tenants y regeneró el esquema base. No se inició 5.3 ni se creó 2027. La
+  paso 5.2 completo en producción desde el 2026-10-06.** El commit `a6f3cc0`
+  quedó `Live` en Render; el usuario probó primero la migración en una rama de
+  Neon, regeneró el esquema base y después la aplicó y verificó en los dos
+  tenants de producción. No se inició 5.3 ni se creó 2027. La
   matrícula del año activo ya es la fuente del curso vigente y solo
   `sincronizar_curso_vigente` escribe `estudiantes.curso_id`. La
   fase 4 (frontend) quedó completa y fue confirmada en los commits
@@ -2527,7 +2528,7 @@ protección decisiva está ahora en el backend. El flujo distinto para crear un
 estudiante directamente en un año en preparación corresponde al paso 5.5 y no
 se adelantó aquí.
 
-**Avance del 2026-10-06 — paso 5.2 terminado, sin commit:**
+**Avance del 2026-10-06 — paso 5.2 terminado y en producción:**
 
 - Antes del cambio pasaron **34 pruebas** de las migraciones de año lectivo y
   de la compuerta del esquema base.
@@ -2557,9 +2558,12 @@ se adelantó aquí.
 - Verificación final: **41 pruebas específicas pasan** (migraciones A, B,
   orígenes y esquema base); `scripts/verify.py` → **2032 pruebas pasan**, Ruff
   y `pip check` limpios; `git diff --check` limpio.
-- No se aplicó la migración en producción y no se hizo commit, push ni
-  despliegue. La migración y el esquema base regenerado quedan juntos en el
-  cambio local, como exige `docs/MIGRACIONES.md`.
+- La migración y el esquema base regenerado quedaron juntos en `a6f3cc0`. El
+  usuario hizo push y confirmó ese commit como `Live` en Render antes de tocar
+  la base real.
+- En producción, el `--dry-run` mostró `PENDIENTE` en `tenant_colegio_1` y
+  `tenant_2005`; la aplicación terminó `OK` en ambos y el `--dry-run` final los
+  mostró `OMITIDA (ya aplicada)`. No se borró ni se rellenó ningún dato.
 
 ### Fase 6 — Activar el año nuevo, cerrar y reabrir (antes de iniciar clases 2027)
 
@@ -2829,14 +2833,16 @@ cosa, gana lo que se pueda verificar.
   27 pruebas. Pruebas específicas finales: 36. Verificación global:
   `scripts/verify.py`, 2025 pruebas, Ruff y `pip check` limpios, más
   `git diff --check` limpio. Detalle en el "Avance" de la fase 5.
-- **Paso 5.2 terminado el 2026-10-06, pendiente de revisión y commit:** pruebas
+- **Paso 5.2 completo en producción el 2026-10-06 (`a6f3cc0`):** pruebas
   primero y migración incremental para las dos columnas de origen, sus claves
-  foráneas autorreferentes y sus índices. El usuario la probó y aplicó en una
-  rama de Neon: `PENDIENTE` → `OK` → `OMITIDA` en los dos tenants, y regeneró
-  desde allí el esquema base (34 tablas, 1 función, 1 disparador). El diff
-  generado solo contiene las seis piezas esperadas y la cabecera. Verificación:
-  41 pruebas específicas y 2032 globales pasan, Ruff, `pip check` y
-  `git diff --check` limpios. No se aplicó en producción.
+  foráneas autorreferentes y sus índices. En la rama de Neon pasó por
+  `PENDIENTE` → `OK` → `OMITIDA` en los dos tenants; el usuario regeneró desde
+  allí el esquema base (34 tablas, 1 función, 1 disparador). El diff generado
+  solo contiene las seis piezas esperadas y la cabecera. Verificación: 41
+  pruebas específicas y 2032 globales pasan, Ruff, `pip check` y
+  `git diff --check` limpios. Después del push, el usuario confirmó `a6f3cc0`
+  `Live` en Render y repitió en producción la secuencia `PENDIENTE` → `OK` →
+  `OMITIDA` en `tenant_colegio_1` y `tenant_2005`.
 - **Hecho aparte, la noche del 2026-09-30:** el arreglo de la hora
   (`2e77634` en este repo, `033c042` en el frontend). Cobros, cartera y
   alta de colegios usan la fecha de Colombia (`app/core/fechas.py`), y el
@@ -2866,11 +2872,10 @@ cosa, gana lo que se pueda verificar.
   correr si falta `$env:DATABASE_URL`. Antes de probar la app contra una
   rama, detener el backend local que esté corriendo; si no, el frontend
   sigue hablando con el que apunta a producción.
-- **Siguiente acción exacta:** el usuario revisa y hace el commit único del
-  paso 5.2, que incluye migración y esquema base. Después, y solo con
-  autorización explícita, viene **5.3 — Crear el año y permitir altas manuales
-  en preparación**. No iniciar todavía 5.3 ni crear 2027. La migración sigue
-  sin aplicarse en producción; el usuario controla cuándo publicarla. Sigue
-  abierta, para antes de la fase 6, la pregunta separada de Certificados y
-  estudiantes retirados/egresados.
+- **Siguiente acción exacta:** el usuario revisa y hace un commit documental
+  que registre la aplicación en producción. Después, y solo con autorización
+  explícita, viene **5.3 — Crear el año y permitir altas manuales en
+  preparación**. No iniciar todavía 5.3 ni crear 2027. Sigue abierta, para
+  antes de la fase 6, la pregunta separada de Certificados y estudiantes
+  retirados/egresados.
 - Prompt para retomar: `docs/funcionalidades/PROMPT_CONTINUACION_ANIO_LECTIVO.md`.

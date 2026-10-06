@@ -1,6 +1,11 @@
 from app.database import get_connection
 from app.repositories.anios_lectivos_repository import ANIO_ACTIVO_ID_SQL, condicion_anio
-from app.services.anio_lectivo import exigir_anio_lectivo, exigir_cursos_editables_para_admin
+from app.services.anio_lectivo import (
+    AnioLectivoNoEditableError,
+    exigir_anio_editable_para_admin,
+    exigir_anio_lectivo,
+    exigir_cursos_editables_para_admin,
+)
 from psycopg2 import IntegrityError
 
 ESTADOS_CURSO = {"activo", "inactivo"}
@@ -24,13 +29,16 @@ def _validar_nombre_obligatorio(nombre):
         raise ValueError("El nombre del curso es obligatorio.")
 
 
-def _validar_curso_unico(cursor, nombre, jornada, curso_id=None):
+def _validar_curso_unico(
+    cursor, nombre, jornada, curso_id=None, anio_lectivo_id=None
+):
     # Fase 3 del año lectivo: el nombre se repite una vez por año, como el
-    # indice unico de la migracion A. Un curso nuevo nace en el año activo; uno
-    # que se edita se compara con los de su propio año. Sin esto, copiar los
-    # cursos a 2027 (fase 5) fallaria como "repetido".
-    if curso_id is None:
+    # indice unico de la migracion A. Un curso nuevo se compara con el año
+    # pedido (o el activo si se omitió); uno editado, con su propio año.
+    if curso_id is None and anio_lectivo_id is None:
         anio_sql, params_anio = ANIO_ACTIVO_ID_SQL, ()
+    elif curso_id is None:
+        anio_sql, params_anio = "%s", (anio_lectivo_id,)
     else:
         anio_sql = "(SELECT anio_lectivo_id FROM cursos WHERE id = %s)"
         params_anio = (curso_id,)
@@ -84,27 +92,44 @@ def crear_curso_controller(curso):
     try:
         nombre = _upper_text(curso.nombre)
         jornada = _normalizar_jornada(curso.jornada)
+        anio_lectivo_id = getattr(curso, "anio_lectivo_id", None)
         _validar_nombre_obligatorio(nombre)
-        _validar_curso_unico(cursor, nombre, jornada)
+        if anio_lectivo_id is not None:
+            anio = exigir_anio_lectivo(cursor, anio_lectivo_id)
+            exigir_anio_editable_para_admin((anio[1], anio[2]))
+        _validar_curso_unico(
+            cursor,
+            nombre,
+            jornada,
+            anio_lectivo_id=anio_lectivo_id,
+        )
 
-        # Fase 1 del año lectivo: el curso nace en el año activo.
-        cursor.execute(f"""
-            INSERT INTO cursos (nombre, jornada, estado, nivel, director_grupo_id, anio_lectivo_id)
-            VALUES (%s, %s, %s, %s, %s, {ANIO_ACTIVO_ID_SQL})
-            RETURNING id
-        """, (
+        valores = (
             nombre,
             jornada,
             _normalizar_estado(curso.estado),
             curso.nivel,
             curso.director_grupo_id,
-        ))
+        )
+        if anio_lectivo_id is None:
+            # Camino anterior, conservado literalmente: nace en el año activo.
+            cursor.execute(f"""
+                INSERT INTO cursos (nombre, jornada, estado, nivel, director_grupo_id, anio_lectivo_id)
+                VALUES (%s, %s, %s, %s, %s, {ANIO_ACTIVO_ID_SQL})
+                RETURNING id
+            """, valores)
+        else:
+            cursor.execute("""
+                INSERT INTO cursos (nombre, jornada, estado, nivel, director_grupo_id, anio_lectivo_id)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                RETURNING id
+            """, (*valores, anio_lectivo_id))
 
         curso_id = cursor.fetchone()[0]
 
         conn.commit()
         return curso_id
-    except (CursoDuplicadoError, ValueError):
+    except (CursoDuplicadoError, ValueError, AnioLectivoNoEditableError):
         conn.rollback()
         raise
     except IntegrityError as exc:

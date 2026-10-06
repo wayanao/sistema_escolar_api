@@ -269,6 +269,47 @@ def leer_anio_activo(cursor):
     return cursor.fetchone()
 
 
+def leer_anio_activo_para_actualizar(cursor):
+    """El año activo, bloqueado mientras se crea el siguiente.
+
+    Dos peticiones de creación quedan así en fila sobre el mismo año activo.
+    La segunda verá el año en preparación que dejó la primera y no intentará
+    crear otro.
+    """
+    cursor.execute(
+        "SELECT id, anio, estado FROM anios_lectivos "
+        "WHERE estado = 'activo' FOR UPDATE"
+    )
+    return cursor.fetchone()
+
+
+def leer_anio_en_preparacion(cursor):
+    """El único año en preparación, o `None` si todavía no existe."""
+    cursor.execute(
+        "SELECT id, anio, estado FROM anios_lectivos WHERE estado = 'preparacion'"
+    )
+    return cursor.fetchone()
+
+
+def crear_anio_en_preparacion(cursor, anio):
+    """Crea un año en preparación y devuelve `(id, anio, estado)`.
+
+    Los índices únicos de la tabla son la última defensa ante una carrera o
+    ante un año ya existente. `DO NOTHING` permite traducir el choque a un
+    error de negocio sin dejar abortada la transacción.
+    """
+    cursor.execute(
+        """
+        INSERT INTO anios_lectivos (anio, estado)
+        VALUES (%s, 'preparacion')
+        ON CONFLICT DO NOTHING
+        RETURNING id, anio, estado
+        """,
+        (anio,),
+    )
+    return cursor.fetchone()
+
+
 def crear_anio_activo_inicial(cursor, anio):
     """Siembra el año activo de un colegio recien creado.
 

@@ -6,6 +6,34 @@ Ultima revision documental: 2026-10-06.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
+## 2026-10-06 - Año lectivo 5.3: crear y preparar el año siguiente
+
+Tercer paso de la fase 5 de `docs/funcionalidades/ANIO_LECTIVO.md`.
+
+### Qué cambia
+
+- `POST /anios-lectivos`, solo para admin y sin cuerpo, calcula el año activo
+  `N` y crea exactamente `N+1` en estado `preparacion`. No permite que el
+  frontend elija el número.
+- La creación es transaccional, bloquea el activo y responde `409` si ya hay
+  otro año en preparación, si no existe un activo o si `N+1` ya existe.
+- `POST /cursos` y `POST /tipos-pagos` aceptan `anio_lectivo_id` positivo y
+  opcional. Con él, validan que el año exista y sea editable para el admin;
+  sin él, conservan el camino, SQL, parámetros y respuestas del año activo.
+- Los cuerpos de edición no reciben el campo: un curso o concepto existente no
+  se puede mover de año por accidente.
+- No hay migración, copia automática ni acceso a una base real. Este paso no
+  crea 2027 por sí mismo; deja listo el endpoint para que el usuario lo haga
+  más adelante desde la pantalla de la fase 5.7.
+
+### Pruebas
+
+Antes del cambio pasaron 258 pruebas de caracterización. Las primeras 14
+pruebas nuevas fallaron porque el contrato aún no existía; después se sumaron 3
+comprobaciones de regresión de las rutas. Al final pasaron 275 pruebas
+específicas, incluidas las 17 nuevas, sin cambiar el comportamiento del año
+activo. `scripts/verify.py` pasó con 2049 pruebas, Ruff y `pip check` limpios.
+
 ## 2026-10-06 - Año lectivo 5.2: orígenes para las copias entre años
 
 Segundo paso de la fase 5 de `docs/funcionalidades/ANIO_LECTIVO.md`.

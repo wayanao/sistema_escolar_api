@@ -75,6 +75,7 @@ Notas:
 ## Años lectivos
 
 - `GET /anios-lectivos`
+- `POST /anios-lectivos` (solo admin)
 
 Notas:
 
@@ -87,6 +88,14 @@ Notas:
 - Es la lista del selector de año del frontend (su fase 4). Los listados
   que acepten `?anio_lectivo_id=` (pasos 3.2 a 3.5) usan el activo si no
   llega; un profesor que pida otro año recibira 403.
+- Fase 5, paso 5.3: `POST /anios-lectivos` no recibe cuerpo ni permite que el
+  cliente elija el número. Toma el año activo `N`, crea exactamente `N+1` en
+  estado `preparacion` y responde `201` con
+  `{ "id": 3, "anio": 2027, "estado": "preparacion" }`.
+- La creación responde `409` si ya hay un año en preparación, si falta un año
+  activo o si el siguiente ya existe. La operación bloquea la fila activa y
+  los índices únicos siguen siendo la última protección ante dos solicitudes
+  simultáneas.
 
 ### Guardia de escritura (paso 3.7)
 
@@ -123,10 +132,13 @@ el del plan o el de la anotacion) y aplica esta regla:
   conceptos (`PUT /tipos-pagos/{id}`, `PUT .../configuracion`, `PUT` y
   `DELETE .../cursos`) y valores por estudiante (`PUT` y `DELETE
   /estudiantes/{id}/valores-pago-personalizados/{tipo_pago_id}`).
-- Sin la guardia general, a proposito: `POST /cursos` y `POST /tipos-pagos`
-  (siempre crean en el año activo), materias (no tienen año; ver el aviso al
-  renombrar) y pagos (un pago se registra en el año de la deuda, aunque este
-  cerrado: decision 6). `POST /estudiantes` y `PUT /estudiantes/{id}` tienen
+- En `POST /cursos` y `POST /tipos-pagos`, la guardia se aplica si el alta
+  envía `anio_lectivo_id`; el admin puede crear en el activo, en preparación o
+  reabierto, pero no en uno cerrado. Si se omite el campo, conservan el camino
+  anterior y crean en el activo. Sin la guardia general, a propósito: materias
+  (no tienen año; ver el aviso al renombrar) y pagos (un pago se registra en el
+  año de la deuda, aunque esté cerrado: decisión 6). `POST /estudiantes` y
+  `PUT /estudiantes/{id}` tienen
   desde la fase 5.1 una proteccion mas concreta: el curso enviado debe ser del
   año activo. `DELETE /tipos-pagos/{id}` nunca escribe.
 - `POST /observador` no la lleva: la anotacion nueva nace siempre en el año
@@ -301,6 +313,12 @@ Notas:
   estado, dentro del año. El `409` de nombre repetido compara solo con los
   cursos del mismo año: el del año activo al crear, el del propio curso al
   editar. Mientras haya un solo año, todo responde igual que antes.
+- Año lectivo (fase 5, paso 5.3): el cuerpo de `POST /cursos` acepta
+  `anio_lectivo_id` positivo y opcional. Si se envía, el backend comprueba que
+  exista y que el admin pueda editarlo; `cerrado` responde `409` y un id
+  inexistente, `422`. Si se omite, el cuerpo, la respuesta y el camino del año
+  activo son los anteriores. `PUT /cursos/{curso_id}` no acepta el campo: un
+  curso no se mueve de año al editarlo.
 
 ## Profesores
 
@@ -678,6 +696,12 @@ Año lectivo (fase 3, paso 3.3; cada concepto es de un año, decision 17):
   concepto: <nombres>.`, y no guarda nada. La comprobacion va en la misma
   consulta que ya miraba si el concepto existe.
 - Mientras haya un solo año, todo responde igual que antes.
+- Fase 5, paso 5.3: el cuerpo de `POST /tipos-pagos` acepta
+  `anio_lectivo_id` positivo y opcional. Si se envía, valida existencia y que
+  el año sea editable para el admin; `cerrado` responde `409` y un id
+  inexistente, `422`. Si se omite, conserva la llamada, el SQL y la respuesta
+  anteriores del año activo. `PUT /tipos-pagos/{id}` no acepta el campo y no
+  mueve el concepto de año.
 
 Valores personalizados por estudiante:
 

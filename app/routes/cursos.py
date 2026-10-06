@@ -2,7 +2,7 @@ from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from app.dependencies import get_current_active_admin
-from app.schemas.curso import CursoCreate, CursoEstadoUpdate
+from app.schemas.curso import CursoCreate, CursoCreateConAnio, CursoEstadoUpdate
 from app.controllers.curso_controller import (
     CursoDuplicadoError,
     actualizar_curso_controller,
@@ -29,7 +29,7 @@ def validar_estado_filtro(estado: str) -> str:
 
 # 🚀 Crear curso
 @router.post("/cursos")
-def crear_curso(curso: CursoCreate):
+def crear_curso(curso: CursoCreateConAnio):
     try:
         curso_id = crear_curso_controller(curso)
     except CursoDuplicadoError as exc:

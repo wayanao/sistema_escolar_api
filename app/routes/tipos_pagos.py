@@ -25,6 +25,7 @@ from app.controllers.tipos_pagos_controller import (
     TipoPagoDuplicadoError,
     TipoPagoInfraestructuraError,
 )
+from app.services.anio_lectivo import AnioLectivoInexistenteError
 
 router = APIRouter(tags=["Tipos Pagos"], dependencies=[Depends(get_current_active_admin)])
 
@@ -37,6 +38,12 @@ _ERROR_INTERNO_TIPOS_PAGO = "Error interno al procesar la operación de tipos de
 class TipoPago(BaseModel):
     nombre: str
     valor: float = 0.0
+
+
+class TipoPagoCrear(TipoPago):
+    """Cuerpo exclusivo del alta; editar no permite mover el concepto de año."""
+
+    anio_lectivo_id: Optional[int] = Field(default=None, gt=0)
 
 
 TipoCobro = Literal["unico", "mensual", "anual", "opcional"]
@@ -88,11 +95,21 @@ class ValorPersonalizadoEstudiante(BaseModel):
 # CRUD básico (sin cambios)
 # -----------------------------------------------------------------------------
 @router.post('/tipos-pagos')
-def create_tipo_pago(tipo: TipoPago):
+def create_tipo_pago(tipo: TipoPagoCrear):
     try:
-        res = crear_tipo_pago(tipo.nombre, tipo.valor)
+        anio_lectivo_id = getattr(tipo, "anio_lectivo_id", None)
+        if anio_lectivo_id is None:
+            res = crear_tipo_pago(tipo.nombre, tipo.valor)
+        else:
+            res = crear_tipo_pago(
+                tipo.nombre,
+                tipo.valor,
+                anio_lectivo_id=anio_lectivo_id,
+            )
     except TipoPagoDuplicadoError as e:
         raise HTTPException(status_code=409, detail=str(e))
+    except AnioLectivoInexistenteError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     except TipoPagoInfraestructuraError:
         raise HTTPException(status_code=500, detail=_ERROR_INTERNO_TIPOS_PAGO)
 

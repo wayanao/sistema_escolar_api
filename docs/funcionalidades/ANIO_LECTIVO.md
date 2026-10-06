@@ -2,11 +2,12 @@
 
 ## Control
 
-- Estado: **Fase 5 en curso; paso 5.1 confirmado en el commit `d113e15` y
-  paso 5.2 completo en producción desde el 2026-10-06.** El commit `a6f3cc0`
+- Estado: **Fase 5 en curso; pasos 5.1 y 5.2 confirmados, y paso 5.3 terminado
+  localmente, pendiente de revisión y commit del usuario.** El commit `a6f3cc0`
   quedó `Live` en Render; el usuario probó primero la migración en una rama de
   Neon, regeneró el esquema base y después la aplicó y verificó en los dos
-  tenants de producción. No se inició 5.3 ni se creó 2027. La
+  tenants de producción. El paso 5.3 no creó 2027 ni accedió a ninguna base
+  real; deja listo el endpoint, pero no se inició 5.4. La
   matrícula del año activo ya es la fuente del curso vigente y solo
   `sincronizar_curso_vigente` escribe `estudiantes.curso_id`. La
   fase 4 (frontend) quedó completa y fue confirmada en los commits
@@ -2565,6 +2566,30 @@ se adelantó aquí.
   `tenant_2005`; la aplicación terminó `OK` en ambos y el `--dry-run` final los
   mostró `OMITIDA (ya aplicada)`. No se borró ni se rellenó ningún dato.
 
+**Avance del 2026-10-06 — paso 5.3 terminado localmente, sin commit:**
+
+- Antes de cambiar el código pasaron **258 pruebas de caracterización** de
+  cursos, conceptos de pago, años lectivos y escrituras de pagos. Fijan que,
+  sin enviar año, el SQL, sus parámetros y las respuestas siguen como antes.
+- Se escribieron primero 14 pruebas del contrato nuevo y fallaron por las
+  funciones, el endpoint y los campos todavía ausentes. Al terminar se
+  agregaron 3 comprobaciones de regresión de las rutas: son **17 pruebas
+  nuevas** en `tests/test_anio_lectivo_preparacion.py`.
+- `POST /anios-lectivos` es solo para admin, no recibe un número y crea
+  exactamente `N+1` en `preparacion` desde el año activo. La operación bloquea
+  la fila activa y la base conserva sus índices únicos como última defensa;
+  falta de activo, preparación existente o choque de `N+1` responden `409`.
+- `POST /cursos` y `POST /tipos-pagos` aceptan `anio_lectivo_id` opcional. Con
+  él, el servidor valida que el año exista y sea editable para el admin, limita
+  el nombre repetido a ese año y escribe allí. Sin él, ejecutan el camino
+  anterior del activo. Los modelos de `PUT` no reciben el campo, para impedir
+  mover registros de año al editarlos.
+- No se copian cursos ni conceptos (eso es 5.4), no se creó 2027 y no se tocó
+  una base real. Tampoco hubo migración ni cambio en el frontend.
+- Verificación: **275 pruebas específicas pasan**; `scripts/verify.py` →
+  **2049 pruebas pasan**, Ruff y `pip check` limpios; `git diff --check`
+  también limpio.
+
 ### Fase 6 — Activar el año nuevo, cerrar y reabrir (antes de iniciar clases 2027)
 
 1. Migración: marca "no continúa" en `matriculas` (decisión 9) y tabla
@@ -2843,6 +2868,12 @@ cosa, gana lo que se pueda verificar.
   `git diff --check` limpios. Después del push, el usuario confirmó `a6f3cc0`
   `Live` en Render y repitió en producción la secuencia `PENDIENTE` → `OK` →
   `OMITIDA` en `tenant_colegio_1` y `tenant_2005`.
+- **Paso 5.3 terminado localmente, pendiente de commit:** el nuevo `POST
+  /anios-lectivos` calcula y crea `N+1` en preparación, solo para admin; las
+  altas de cursos y conceptos aceptan el año opcional y validado, sin cambiar
+  el camino anterior cuando se omite. No se creó 2027, no hubo migración ni
+  acceso a una base real y no se inició 5.4. Pasan 275 pruebas específicas y
+  2049 globales, además de Ruff y `pip check`.
 - **Hecho aparte, la noche del 2026-09-30:** el arreglo de la hora
   (`2e77634` en este repo, `033c042` en el frontend). Cobros, cartera y
   alta de colegios usan la fecha de Colombia (`app/core/fechas.py`), y el
@@ -2872,10 +2903,9 @@ cosa, gana lo que se pueda verificar.
   correr si falta `$env:DATABASE_URL`. Antes de probar la app contra una
   rama, detener el backend local que esté corriendo; si no, el frontend
   sigue hablando con el que apunta a producción.
-- **Siguiente acción exacta:** el usuario revisa y hace un commit documental
-  que registre la aplicación en producción. Después, y solo con autorización
-  explícita, viene **5.3 — Crear el año y permitir altas manuales en
-  preparación**. No iniciar todavía 5.3 ni crear 2027. Sigue abierta, para
+- **Siguiente acción exacta:** el usuario revisa y hace el commit del paso 5.3.
+  Después, y solo con autorización explícita, viene **5.4 — Copiar la
+  configuración**. No iniciar todavía 5.4 ni crear 2027. Sigue abierta, para
   antes de la fase 6, la pregunta separada de Certificados y estudiantes
   retirados/egresados.
 - Prompt para retomar: `docs/funcionalidades/PROMPT_CONTINUACION_ANIO_LECTIVO.md`.

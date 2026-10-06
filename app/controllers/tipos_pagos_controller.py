@@ -3,7 +3,9 @@ import logging
 from app.database import get_connection
 from app.repositories.anios_lectivos_repository import ANIO_ACTIVO_ID_SQL, condicion_anio
 from app.services.anio_lectivo import (
+    AnioLectivoInexistenteError,
     AnioLectivoNoEditableError,
+    exigir_anio_editable_para_admin,
     exigir_anio_lectivo,
     exigir_concepto_editable_para_admin,
 )
@@ -28,34 +30,54 @@ class CursoDeOtroAnioError(Exception):
     """Se lanza al poner precio a un concepto en un curso de otro año lectivo."""
 
 # =============================================================================
-# CRUD básico (NO modificar firmas: usado por flujos existentes)
+# CRUD básico (mantener compatibles las llamadas de los flujos existentes)
 # =============================================================================
 
-def crear_tipo_pago(nombre, valor=0):
+def crear_tipo_pago(nombre, valor=0, anio_lectivo_id=None):
     conn = get_connection()
     cursor = conn.cursor()
     try:
         nombre_limpio = (nombre or "").strip()
+        if anio_lectivo_id is not None:
+            anio = exigir_anio_lectivo(cursor, anio_lectivo_id)
+            exigir_anio_editable_para_admin((anio[1], anio[2]))
         # Fase 3 del año lectivo: el nombre se repite una vez por año, como el
-        # indice unico de la migracion A. El concepto nace en el año activo, asi
-        # que se compara con los de ese año.
-        cursor.execute(
-            "SELECT id FROM tipos_de_pagos WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(%s))"
-            f" AND anio_lectivo_id = {ANIO_ACTIVO_ID_SQL}",
-            (nombre_limpio,),
-        )
+        # indice unico de la migracion A. El concepto se compara con el año
+        # pedido (o el activo si se omitió).
+        if anio_lectivo_id is None:
+            cursor.execute(
+                "SELECT id FROM tipos_de_pagos WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(%s))"
+                f" AND anio_lectivo_id = {ANIO_ACTIVO_ID_SQL}",
+                (nombre_limpio,),
+            )
+        else:
+            cursor.execute(
+                "SELECT id FROM tipos_de_pagos WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(%s))"
+                " AND anio_lectivo_id = %s",
+                (nombre_limpio, anio_lectivo_id),
+            )
         if cursor.fetchone():
             raise TipoPagoDuplicadoError(f"Ya existe un tipo de pago llamado '{nombre_limpio}'.")
 
-        # Fase 1 del año lectivo: el concepto nace en el año activo.
-        cursor.execute(
-            f'INSERT INTO tipos_de_pagos (nombre, valor, anio_lectivo_id) VALUES (%s, %s, {ANIO_ACTIVO_ID_SQL}) RETURNING id',
-            (nombre, valor),
-        )
+        if anio_lectivo_id is None:
+            # Camino anterior, conservado literalmente: nace en el año activo.
+            cursor.execute(
+                f'INSERT INTO tipos_de_pagos (nombre, valor, anio_lectivo_id) VALUES (%s, %s, {ANIO_ACTIVO_ID_SQL}) RETURNING id',
+                (nombre, valor),
+            )
+        else:
+            cursor.execute(
+                'INSERT INTO tipos_de_pagos (nombre, valor, anio_lectivo_id) VALUES (%s, %s, %s) RETURNING id',
+                (nombre, valor, anio_lectivo_id),
+            )
         data = cursor.fetchone()[0]
         conn.commit()
         return {'id': data, 'nombre': nombre, 'valor': valor}
-    except TipoPagoDuplicadoError:
+    except (
+        TipoPagoDuplicadoError,
+        AnioLectivoInexistenteError,
+        AnioLectivoNoEditableError,
+    ):
         conn.rollback()
         raise
     except Exception as exc:

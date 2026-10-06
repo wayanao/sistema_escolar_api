@@ -153,8 +153,10 @@ Usan `get_current_user` y permisos por ownership:
 
 Con usuario autenticado y alcance por rol, sin ownership:
 
-- años lectivos (`GET /anios-lectivos`): el admin ve todos los años y el
-  profesor solo el activo. La regla vive en `app/services/anio_lectivo.py`
+- años lectivos: en `GET /anios-lectivos`, el admin ve todos los años y el
+  profesor solo el activo. `POST /anios-lectivos` es solo para admin, calcula
+  el año siguiente en el servidor y lo crea en preparación. La regla de
+  lectura vive en `app/services/anio_lectivo.py`
   (`listar_anios_visibles`), junto con `resolver_anio_pedido`, que los
   listados por año usaran para negar con 403 a un profesor que pida otro
   año. Ver `docs/funcionalidades/ANIO_LECTIVO.md`, decisiones 3 y 4.

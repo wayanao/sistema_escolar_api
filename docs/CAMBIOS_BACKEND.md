@@ -1,10 +1,34 @@
 # Cambios Backend
 
-Ultima revision documental: 2026-10-05.
+Ultima revision documental: 2026-10-06.
 
 ## Proposito
 
 Bitacora de cambios documentales y tecnicos observables del backend.
+
+## 2026-10-06 - Año lectivo 5.2: orígenes para las copias entre años
+
+Segundo paso de la fase 5 de `docs/funcionalidades/ANIO_LECTIVO.md`.
+
+### Qué queda listo
+
+- `migrations/20261006_anios_lectivos_origenes.sql` agrega dos columnas
+  opcionales y autorreferentes: `cursos.curso_origen_id` y
+  `tipos_de_pagos.tipo_pago_origen_id`.
+- Cada columna tiene su clave foránea y su índice. No se rellena ninguna fila,
+  no se borra ni cambia información existente y no hay borrado en cascada.
+- Siete pruebas nuevas fijan el alcance, la nulabilidad, las referencias, los
+  índices, la reejecución y la ausencia de cambios de datos. Se escribieron
+  primero y fallaron las siete antes de crear el SQL.
+
+### Prueba y estado
+
+El usuario probó la migración en una rama de Neon con endpoint directo. Los dos
+tenants pasaron por `PENDIENTE`, `OK` y después `OMITIDA (ya aplicada)`. Regeneró
+el esquema base desde `tenant_colegio_1`; conservó 34 tablas, 1 función y 1
+disparador, y el diff solo incorporó las dos columnas, claves e índices más la
+cabecera de la migración. Pasan 41 pruebas específicas y 2032 globales; Ruff,
+`pip check` y `git diff --check` están limpios. No se aplicó en producción.
 
 ## 2026-10-05 - Año lectivo 5.1: la matrícula manda sobre el curso vigente
 

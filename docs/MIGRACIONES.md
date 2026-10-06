@@ -1,6 +1,6 @@
 # Migraciones
 
-Ultima revision documental: 2026-10-01.
+Ultima revision documental: 2026-10-06.
 
 ## Carpeta de migraciones
 
@@ -50,6 +50,7 @@ Archivos actuales:
 - `20260921_listas_seguimiento.sql`
 - `20260930_anios_lectivos.sql`
 - `20261001_anios_lectivos_obligatorio.sql`
+- `20261006_anios_lectivos_origenes.sql`
 - `README.md`
 
 Migraciones globales `public`:
@@ -734,3 +735,38 @@ Estado:
 - `scripts/verify.py`: **1500 pasan, 0 fallan**.
 - A partir de aqui el archivo **no se puede editar**: el runner guarda su
   checksum.
+
+## Migracion 20261006_anios_lectivos_origenes.sql
+
+Objetivo:
+
+- Año lectivo, fase 5, paso 5.2: recordar de qué curso o concepto del año
+  anterior salió cada copia, para preparar 2027 y reutilizar después el
+  planeador y los planes de clase.
+
+Columnas opcionales:
+
+- `cursos.curso_origen_id`, clave foranea autorreferente a `cursos(id)`;
+- `tipos_de_pagos.tipo_pago_origen_id`, clave foranea autorreferente a
+  `tipos_de_pagos(id)`.
+
+`NULL` significa que el registro se creó desde cero. La migración no rellena
+las filas existentes: los cursos y conceptos de 2026 no son copias de un año
+anterior. Crea además `idx_cursos_curso_origen` e
+`idx_tipos_de_pagos_tipo_pago_origen`. No usa borrado en cascada ni modifica
+datos existentes.
+
+Estado al 2026-10-06:
+
+- SQL incremental y 7 pruebas de texto listos. Se escribieron primero y las
+  siete fallaron antes de crear el archivo.
+- El usuario la probó en una rama de Neon con endpoint directo: el primer
+  `--dry-run` mostró los dos tenants `PENDIENTE`, la aplicación terminó `OK` en
+  ambos y el segundo `--dry-run` los mostró `OMITIDA (ya aplicada)`.
+- Esquema base regenerado desde `tenant_colegio_1`: 34 tablas, 1 función y 1
+  disparador. El diff agregó únicamente la migración a la cabecera, las dos
+  columnas, las dos claves foráneas y los dos índices.
+- Verificación local final: 41 pruebas específicas y 2032 globales pasan; Ruff,
+  `pip check` y `git diff --check` limpios.
+- **No aplicada en producción.** El usuario controla su publicación. La
+  migración y la base regenerada quedan juntas para el commit.

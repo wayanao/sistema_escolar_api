@@ -155,6 +155,12 @@ Nota sobre año lectivo y matrículas:
   sincroniza, en la misma transacción.
 - La consulta de control documentada en
   `docs/funcionalidades/ANIO_LECTIVO.md` debe devolver 0 filas.
+- La migración `20261006_anios_lectivos_origenes.sql` añade las referencias
+  opcionales `cursos.curso_origen_id` y
+  `tipos_de_pagos.tipo_pago_origen_id`. Permitirán saber de qué registro del
+  año anterior salió una copia; los registros creados desde cero tendrán
+  `NULL`. Al 2026-10-06 el usuario la probó y aplicó en una rama de Neon y
+  regeneró desde allí el esquema base; todavía no se aplicó en producción.
 
 Nota sobre `plan_de_clases`:
 

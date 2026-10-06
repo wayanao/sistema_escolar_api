@@ -2,10 +2,12 @@
 
 ## Control
 
-- Estado: **Fase 5 en curso; paso 5.1 terminado el 2026-10-05, pendiente de
-  revisión y commit del usuario.** La matrícula del año activo ya es la fuente
-  del curso vigente y solo `sincronizar_curso_vigente` escribe
-  `estudiantes.curso_id`. No se inició el paso 5.2 ni se creó 2027. La
+- Estado: **Fase 5 en curso; paso 5.1 confirmado en el commit `d113e15` y
+  paso 5.2 terminado el 2026-10-06, pendiente de revisión y commit.** El
+  usuario probó la migración en una rama de Neon, la aplicó allí a los dos
+  tenants y regeneró el esquema base. No se inició 5.3 ni se creó 2027. La
+  matrícula del año activo ya es la fuente del curso vigente y solo
+  `sincronizar_curso_vigente` escribe `estudiantes.curso_id`. La
   fase 4 (frontend) quedó completa y fue confirmada en los commits
   `8eac0ce` del frontend y `ce8d7a7` de documentación en este repo. Se inició
   el 2026-10-03;
@@ -2525,6 +2527,40 @@ protección decisiva está ahora en el backend. El flujo distinto para crear un
 estudiante directamente en un año en preparación corresponde al paso 5.5 y no
 se adelantó aquí.
 
+**Avance del 2026-10-06 — paso 5.2 terminado, sin commit:**
+
+- Antes del cambio pasaron **34 pruebas** de las migraciones de año lectivo y
+  de la compuerta del esquema base.
+- Se escribieron primero 7 pruebas en
+  `tests/test_migracion_anios_lectivos_origenes.py`; las siete fallaron porque
+  todavía no existía el archivo SQL.
+- `migrations/20261006_anios_lectivos_origenes.sql` agrega únicamente
+  `cursos.curso_origen_id` y
+  `tipos_de_pagos.tipo_pago_origen_id`. Ambas admiten `NULL`, apuntan a la
+  misma tabla mediante claves foráneas y tienen un índice de consulta.
+- No hay relleno: todos los cursos y conceptos existentes conservan `NULL`
+  porque son registros iniciales de 2026, no copias. Tampoco hay `INSERT`,
+  `UPDATE`, `DELETE`, `DROP` ni borrado en cascada. El SQL es reejecutable si
+  una ejecución manual quedara incompleta.
+- Las 7 pruebas nuevas pasan; antes de regenerar, junto con las migraciones A y
+  B eran **36 pruebas relacionadas** aprobadas. La compuerta del esquema base
+  falló entonces por la única razón esperada: faltaba incorporar la migración.
+- El usuario creó y eligió una rama de Neon con endpoint directo, distinto del
+  host local documentado como producción. El primer `--dry-run` mostró
+  `PENDIENTE` en `tenant_colegio_1` y `tenant_2005`; la aplicación terminó `OK`
+  en ambos y el segundo `--dry-run` los mostró `OMITIDA (ya aplicada)`.
+- El usuario regeneró
+  `migrations/base/20260813_esquema_base_tenant.sql` desde
+  `tenant_colegio_1`: 34 tablas, 1 función y 1 disparador. La revisión del diff
+  confirmó solo lo esperado: cabecera de 41 migraciones, dos columnas, dos
+  índices y dos claves foráneas.
+- Verificación final: **41 pruebas específicas pasan** (migraciones A, B,
+  orígenes y esquema base); `scripts/verify.py` → **2032 pruebas pasan**, Ruff
+  y `pip check` limpios; `git diff --check` limpio.
+- No se aplicó la migración en producción y no se hizo commit, push ni
+  despliegue. La migración y el esquema base regenerado quedan juntos en el
+  cambio local, como exige `docs/MIGRACIONES.md`.
+
 ### Fase 6 — Activar el año nuevo, cerrar y reabrir (antes de iniciar clases 2027)
 
 1. Migración: marca "no continúa" en `matriculas` (decisión 9) y tabla
@@ -2714,7 +2750,7 @@ cuando los profesores empiezan a ver sus clases nuevas.
 
 ## Entrega para el siguiente chat
 
-Estado al 2026-10-05. Si `git status` o el historial de git dicen otra
+Estado al 2026-10-06. Si `git status` o el historial de git dicen otra
 cosa, gana lo que se pueda verificar.
 
 - **Hecho:** fase 0 y **fase 1 completas**. Migración A (2026-09-30) y
@@ -2784,7 +2820,7 @@ cosa, gana lo que se pueda verificar.
   `scripts/verify.py`, 2016 pruebas, Ruff y `pip check` limpios; en el
   frontend, `pnpm run check:deploy`, 2210 pruebas en 341 archivos, lint y
   build limpios; `git diff --check` limpio en ambos repos.
-- **Paso 5.1 terminado el 2026-10-05, pendiente de revisión y commit:** la
+- **Paso 5.1 terminado y confirmado en `d113e15`:** la
   matrícula activa pasó a ser la fuente del curso vigente;
   `sincronizar_curso_vigente` quedó como única escritura de
   `estudiantes.curso_id`; y un curso inexistente o ajeno al año activo produce
@@ -2793,6 +2829,14 @@ cosa, gana lo que se pueda verificar.
   27 pruebas. Pruebas específicas finales: 36. Verificación global:
   `scripts/verify.py`, 2025 pruebas, Ruff y `pip check` limpios, más
   `git diff --check` limpio. Detalle en el "Avance" de la fase 5.
+- **Paso 5.2 terminado el 2026-10-06, pendiente de revisión y commit:** pruebas
+  primero y migración incremental para las dos columnas de origen, sus claves
+  foráneas autorreferentes y sus índices. El usuario la probó y aplicó en una
+  rama de Neon: `PENDIENTE` → `OK` → `OMITIDA` en los dos tenants, y regeneró
+  desde allí el esquema base (34 tablas, 1 función, 1 disparador). El diff
+  generado solo contiene las seis piezas esperadas y la cabecera. Verificación:
+  41 pruebas específicas y 2032 globales pasan, Ruff, `pip check` y
+  `git diff --check` limpios. No se aplicó en producción.
 - **Hecho aparte, la noche del 2026-09-30:** el arreglo de la hora
   (`2e77634` en este repo, `033c042` en el frontend). Cobros, cartera y
   alta de colegios usan la fecha de Colombia (`app/core/fechas.py`), y el
@@ -2822,13 +2866,11 @@ cosa, gana lo que se pueda verificar.
   correr si falta `$env:DATABASE_URL`. Antes de probar la app contra una
   rama, detener el backend local que esté corriendo; si no, el frontend
   sigue hablando con el que apunta a producción.
-- **Siguiente acción exacta:** el usuario revisa y hace el commit del paso
-  5.1. Después, y solo con autorización explícita para ese paso, viene **5.2 —
-  Migración de orígenes**: pruebas de texto primero y SQL incremental para
-  `cursos.curso_origen_id` y `tipos_de_pagos.tipo_pago_origen_id`, con sus
-  claves foráneas e índices. Antes de tocarla hay que volver a explicar el
-  riesgo; el asistente no la ejecutará en Neon ni en producción y el usuario
-  controlará la rama y la posterior regeneración del esquema base. No empezar
-  todavía 5.2 ni crear 2027. Sigue abierta, para antes de la fase 6, la
-  pregunta separada de Certificados y estudiantes retirados/egresados.
+- **Siguiente acción exacta:** el usuario revisa y hace el commit único del
+  paso 5.2, que incluye migración y esquema base. Después, y solo con
+  autorización explícita, viene **5.3 — Crear el año y permitir altas manuales
+  en preparación**. No iniciar todavía 5.3 ni crear 2027. La migración sigue
+  sin aplicarse en producción; el usuario controla cuándo publicarla. Sigue
+  abierta, para antes de la fase 6, la pregunta separada de Certificados y
+  estudiantes retirados/egresados.
 - Prompt para retomar: `docs/funcionalidades/PROMPT_CONTINUACION_ANIO_LECTIVO.md`.

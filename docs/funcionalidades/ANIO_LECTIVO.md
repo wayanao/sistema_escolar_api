@@ -2,16 +2,16 @@
 
 ## Control
 
-- Estado: **Fase 5 en curso; pasos 5.1 a 5.7 confirmados y paso 5.8 terminado
+- Estado: **Fase 5 en curso; pasos 5.1 a 5.8 confirmados y paso 5.9 terminado
   localmente en el frontend, pendiente de revisión y commit del usuario.** El
   paso 5.6 quedó en `102ec77`, el 5.5 en `144feb1`, el 5.4 en `cffdfd7` y el
-  5.3 en `653703c`; el 5.7 del frontend quedó en `5bfcad1` y su ajuste
-  responsive en `409ab07`. El commit `a6f3cc0`
+  5.3 en `653703c`; el 5.8 del frontend quedó en `817c47e` y su registro en
+  este repo en `d3cdfd3`. El commit `a6f3cc0`
   quedó `Live` en Render; el usuario probó primero la migración en una rama de
   Neon, regeneró el esquema base y después la aplicó y verificó en los dos
   tenants de producción. El paso 5.3 no creó 2027 ni accedió a ninguna base
   real. Los pasos 5.4, 5.5 y 5.6 tampoco accedieron a una base real ni crearon
-  2027. No se inició 5.9. La
+  2027. No se inició 5.10. La
   matrícula del año activo ya es la fuente del curso vigente y solo
   `sincronizar_curso_vigente` escribe `estudiantes.curso_id`. La
   fase 4 (frontend) quedó completa y fue confirmada en los commits
@@ -2699,14 +2699,14 @@ se adelantó aquí.
   → **2096 pruebas pasan**, Ruff y `pip check` limpios con `DATABASE_URL`
   ficticio. `git diff --check` limpio.
 
-**Avance del frontend — pasos 5.7 y 5.8:**
+**Avance del frontend — pasos 5.7 a 5.9:**
 
 - El paso 5.7 quedó confirmado en `5bfcad1`, con el ajuste responsive
   `409ab07`: ruta protegida y menú, creación/copia de 2027, recarga del
   proveedor y altas manuales de cursos y conceptos en preparación. Mirando el
   activo, los cuerpos anteriores no cambian.
-- El paso 5.8 terminó localmente el 2026-10-07, pendiente de revisión y commit
-  del usuario. La página permite elegir curso origen y destino, desmarcar
+- El paso 5.8 quedó confirmado en el frontend en `817c47e` y su registro en
+  este documento principal en `d3cdfd3`. La página permite elegir curso origen y destino, desmarcar
   candidatos, matricular la selección y mostrar los valores especiales como
   `Revisar`; los ya matriculados quedan bloqueados.
 - Estudiantes permite únicamente el alta directa al mirar un año en
@@ -2722,6 +2722,23 @@ se adelantó aquí.
   La primera corrida restringida tuvo 30 errores de permisos sobre la carpeta
   temporal de pytest; repetida fuera de esa restricción quedó completamente
   verde. `git diff --check` también quedó limpio.
+- El paso 5.9 terminó localmente en el frontend el 2026-10-07, pendiente de
+  revisión y commit del usuario. Pagos tiene un selector propio, activo por
+  defecto; solo al elegir otro año añade `anio_lectivo_id` a conceptos,
+  deudas, cuotas, adelantos, valores personalizados y al cuerpo del pago.
+  Historial y ventas conservan sus contratos, y las ventas no se ofrecen fuera
+  del activo.
+- `deuda_anios_anteriores` se muestra separada en Pagos, Cartera y la ficha del
+  estudiante; Cartera no la suma al total consultado y su acción `Cobrar`
+  conserva el año al abrir Pagos. Las respuestas financieras tardías del año
+  anterior se descartan al cambiar el selector.
+- Se caracterizó primero con 114 pruebas en 22 archivos. Las pruebas nuevas se
+  escribieron primero y 16 fallaron por las piezas ausentes. El bloque
+  específico final pasa 76 pruebas en 12 archivos y `pnpm run check:deploy`
+  pasa 2245 pruebas en 344 archivos, lint y build. No se tocó código funcional
+  del backend, fórmulas financieras, migraciones, bases reales ni producción.
+- Al actualizar este documento principal, `scripts/verify.py` del backend pasó
+  **2096 pruebas**, Ruff y `pip check` con una `DATABASE_URL` ficticia.
 
 ### Fase 6 — Activar el año nuevo, cerrar y reabrir (antes de iniciar clases 2027)
 
@@ -3032,12 +3049,19 @@ cosa, gana lo que se pueda verificar.
 - **Paso 5.7 confirmado en el frontend:** pantalla base en `5bfcad1` y ajuste
   responsive en `409ab07`. Permite crear/copiar el siguiente año y las altas
   manuales autorizadas, manteniendo intactas las peticiones del año activo.
-- **Paso 5.8 terminado localmente en el frontend, pendiente de commit:**
+- **Paso 5.8 confirmado en el frontend (`817c47e`, documento principal
+  `d3cdfd3`):**
   promoción por curso con selección explícita, valores especiales marcados
   `Revisar`, alta directa de estudiante en preparación y resumen sin activar.
   Pasan 37 pruebas específicas y 2227 globales, además de lint y build. El
   backend quedó sin cambios funcionales y no hubo acceso a bases ni
   producción.
+- **Paso 5.9 terminado localmente en el frontend, pendiente de commit:**
+  selector propio del año del pago, año opcional en lecturas y cuerpos, ventas
+  limitadas al activo y deuda anterior separada en Pagos, Cartera y ficha de
+  Estudiantes. Pasan 76 pruebas específicas y 2245 globales, además de lint y
+  build. En este repo solo se actualiza este documento; su verificación pasa
+  2096 pruebas, Ruff y `pip check` con una `DATABASE_URL` ficticia.
 - **Hecho aparte, la noche del 2026-09-30:** el arreglo de la hora
   (`2e77634` en este repo, `033c042` en el frontend). Cobros, cartera y
   alta de colegios usan la fecha de Colombia (`app/core/fechas.py`), y el
@@ -3067,9 +3091,10 @@ cosa, gana lo que se pueda verificar.
   correr si falta `$env:DATABASE_URL`. Antes de probar la app contra una
   rama, detener el backend local que esté corriendo; si no, el frontend
   sigue hablando con el que apunta a producción.
-- **Siguiente acción exacta:** el usuario revisa y hace el commit del paso 5.8
-  en el frontend. Después, y solo con autorización explícita, viene **5.9 —
-  Pagos y deudas anteriores**. No iniciar todavía 5.9 ni crear 2027. Sigue
+- **Siguiente acción exacta:** el usuario revisa y hace el commit del paso 5.9
+  en el frontend y de esta actualización documental en el backend. Después, y
+  solo con autorización explícita, viene **5.10 — año en los documentos del
+  frontend**. No iniciar todavía 5.10 ni crear 2027. Sigue
   abierta, para
   antes de la fase 6, la pregunta separada de Certificados y estudiantes
   retirados/egresados.

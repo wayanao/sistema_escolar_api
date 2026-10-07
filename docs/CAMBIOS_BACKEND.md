@@ -6,6 +6,35 @@ Ultima revision documental: 2026-10-06.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
+## 2026-10-06 - Año lectivo 5.6: resumen y recorrido financiero
+
+Sexto paso de la fase 5 de `docs/funcionalidades/ANIO_LECTIVO.md`.
+
+### Qué cambia
+
+- Nuevo `GET /anios-lectivos/{anio_lectivo_id}/resumen`, solo para admin y
+  limitado al siguiente año en preparación. Devuelve conteos de cursos,
+  conceptos, matrículas, valores especiales y pagos no anulados, con el total
+  pagado de ese año.
+- El listado de valores personalizados acepta `anio_lectivo_id` opcional. Sin
+  él conserva el año activo; con él limita conceptos, matrícula y precio por
+  curso al año pedido.
+- Guardar un valor personalizado toma el curso desde la matrícula del año del
+  concepto. Ya no usa `estudiantes.curso_id`, que es únicamente la copia del
+  curso del año activo.
+- Se comprobó el recorrido completo de una matrícula 2027 con valor especial
+  pagada en noviembre de 2026. La deuda 2027 queda saldada y 2026 no cambia.
+  No se modificaron fórmulas de cobro, mora, deuda ni cartera.
+- No hay migración, cambio de frontend, acceso a una base real ni creación de
+  2027.
+
+### Pruebas
+
+Las 10 pruebas iniciales fallaron primero contra el código anterior; después se
+añadió una de compatibilidad. Al final pasaron 436 pruebas específicas.
+`scripts/verify.py` pasó con 2096 pruebas,
+Ruff y `pip check` limpios, usando una base ficticia.
+
 ## 2026-10-06 - Año lectivo 5.5: matricular el año en preparación
 
 Quinto paso de la fase 5 de `docs/funcionalidades/ANIO_LECTIVO.md`.

@@ -292,6 +292,72 @@ def leer_anio_en_preparacion(cursor):
     return cursor.fetchone()
 
 
+def leer_resumen_anio(cursor, anio_lectivo_id):
+    """Totales de preparación y pagos de un único año lectivo."""
+    columnas = (
+        "id",
+        "anio",
+        "estado",
+        "cursos",
+        "conceptos_pago",
+        "estudiantes_matriculados",
+        "valores_especiales",
+        "pagos_registrados",
+        "total_pagado",
+    )
+    cursor.execute(
+        """
+        WITH seleccionado AS (
+            SELECT id, anio, estado
+            FROM anios_lectivos
+            WHERE id = %s
+        )
+        SELECT seleccionado.id,
+               seleccionado.anio,
+               seleccionado.estado,
+               (
+                   SELECT COUNT(*)
+                   FROM cursos c
+                   WHERE c.anio_lectivo_id = seleccionado.id
+               ) AS cursos,
+               (
+                   SELECT COUNT(*)
+                   FROM tipos_de_pagos tp
+                   WHERE tp.anio_lectivo_id = seleccionado.id
+               ) AS conceptos_pago,
+               (
+                   SELECT COUNT(*)
+                   FROM matriculas m
+                   WHERE m.anio_lectivo_id = seleccionado.id
+               ) AS estudiantes_matriculados,
+               (
+                   SELECT COUNT(*)
+                   FROM tipos_pagos_estudiantes tpe
+                   JOIN tipos_de_pagos tp ON tp.id = tpe.tipo_pago_id
+                   WHERE tp.anio_lectivo_id = seleccionado.id
+               ) AS valores_especiales,
+               (
+                   SELECT COUNT(*)
+                   FROM pagos p
+                   WHERE p.anio_lectivo_id = seleccionado.id
+                     AND COALESCE(LOWER(p.estado), 'pagado') <> 'anulado'
+               ) AS pagos_registrados,
+               (
+                   SELECT COALESCE(SUM(p.monto), 0)
+                   FROM pagos p
+                   WHERE p.anio_lectivo_id = seleccionado.id
+                     AND COALESCE(LOWER(p.estado), 'pagado') <> 'anulado'
+               ) AS total_pagado
+        FROM seleccionado
+        """,
+        (anio_lectivo_id,),
+    )
+    fila = cursor.fetchone()
+    if fila is None:
+        return None
+    return dict(fila) if isinstance(fila, dict) else dict(zip(columnas, fila))
+
+
 def crear_anio_en_preparacion(cursor, anio):
     """Crea un año en preparación y devuelve `(id, anio, estado)`.
 

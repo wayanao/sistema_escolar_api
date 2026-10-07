@@ -161,7 +161,9 @@ Con usuario autenticado y alcance por rol, sin ownership:
   preparación. Las rutas de candidatos, promoción y alta directa bajo
   `/anios-lectivos/{id}` también son solo para admin: el backend valida el
   curso de origen, el curso destino y los estudiantes seleccionados; el
-  cliente no decide qué año se puede matricular. La regla de
+  cliente no decide qué año se puede matricular. El resumen de preparación
+  bajo `/anios-lectivos/{id}/resumen` también es solo para admin y solo acepta
+  el siguiente año en preparación. La regla de
   lectura vive en `app/services/anio_lectivo.py`
   (`listar_anios_visibles`), junto con `resolver_anio_pedido`, que los
   listados por año usaran para negar con 403 a un profesor que pida otro

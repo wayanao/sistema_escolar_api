@@ -80,6 +80,7 @@ Notas:
 - `GET /anios-lectivos/{anio_lectivo_id}/matriculas/candidatos` (solo admin)
 - `POST /anios-lectivos/{anio_lectivo_id}/matriculas/promocion` (solo admin)
 - `POST /anios-lectivos/{anio_lectivo_id}/estudiantes` (solo admin)
+- `GET /anios-lectivos/{anio_lectivo_id}/resumen` (solo admin)
 
 Notas:
 
@@ -171,6 +172,23 @@ Notas:
 - Las tres rutas validan el año y los cursos en el backend. Un año inexistente
   responde `404`; un destino que no sea el siguiente en preparación responde
   `409`. No crean pagos ni calculan deudas.
+- Fase 5, paso 5.6: el resumen también exige que el id sea exactamente `N+1`
+  en preparación. Cuenta solo los registros de ese año y excluye pagos
+  anulados. Respuesta de ejemplo:
+
+```json
+{
+  "anio_lectivo": {"id": 3, "anio": 2027, "estado": "preparacion"},
+  "resumen": {
+    "cursos": 12,
+    "conceptos_pago": 2,
+    "estudiantes_matriculados": 174,
+    "valores_especiales": 5,
+    "pagos_registrados": 1,
+    "total_pagado": 250000.0
+  }
+}
+```
 
 ### Guardia de escritura (paso 3.7)
 
@@ -721,6 +739,12 @@ el usuario el 2026-10-02). Con un curso del año activo, el resto es como antes.
 - `GET /estudiantes/{estudiante_id}/valores-pago-personalizados`
 - `PUT /estudiantes/{estudiante_id}/valores-pago-personalizados/{tipo_pago_id}`
 - `DELETE /estudiantes/{estudiante_id}/valores-pago-personalizados/{tipo_pago_id}`
+
+Desde la fase 5.6, el `GET` de valores personalizados acepta
+`?anio_lectivo_id=`. Si se omite, conserva el año activo. La lectura toma el
+curso de `matriculas` para ese mismo año. Al guardar con `PUT`, el año sale del
+concepto y el precio por curso se valida contra la matrícula del estudiante en
+ese año; un estudiante sin esa matrícula recibe `400` y no se escribe nada.
 
 Configuracion avanzada completa de ejemplo (todos los campos son opcionales en
 una actualizacion parcial):

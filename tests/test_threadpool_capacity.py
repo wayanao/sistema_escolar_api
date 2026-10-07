@@ -288,10 +288,10 @@ class _ControllerCursor:
             # El concepto existe y ningun curso es de otro año (fase 3 del año
             # lectivo, paso 3.3).
             return {"cursos_de_otro_anio": []}
-        if "SELECT curso_id FROM estudiantes" in self.query:
-            # Los upsert usan RealDictCursor desde que dejaron de anidar
-            # conexiones, asi que leen la columna por nombre.
-            return {"curso_id": 3}
+        if "SELECT tp.anio_lectivo_id, m.curso_id" in self.query:
+            # El valor especial toma el curso de la matricula del mismo año
+            # que el concepto y conserva una sola conexion.
+            return {"anio_lectivo_id": 1, "curso_id": 3, "estudiante_id": 11}
         return (1,)
 
     def fetchall(self):

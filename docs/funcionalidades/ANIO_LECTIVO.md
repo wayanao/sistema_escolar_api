@@ -2,14 +2,14 @@
 
 ## Control
 
-- Estado: **Fase 5 en curso; pasos 5.1 a 5.4 confirmados, y paso 5.5 terminado
-  localmente, pendiente de revisión y commit del usuario.** El paso 5.4 quedó
-  en `cffdfd7`, el paso 5.3 en `653703c`. El commit `a6f3cc0`
+- Estado: **Fase 5 en curso; pasos 5.1 a 5.5 confirmados, y paso 5.6 terminado
+  localmente, pendiente de revisión y commit del usuario.** El paso 5.5 quedó
+  en `144feb1`, el paso 5.4 en `cffdfd7` y el paso 5.3 en `653703c`. El commit `a6f3cc0`
   quedó `Live` en Render; el usuario probó primero la migración en una rama de
   Neon, regeneró el esquema base y después la aplicó y verificó en los dos
   tenants de producción. El paso 5.3 no creó 2027 ni accedió a ninguna base
-  real. Los pasos 5.4 y 5.5 tampoco accedieron a una base real ni crearon
-  2027. No se inició 5.6. La
+  real. Los pasos 5.4, 5.5 y 5.6 tampoco accedieron a una base real ni crearon
+  2027. No se inició 5.7. La
   matrícula del año activo ya es la fuente del curso vigente y solo
   `sincronizar_curso_vigente` escribe `estudiantes.curso_id`. La
   fase 4 (frontend) quedó completa y fue confirmada en los commits
@@ -1552,7 +1552,7 @@ el punto 2; solo lectura, sin cambios de código):
      `tipos_pagos_controller.py:67`), además del de crear.
   5. **Planes de clase del admin** (`GET /admin/plan-de-clases`): lista los
      de todos los años.
-  6. Para la fase 5, no la 3: los valores especiales por estudiante
+  6. Para la fase 5, no la 3 (resuelto en el paso 5.6): los valores especiales por estudiante
      (`/estudiantes/{id}/valores-pago-personalizados`) listan los de todos
      los años, y al guardar uno toman el precio del curso de
      `estudiantes.curso_id` (`tipos_pagos_controller.py:613`). Es lo que
@@ -2626,7 +2626,7 @@ se adelantó aquí.
 
 *Confirmado después:* el usuario guardó este paso en `cffdfd7`.
 
-**Avance del 2026-10-06 — paso 5.5 terminado localmente, sin commit:**
+**Avance del 2026-10-06 — paso 5.5 terminado y confirmado:**
 
 - Antes de escribir código pasaron **135 pruebas de caracterización** de
   estudiantes, matrículas, preparación, copia de configuración y escrituras
@@ -2662,6 +2662,39 @@ se adelantó aquí.
   migración, frontend, acceso a una base real ni creación de 2027.
 - Verificación: **151 pruebas específicas pasan**; `scripts/verify.py` →
   **2085 pruebas pasan**, Ruff y `pip check` limpios con `DATABASE_URL`
+  ficticio. `git diff --check` limpio.
+
+*Confirmado después:* el usuario guardó este paso en `144feb1`.
+
+**Avance del 2026-10-06 — paso 5.6 terminado localmente, sin commit:**
+
+- Antes del cambio pasaron **425 pruebas de caracterización** de matrículas,
+  cobros por año, escrituras financieras y guardias. Se escribieron primero
+  11 pruebas nuevas; las 10 iniciales fallaron porque todavía no existían el resumen,
+  el año opcional en valores especiales ni la lectura del curso desde la
+  matrícula del año correspondiente.
+- Nuevo `GET /anios-lectivos/{anio_lectivo_id}/resumen`, solo para admin. El
+  backend exige que sea exactamente `N+1` en `preparacion` y devuelve el año
+  junto con los conteos de cursos, conceptos, matrículas, valores especiales
+  y pagos no anulados, además del total pagado para ese año.
+- `GET /estudiantes/{estudiante_id}/valores-pago-personalizados` acepta
+  `anio_lectivo_id` opcional. Sin enviarlo conserva el año activo y la misma
+  forma de respuesta; al enviarlo valida el año y limita conceptos, matrícula
+  y precio por curso al mismo año.
+- Al guardar un valor especial, el curso ya no sale de
+  `estudiantes.curso_id`: sale de la matrícula del año al que pertenece el
+  concepto. Si el estudiante no tiene matrícula en ese año, no se escribe y
+  se devuelve el error de negocio. La relectura posterior también queda
+  limitada a ese año.
+- La prueba integral copia un valor especial de matrícula a 2027, calcula la
+  deuda usando ese valor, registra en noviembre de 2026 un pago dirigido a
+  2027 y comprueba que la deuda 2027 queda en cero sin alterar 2026. No se
+  cambió ninguna fórmula de cobro, mora, deuda o cartera.
+- No hubo migración, frontend, acceso a una base real ni creación de 2027. La
+  primera verificación global detectó un doble antiguo de base de datos; se
+  actualizó para devolver año y curso, sin cambiar código de negocio.
+- Verificación final: **436 pruebas específicas pasan**; `scripts/verify.py`
+  → **2096 pruebas pasan**, Ruff y `pip check` limpios con `DATABASE_URL`
   ficticio. `git diff --check` limpio.
 
 ### Fase 6 — Activar el año nuevo, cerrar y reabrir (antes de iniciar clases 2027)
@@ -2954,13 +2987,22 @@ cosa, gana lo que se pueda verificar.
   nuevos, identifica choques y devuelve conteos. No se creó 2027, no hubo
   migración ni acceso a una base real. Pasaron 349 pruebas
   específicas y 2069 globales, además de Ruff y `pip check`.
-- **Paso 5.5 terminado localmente, pendiente de commit:** tres rutas solo para
-  admin consultan candidatos por matrícula, promueven solo la selección y dan
+- **Paso 5.5 confirmado en `144feb1`:** tres rutas solo para admin consultan
+  candidatos por matrícula, promueven solo la selección y dan
   de alta un estudiante directamente en preparación. Los valores especiales
   se copian por `tipo_pago_origen_id` y se devuelven como `revisar`; cualquier
   inconsistencia revierte todo. El curso vigente 2026 no cambia. No se creó
   2027, no hubo migración, frontend ni acceso a una base real. Pasan 151
   pruebas específicas y 2085 globales, además de Ruff y `pip check`.
+- **Paso 5.6 terminado localmente, pendiente de commit:** el resumen del año
+  en preparación cuenta cursos, conceptos, matrículas, valores especiales y
+  pagos no anulados, con su total. La consulta de valores especiales acepta el
+  año opcional y tanto su lectura como su escritura usan el curso de la
+  matrícula de ese mismo año, nunca la copia del curso vigente. Una prueba
+  integral cubre una matrícula 2027 pagada en noviembre de 2026 y comprueba
+  que 2026 no cambia. No hubo migración, frontend, acceso a una base real ni
+  creación de 2027. Pasan 436 pruebas específicas y 2096 globales, además de
+  Ruff y `pip check`.
 - **Hecho aparte, la noche del 2026-09-30:** el arreglo de la hora
   (`2e77634` en este repo, `033c042` en el frontend). Cobros, cartera y
   alta de colegios usan la fecha de Colombia (`app/core/fechas.py`), y el
@@ -2990,9 +3032,9 @@ cosa, gana lo que se pueda verificar.
   correr si falta `$env:DATABASE_URL`. Antes de probar la app contra una
   rama, detener el backend local que esté corriendo; si no, el frontend
   sigue hablando con el que apunta a producción.
-- **Siguiente acción exacta:** el usuario revisa y hace el commit del paso 5.5.
-  Después, y solo con autorización explícita, viene **5.6 — Resumen y recorrido
-  financiero del backend**. No iniciar todavía 5.6 ni crear 2027. Sigue
+- **Siguiente acción exacta:** el usuario revisa y hace el commit del paso 5.6.
+  Después, y solo con autorización explícita, viene **5.7 — Pantalla base del
+  frontend**. No iniciar todavía 5.7 ni crear 2027. Sigue
   abierta, para
   antes de la fase 6, la pregunta separada de Certificados y estudiantes
   retirados/egresados.

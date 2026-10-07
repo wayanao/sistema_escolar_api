@@ -147,6 +147,8 @@ class CursorFalso:
             return [{"cursos_de_otro_anio": []}]
         if "from tipos_de_pagos tp" in query and "order by tp.id" in query:
             return [fila_tipo_pago(self.tipo_cobro)]
+        if "select tp.anio_lectivo_id, m.curso_id" in query:
+            return [(1, 3, 1)]
         if "from tipos_de_pagos" in query and "lower(trim(nombre))" in query:
             return [(4,)] if self.nombre_duplicado else []
         if "select curso_id, tipo_pago_id, valor" in query:

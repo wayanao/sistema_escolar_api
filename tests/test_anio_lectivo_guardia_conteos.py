@@ -218,6 +218,9 @@ TABLAS = [(
     "FROM information_schema.tables", Comodin(),
     [(t,) for t in ("tipos_de_pagos", "tipos_pagos_cursos", "tipos_pagos_estudiantes")],
 )]
+CONTEXTO_VALOR_PERSONALIZADO = [
+    ("SELECT tp.anio_lectivo_id, m.curso_id", (5, 2, 3), []),
+] + TABLAS
 
 # nombre -> (metodo, ruta, cuerpo, formulario, respuestas)
 RUTAS = {
@@ -326,7 +329,8 @@ RUTAS = {
     ),
     "DELETE /tipos-pagos/{id}/cursos/{curso}": ("DELETE", "/tipos-pagos/4/cursos/2", None, None, []),
     "PUT /estudiantes/{id}/valores-pago-personalizados/{concepto}": (
-        "PUT", "/estudiantes/3/valores-pago-personalizados/4", {"valor": 150000}, None, TABLAS,
+        "PUT", "/estudiantes/3/valores-pago-personalizados/4", {"valor": 150000}, None,
+        CONTEXTO_VALOR_PERSONALIZADO,
     ),
     "DELETE /estudiantes/{id}/valores-pago-personalizados/{concepto}": (
         "DELETE", "/estudiantes/3/valores-pago-personalizados/4", None, None, TABLAS,
@@ -374,7 +378,7 @@ ANTES = {
     ("PUT /tipos-pagos/{id}/configuracion", "admin"): (2, 4),
     ("PUT /tipos-pagos/{id}/cursos", "admin"): (1, 4),
     ("DELETE /tipos-pagos/{id}/cursos/{curso}", "admin"): (1, 1),
-    ("PUT /estudiantes/{id}/valores-pago-personalizados/{concepto}", "admin"): (1, 8),
+    ("PUT /estudiantes/{id}/valores-pago-personalizados/{concepto}", "admin"): (1, 7),
     ("DELETE /estudiantes/{id}/valores-pago-personalizados/{concepto}", "admin"): (1, 2),
 }
 

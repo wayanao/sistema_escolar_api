@@ -229,11 +229,18 @@ def delete_curso_asignado(id: int, curso_id: int):
 # Valores personalizados por estudiante
 # -----------------------------------------------------------------------------
 @router.get('/estudiantes/{estudiante_id}/valores-pago-personalizados')
-def get_valores_personalizados_estudiante(estudiante_id: int):
+def get_valores_personalizados_estudiante(
+    estudiante_id: int,
+    anio_lectivo_id: Annotated[Optional[int], Query(gt=0)] = None,
+):
     try:
-        return listar_valores_personalizados_estudiante(estudiante_id)
+        return listar_valores_personalizados_estudiante(
+            estudiante_id, anio_lectivo_id=anio_lectivo_id
+        )
     except MigracionPendienteError as e:
         raise HTTPException(status_code=409, detail=str(e))
+    except AnioLectivoInexistenteError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 @router.put('/estudiantes/{estudiante_id}/valores-pago-personalizados/{tipo_pago_id}')

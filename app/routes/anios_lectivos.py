@@ -18,6 +18,7 @@ from app.controllers.anios_lectivos_controller import (
     listar_candidatos_matricula_controller,
     listar_anios_lectivos_controller,
     promover_estudiantes_controller,
+    resumen_anio_preparacion_controller,
 )
 from app.dependencies import get_current_active_admin, get_current_user
 from app.schemas.anio_lectivo import CopiarConfiguracionAnio, PromocionEstudiantes
@@ -86,6 +87,24 @@ def _traducir_error_matricula(exc):
     else:
         codigo = status.HTTP_409_CONFLICT
     raise HTTPException(status_code=codigo, detail=str(exc)) from exc
+
+
+@router.get(
+    "/anios-lectivos/{anio_lectivo_id}/resumen",
+    dependencies=[Depends(get_current_active_admin)],
+)
+def resumen_anio_preparacion(
+    anio_lectivo_id: Annotated[int, Path(gt=0)],
+):
+    """Resume la preparación financiera del siguiente año lectivo."""
+    try:
+        return resumen_anio_preparacion_controller(anio_lectivo_id)
+    except (
+        AnioLectivoInexistenteError,
+        AnioLectivoActivoInexistenteError,
+        AnioLectivoDestinoInvalidoError,
+    ) as exc:
+        _traducir_error_matricula(exc)
 
 
 @router.get(

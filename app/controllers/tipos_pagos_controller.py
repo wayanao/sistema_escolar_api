@@ -618,15 +618,20 @@ def _exigir_tabla_valores_estudiantes(cursor):
         )
 
 
-def _consultar_valores_personalizados(cursor, estudiante_id):
+def _consultar_valores_personalizados(
+    cursor, estudiante_id, anio_lectivo_id=None
+):
     """Lee los valores personalizados con el cursor que ya abrio quien llama.
 
     Extraida por el mismo motivo que `_consultar_cursos_asignados`. Exige un
     cursor tipo dict.
     """
     _exigir_tabla_valores_estudiantes(cursor)
+    filtro_anio, params_anio = condicion_anio(
+        "t.anio_lectivo_id", anio_lectivo_id
+    )
     cursor.execute(
-            """
+            f"""
             SELECT
                 tpe.id,
                 tpe.tipo_pago_id,
@@ -641,16 +646,19 @@ def _consultar_valores_personalizados(cursor, estudiante_id):
                 tpc.valor AS valor_curso
             FROM tipos_pagos_estudiantes tpe
             JOIN tipos_de_pagos t ON t.id = tpe.tipo_pago_id
-            JOIN estudiantes e ON e.id = tpe.estudiante_id
+            JOIN matriculas m
+                ON m.estudiante_id = tpe.estudiante_id
+               AND m.anio_lectivo_id = t.anio_lectivo_id
             LEFT JOIN tipos_pagos_cursos tpc
                 ON tpc.tipo_pago_id = tpe.tipo_pago_id
-               AND tpc.curso_id = e.curso_id
+               AND tpc.curso_id = m.curso_id
                AND tpc.activo = TRUE
             WHERE tpe.estudiante_id = %s
               AND tpe.activo = TRUE
+              AND {filtro_anio}
             ORDER BY t.nombre
             """,
-        (estudiante_id,),
+        (estudiante_id, *params_anio),
     )
     return [
         {
@@ -670,13 +678,19 @@ def _consultar_valores_personalizados(cursor, estudiante_id):
     ]
 
 
-def listar_valores_personalizados_estudiante(estudiante_id):
+def listar_valores_personalizados_estudiante(
+    estudiante_id, anio_lectivo_id=None
+):
     from psycopg2.extras import RealDictCursor
 
     conn = get_connection()
     cursor = conn.cursor(cursor_factory=RealDictCursor)
     try:
-        return _consultar_valores_personalizados(cursor, estudiante_id)
+        if anio_lectivo_id is not None:
+            exigir_anio_lectivo(cursor, anio_lectivo_id)
+        return _consultar_valores_personalizados(
+            cursor, estudiante_id, anio_lectivo_id=anio_lectivo_id
+        )
     finally:
         cursor.close()
         conn.close()
@@ -701,20 +715,32 @@ def upsert_valor_personalizado_estudiante(
         _exigir_tabla_valores_estudiantes(cursor)
 
         cursor.execute(
-            "SELECT curso_id FROM estudiantes WHERE id = %s",
-            (estudiante_id,),
+            """
+            SELECT tp.anio_lectivo_id, m.curso_id, e.id AS estudiante_id
+            FROM tipos_de_pagos tp
+            LEFT JOIN estudiantes e ON e.id = %s
+            LEFT JOIN matriculas m
+              ON m.estudiante_id = e.id
+             AND m.anio_lectivo_id = tp.anio_lectivo_id
+            WHERE tp.id = %s
+            """,
+            (estudiante_id, tipo_pago_id),
         )
-        estudiante = cursor.fetchone()
-        if not estudiante:
-            raise ValueError("Estudiante no encontrado.")
-
-        curso_id = estudiante["curso_id"]
-        cursor.execute(
-            "SELECT 1 FROM tipos_de_pagos WHERE id = %s",
-            (tipo_pago_id,),
-        )
-        if not cursor.fetchone():
+        contexto = cursor.fetchone()
+        if not contexto:
             raise ValueError("Tipo de pago no encontrado.")
+        if isinstance(contexto, dict):
+            anio_lectivo_id = contexto["anio_lectivo_id"]
+            curso_id = contexto["curso_id"]
+            estudiante_encontrado = contexto["estudiante_id"]
+        else:
+            anio_lectivo_id, curso_id, estudiante_encontrado = contexto
+        if estudiante_encontrado is None:
+            raise ValueError("Estudiante no encontrado.")
+        if curso_id is None:
+            raise ValueError(
+                "El estudiante no tiene matrícula en el año del concepto."
+            )
 
         if "tipos_pagos_cursos" in _table_names(cursor):
             cursor.execute(
@@ -754,7 +780,9 @@ def upsert_valor_personalizado_estudiante(
             ),
         )
         cursor.fetchone()
-        valores = _consultar_valores_personalizados(cursor, estudiante_id)
+        valores = _consultar_valores_personalizados(
+            cursor, estudiante_id, anio_lectivo_id=anio_lectivo_id
+        )
         conn.commit()
         return valores
     except (MigracionPendienteError, ValueError, AnioLectivoNoEditableError):

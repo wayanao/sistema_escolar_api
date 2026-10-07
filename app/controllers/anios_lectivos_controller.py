@@ -298,6 +298,33 @@ def _contexto_matricula_en_preparacion(cursor, anio_destino_id):
     return activo, destino
 
 
+def resumen_anio_preparacion_controller(anio_destino_id):
+    """Resume lo preparado y el dinero registrado para el siguiente año."""
+    with get_cursor() as cursor:
+        _activo, destino = _contexto_matricula_en_preparacion(
+            cursor, anio_destino_id
+        )
+        resumen = anios_lectivos_repository.leer_resumen_anio(
+            cursor, destino[0]
+        )
+
+    return {
+        "anio_lectivo": {
+            "id": destino[0],
+            "anio": destino[1],
+            "estado": destino[2],
+        },
+        "resumen": {
+            "cursos": resumen["cursos"],
+            "conceptos_pago": resumen["conceptos_pago"],
+            "estudiantes_matriculados": resumen["estudiantes_matriculados"],
+            "valores_especiales": resumen["valores_especiales"],
+            "pagos_registrados": resumen["pagos_registrados"],
+            "total_pagado": float(resumen["total_pagado"] or 0),
+        },
+    }
+
+
 def _exigir_curso_del_anio(
     cursor, curso_id, anio_lectivo_id, nombre_curso, nombre_anio
 ):

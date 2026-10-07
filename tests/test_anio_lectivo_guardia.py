@@ -421,6 +421,9 @@ TABLAS = [(
     "FROM information_schema.tables", Comodin(),
     [(t,) for t in ("tipos_de_pagos", "tipos_pagos_cursos", "tipos_pagos_estudiantes")],
 )]
+CONTEXTO_VALOR_PERSONALIZADO = [
+    ("SELECT tp.anio_lectivo_id, m.curso_id", (5, 2, 3), []),
+] + TABLAS
 
 
 def _anio_pedido(anio):
@@ -544,7 +547,7 @@ RUTAS = {
     ),
     "PUT /estudiantes/{id}/valores-pago-personalizados/{concepto}": (
         [ADMIN], "PUT", "/estudiantes/3/valores-pago-personalizados/4", {"valor": 150000}, None,
-        TABLAS,
+        CONTEXTO_VALOR_PERSONALIZADO,
     ),
     "DELETE /estudiantes/{id}/valores-pago-personalizados/{concepto}": (
         [ADMIN], "DELETE", "/estudiantes/3/valores-pago-personalizados/4", None, None, TABLAS,

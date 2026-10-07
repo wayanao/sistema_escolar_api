@@ -6,6 +6,38 @@ Ultima revision documental: 2026-10-06.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
+## 2026-10-06 - Año lectivo 5.5: matricular el año en preparación
+
+Quinto paso de la fase 5 de `docs/funcionalidades/ANIO_LECTIVO.md`.
+
+### Qué cambia
+
+- Tres rutas nuevas, solo para admin, consultan candidatos de un curso del año
+  activo, promueven una selección explícita al curso de `N+1` en preparación y
+  crean un estudiante nuevo directamente en ese destino.
+- Los candidatos salen de `matriculas`, no de la copia
+  `estudiantes.curso_id`. La respuesta indica quién ya tiene matrícula en el
+  destino y la promoción rechaza estudiantes ajenos, repetidos o ya
+  matriculados.
+- Al matricular un estudiante existente se copian sus valores especiales a
+  los conceptos equivalentes del destino mediante `tipo_pago_origen_id`. La
+  respuesta los marca `revisar`; una equivalencia ausente revierte toda la
+  selección.
+- Promover no escribe el curso vigente. El alta directa crea solo la matrícula
+  del año en preparación y mantiene `estudiantes.curso_id` en `NULL` hasta la
+  activación.
+- Cada alta o promoción se confirma como una sola transacción. No hay
+  migración, no se crean pagos y no cambian cartera ni cálculos de deuda. No se
+  accedió a una base real ni se creó 2027.
+
+### Pruebas
+
+Antes del cambio pasaron 135 pruebas de caracterización. Las pruebas nuevas
+fallaron primero por las rutas y funciones ausentes; al final son 16 y cubren
+permisos, selección, referencias de año, copia de valores, alta directa y
+choques concurrentes. Pasan 151 pruebas específicas. `scripts/verify.py` pasó
+con 2085 pruebas, Ruff y `pip check` limpios, usando una base ficticia.
+
 ## 2026-10-06 - Año lectivo 5.4: copiar la configuración al año siguiente
 
 Cuarto paso de la fase 5 de `docs/funcionalidades/ANIO_LECTIVO.md`.

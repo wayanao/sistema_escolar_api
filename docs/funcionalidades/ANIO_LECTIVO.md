@@ -2,13 +2,14 @@
 
 ## Control
 
-- Estado: **Fase 5 en curso; pasos 5.1 a 5.3 confirmados, y paso 5.4 terminado
-  localmente, pendiente de revisión y commit del usuario.** El paso 5.3 quedó
-  en `653703c`. El commit `a6f3cc0`
+- Estado: **Fase 5 en curso; pasos 5.1 a 5.4 confirmados, y paso 5.5 terminado
+  localmente, pendiente de revisión y commit del usuario.** El paso 5.4 quedó
+  en `cffdfd7`, el paso 5.3 en `653703c`. El commit `a6f3cc0`
   quedó `Live` en Render; el usuario probó primero la migración en una rama de
   Neon, regeneró el esquema base y después la aplicó y verificó en los dos
   tenants de producción. El paso 5.3 no creó 2027 ni accedió a ninguna base
-  real. El paso 5.4 tampoco accedió a una base real y no se inició 5.5. La
+  real. Los pasos 5.4 y 5.5 tampoco accedieron a una base real ni crearon
+  2027. No se inició 5.6. La
   matrícula del año activo ya es la fuente del curso vigente y solo
   `sincronizar_curso_vigente` escribe `estudiantes.curso_id`. La
   fase 4 (frontend) quedó completa y fue confirmada en los commits
@@ -2623,6 +2624,46 @@ se adelantó aquí.
   **2069 pruebas pasan**, Ruff y `pip check` limpios; `git diff --check`
   también limpio.
 
+*Confirmado después:* el usuario guardó este paso en `cffdfd7`.
+
+**Avance del 2026-10-06 — paso 5.5 terminado localmente, sin commit:**
+
+- Antes de escribir código pasaron **135 pruebas de caracterización** de
+  estudiantes, matrículas, preparación, copia de configuración y escrituras
+  de pagos. Se escribieron las pruebas nuevas y fallaron por las rutas,
+  esquemas y consultas todavía ausentes; la red final tiene **16 pruebas**.
+- Nuevas rutas solo para admin:
+  - `GET /anios-lectivos/{anio_lectivo_id}/matriculas/candidatos`, con
+    `curso_origen_id`, lista desde la matrícula del curso activo y marca quién
+    ya tiene matrícula en el destino.
+  - `POST /anios-lectivos/{anio_lectivo_id}/matriculas/promocion` recibe curso
+    origen, curso destino y los ids seleccionados; no matricula a los
+    desmarcados.
+  - `POST /anios-lectivos/{anio_lectivo_id}/estudiantes` usa los mismos datos
+    globales del alta actual, pero crea solo la matrícula en preparación.
+- El servidor comprueba que el destino sea exactamente `N+1` en
+  `preparacion`, que el origen sea un curso activo, que el destino pertenezca
+  al año indicado y que cada estudiante venga del curso origen y todavía no
+  tenga matrícula en el destino. La lista conserva también retirados y
+  egresados para que el admin decida explícitamente a quién promover.
+- Al crear la matrícula de un estudiante existente, copia todas sus filas de
+  `tipos_pagos_estudiantes` cuyos conceptos pertenecen al activo hacia el
+  concepto de destino enlazado por `tipo_pago_origen_id`. Conserva valor,
+  motivo y estado, y cada fila devuelta lleva `estado: "revisar"`. Si falta
+  una equivalencia, revierte toda la selección.
+- La promoción no ejecuta ninguna escritura sobre `estudiantes.curso_id`. El
+  alta directa inserta los 34 datos globales sin curso, crea solo la matrícula
+  del año en preparación y llama a `sincronizar_curso_vigente`, que conserva
+  `NULL` al no existir matrícula activa. Así 2026 sigue siendo el curso
+  vigente.
+- Promoción y alta directa son transaccionales. Un choque concurrente se
+  informa como `409` y revierte matrículas y valores ya copiados en esa
+  solicitud. No se cambió el cálculo de cobros, deudas ni cartera; no hubo
+  migración, frontend, acceso a una base real ni creación de 2027.
+- Verificación: **151 pruebas específicas pasan**; `scripts/verify.py` →
+  **2085 pruebas pasan**, Ruff y `pip check` limpios con `DATABASE_URL`
+  ficticio. `git diff --check` limpio.
+
 ### Fase 6 — Activar el año nuevo, cerrar y reabrir (antes de iniciar clases 2027)
 
 1. Migración: marca "no continúa" en `matriculas` (decisión 9) y tabla
@@ -2907,12 +2948,19 @@ cosa, gana lo que se pueda verificar.
   el camino anterior cuando se omite. No se creó 2027, no hubo migración ni
   acceso a una base real. Pasaron 275 pruebas específicas y 2049 globales,
   además de Ruff y `pip check`.
-- **Paso 5.4 terminado localmente, pendiente de commit:** copia en una sola
+- **Paso 5.4 confirmado en `cffdfd7`:** copia en una sola
   transacción cursos activos y todos los conceptos; las opciones controlan
   precios, carga académica y directores. Rehace todas las referencias con ids
   nuevos, identifica choques y devuelve conteos. No se creó 2027, no hubo
-  migración ni acceso a una base real y no se inició 5.5. Pasan 349 pruebas
+  migración ni acceso a una base real. Pasaron 349 pruebas
   específicas y 2069 globales, además de Ruff y `pip check`.
+- **Paso 5.5 terminado localmente, pendiente de commit:** tres rutas solo para
+  admin consultan candidatos por matrícula, promueven solo la selección y dan
+  de alta un estudiante directamente en preparación. Los valores especiales
+  se copian por `tipo_pago_origen_id` y se devuelven como `revisar`; cualquier
+  inconsistencia revierte todo. El curso vigente 2026 no cambia. No se creó
+  2027, no hubo migración, frontend ni acceso a una base real. Pasan 151
+  pruebas específicas y 2085 globales, además de Ruff y `pip check`.
 - **Hecho aparte, la noche del 2026-09-30:** el arreglo de la hora
   (`2e77634` en este repo, `033c042` en el frontend). Cobros, cartera y
   alta de colegios usan la fecha de Colombia (`app/core/fechas.py`), y el
@@ -2942,9 +2990,10 @@ cosa, gana lo que se pueda verificar.
   correr si falta `$env:DATABASE_URL`. Antes de probar la app contra una
   rama, detener el backend local que esté corriendo; si no, el frontend
   sigue hablando con el que apunta a producción.
-- **Siguiente acción exacta:** el usuario revisa y hace el commit del paso 5.4.
-  Después, y solo con autorización explícita, viene **5.5 — Matricular**. No
-  iniciar todavía 5.5 ni crear 2027. Sigue abierta, para
+- **Siguiente acción exacta:** el usuario revisa y hace el commit del paso 5.5.
+  Después, y solo con autorización explícita, viene **5.6 — Resumen y recorrido
+  financiero del backend**. No iniciar todavía 5.6 ni crear 2027. Sigue
+  abierta, para
   antes de la fase 6, la pregunta separada de Certificados y estudiantes
   retirados/egresados.
 - Prompt para retomar: `docs/funcionalidades/PROMPT_CONTINUACION_ANIO_LECTIVO.md`.

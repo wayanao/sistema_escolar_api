@@ -158,7 +158,10 @@ Con usuario autenticado y alcance por rol, sin ownership:
   el año siguiente en el servidor y lo crea en preparación. `POST
   /anios-lectivos/{id}/copiar-configuracion` también es solo para admin y el
   backend exige que el destino sea exactamente ese siguiente año en
-  preparación. La regla de
+  preparación. Las rutas de candidatos, promoción y alta directa bajo
+  `/anios-lectivos/{id}` también son solo para admin: el backend valida el
+  curso de origen, el curso destino y los estudiantes seleccionados; el
+  cliente no decide qué año se puede matricular. La regla de
   lectura vive en `app/services/anio_lectivo.py`
   (`listar_anios_visibles`), junto con `resolver_anio_pedido`, que los
   listados por año usaran para negar con 403 a un profesor que pida otro

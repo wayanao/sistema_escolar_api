@@ -77,6 +77,9 @@ Notas:
 - `GET /anios-lectivos`
 - `POST /anios-lectivos` (solo admin)
 - `POST /anios-lectivos/{anio_lectivo_id}/copiar-configuracion` (solo admin)
+- `GET /anios-lectivos/{anio_lectivo_id}/matriculas/candidatos` (solo admin)
+- `POST /anios-lectivos/{anio_lectivo_id}/matriculas/promocion` (solo admin)
+- `POST /anios-lectivos/{anio_lectivo_id}/estudiantes` (solo admin)
 
 Notas:
 
@@ -139,6 +142,35 @@ Notas:
   identificándolo y revierte toda la copia. También responde `409` si el
   destino no es el siguiente en preparación o si una referencia del origen no
   puede reconstruirse; un id de año inexistente responde `404`.
+
+- Fase 5, paso 5.5: candidatos recibe `curso_origen_id` como query. El curso
+  debe ser del año activo y el id de la ruta debe ser exactamente `N+1` en
+  preparación. Devuelve todos los estudiantes de la matrícula del curso,
+  incluidos retirados o egresados, y marca `matriculado_en_destino` para no
+  volver a promover a quien ya tenga matrícula allí.
+- La promoción recibe una selección explícita, sin ids vacíos ni repetidos:
+
+```json
+{
+  "curso_origen_id": 10,
+  "curso_destino_id": 20,
+  "estudiante_ids": [1, 2]
+}
+```
+
+- Solo esos estudiantes reciben matrícula en el destino. Sus valores de
+  `tipos_pagos_estudiantes` se copian a los conceptos de `N+1` enlazados por
+  `tipo_pago_origen_id`; la respuesta los incluye en
+  `valores_especiales_copiados`, cada uno con `"estado": "revisar"`. Si un
+  concepto equivalente falta, o un estudiante no es candidato o ya está
+  matriculado, responde `409` y revierte la selección completa.
+- El alta directa usa el mismo cuerpo de estudiante de `POST /estudiantes`,
+  pero el curso debe pertenecer al año en preparación indicado en la ruta.
+  Crea solo esa matrícula y responde `curso_vigente_id: null`; mientras el año
+  activo siga siendo 2026 no cambia `estudiantes.curso_id`.
+- Las tres rutas validan el año y los cursos en el backend. Un año inexistente
+  responde `404`; un destino que no sea el siguiente en preparación responde
+  `409`. No crean pagos ni calculan deudas.
 
 ### Guardia de escritura (paso 3.7)
 

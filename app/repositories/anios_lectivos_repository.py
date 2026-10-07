@@ -7,7 +7,8 @@ años, para que el frontend sepa cuales hay y cual es el activo,
 se dicta una materia (aviso al renombrarla) y el año de una clase, un plan,
 una anotacion, un curso o un concepto (guardia de escritura). Como el resto de
 repositorios, cada funcion recibe el cursor de quien llama y no abre, confirma
-ni cierra nada.
+ni cierra nada. La fase 5 agrega la copia de configuración y, en el paso 5.5,
+las matrículas y valores especiales del año en preparación.
 """
 
 # Id del año activo como subconsulta, para escribirlo dentro del mismo INSERT
@@ -310,8 +311,135 @@ def crear_anio_en_preparacion(cursor, anio):
     return cursor.fetchone()
 
 
+def leer_curso_para_matricula(cursor, curso_id):
+    """Curso con el año al que pertenece, para validar una matrícula."""
+    columnas = (
+        "id",
+        "nombre",
+        "jornada",
+        "anio_lectivo_id",
+        "anio",
+        "estado_anio",
+    )
+    cursor.execute(
+        """
+        SELECT c.id, c.nombre, c.jornada, c.anio_lectivo_id,
+               al.anio, al.estado AS estado_anio
+        FROM cursos c
+        JOIN anios_lectivos al ON al.id = c.anio_lectivo_id
+        WHERE c.id = %s
+          AND COALESCE(LOWER(c.estado), 'activo') = 'activo'
+        """,
+        (curso_id,),
+    )
+    fila = cursor.fetchone()
+    if fila is None:
+        return None
+    return dict(fila) if isinstance(fila, dict) else dict(zip(columnas, fila))
+
+
+def listar_candidatos_matricula(
+    cursor, curso_origen_id, anio_origen_id, anio_destino_id
+):
+    """Estudiantes del curso origen y su posible matrícula en el destino."""
+    columnas = (
+        "id",
+        "nombre",
+        "apellido",
+        "documento_identidad",
+        "estado",
+        "curso_destino_id",
+    )
+    cursor.execute(
+        """
+        SELECT e.id, e.nombre, e.apellido, e.documento_identidad,
+               COALESCE(LOWER(e.estado), 'activo') AS estado,
+               destino.curso_id AS curso_destino_id
+        FROM matriculas origen
+        JOIN estudiantes e ON e.id = origen.estudiante_id
+        LEFT JOIN matriculas destino
+          ON destino.estudiante_id = e.id
+         AND destino.anio_lectivo_id = %s
+        WHERE origen.anio_lectivo_id = %s
+          AND origen.curso_id = %s
+        ORDER BY e.apellido, e.nombre, e.id
+        """,
+        (anio_destino_id, anio_origen_id, curso_origen_id),
+    )
+    return _filas_como_diccionarios(cursor.fetchall(), columnas)
+
+
+def insertar_matricula_en_anio(cursor, estudiante_id, curso_id, anio_lectivo_id):
+    """Crea una matrícula sin tocar la copia del curso vigente."""
+    cursor.execute(
+        """
+        INSERT INTO matriculas (estudiante_id, curso_id, anio_lectivo_id)
+        VALUES (%s, %s, %s)
+        RETURNING id
+        """,
+        (estudiante_id, curso_id, anio_lectivo_id),
+    )
+    return cursor.fetchone()[0]
+
+
+def listar_valores_especiales_para_copiar(
+    cursor, estudiante_id, anio_origen_id, anio_destino_id
+):
+    """Valores del origen junto al concepto equivalente del destino."""
+    columnas = (
+        "id",
+        "tipo_pago_origen_id",
+        "tipo_pago_origen_nombre",
+        "tipo_pago_destino_id",
+        "tipo_pago_destino_nombre",
+        "valor",
+        "motivo",
+        "activo",
+    )
+    cursor.execute(
+        """
+        SELECT tpe.id,
+               origen.id AS tipo_pago_origen_id,
+               origen.nombre AS tipo_pago_origen_nombre,
+               destino.id AS tipo_pago_destino_id,
+               destino.nombre AS tipo_pago_destino_nombre,
+               tpe.valor, tpe.motivo, tpe.activo
+        FROM tipos_pagos_estudiantes tpe
+        JOIN tipos_de_pagos origen ON origen.id = tpe.tipo_pago_id
+        LEFT JOIN tipos_de_pagos destino
+          ON destino.tipo_pago_origen_id = origen.id
+         AND destino.anio_lectivo_id = %s
+        WHERE tpe.estudiante_id = %s
+          AND origen.anio_lectivo_id = %s
+        ORDER BY origen.nombre, tpe.id
+        """,
+        (anio_destino_id, estudiante_id, anio_origen_id),
+    )
+    return _filas_como_diccionarios(cursor.fetchall(), columnas)
+
+
+def insertar_valor_especial_copiado(cursor, estudiante_id, valor):
+    """Copia un valor especial conservando importe, motivo y estado."""
+    cursor.execute(
+        """
+        INSERT INTO tipos_pagos_estudiantes
+            (tipo_pago_id, estudiante_id, valor, motivo, activo)
+        VALUES (%s, %s, %s, %s, %s)
+        RETURNING id
+        """,
+        (
+            valor["tipo_pago_destino_id"],
+            estudiante_id,
+            valor["valor"],
+            valor["motivo"],
+            valor["activo"],
+        ),
+    )
+    return cursor.fetchone()[0]
+
+
 def leer_anio_lectivo_para_actualizar(cursor, anio_lectivo_id):
-    """Lee y bloquea un año mientras se copia su configuración."""
+    """Lee y bloquea un año mientras se modifica su preparación."""
     cursor.execute(
         "SELECT id, anio, estado FROM anios_lectivos WHERE id = %s FOR UPDATE",
         (anio_lectivo_id,),

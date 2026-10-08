@@ -2,8 +2,10 @@
 
 ## Control
 
-- Estado: **Fase 5 en curso; pasos 5.1 a 5.8 confirmados y paso 5.9 terminado
-  localmente en el frontend, pendiente de revisión y commit del usuario.** El
+- Estado: **Fase 5 completa en código; pasos 5.1 a 5.9 confirmados y paso 5.10
+  terminado localmente en el frontend, pendiente de revisión y commit del
+  usuario.** El paso 5.9 quedó en `0689b7d` y su registro en este repo en
+  `53da8f0`. El
   paso 5.6 quedó en `102ec77`, el 5.5 en `144feb1`, el 5.4 en `cffdfd7` y el
   5.3 en `653703c`; el 5.8 del frontend quedó en `817c47e` y su registro en
   este repo en `d3cdfd3`. El commit `a6f3cc0`
@@ -11,7 +13,7 @@
   Neon, regeneró el esquema base y después la aplicó y verificó en los dos
   tenants de producción. El paso 5.3 no creó 2027 ni accedió a ninguna base
   real. Los pasos 5.4, 5.5 y 5.6 tampoco accedieron a una base real ni crearon
-  2027. No se inició 5.10. La
+  2027. No se inició la fase 6. La
   matrícula del año activo ya es la fuente del curso vigente y solo
   `sincronizar_curso_vigente` escribe `estudiantes.curso_id`. La
   fase 4 (frontend) quedó completa y fue confirmada en los commits
@@ -2699,7 +2701,7 @@ se adelantó aquí.
   → **2096 pruebas pasan**, Ruff y `pip check` limpios con `DATABASE_URL`
   ficticio. `git diff --check` limpio.
 
-**Avance del frontend — pasos 5.7 a 5.9:**
+**Avance del frontend — pasos 5.7 a 5.10:**
 
 - El paso 5.7 quedó confirmado en `5bfcad1`, con el ajuste responsive
   `409ab07`: ruta protegida y menú, creación/copia de 2027, recarga del
@@ -2722,9 +2724,9 @@ se adelantó aquí.
   La primera corrida restringida tuvo 30 errores de permisos sobre la carpeta
   temporal de pytest; repetida fuera de esa restricción quedó completamente
   verde. `git diff --check` también quedó limpio.
-- El paso 5.9 terminó localmente en el frontend el 2026-10-07, pendiente de
-  revisión y commit del usuario. Pagos tiene un selector propio, activo por
-  defecto; solo al elegir otro año añade `anio_lectivo_id` a conceptos,
+- El paso 5.9 quedó confirmado en el frontend en `0689b7d` y su registro en
+  este documento principal en `53da8f0`. Pagos tiene un selector propio,
+  activo por defecto; solo al elegir otro año añade `anio_lectivo_id` a conceptos,
   deudas, cuotas, adelantos, valores personalizados y al cuerpo del pago.
   Historial y ventas conservan sus contratos, y las ventas no se ofrecen fuera
   del activo.
@@ -2739,6 +2741,19 @@ se adelantó aquí.
   del backend, fórmulas financieras, migraciones, bases reales ni producción.
 - Al actualizar este documento principal, `scripts/verify.py` del backend pasó
   **2096 pruebas**, Ruff y `pip check` con una `DATABASE_URL` ficticia.
+- El paso 5.10 terminó localmente en el frontend el 2026-10-08, pendiente de
+  revisión y commit del usuario. El estado de cuenta de Cartera muestra el año
+  consultado por estudiante o curso; el nombre del CSV también lo incluye; y
+  el certificado de matrícula propone ese año sin dejar de ser editable.
+- No cambió ninguna petición HTTP, cálculo financiero ni regla de cobro. No se
+  tocó código funcional del backend, migraciones, bases reales ni producción.
+  Primero pasaron 24 pruebas de caracterización en 6 archivos; las 3 pruebas
+  nuevas fallaron antes de implementar y el bloque específico final pasa 27
+  pruebas en 6 archivos. `pnpm run check:deploy` pasa 2248 pruebas en 344
+  archivos, lint y build. Con este paso, la fase 5 queda completa en código.
+- Al registrar el cierre en este documento principal, `scripts/verify.py`
+  pasa **2096 pruebas**, Ruff y `pip check` con una `DATABASE_URL` ficticia.
+  `git diff --check` queda limpio en ambos repos.
 
 ### Fase 6 — Activar el año nuevo, cerrar y reabrir (antes de iniciar clases 2027)
 
@@ -3056,12 +3071,19 @@ cosa, gana lo que se pueda verificar.
   Pasan 37 pruebas específicas y 2227 globales, además de lint y build. El
   backend quedó sin cambios funcionales y no hubo acceso a bases ni
   producción.
-- **Paso 5.9 terminado localmente en el frontend, pendiente de commit:**
+- **Paso 5.9 confirmado en el frontend (`0689b7d`, documento principal
+  `53da8f0`):**
   selector propio del año del pago, año opcional en lecturas y cuerpos, ventas
   limitadas al activo y deuda anterior separada en Pagos, Cartera y ficha de
   Estudiantes. Pasan 76 pruebas específicas y 2245 globales, además de lint y
-  build. En este repo solo se actualiza este documento; su verificación pasa
-  2096 pruebas, Ruff y `pip check` con una `DATABASE_URL` ficticia.
+  build. En este repo solo se actualizó el documento principal; su verificación
+  pasó 2096 pruebas, Ruff y `pip check` con una `DATABASE_URL` ficticia.
+- **Paso 5.10 terminado localmente en el frontend, pendiente de commit:** el
+  año consultado aparece en el estado de cuenta y nombre del CSV de Cartera, y
+  se propone en el certificado de matrícula sin bloquear su edición. Pasan 27
+  pruebas específicas y 2248 globales, además de lint y build. No cambió
+  ningún contrato HTTP ni código funcional del backend. Al actualizar este
+  documento, el backend pasa 2096 pruebas, Ruff y `pip check`.
 - **Hecho aparte, la noche del 2026-09-30:** el arreglo de la hora
   (`2e77634` en este repo, `033c042` en el frontend). Cobros, cartera y
   alta de colegios usan la fecha de Colombia (`app/core/fechas.py`), y el
@@ -3091,11 +3113,9 @@ cosa, gana lo que se pueda verificar.
   correr si falta `$env:DATABASE_URL`. Antes de probar la app contra una
   rama, detener el backend local que esté corriendo; si no, el frontend
   sigue hablando con el que apunta a producción.
-- **Siguiente acción exacta:** el usuario revisa y hace el commit del paso 5.9
-  en el frontend y de esta actualización documental en el backend. Después, y
-  solo con autorización explícita, viene **5.10 — año en los documentos del
-  frontend**. No iniciar todavía 5.10 ni crear 2027. Sigue
-  abierta, para
-  antes de la fase 6, la pregunta separada de Certificados y estudiantes
-  retirados/egresados.
+- **Siguiente acción exacta:** el usuario revisa y hace el commit del paso 5.10
+  en el frontend y de esta actualización documental en el backend. No iniciar
+  la fase 6 ni crear o activar 2027. Antes de autorizar esa fase hay que
+  responder la pregunta de Certificados con estudiantes retirados/egresados y
+  decidir el estado de quien termina el último grado.
 - Prompt para retomar: `docs/funcionalidades/PROMPT_CONTINUACION_ANIO_LECTIVO.md`.

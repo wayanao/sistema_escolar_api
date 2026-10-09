@@ -167,7 +167,10 @@ Con usuario autenticado y alcance por rol, sin ownership:
   bajo `/anios-lectivos/{id}/activacion/vista-previa`, que además decide en el
   backend si se puede activar, y la marca de salida bajo
   `/anios-lectivos/{id}/matriculas/salida`, donde el backend valida las
-  matrículas y rechaza el choque con una matrícula siguiente. La regla de
+  matrículas y rechaza el choque con una matrícula siguiente. Activar el año
+  (`POST /anios-lectivos/{id}/activar`) también es solo para admin: el backend
+  exige el año escrito, vuelve a revisar los pendientes y decide todo lo que
+  cambia; el cliente no elige estados ni cursos. La regla de
   lectura vive en `app/services/anio_lectivo.py`
   (`listar_anios_visibles`), junto con `resolver_anio_pedido`, que los
   listados por año usaran para negar con 403 a un profesor que pida otro

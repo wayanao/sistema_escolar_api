@@ -32,6 +32,16 @@ class PromocionEstudiantes(BaseModel):
         return _validar_ids_estudiantes(valores)
 
 
+class ActivarAnioLectivo(BaseModel):
+    """El año que el admin escribe para confirmar la activación (fase 6.3a).
+
+    El backend lo compara con el año que se activa: protege de una pestaña
+    vieja o de una llamada por error, además de la confirmación del frontend.
+    """
+
+    confirmar_anio: int = Field(ge=2000, le=2100)
+
+
 class DecisionSalidaEstudiantes(BaseModel):
     """Marca de salida del año que termina; `null` la quita (fase 6.2b).
 

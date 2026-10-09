@@ -83,6 +83,7 @@ Notas:
 - `GET /anios-lectivos/{anio_lectivo_id}/resumen` (solo admin)
 - `GET /anios-lectivos/{anio_lectivo_id}/activacion/vista-previa` (solo admin)
 - `PUT /anios-lectivos/{anio_lectivo_id}/matriculas/salida` (solo admin)
+- `POST /anios-lectivos/{anio_lectivo_id}/activar` (solo admin)
 
 Notas:
 
@@ -259,6 +260,54 @@ Notas:
 - Desde el 6.2b, la promoción responde `409` si algún seleccionado tiene una
   marca de salida: el admin la quita primero. La respuesta de candidatos no
   cambia.
+- Fase 6, paso 6.3a: activar recibe el id del siguiente año en preparación y
+  el año escrito por el admin, que el backend compara con el que se activa:
+
+```json
+{ "confirmar_anio": 2027 }
+```
+
+- En una sola transacción, con los dos años bloqueados: vuelve a revisar los
+  pendientes, guarda las materias inactivas como ocultas del año que cierra,
+  pasa a `retirado` o `egresado` a quien quedó marcado sin matrícula
+  siguiente, cierra el activo (`cerrado_en`), activa el siguiente
+  (`activado_en`), copia a cada estudiante el curso de su matrícula del año
+  nuevo (o `null`) y corre la consulta de control. Si algo falla, no cambia
+  nada. Quien sigue conserva su estado, aunque no sea `activo`.
+- Si quedan pendientes, `409` con un objeto, como el aviso de materias:
+
+```json
+{
+  "detail": {
+    "codigo": "activacion_con_pendientes",
+    "mensaje": "No se puede activar 2027: faltan 1 estudiantes por decidir.",
+    "sin_decidir": [
+      {"id": 7, "nombre": "Ana", "apellido": "Pérez", "documento_identidad": "1001",
+       "curso_id": 20, "curso_nombre": "Quinto A", "curso_jornada": "Mañana"}
+    ]
+  }
+}
+```
+
+- Los demás errores llegan como texto: `404` si el año no existe; `409` si
+  no es el siguiente en preparación, si falta el activo, si el año escrito no
+  coincide ("Para activar, escribe el año 2027.") o si una comprobación final
+  falla ("... Nada cambió."). Respuesta:
+
+```json
+{
+  "anio_cerrado": {"id": 2, "anio": 2026, "estado": "cerrado"},
+  "anio_activo": {"id": 3, "anio": 2027, "estado": "activo"},
+  "resumen": {
+    "continuan": 170,
+    "nuevos": 4,
+    "retirados": 2,
+    "egresados": 18,
+    "materias_ocultas": 3,
+    "cursos_vigentes_actualizados": 174
+  }
+}
+```
 
 ### Guardia de escritura (paso 3.7)
 

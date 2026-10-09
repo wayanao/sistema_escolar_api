@@ -1,8 +1,8 @@
 """Años lectivos: consulta, preparación y matrícula del año siguiente.
 
 Ver docs/funcionalidades/ANIO_LECTIVO.md (fase 3, paso 3.1; fase 5, pasos
-5.3 a 5.5, y fase 6, pasos 6.2a y 6.2b). Qué años ve cada usuario lo decide
-`app/services/anio_lectivo.py`.
+5.3 a 5.5, y fase 6, pasos 6.2a, 6.2b y 6.3a). Qué años ve cada usuario lo
+decide `app/services/anio_lectivo.py`.
 """
 from app.database import get_cursor
 from app.repositories import anios_lectivos_repository, estudiantes_repository
@@ -47,6 +47,24 @@ class CandidatosMatriculaInvalidosError(Exception):
 
 class ValoresEspecialesInconsistentesError(Exception):
     """Un valor especial no tiene concepto equivalente en el destino."""
+
+
+class ConfirmacionActivacionInvalidaError(Exception):
+    """El año escrito para confirmar no es el que se activa."""
+
+
+class ActivacionConPendientesError(Exception):
+    """Quedan estudiantes sin decidir (decisión 9); viajan con la lista."""
+
+    codigo = "activacion_con_pendientes"
+
+    def __init__(self, mensaje, sin_decidir):
+        super().__init__(mensaje)
+        self.sin_decidir = sin_decidir
+
+
+class ActivacionInconsistenteError(Exception):
+    """Una comprobación final falló; la transacción se deshace entera."""
 
 
 def _formatear_anio(row):
@@ -326,15 +344,28 @@ def resumen_anio_preparacion_controller(anio_destino_id):
     }
 
 
-def _contexto_activacion(cursor, anio_destino_id):
-    """Año activo y el siguiente en preparación, leídos sin bloquear."""
-    activo = anios_lectivos_repository.leer_anio_activo(cursor)
+def _contexto_activacion(cursor, anio_destino_id, bloquear=False):
+    """Año activo y el siguiente en preparación.
+
+    La vista previa los lee sin bloquear. La activación los bloquea, en el
+    mismo orden que la promoción y la marca de salida, para que ninguna de las
+    dos cambie la lista de pendientes mientras se activa.
+    """
+    repositorio = anios_lectivos_repository
+    if bloquear:
+        leer_activo = repositorio.leer_anio_activo_para_actualizar
+        leer_destino = repositorio.leer_anio_lectivo_para_actualizar
+    else:
+        leer_activo = repositorio.leer_anio_activo
+        leer_destino = repositorio.leer_anio_lectivo
+
+    activo = leer_activo(cursor)
     if activo is None:
         raise AnioLectivoActivoInexistenteError(
             "No hay un año lectivo activo para cerrar."
         )
 
-    destino = anios_lectivos_repository.leer_anio_lectivo(cursor, anio_destino_id)
+    destino = leer_destino(cursor, anio_destino_id)
     if destino is None:
         raise AnioLectivoInexistenteError(
             "El año lectivo seleccionado no existe."
@@ -377,6 +408,72 @@ def vista_previa_activacion_controller(anio_destino_id):
         },
         "puede_activar": not pendientes,
         "sin_decidir": pendientes,
+    }
+
+
+def activar_anio_controller(anio_destino_id, datos):
+    """Cierra el año activo y activa el siguiente, todo o nada (fase 6.3a).
+
+    Vuelve a revisar los pendientes con los dos años bloqueados, guarda la
+    foto de materias ocultas del año que cierra, aplica las marcas de salida,
+    cambia los estados y copia a cada estudiante el curso del año nuevo. Al
+    final corre la consulta de control: si no da 0, se deshace todo.
+    """
+    with get_cursor(commit=True) as cursor:
+        activo, destino = _contexto_activacion(
+            cursor, anio_destino_id, bloquear=True
+        )
+        if datos.confirmar_anio != destino[1]:
+            raise ConfirmacionActivacionInvalidaError(
+                f"Para activar, escribe el año {destino[1]}."
+            )
+
+        pendientes = anios_lectivos_repository.listar_sin_decidir_activacion(
+            cursor, activo[0], destino[0]
+        )
+        if pendientes:
+            raise ActivacionConPendientesError(
+                f"No se puede activar {destino[1]}: faltan {len(pendientes)} "
+                "estudiantes por decidir.",
+                pendientes,
+            )
+
+        conteos = anios_lectivos_repository.contar_decisiones_activacion(
+            cursor, activo[0], destino[0]
+        )
+        materias_ocultas = anios_lectivos_repository.guardar_materias_ocultas(
+            cursor, activo[0]
+        )
+        anios_lectivos_repository.aplicar_marcas_de_salida(
+            cursor, activo[0], destino[0]
+        )
+        cambios = anios_lectivos_repository.activar_anio_siguiente(
+            cursor, activo[0], destino[0]
+        )
+        if tuple(cambios) != (1, 1):
+            raise ActivacionInconsistenteError(
+                "No se pudo cambiar el estado de los dos años. Nada cambió."
+            )
+        actualizados = anios_lectivos_repository.sincronizar_curso_vigente_de_todos(
+            cursor
+        )
+        if anios_lectivos_repository.contar_desajustes_curso_vigente(cursor):
+            raise ActivacionInconsistenteError(
+                "El curso vigente de algunos estudiantes no coincide con su "
+                "matrícula del año nuevo. Nada cambió."
+            )
+
+    return {
+        "anio_cerrado": {"id": activo[0], "anio": activo[1], "estado": "cerrado"},
+        "anio_activo": {"id": destino[0], "anio": destino[1], "estado": "activo"},
+        "resumen": {
+            "continuan": conteos["continuan"],
+            "nuevos": conteos["nuevos"],
+            "retirados": conteos["retirados"],
+            "egresados": conteos["egresados"],
+            "materias_ocultas": materias_ocultas,
+            "cursos_vigentes_actualizados": actualizados,
+        },
     }
 
 

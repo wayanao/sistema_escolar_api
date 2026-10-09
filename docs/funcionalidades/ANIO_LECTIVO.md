@@ -7,7 +7,9 @@
   en una rama de Neon, esquema base regenerado desde allí, commit `6c6aabb` y
   migración aplicada en los dos tenants de producción. Paso 6.2 autorizado y
   dividido en 6.2a (vista previa, commit `5726cf4`) y 6.2b (marcar la salida,
-  terminado localmente el mismo día, sin commit).** El paso 5.10 quedó en
+  commit `2aaee65`). Paso 6.3 autorizado y dividido en 6.3a (activar) y 6.3b
+  (boletín de un año cerrado con su foto de materias); el 6.3a quedó terminado
+  localmente el mismo día, sin commit.** El paso 5.10 quedó en
   `82675ba`; el ajuste posterior de navegación del frontend, en `365d083`. El
   paso 5.9 quedó en `0689b7d` y su registro en este repo en
   `53da8f0`. El
@@ -2810,6 +2812,20 @@ decía cómo se guarda la marca de salida):
   propósito), ni marcar a quien ya tenga esa matrícula. Nada cambia sin que
   el admin lo vea.
 
+Decisiones del usuario el 2026-10-08, al autorizar el paso 6.3:
+
+- **Quien tiene matrícula en el año nuevo conserva su estado al activar**,
+  aunque sea `retirado` o `inactivo` (por ejemplo, quien se fue a mitad de
+  2026 y vuelve en 2027). El admin lo cambia después desde la ficha. Ojo:
+  mientras no esté `activo`, no sale en la planilla de los profesores.
+- **El backend también exige escribir el año para activar**
+  (`confirmar_anio`), además de la confirmación del frontend.
+- El paso se divide en **6.3a** (la activación) y **6.3b** (el boletín de un
+  año cerrado o reabierto oculta las materias de su foto, decisión 13, en vez
+  de mirar su estado actual). Después, un ensayo en una rama de Neon con el
+  backend local, que es la primera vez que las consultas de los pasos 6.2 y
+  6.3 corren contra una base real.
+
 Avance del paso 6.1 al 2026-10-08:
 
 - Ambos repos estaban en `main`, limpios y sincronizados con `origin/main` al
@@ -2938,8 +2954,54 @@ Avance del paso 6.2b (marcar quién no sigue) al 2026-10-08:
   6.3 en una rama de Neon.
 - Documentado en `docs/API_ENDPOINTS.md`, `docs/ROLES_PERMISOS_BACKEND.md` y
   `docs/CAMBIOS_BACKEND.md`. Sin migración, sin frontend, sin bases reales.
-  **Paso 6.2b terminado localmente, sin commit. Con él queda completo el
-  paso 6.2 en el backend.**
+  **Paso 6.2b terminado; el usuario lo confirmó en el commit `2aaee65`. Con
+  él queda completo el paso 6.2 en el backend.**
+
+Avance del paso 6.3a (activar el año) al 2026-10-08:
+
+- Ambos repos en `main` y limpios al iniciar (backend `2aaee65`, frontend
+  `fac0bbd`, sin push). Antes del cambio pasaban 645 pruebas de año lectivo y
+  de estudiantes.
+- Se escribieron primero 27 pruebas en `tests/test_anio_lectivo_activacion.py`;
+  fallaron al cargar porque la activación no existía.
+- Nuevo `POST /anios-lectivos/{id}/activar`, solo admin, con
+  `ActivarAnioLectivo` (`confirmar_anio`, entre 2000 y 2100). En una sola
+  transacción (`activar_anio_controller`):
+  1. `_contexto_activacion(..., bloquear=True)`: bloquea el año activo y el
+     destino, en el mismo orden que la promoción y la marca de salida, y exige
+     que el destino sea `N+1` en preparación.
+  2. Compara `confirmar_anio` con el año del destino: si no coincide, `409`
+     "Para activar, escribe el año 2027."
+  3. Vuelve a listar los pendientes con los años bloqueados. Si hay alguno,
+     `409` con `{codigo: "activacion_con_pendientes", mensaje, sin_decidir}`,
+     el mismo formato del aviso de materias.
+  4. Cuenta las decisiones (`contar_decisiones_activacion`, la del 6.2a).
+  5. `guardar_materias_ocultas`: inserta en `anios_lectivos_materias_ocultas`
+     las materias con estado distinto de `activo` (el complemento exacto del
+     filtro del boletín), con `ON CONFLICT DO NOTHING`.
+  6. `aplicar_marcas_de_salida`: pasa `estudiantes.estado` a la marca de quien
+     no tiene matrícula siguiente. Quien la tiene conserva su estado.
+  7. `activar_anio_siguiente`: cierra el activo (`cerrado_en`) y después
+     activa el siguiente (`activado_en`). El orden importa: el índice único de
+     un solo año activo se revisa en cada sentencia. Si alguno no cambió,
+     `409` "... Nada cambió." y se deshace todo.
+  8. `sincronizar_curso_vigente_de_todos`: la misma consulta de
+     `sincronizar_curso_vigente`, ahora compartida como plantilla, sin el
+     filtro por estudiante. Sigue siendo el único lugar que escribe
+     `estudiantes.curso_id`.
+  9. `contar_desajustes_curso_vigente`: la consulta de control del documento.
+     Si no da 0, `409` "... Nada cambió." y se deshace todo.
+- Las fechas usan `CURRENT_TIMESTAMP` de la base, igual que `creado_en`; en
+  Neon es hora UTC (ver el hallazgo de la hora).
+- Verificación: 27 pruebas nuevas; 672 de año lectivo y estudiantes (las de
+  `sincronizar_curso_vigente` siguen pasando sin cambios);
+  `scripts/verify.py` → **2174 pruebas pasan, 0 fallan**, Ruff y `pip check`
+  limpios con una `DATABASE_URL` ficticia; `git diff --check` limpio. Las
+  consultas se probaron como texto: el ensayo en una rama de Neon, después
+  del 6.3b, las probará de verdad.
+- Documentado en `docs/API_ENDPOINTS.md`, `docs/ROLES_PERMISOS_BACKEND.md` y
+  `docs/CAMBIOS_BACKEND.md`. Sin migración, sin frontend, sin bases reales.
+  **Paso 6.3a terminado localmente, sin commit.**
 
 ### Fase 7 — Reutilizar el planeador anual y los planes de clase (antes de iniciar clases 2027)
 
@@ -3288,13 +3350,17 @@ cosa, gana lo que se pueda verificar.
   (verificado ese mismo día, solo el servidor).
 - **Paso 6.2 autorizado el 2026-10-08 y dividido en 6.2a y 6.2b** (ver
   "Decisiones del usuario... al autorizar el paso 6.2" en la fase 6). El
-  **6.2a, la vista previa de activación**, quedó en `5726cf4`. El **6.2b,
-  marcar quién no sigue**, quedó terminado localmente, sin commit:
-  `scripts/verify.py` pasa 2147 pruebas. Con él, el paso 6.2 del backend está
+  **6.2a, la vista previa de activación**, quedó en `5726cf4` y el **6.2b,
+  marcar quién no sigue**, en `2aaee65`. El paso 6.2 del backend está
   completo.
-- **Siguiente acción exacta:** el usuario revisa y hace el commit del 6.2b.
-  Después, con su autorización, el paso 6.3: activar el año en una sola
-  transacción (ver el plan de la fase 6). Es el paso de más riesgo de la
-  fase: cierra 2026 para todos, incluidos los profesores. No iniciarlo sin
-  autorización explícita.
+- **Paso 6.3 autorizado el 2026-10-08 y dividido en 6.3a y 6.3b** (ver
+  "Decisiones del usuario... al autorizar el paso 6.3" en la fase 6). El
+  **6.3a, la activación**, quedó terminado localmente, sin commit:
+  `scripts/verify.py` pasa 2174 pruebas.
+- **Siguiente acción exacta:** el usuario revisa y hace el commit del 6.3a.
+  Después, con su visto bueno, el 6.3b: que el boletín de un año cerrado o
+  reabierto oculte las materias de `anios_lectivos_materias_ocultas` en vez de
+  mirar su estado actual (las dos consultas de `boletin_repository` que hoy
+  filtran por `m.estado`). Luego, el ensayo en una rama de Neon. No iniciar el
+  6.3b sin autorización.
 - Prompt para retomar: `docs/funcionalidades/PROMPT_CONTINUACION_ANIO_LECTIVO.md`.

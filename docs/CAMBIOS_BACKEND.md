@@ -6,6 +6,32 @@ Ultima revision documental: 2026-10-08.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
+## 2026-10-08 - Año lectivo 6.3a: activar el año siguiente
+
+Primera parte del paso 6.3 de la fase 6 de
+`docs/funcionalidades/ANIO_LECTIVO.md`.
+
+### Qué cambia
+
+- Nuevo `POST /anios-lectivos/{anio_lectivo_id}/activar`, solo para admin,
+  con `{"confirmar_anio": 2027}`. En una sola transacción cierra el año activo,
+  activa el siguiente, aplica las marcas de salida, guarda las materias
+  inactivas como ocultas del año que cierra y copia a cada estudiante el curso
+  del año nuevo. Si queda alguien sin decidir, responde `409` con la lista.
+- `sincronizar_curso_vigente` comparte ahora su consulta con
+  `sincronizar_curso_vigente_de_todos`; sigue siendo el único lugar que escribe
+  `estudiantes.curso_id`. Su comportamiento para un estudiante no cambió.
+- Ninguna ruta existente cambió. Subirlo no activa nada: la ruta solo actúa
+  sobre un año en preparación y ningún botón del frontend la llama todavía.
+- Sin migración nueva, sin cambio de frontend, sin acceso a una base real.
+
+### Pruebas
+
+Las 27 pruebas nuevas fallaron primero porque la activación no existía.
+Antes del cambio pasaban 645 pruebas de año lectivo y estudiantes; después
+pasan 672. `scripts/verify.py` pasó con 2174 pruebas, Ruff y `pip check`
+limpios, usando una base ficticia.
+
 ## 2026-10-08 - Año lectivo 6.2b: marcar quién no sigue
 
 Segunda parte del paso 6.2 de la fase 6 de

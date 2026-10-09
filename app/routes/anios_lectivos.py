@@ -3,6 +3,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 
 from app.controllers.anios_lectivos_controller import (
+    ActivacionConPendientesError,
+    ActivacionInconsistenteError,
     AnioLectivoActivoInexistenteError,
     AnioLectivoDestinoInvalidoError,
     AnioLectivoEnPreparacionError,
@@ -10,8 +12,10 @@ from app.controllers.anios_lectivos_controller import (
     CandidatosMatriculaInvalidosError,
     ConfiguracionAnioDuplicadaError,
     ConfiguracionAnioInconsistenteError,
+    ConfirmacionActivacionInvalidaError,
     CursoMatriculaInvalidoError,
     ValoresEspecialesInconsistentesError,
+    activar_anio_controller,
     copiar_configuracion_anio_controller,
     crear_estudiante_en_preparacion_controller,
     crear_anio_lectivo_controller,
@@ -24,6 +28,7 @@ from app.controllers.anios_lectivos_controller import (
 )
 from app.dependencies import get_current_active_admin, get_current_user
 from app.schemas.anio_lectivo import (
+    ActivarAnioLectivo,
     CopiarConfiguracionAnio,
     DecisionSalidaEstudiantes,
     PromocionEstudiantes,
@@ -127,6 +132,38 @@ def vista_previa_activacion(
         AnioLectivoInexistenteError,
         AnioLectivoActivoInexistenteError,
         AnioLectivoDestinoInvalidoError,
+    ) as exc:
+        _traducir_error_matricula(exc)
+
+
+@router.post(
+    "/anios-lectivos/{anio_lectivo_id}/activar",
+    dependencies=[Depends(get_current_active_admin)],
+)
+def activar_anio_lectivo(
+    anio_lectivo_id: Annotated[int, Path(gt=0)],
+    datos: ActivarAnioLectivo,
+):
+    """Cierra el año activo y activa el que está en preparación."""
+    try:
+        return activar_anio_controller(anio_lectivo_id, datos)
+    except ActivacionConPendientesError as exc:
+        # Como el aviso de materias (decisión 12): el frontend reconoce el
+        # código y muestra la lista de quienes faltan por decidir.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "codigo": exc.codigo,
+                "mensaje": str(exc),
+                "sin_decidir": exc.sin_decidir,
+            },
+        ) from exc
+    except (
+        AnioLectivoInexistenteError,
+        AnioLectivoActivoInexistenteError,
+        AnioLectivoDestinoInvalidoError,
+        ConfirmacionActivacionInvalidaError,
+        ActivacionInconsistenteError,
     ) as exc:
         _traducir_error_matricula(exc)
 

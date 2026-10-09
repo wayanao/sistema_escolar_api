@@ -61,32 +61,133 @@ def matricular_en_curso_del_anio_activo(cursor, estudiante_id, curso_id):
     return cursor.fetchone() is not None
 
 
+# La unica escritura de `estudiantes.curso_id` en la aplicacion. `{filtro}`
+# es texto del codigo: un estudiante o, al activar un año, todos.
+_SQL_SINCRONIZAR_CURSO_VIGENTE = """
+    WITH curso_vigente AS (
+        SELECT e.id AS estudiante_id, m.curso_id
+        FROM estudiantes e
+        LEFT JOIN anios_lectivos al ON al.estado = 'activo'
+        LEFT JOIN matriculas m
+          ON m.estudiante_id = e.id
+         AND m.anio_lectivo_id = al.id
+        {filtro}
+    )
+    UPDATE estudiantes e
+    SET curso_id = cv.curso_id
+    FROM curso_vigente cv
+    WHERE e.id = cv.estudiante_id
+      AND e.curso_id IS DISTINCT FROM cv.curso_id
+"""
+
+
 def sincronizar_curso_vigente(cursor, estudiante_id):
     """Copia al estudiante el curso de su matricula del año activo.
 
-    Esta es la unica escritura de `estudiantes.curso_id` en la aplicacion. Si
-    el estudiante no tiene matricula activa, el valor queda en `NULL`; eso es
-    lo que necesitara un estudiante creado solo para un año en preparacion.
+    Esta es la unica escritura de `estudiantes.curso_id` en la aplicacion,
+    junto con `sincronizar_curso_vigente_de_todos`, que usa la misma consulta.
+    Si el estudiante no tiene matricula activa, el valor queda en `NULL`; eso
+    es lo que necesitara un estudiante creado solo para un año en preparacion.
+    """
+    cursor.execute(
+        _SQL_SINCRONIZAR_CURSO_VIGENTE.format(filtro="WHERE e.id = %s"),
+        (estudiante_id,),
+    )
+
+
+def sincronizar_curso_vigente_de_todos(cursor):
+    """La misma copia para todos los estudiantes, al activar un año (6.3a).
+
+    Devuelve cuantos cambiaron. Quien no tiene matricula en el año activo queda
+    con `NULL`.
+    """
+    cursor.execute(_SQL_SINCRONIZAR_CURSO_VIGENTE.format(filtro=""))
+    return cursor.rowcount
+
+
+def contar_desajustes_curso_vigente(cursor):
+    """La consulta de control del documento, contada: debe dar 0 siempre."""
+    cursor.execute(
+        """
+        SELECT COUNT(*) AS desajustes
+        FROM estudiantes e
+        LEFT JOIN matriculas m
+               ON m.estudiante_id = e.id
+              AND m.anio_lectivo_id = (SELECT id FROM anios_lectivos WHERE estado = 'activo')
+        WHERE e.curso_id IS DISTINCT FROM m.curso_id
+        """
+    )
+    fila = cursor.fetchone()
+    return fila["desajustes"] if isinstance(fila, dict) else fila[0]
+
+
+def guardar_materias_ocultas(cursor, anio_lectivo_id):
+    """Foto de las materias inactivas al cerrar un año por primera vez.
+
+    Es el complemento exacto del filtro del boletín. Los boletines de un año
+    cerrado ocultarán estas, aunque después cambie su estado (decisión 13).
     """
     cursor.execute(
         """
-        WITH curso_vigente AS (
-            SELECT e.id AS estudiante_id, m.curso_id
-            FROM estudiantes e
-            LEFT JOIN anios_lectivos al ON al.estado = 'activo'
-            LEFT JOIN matriculas m
-              ON m.estudiante_id = e.id
-             AND m.anio_lectivo_id = al.id
-            WHERE e.id = %s
-        )
-        UPDATE estudiantes e
-        SET curso_id = cv.curso_id
-        FROM curso_vigente cv
-        WHERE e.id = cv.estudiante_id
-          AND e.curso_id IS DISTINCT FROM cv.curso_id
+        INSERT INTO anios_lectivos_materias_ocultas (anio_lectivo_id, materia_id)
+        SELECT %s, m.id
+        FROM materias m
+        WHERE COALESCE(LOWER(m.estado), 'activo') <> 'activo'
+        ON CONFLICT DO NOTHING
         """,
-        (estudiante_id,),
+        (anio_lectivo_id,),
     )
+    return cursor.rowcount
+
+
+def aplicar_marcas_de_salida(cursor, anio_origen_id, anio_destino_id):
+    """Pasa a `retirado` o `egresado` a quien quedó marcado y no sigue.
+
+    Una matrícula en el destino gana sobre la marca. Quien sigue conserva su
+    estado, aunque no sea `activo` (decisión del usuario del 2026-10-08).
+    """
+    cursor.execute(
+        """
+        UPDATE estudiantes e SET estado = m.estado_salida
+        FROM matriculas m
+        WHERE m.estudiante_id = e.id
+          AND m.anio_lectivo_id = %s
+          AND m.estado_salida IS NOT NULL
+          AND NOT EXISTS (
+              SELECT 1
+              FROM matriculas d
+              WHERE d.estudiante_id = e.id
+                AND d.anio_lectivo_id = %s
+          )
+          AND e.estado IS DISTINCT FROM m.estado_salida
+        """,
+        (anio_origen_id, anio_destino_id),
+    )
+    return cursor.rowcount
+
+
+def activar_anio_siguiente(cursor, anio_origen_id, anio_destino_id):
+    """Cierra el activo y activa el siguiente; devuelve cuántos cambió cada uno.
+
+    En este orden por el índice único de un solo año activo, que PostgreSQL
+    revisa en cada sentencia.
+    """
+    cursor.execute(
+        """
+        UPDATE anios_lectivos SET estado = 'cerrado', cerrado_en = CURRENT_TIMESTAMP
+        WHERE id = %s AND estado = 'activo'
+        """,
+        (anio_origen_id,),
+    )
+    cerrados = cursor.rowcount
+    cursor.execute(
+        """
+        UPDATE anios_lectivos SET estado = 'activo', activado_en = CURRENT_TIMESTAMP
+        WHERE id = %s AND estado = 'preparacion'
+        """,
+        (anio_destino_id,),
+    )
+    return cerrados, cursor.rowcount
 
 
 def leer_anio_lectivo(cursor, anio_lectivo_id):

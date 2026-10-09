@@ -115,13 +115,20 @@ def leer_estudiantes_del_curso(cursor, curso_id):
     No filtra por `estado`, igual que el original: la lista de seguimiento
     muestra el curso completo. Cambiar eso seria una decision de producto que
     el documento no toma.
+
+    Año lectivo, paso 6.4b: los alumnos salen de su matricula en el curso, no
+    de `estudiantes.curso_id`, que solo apunta al año activo. Asi la lista de
+    un curso de un año pasado o en preparacion trae a los suyos. En el año
+    activo es la misma lista: la consulta de control garantiza que esa copia
+    coincide con la matricula.
     """
     cursor.execute(
         """
-        SELECT id, nombre, apellido
-        FROM estudiantes
-        WHERE curso_id = %s
-        ORDER BY apellido, nombre
+        SELECT e.id, e.nombre, e.apellido
+        FROM matriculas m
+        JOIN estudiantes e ON e.id = m.estudiante_id
+        WHERE m.curso_id = %s
+        ORDER BY e.apellido, e.nombre
         """,
         (curso_id,),
     )

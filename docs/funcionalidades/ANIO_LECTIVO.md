@@ -12,8 +12,9 @@
   `5cc4f61`). Ensayo completo de activación en una rama de Neon el mismo día:
   todo correcto (ver "Ensayo de activación en una rama de Neon" en la fase
   6). Paso 6.4 autorizado el 2026-10-09 y dividido en 6.4a (reabrir y volver
-  a cerrar, terminado localmente, sin commit) y 6.4b (listas de seguimiento
-  por matrícula); el 6.4c queda para después por decisión del usuario.** El paso 5.10 quedó en
+  a cerrar, commit `0d6d202`) y 6.4b (listas de seguimiento por matrícula,
+  terminado localmente, sin commit); el 6.4c queda para después por decisión
+  del usuario. Con eso, el backend de la fase 6 está completo.** El paso 5.10 quedó en
   `82675ba`; el ajuste posterior de navegación del frontend, en `365d083`. El
   paso 5.9 quedó en `0689b7d` y su registro en este repo en
   `53da8f0`. El
@@ -3151,7 +3152,35 @@ Avance del paso 6.4a (reabrir y volver a cerrar) al 2026-10-09:
   `DATABASE_URL` ficticia; `git diff --check` limpio.
 - Documentado en `docs/API_ENDPOINTS.md`, `docs/ROLES_PERMISOS_BACKEND.md` y
   `docs/CAMBIOS_BACKEND.md`. Sin migración, sin frontend, sin bases reales.
-  **Paso 6.4a terminado localmente, sin commit.**
+  **Paso 6.4a terminado; el usuario lo confirmó en el commit `0d6d202`.**
+
+Avance del paso 6.4b (listas de seguimiento por matrícula) al 2026-10-09:
+
+- Ambos repos en `main` y limpios al iniciar (backend `0d6d202`, frontend
+  `2d0684b`, sin push).
+- La lista de un curso (`GET /listas-seguimiento/{curso_id}`) y la validación
+  de sus marcas usan la misma función, `leer_estudiantes_del_curso`. Solo
+  cambió esa consulta: `FROM matriculas m JOIN estudiantes e ... WHERE
+  m.curso_id = %s`, por apellido y nombre, sin filtrar por estado (como
+  antes). Cada estudiante tiene una sola matrícula por año y cada curso es de
+  un año, así que no hay repetidos.
+- Equivalencia en el año activo: la consulta de control (0 filas) garantiza
+  que `estudiantes.curso_id` coincide con la matrícula del año activo, así
+  que un curso de ese año trae exactamente los mismos alumnos.
+- Pruebas: se reemplazó la que fijaba `FROM estudiantes ... WHERE curso_id`
+  por una que exige la matrícula; las 2 fallaron antes del cambio. La base
+  falsa con guion de `test_anio_lectivo_guardia.py` y
+  `test_anio_lectivo_guardia_conteos.py` reconocía la consulta por su
+  comienzo: dio `422` hasta actualizar ese guion. La cuenta de consultas no
+  cambió.
+- Verificación: 70 pruebas de listas de seguimiento; `scripts/verify.py` →
+  **2211 pruebas pasan, 0 fallan**, Ruff y `pip check` limpios con una
+  `DATABASE_URL` ficticia; `git diff --check` limpio.
+- Resuelve el hallazgo del paso 4.6 del frontend (la lista de un curso de
+  2026 saldría vacía después de activar 2027) y el del 3.7b (en un año
+  reabierto, el admin no podría marcar a sus estudiantes).
+- **Paso 6.4b terminado localmente, sin commit. Con él queda completo el
+  backend de la fase 6, salvo el 6.4c, aplazado por decisión del usuario.**
 
 ### Fase 7 — Reutilizar el planeador anual y los planes de clase (antes de iniciar clases 2027)
 
@@ -3522,11 +3551,15 @@ cosa, gana lo que se pueda verificar.
   que siguen solo en local en los dos repos.
 - **Paso 6.4 autorizado el 2026-10-09** y dividido en 6.4a, 6.4b y 6.4c (ver
   "Decisiones del usuario el 2026-10-09" en la fase 6). El **6.4a, reabrir y
-  volver a cerrar**, quedó terminado localmente, sin commit:
-  `scripts/verify.py` pasa 2210 pruebas. El 6.4c queda para después.
-- **Siguiente acción exacta:** el usuario revisa y hace el commit del 6.4a.
-  Después, con su visto bueno, el **6.4b**: que `leer_estudiantes_del_curso`
-  (`listas_seguimiento_repository.py`) y la validación de marcas lean a los
-  estudiantes por su matrícula en ese curso. En un curso del año activo el
-  resultado debe quedar idéntico. No iniciarlo sin autorización.
+  volver a cerrar**, quedó en `0d6d202`. El **6.4b, listas de seguimiento por
+  matrícula**, quedó terminado localmente, sin commit: `scripts/verify.py`
+  pasa 2211 pruebas. El 6.4c queda para después. **El backend de la fase 6
+  está completo.**
+- **Siguiente acción exacta:** el usuario revisa y hace el commit del 6.4b.
+  Después, con su autorización, la **fase 6 del frontend** (plan en
+  `frontend-react/docs/funcionalidades/ANIO_LECTIVO.md`): vista previa con la
+  lista de pendientes, dónde marcar la salida (pregunta pendiente), activar
+  con el año escrito, reabrir y cerrar, el título del aviso de año cerrado en
+  Tipos de pago (hallazgo del 4.3) y Certificados con todos los estados. No
+  iniciarla sin autorización.
 - Prompt para retomar: `docs/funcionalidades/PROMPT_CONTINUACION_ANIO_LECTIVO.md`.

@@ -302,7 +302,7 @@ RUTAS = {
         [{"columna_id": 5, "estudiante_id": 3, "marcado": True}], None,
         [
             ("SELECT id, nombre FROM listas_seguimiento_columnas", Comodin(), [(5, "Tarea")]),
-            ("SELECT id, nombre, apellido FROM estudiantes", Comodin(), [(3, "Ana", "Paz")]),
+            ("SELECT e.id, e.nombre, e.apellido FROM matriculas m", Comodin(), [(3, "Ana", "Paz")]),
         ],
     ),
     "PATCH /admin/plan-de-clases/{id}/revision": (

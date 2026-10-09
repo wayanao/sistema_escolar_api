@@ -1082,6 +1082,12 @@ Las claves de `marcas` son el id de columna como texto. Una celda sin fila no
 aparece; el frontend le pone el default (`marcado: false`, `nota: ""`), igual
 que ya hace con las notas ausentes de la planilla. `404` si el curso no existe.
 
+Año lectivo, paso 6.4b: los `estudiantes` son los **matriculados en ese
+curso**, de todos los estados, y `POST .../marcas` valida contra esa misma
+lista. Así un curso de un año pasado o en preparación trae a los suyos (antes
+salía vacío fuera del año activo). En un curso del año activo la lista es la
+misma de siempre.
+
 `POST /listas-seguimiento/{curso_id}/columnas` recibe `{"nombre": "..."}` y
 responde `201` con `{"id", "nombre"}`, el nombre ya recortado. `404` si el
 curso no existe, `409` si ese curso ya tiene una columna con ese nombre

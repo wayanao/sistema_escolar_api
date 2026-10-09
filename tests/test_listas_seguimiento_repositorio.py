@@ -134,10 +134,26 @@ def test_el_roster_va_por_apellido_y_nombre():
 
     assert repo.leer_estudiantes_del_curso(cursor, 12) == [(101, "Juan", "Perez")]
     sql = sql_de(cursor)
-    assert "FROM estudiantes" in sql
-    assert "WHERE curso_id = %s" in sql
-    assert "ORDER BY apellido, nombre" in sql
+    assert "ORDER BY e.apellido, e.nombre" in sql
     assert params_de(cursor) == (12,)
+
+
+def test_el_roster_sale_de_la_matricula_del_curso():
+    """Año lectivo, paso 6.4b: los estudiantes del curso son los matriculados
+    en él. Antes eran los de `estudiantes.curso_id`, que solo apunta al año
+    activo: la lista de un curso de 2026 salía vacía después de activar 2027.
+    En un curso del año activo es la misma lista, porque la consulta de
+    control del documento garantiza que esa copia coincide con la matrícula."""
+    cursor = CursorFalso()
+
+    repo.leer_estudiantes_del_curso(cursor, 12)
+
+    sql = sql_de(cursor)
+    assert "FROM matriculas m" in sql
+    assert "JOIN estudiantes e ON e.id = m.estudiante_id" in sql
+    assert "WHERE m.curso_id = %s" in sql
+    assert "e.curso_id" not in sql
+    assert sql.startswith("SELECT e.id, e.nombre, e.apellido")
 
 
 def test_el_roster_no_filtra_por_estado():

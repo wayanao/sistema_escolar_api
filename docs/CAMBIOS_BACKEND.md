@@ -6,6 +6,31 @@ Ultima revision documental: 2026-10-08.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
+## 2026-10-09 - Año lectivo 6.4b: listas de seguimiento por matrícula
+
+Segunda parte del paso 6.4 de la fase 6 de
+`docs/funcionalidades/ANIO_LECTIVO.md`.
+
+### Qué cambia
+
+- `leer_estudiantes_del_curso` (`listas_seguimiento_repository.py`) toma a los
+  alumnos de su matrícula en el curso, no de `estudiantes.curso_id`. La usan
+  la lista de un curso y la validación de sus marcas.
+- Efecto: la lista de un curso de 2026 ya no sale vacía después de activar
+  2027, y el admin puede marcarla si reabre el año. En un curso del año activo
+  la lista es la misma, porque la consulta de control garantiza que la copia
+  coincide con la matrícula. Misma cantidad de consultas.
+- Sin migración, sin frontend, sin acceso a una base real.
+
+### Pruebas
+
+Se reemplazó la prueba que fijaba `FROM estudiantes ... WHERE curso_id` por
+una que exige la matrícula; las 2 fallaron antes del cambio. Se actualizó el
+guion de la base falsa de `test_anio_lectivo_guardia.py` y
+`test_anio_lectivo_guardia_conteos.py`, que reconocía la consulta por su
+comienzo. `scripts/verify.py` pasó con 2211 pruebas, Ruff y `pip check`
+limpios, usando una base ficticia.
+
 ## 2026-10-09 - Año lectivo 6.4a: reabrir y volver a cerrar
 
 Primera parte del paso 6.4 de la fase 6 de

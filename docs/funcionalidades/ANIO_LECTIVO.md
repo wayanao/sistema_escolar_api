@@ -8,8 +8,10 @@
   migración aplicada en los dos tenants de producción. Paso 6.2 autorizado y
   dividido en 6.2a (vista previa, commit `5726cf4`) y 6.2b (marcar la salida,
   commit `2aaee65`). Paso 6.3 autorizado y dividido en 6.3a (activar, commit
-  `89b83cd`) y 6.3b (boletín de un año cerrado con su foto de materias,
-  terminado localmente el mismo día, sin commit).** El paso 5.10 quedó en
+  `89b83cd`) y 6.3b (boletín de un año cerrado con su foto de materias, commit
+  `5cc4f61`). Ensayo completo de activación en una rama de Neon el mismo día:
+  todo correcto (ver "Ensayo de activación en una rama de Neon" en la fase
+  6).** El paso 5.10 quedó en
   `82675ba`; el ajuste posterior de navegación del frontend, en `365d083`. El
   paso 5.9 quedó en `0689b7d` y su registro en este repo en
   `53da8f0`. El
@@ -3030,8 +3032,75 @@ Avance del paso 6.3b (boletín de un año cerrado) al 2026-10-08:
   `scripts/verify.py` → **2180 pruebas pasan, 0 fallan**, Ruff y `pip check`
   limpios con una `DATABASE_URL` ficticia; `git diff --check` limpio.
 - Documentado en `docs/API_ENDPOINTS.md` y `docs/CAMBIOS_BACKEND.md`. Sin
-  migración, sin frontend, sin bases reales. **Paso 6.3b terminado
-  localmente, sin commit. Con él queda completo el paso 6.3 en el backend.**
+  migración, sin frontend, sin bases reales. **Paso 6.3b terminado; el
+  usuario lo confirmó en el commit `5cc4f61`. Con él queda completo el paso
+  6.3 en el backend.**
+
+Prueba del usuario en el Colegio Demo de producción, 2026-10-08:
+
+- El usuario probó con el backend local y su `.env`, que apunta a producción,
+  en `tenant_colegio_1` (Colegio Demo). Llegó a preparar 2027; **no activó**.
+- Consultas de solo lectura que corrió en el SQL Editor de Neon (`production`):
+  - `tenant_colegio_1.anios_lectivos`: 2026 (`id` 1) `activo`; 2027 (`id` 2)
+    `preparacion`, sin `activado_en` ni `cerrado_en`.
+  - Consulta de control: 0 filas.
+  - Matrículas: 10 en 2026 y 6 en 2027, ninguna con `estado_salida`.
+  - `anios_lectivos_materias_ocultas`: vacía, como corresponde sin activación.
+  - `tenant_2005.anios_lectivos`: 2026 `activo`. El colegio real no se tocó.
+- **Estado que queda en producción:** el Colegio Demo tiene 2027 en
+  preparación con 6 matrículas. La marca de salida, la activación y el boletín
+  de un año cerrado todavía no han corrido contra una base real.
+- Se le recomendó no activar en el Colegio Demo de producción (cerraría 2026
+  ahí, sin forma de reabrirlo hasta el 6.4) y hacer el ensayo de activación en
+  una rama de Neon, que la copia tal cual.
+
+Ensayo de activación en una rama de Neon, 2026-10-08 (lo hizo el usuario,
+guiado paso a paso; el asistente no se conectó a ninguna base):
+
+- Rama nueva copiada de `production` (servidor `ep-cool-fire-aii6h9qe`,
+  confirmado con `([uri]$env:DATABASE_URL).Host`), backend local con
+  `$env:DATABASE_URL` de la rama, frontend local y sesión de admin del Colegio
+  Demo. Las rutas sin pantalla se llamaron desde `localhost:8000/docs`, que
+  usa la cookie de sesión del navegador.
+- Primero hubo un `404` "El año lectivo seleccionado no existe.": la sesión
+  era de otro colegio. Con el admin del Colegio Demo, `GET /anios-lectivos`
+  mostró 2026 (`id` 1) activo y 2027 (`id` 2) en preparación.
+- Resultados, todos los esperados:
+  - Vista previa: `continuan` 6, `nuevos` 0, `sin_decidir` 4 (ids 6, 7 y 8 de
+    1B; 9 de Párvulo), `puede_activar: false`.
+  - Activar con `confirmar_anio: 2026`: `409` "Para activar, escribe el año
+    2027."
+  - Activar con 2027 y pendientes: `409` con `codigo`
+    `activacion_con_pendientes`, el mensaje y la lista de los 4.
+  - Candidatos de 1B (consulta cambiada en el 6.2b): correcta.
+  - Marcar al estudiante 1, ya matriculado en 2027: `409` "Los estudiantes 1
+    ya tienen matrícula en 2027; no se pueden marcar como que no siguen."
+    (Antes, un intento con el cuerpo de ejemplo de `/docs`, `[0]`, dio `422`
+    por la validación de ids positivos.)
+  - Marcar 8, 7 y 6 como `retirado` y 9 como `egresado`: `200`, cantidades 3
+    y 1.
+  - Vista previa: `sin_decidir` 0, `retirados` 3, `egresados` 1,
+    `puede_activar: true`.
+  - **Activar 2027: `200`.** 2026 `cerrado`, 2027 `activo`; resumen 6, 0, 3,
+    1, `materias_ocultas` 0 y `cursos_vigentes_actualizados` 10.
+  - En la base (SQL Editor con la rama elegida): consulta de control 0 filas;
+    6, 7 y 8 `retirado`, 9 `egresado`, los cuatro con `curso_id` nulo; el
+    Colegio Demo no tenía materias inactivas, así que la foto vacía era lo
+    correcto.
+  - En la app: el admin ve 2027 activo y 2026 cerrado; en Estudiantes, 2027
+    muestra los 6 y 2026, con el filtro "Todos", los 10 (los 4 con su estado
+    nuevo; con "Activos" salen 6, como corresponde). Abre e imprime un
+    boletín de 2026. El profesor ve solo 2027 y no ve a los 4 que salieron.
+  - Paso 6.3b: con Matemática desactivada después de cerrar, el boletín de
+    2026 la sigue mostrando y el de 2027 no. Luego se volvió a activar.
+- Cierre: backend de la rama detenido y su terminal cerrada; rama borrada.
+- **Con esto se cumple, para la activación, el "terminado cuando" de la
+  fase 6:** control en 0, profesores solo en 2027 y el admin consulta e
+  imprime 2026. Quedan el paso 6.4 (reabrir y volver a cerrar) y las
+  pantallas del frontend.
+- Incidente: al arrancar el backend, la cadena completa de la rama, con la
+  contraseña heredada de producción, quedó pegada en el chat. Ver
+  "Contraseña" en la entrega.
 
 ### Fase 7 — Reutilizar el planeador anual y los planes de clase (antes de iniciar clases 2027)
 
@@ -3354,7 +3423,11 @@ cosa, gana lo que se pueda verificar.
   heredada de producción, quedó pegada en el chat de origen. La rama ya se
   borró, pero la contraseña de producción sigue siendo la misma: rotarla en
   Neon (Roles → Reset password) y enseguida actualizar `DATABASE_URL` en
-  Render y en el `.env` local, a una hora tranquila.
+  Render y en el `.env` local, a una hora tranquila. **Volvió a pasar el
+  2026-10-08**, al iniciar el ensayo de activación en la rama
+  `ep-cool-fire-aii6h9qe`: la cadena completa de la rama, con la contraseña
+  heredada, quedó pegada en el chat. **Rotar en cuanto termine el ensayo.** En
+  adelante, pegar solo la línea del servidor (`([uri]$env:DATABASE_URL).Host`).
 - Ojo operativo: el `.env` del backend local apunta a la rama `production`
   de Neon. El backend local escribe en la base real. Las pruebas que crean
   datos, y las migraciones, se hacen en una rama de Neon, con
@@ -3386,14 +3459,19 @@ cosa, gana lo que se pueda verificar.
 - **Paso 6.3 autorizado el 2026-10-08 y dividido en 6.3a y 6.3b** (ver
   "Decisiones del usuario... al autorizar el paso 6.3" en la fase 6). El
   **6.3a, la activación**, quedó en `89b83cd`. El **6.3b, el boletín de un
-  año cerrado**, quedó terminado localmente, sin commit: `scripts/verify.py`
-  pasa 2180 pruebas. El paso 6.3 del backend está completo.
-- **Siguiente acción exacta:** el usuario revisa y hace el commit del 6.3b.
-  Después, con su visto bueno, el **ensayo de activación en una rama de Neon**
-  copiada de producción, con el backend local apuntando a la rama: crear
-  2027, copiar la configuración, matricular, marcar la salida, ver la vista
-  previa, activar, y comprobar que la consulta de control da 0, que un
-  profesor ve solo 2027 y que el admin consulta e imprime 2026. Es la primera
-  vez que las consultas de los pasos 6.2 y 6.3 corren contra una base real.
-  No tocar producción. No iniciarlo sin autorización.
+  año cerrado**, quedó en `5cc4f61`. El paso 6.3 del backend está completo.
+  El usuario probó la preparación de 2027 en el Colegio Demo de producción
+  (ver "Prueba del usuario en el Colegio Demo" en la fase 6): sin activar,
+  control en 0 y el colegio real intacto.
+- **Ensayo de activación hecho el 2026-10-08 en una rama de Neon, todo
+  correcto** (ver "Ensayo de activación en una rama de Neon" en la fase 6).
+  La rama ya se borró.
+- **Pendiente urgente del usuario:** rotar la contraseña de `neondb_owner`
+  (ver "Contraseña" arriba) y, después, el push de los commits del 6.1 al 6.3,
+  que siguen solo en local en los dos repos.
+- **Siguiente acción exacta:** el paso 6.4, reabrir y volver a cerrar un año
+  pasado (solo admin), con los ajustes de rutas que hoy comprueban al
+  estudiante con `estudiantes.curso_id` (asistencia, boletín, observaciones,
+  marcas de listas de seguimiento y la lista de un curso). No iniciarlo sin
+  autorización.
 - Prompt para retomar: `docs/funcionalidades/PROMPT_CONTINUACION_ANIO_LECTIVO.md`.

@@ -82,6 +82,7 @@ Notas:
 - `POST /anios-lectivos/{anio_lectivo_id}/estudiantes` (solo admin)
 - `GET /anios-lectivos/{anio_lectivo_id}/resumen` (solo admin)
 - `GET /anios-lectivos/{anio_lectivo_id}/activacion/vista-previa` (solo admin)
+- `PUT /anios-lectivos/{anio_lectivo_id}/matriculas/salida` (solo admin)
 
 Notas:
 
@@ -226,6 +227,38 @@ Notas:
   ]
 }
 ```
+
+- Fase 6, paso 6.2b: la marca de salida se guarda en la matrícula del año
+  activo. El id de la ruta es el del siguiente año en preparación, como en la
+  promoción, y la operación bloquea los dos años igual que ella. Cuerpo, con
+  `estado_salida` obligatorio (`"retirado"`, `"egresado"` o `null` para
+  quitarla):
+
+```json
+{
+  "estudiante_ids": [7, 8],
+  "estado_salida": "egresado"
+}
+```
+
+- Se guarda todo o nada. `409` si algún estudiante no tiene matrícula en el
+  año activo o, al marcar, si ya tiene matrícula en el siguiente. Quitar la
+  marca (`null`) siempre se permite. No revisa el estado global del
+  estudiante. Respuesta:
+
+```json
+{
+  "anio_origen": {"id": 2, "anio": 2026},
+  "anio_destino": {"id": 3, "anio": 2027},
+  "estado_salida": "egresado",
+  "estudiante_ids": [7, 8],
+  "cantidad": 2
+}
+```
+
+- Desde el 6.2b, la promoción responde `409` si algún seleccionado tiene una
+  marca de salida: el admin la quita primero. La respuesta de candidatos no
+  cambia.
 
 ### Guardia de escritura (paso 3.7)
 

@@ -1,7 +1,7 @@
 """Años lectivos: consulta, preparación y matrícula del año siguiente.
 
 Ver docs/funcionalidades/ANIO_LECTIVO.md (fase 3, paso 3.1; fase 5, pasos
-5.3 a 5.5, y fase 6, paso 6.2a). Qué años ve cada usuario lo decide
+5.3 a 5.5, y fase 6, pasos 6.2a y 6.2b). Qué años ve cada usuario lo decide
 `app/services/anio_lectivo.py`.
 """
 from app.database import get_cursor
@@ -448,6 +448,19 @@ def _exigir_seleccion_disponible(candidatos, estudiante_ids):
             f"{', '.join(map(str, matriculados))} ya tienen matrícula en el año destino."
         )
 
+    # Fase 6.2b: una marca de salida y una matrícula siguiente se excluyen.
+    marcados = [
+        estudiante_id
+        for estudiante_id in estudiante_ids
+        if por_id[estudiante_id].get("estado_salida")
+    ]
+    if marcados:
+        raise CandidatosMatriculaInvalidosError(
+            "Los estudiantes "
+            f"{', '.join(map(str, marcados))} están marcados como que no siguen. "
+            "Quita la marca antes de matricularlos."
+        )
+
 
 def _copiar_valores_especiales(cursor, estudiante_id, activo_id, destino_id):
     valores = anios_lectivos_repository.listar_valores_especiales_para_copiar(
@@ -534,6 +547,63 @@ def promover_estudiantes_controller(anio_destino_id, datos):
         "matriculados": datos.estudiante_ids,
         "cantidad_matriculados": len(datos.estudiante_ids),
         "valores_especiales_copiados": valores_copiados,
+    }
+
+
+def _exigir_salida_posible(matriculas, datos, activo, destino):
+    por_id = {fila["estudiante_id"]: fila for fila in matriculas}
+    sin_matricula = [
+        estudiante_id
+        for estudiante_id in datos.estudiante_ids
+        if estudiante_id not in por_id
+    ]
+    if sin_matricula:
+        raise CandidatosMatriculaInvalidosError(
+            "Los estudiantes "
+            f"{', '.join(map(str, sin_matricula))} no tienen matrícula en el año "
+            f"lectivo {activo[1]}."
+        )
+
+    # Quitar la marca siempre se permite: deshace un choque, nunca lo crea.
+    if datos.estado_salida is None:
+        return
+    matriculados = [
+        estudiante_id
+        for estudiante_id in datos.estudiante_ids
+        if por_id[estudiante_id]["matriculado_en_destino"]
+    ]
+    if matriculados:
+        raise CandidatosMatriculaInvalidosError(
+            "Los estudiantes "
+            f"{', '.join(map(str, matriculados))} ya tienen matrícula en "
+            f"{destino[1]}; no se pueden marcar como que no siguen."
+        )
+
+
+def guardar_decision_salida_controller(anio_destino_id, datos):
+    """Marca o desmarca quién no sigue en el año siguiente (fase 6.2b).
+
+    La marca va en la matrícula del año activo. Bloquea los dos años igual que
+    la promoción, para que marcar y matricular no se crucen.
+    """
+    with get_cursor(commit=True) as cursor:
+        activo, destino = _contexto_matricula_en_preparacion(
+            cursor, anio_destino_id
+        )
+        matriculas = anios_lectivos_repository.listar_matriculas_para_salida(
+            cursor, datos.estudiante_ids, activo[0], destino[0]
+        )
+        _exigir_salida_posible(matriculas, datos, activo, destino)
+        anios_lectivos_repository.guardar_estado_salida(
+            cursor, datos.estudiante_ids, activo[0], datos.estado_salida
+        )
+
+    return {
+        "anio_origen": {"id": activo[0], "anio": activo[1]},
+        "anio_destino": {"id": destino[0], "anio": destino[1]},
+        "estado_salida": datos.estado_salida,
+        "estudiante_ids": datos.estudiante_ids,
+        "cantidad": len(datos.estudiante_ids),
     }
 
 

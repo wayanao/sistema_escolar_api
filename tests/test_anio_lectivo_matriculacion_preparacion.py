@@ -296,6 +296,40 @@ def test_rechaza_quien_no_pertenece_al_curso_o_ya_esta_matriculado(
     assert entorno_matriculas.rollbacks == 1
 
 
+def test_rechaza_promover_a_quien_tiene_marca_de_salida(entorno_matriculas):
+    """Fase 6.2b: la marca y la matrícula siguiente se excluyen."""
+    entorno_matriculas.candidatos[1]["estado_salida"] = "egresado"
+
+    with pytest.raises(
+        controlador.CandidatosMatriculaInvalidosError,
+        match="Los estudiantes 2 están marcados como que no siguen",
+    ):
+        controlador.promover_estudiantes_controller(
+            3, _promocion(estudiante_ids=[1, 2])
+        )
+
+    assert not any(e[0] == "matricula" for e in entorno_matriculas.eventos)
+    assert entorno_matriculas.rollbacks == 1
+
+
+def test_la_marca_de_salida_no_cambia_la_respuesta_de_candidatos(
+    entorno_matriculas,
+):
+    entorno_matriculas.candidatos[0]["estado_salida"] = "retirado"
+
+    respuesta = controlador.listar_candidatos_matricula_controller(3, 10)
+
+    assert set(respuesta["candidatos"][0]) == {
+        "id",
+        "nombre",
+        "apellido",
+        "documento_identidad",
+        "estado",
+        "matriculado_en_destino",
+        "curso_destino_id",
+    }
+
+
 def test_rechaza_un_curso_origen_que_no_es_del_anio_activo(entorno_matriculas):
     entorno_matriculas.curso_origen["anio_lectivo_id"] = 9
     funcion = getattr(controlador, "listar_candidatos_matricula_controller")
@@ -431,6 +465,18 @@ def test_los_candidatos_salen_de_la_matricula_del_curso_no_del_curso_legacy():
     assert "e.curso_id" not in sql
     assert params == (3, 2, 10)
     assert filas[0]["curso_destino_id"] is None
+
+
+def test_los_candidatos_traen_la_marca_de_salida_de_su_matricula_activa():
+    cursor = CursorFalso(
+        todas=[[(1, "Ana", "Pérez", "101", "activo", None, "retirado")]]
+    )
+
+    filas = repositorio.listar_candidatos_matricula(cursor, 10, 2, 3)
+
+    sql, _params = cursor.consultas[0]
+    assert "origen.estado_salida" in sql
+    assert filas[0]["estado_salida"] == "retirado"
 
 
 def test_insertar_matricula_no_modifica_el_curso_vigente():

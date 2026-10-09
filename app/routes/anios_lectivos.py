@@ -15,6 +15,7 @@ from app.controllers.anios_lectivos_controller import (
     copiar_configuracion_anio_controller,
     crear_estudiante_en_preparacion_controller,
     crear_anio_lectivo_controller,
+    guardar_decision_salida_controller,
     listar_candidatos_matricula_controller,
     listar_anios_lectivos_controller,
     promover_estudiantes_controller,
@@ -22,7 +23,11 @@ from app.controllers.anios_lectivos_controller import (
     vista_previa_activacion_controller,
 )
 from app.dependencies import get_current_active_admin, get_current_user
-from app.schemas.anio_lectivo import CopiarConfiguracionAnio, PromocionEstudiantes
+from app.schemas.anio_lectivo import (
+    CopiarConfiguracionAnio,
+    DecisionSalidaEstudiantes,
+    PromocionEstudiantes,
+)
 from app.schemas.estudiante import EstudianteCreate
 from app.services.anio_lectivo import AnioLectivoInexistenteError
 
@@ -167,6 +172,26 @@ def promover_estudiantes(
         CursoMatriculaInvalidoError,
         CandidatosMatriculaInvalidosError,
         ValoresEspecialesInconsistentesError,
+    ) as exc:
+        _traducir_error_matricula(exc)
+
+
+@router.put(
+    "/anios-lectivos/{anio_lectivo_id}/matriculas/salida",
+    dependencies=[Depends(get_current_active_admin)],
+)
+def guardar_decision_salida(
+    anio_lectivo_id: Annotated[int, Path(gt=0)],
+    datos: DecisionSalidaEstudiantes,
+):
+    """Marca o desmarca quién no sigue en el año en preparación."""
+    try:
+        return guardar_decision_salida_controller(anio_lectivo_id, datos)
+    except (
+        AnioLectivoInexistenteError,
+        AnioLectivoActivoInexistenteError,
+        AnioLectivoDestinoInvalidoError,
+        CandidatosMatriculaInvalidosError,
     ) as exc:
         _traducir_error_matricula(exc)
 

@@ -6,8 +6,8 @@
   explícita del usuario y paso 6.1 terminado el 2026-10-08: migración probada
   en una rama de Neon, esquema base regenerado desde allí, commit `6c6aabb` y
   migración aplicada en los dos tenants de producción. Paso 6.2 autorizado y
-  dividido en 6.2a (vista previa) y 6.2b (marcar la salida); el 6.2a quedó
-  terminado localmente el mismo día, sin commit.** El paso 5.10 quedó en
+  dividido en 6.2a (vista previa, commit `5726cf4`) y 6.2b (marcar la salida,
+  terminado localmente el mismo día, sin commit).** El paso 5.10 quedó en
   `82675ba`; el ajuste posterior de navegación del frontend, en `365d083`. El
   paso 5.9 quedó en `0689b7d` y su registro en este repo en
   `53da8f0`. El
@@ -2897,7 +2897,49 @@ Avance del paso 6.2a (vista previa de activación) al 2026-10-08:
   `docs/CAMBIOS_BACKEND.md`. Se agregó además a `docs/MIGRACIONES.md` la
   migración del 6.1, que había quedado sin registrar ahí.
 - Sin migración, sin cambio de frontend, sin acceso a bases reales.
-  **Paso 6.2a terminado localmente, sin commit.**
+  **Paso 6.2a terminado; el usuario lo confirmó en el commit `5726cf4`.**
+
+Avance del paso 6.2b (marcar quién no sigue) al 2026-10-08:
+
+- Ambos repos en `main` y limpios al iniciar (backend `5726cf4`, frontend
+  `0fa1c09`, los dos sin push). Antes del cambio pasaban 612 pruebas de año
+  lectivo.
+- Se escribieron primero 25 pruebas en
+  `tests/test_anio_lectivo_decision_salida.py` y 3 en
+  `tests/test_anio_lectivo_matriculacion_preparacion.py`. Fallaron las 27 que
+  describen el cambio; la que confirma que la respuesta de candidatos no
+  cambia pasaba antes y después.
+- Nuevo `PUT /anios-lectivos/{id}/matriculas/salida`, solo admin. Cuerpo
+  `DecisionSalidaEstudiantes`: `estudiante_ids` (mismas reglas que la
+  promoción) y `estado_salida` obligatorio, `retirado`, `egresado` o `null`
+  para quitarla. Se exige escribirlo también para quitarla, para que un cuerpo
+  incompleto no borre una decisión por accidente.
+- Usa `_contexto_matricula_en_preparacion`, el mismo de la promoción: bloquea
+  el año activo y el destino, así marcar y matricular no se cruzan. Lee las
+  matrículas (`listar_matriculas_para_salida`) y guarda todo o nada
+  (`guardar_estado_salida`, que solo cambia `estado_salida`).
+- Rechaza con `409` a quien no tenga matrícula en el año activo y, al marcar,
+  a quien ya tenga matrícula en el siguiente. Quitar la marca siempre se
+  permite: deshace un choque, nunca lo crea. No revisa el estado global del
+  estudiante: si el admin marca a alguien ya retirado, es una decisión
+  explícita suya, y la vista previa la cuenta.
+- La promoción ahora lee la marca en `listar_candidatos_matricula` y rechaza
+  con `409` a quien la tenga: "Los estudiantes N están marcados como que no
+  siguen. Quita la marca antes de matricularlos." La respuesta de candidatos
+  no cambia; exponer la marca allí queda para cuando se decida la pantalla del
+  frontend.
+- Hoy ninguna matrícula tiene marca, así que nada de lo existente cambia de
+  comportamiento. No cambia `estudiantes.curso_id` ni el estado de nadie: eso
+  es del 6.3.
+- Verificación: 44 pruebas de los dos archivos; 640 de año lectivo;
+  `scripts/verify.py` → **2147 pruebas pasan, 0 fallan**, Ruff y `pip check`
+  limpios con una `DATABASE_URL` ficticia; `git diff --check` limpio. Las
+  consultas se probaron como texto; la prueba real queda para el ensayo del
+  6.3 en una rama de Neon.
+- Documentado en `docs/API_ENDPOINTS.md`, `docs/ROLES_PERMISOS_BACKEND.md` y
+  `docs/CAMBIOS_BACKEND.md`. Sin migración, sin frontend, sin bases reales.
+  **Paso 6.2b terminado localmente, sin commit. Con él queda completo el
+  paso 6.2 en el backend.**
 
 ### Fase 7 — Reutilizar el planeador anual y los planes de clase (antes de iniciar clases 2027)
 
@@ -3246,11 +3288,13 @@ cosa, gana lo que se pueda verificar.
   (verificado ese mismo día, solo el servidor).
 - **Paso 6.2 autorizado el 2026-10-08 y dividido en 6.2a y 6.2b** (ver
   "Decisiones del usuario... al autorizar el paso 6.2" en la fase 6). El
-  **6.2a, la vista previa de activación, quedó terminado localmente**, sin
-  commit: `scripts/verify.py` pasa 2119 pruebas.
-- **Siguiente acción exacta:** el usuario revisa y hace el commit del 6.2a.
-  Después, con su visto bueno, el 6.2b: guardar o quitar la marca de salida
-  en la matrícula del año activo, rechazando el choque con una matrícula en el
-  año siguiente en los dos sentidos (también en la promoción del paso 5.5). No
-  iniciar el 6.2b sin autorización.
+  **6.2a, la vista previa de activación**, quedó en `5726cf4`. El **6.2b,
+  marcar quién no sigue**, quedó terminado localmente, sin commit:
+  `scripts/verify.py` pasa 2147 pruebas. Con él, el paso 6.2 del backend está
+  completo.
+- **Siguiente acción exacta:** el usuario revisa y hace el commit del 6.2b.
+  Después, con su autorización, el paso 6.3: activar el año en una sola
+  transacción (ver el plan de la fase 6). Es el paso de más riesgo de la
+  fase: cierra 2026 para todos, incluidos los profesores. No iniciarlo sin
+  autorización explícita.
 - Prompt para retomar: `docs/funcionalidades/PROMPT_CONTINUACION_ANIO_LECTIVO.md`.

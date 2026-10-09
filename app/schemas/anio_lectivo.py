@@ -1,4 +1,14 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field, field_validator
+
+
+def _validar_ids_estudiantes(valores):
+    if any(valor <= 0 for valor in valores):
+        raise ValueError("Los estudiantes deben tener identificadores positivos.")
+    if len(valores) != len(set(valores)):
+        raise ValueError("No se puede seleccionar dos veces al mismo estudiante.")
+    return valores
 
 
 class CopiarConfiguracionAnio(BaseModel):
@@ -19,8 +29,20 @@ class PromocionEstudiantes(BaseModel):
     @field_validator("estudiante_ids")
     @classmethod
     def validar_estudiantes(cls, valores):
-        if any(valor <= 0 for valor in valores):
-            raise ValueError("Los estudiantes deben tener identificadores positivos.")
-        if len(valores) != len(set(valores)):
-            raise ValueError("No se puede seleccionar dos veces al mismo estudiante.")
-        return valores
+        return _validar_ids_estudiantes(valores)
+
+
+class DecisionSalidaEstudiantes(BaseModel):
+    """Marca de salida del año que termina; `null` la quita (fase 6.2b).
+
+    Es obligatoria, también para quitarla: así un cuerpo incompleto no borra
+    una decisión por accidente.
+    """
+
+    estudiante_ids: list[int] = Field(min_length=1)
+    estado_salida: Literal["retirado", "egresado"] | None
+
+    @field_validator("estudiante_ids")
+    @classmethod
+    def validar_estudiantes(cls, valores):
+        return _validar_ids_estudiantes(valores)

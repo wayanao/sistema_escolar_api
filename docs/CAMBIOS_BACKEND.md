@@ -6,6 +6,34 @@ Ultima revision documental: 2026-10-08.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
+## 2026-10-08 - Año lectivo 6.2b: marcar quién no sigue
+
+Segunda parte del paso 6.2 de la fase 6 de
+`docs/funcionalidades/ANIO_LECTIVO.md`.
+
+### Qué cambia
+
+- Nuevo `PUT /anios-lectivos/{anio_lectivo_id}/matriculas/salida`, solo para
+  admin. Guarda `retirado` o `egresado`, o quita la marca con `null`, en la
+  matrícula del año activo de los estudiantes indicados. Todo o nada.
+- Rechaza con `409` a quien no tiene matrícula en el año activo y, al marcar,
+  a quien ya tiene matrícula en el siguiente año.
+- La promoción del paso 5.5 rechaza con `409` a quien tenga una marca de
+  salida. Su respuesta y la de candidatos no cambian. Hoy ninguna matrícula
+  tiene marca, así que nada de lo que existe cambia de comportamiento.
+- No cambia `estudiantes.curso_id` ni el estado de ningún estudiante: eso
+  ocurrirá al activar (paso 6.3).
+- No hay migración nueva (usa la columna del 6.1, ya en producción), cambio de
+  frontend, acceso a una base real ni creación de 2027.
+
+### Pruebas
+
+Las 27 pruebas nuevas que describen el cambio fallaron primero; una más, que
+confirma que la respuesta de candidatos no cambia, pasaba antes y después.
+Antes del cambio pasaban 612 pruebas de año lectivo; después pasan 640.
+`scripts/verify.py` pasó con 2147 pruebas, Ruff y `pip check` limpios, usando
+una base ficticia.
+
 ## 2026-10-08 - Año lectivo 6.2a: vista previa de activación
 
 Primera parte del paso 6.2 de la fase 6 de

@@ -8,7 +8,8 @@ se dicta una materia (aviso al renombrarla) y el año de una clase, un plan,
 una anotacion, un curso o un concepto (guardia de escritura). Como el resto de
 repositorios, cada funcion recibe el cursor de quien llama y no abre, confirma
 ni cierra nada. La fase 5 agrega la copia de configuración y, en el paso 5.5,
-las matrículas y valores especiales del año en preparación.
+las matrículas y valores especiales del año en preparación. La fase 6 agrega la
+vista previa de activación y la marca de salida.
 """
 
 # Id del año activo como subconsulta, para escribirlo dentro del mismo INSERT
@@ -499,7 +500,11 @@ def leer_curso_para_matricula(cursor, curso_id):
 def listar_candidatos_matricula(
     cursor, curso_origen_id, anio_origen_id, anio_destino_id
 ):
-    """Estudiantes del curso origen y su posible matrícula en el destino."""
+    """Estudiantes del curso origen y su posible matrícula en el destino.
+
+    Trae también la marca de salida de la matrícula de origen, para que la
+    promoción rechace a quien está marcado como que no sigue (fase 6.2b).
+    """
     columnas = (
         "id",
         "nombre",
@@ -507,12 +512,14 @@ def listar_candidatos_matricula(
         "documento_identidad",
         "estado",
         "curso_destino_id",
+        "estado_salida",
     )
     cursor.execute(
         """
         SELECT e.id, e.nombre, e.apellido, e.documento_identidad,
                COALESCE(LOWER(e.estado), 'activo') AS estado,
-               destino.curso_id AS curso_destino_id
+               destino.curso_id AS curso_destino_id,
+               origen.estado_salida
         FROM matriculas origen
         JOIN estudiantes e ON e.id = origen.estudiante_id
         LEFT JOIN matriculas destino
@@ -525,6 +532,45 @@ def listar_candidatos_matricula(
         (anio_destino_id, anio_origen_id, curso_origen_id),
     )
     return _filas_como_diccionarios(cursor.fetchall(), columnas)
+
+
+def listar_matriculas_para_salida(
+    cursor, estudiante_ids, anio_origen_id, anio_destino_id
+):
+    """Matrícula de origen de cada estudiante y si ya tiene la del destino.
+
+    Quien no tiene matrícula en el origen no aparece.
+    """
+    columnas = ("estudiante_id", "estado_salida", "matriculado_en_destino")
+    cursor.execute(
+        """
+        SELECT origen.estudiante_id, origen.estado_salida,
+               destino.id IS NOT NULL AS matriculado_en_destino
+        FROM matriculas origen
+        LEFT JOIN matriculas destino
+          ON destino.estudiante_id = origen.estudiante_id
+         AND destino.anio_lectivo_id = %s
+        WHERE origen.anio_lectivo_id = %s
+          AND origen.estudiante_id = ANY(%s)
+        """,
+        (anio_destino_id, anio_origen_id, list(estudiante_ids)),
+    )
+    return _filas_como_diccionarios(cursor.fetchall(), columnas)
+
+
+def guardar_estado_salida(cursor, estudiante_ids, anio_origen_id, estado_salida):
+    """Guarda o quita (`None`) la marca de salida en las matrículas de origen.
+
+    Solo toca `estado_salida`: el curso vigente no cambia hasta la activación.
+    """
+    cursor.execute(
+        """
+        UPDATE matriculas SET estado_salida = %s
+        WHERE anio_lectivo_id = %s AND estudiante_id = ANY(%s)
+        """,
+        (estado_salida, anio_origen_id, list(estudiante_ids)),
+    )
+    return cursor.rowcount
 
 
 def insertar_matricula_en_anio(cursor, estudiante_id, curso_id, anio_lectivo_id):

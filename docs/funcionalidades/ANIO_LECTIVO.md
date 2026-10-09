@@ -15,8 +15,9 @@
   a cerrar, commit `0d6d202`) y 6.4b (listas de seguimiento por matrícula,
   commit `f0e0ca6`); el 6.4c queda para después por decisión del usuario.
   Fase 6 del frontend autorizada el mismo día, pasos 6.5 a 6.10; el 6.5
-  (backend: la marca de salida en los candidatos) quedó terminado
-  localmente, sin commit.** El paso 5.10 quedó en
+  (backend: la marca de salida en los candidatos) quedó en `a3f7086` y el
+  6.6 (frontend: marcar en la promoción) terminado localmente, sin
+  commit.** El paso 5.10 quedó en
   `82675ba`; el ajuste posterior de navegación del frontend, en `365d083`. El
   paso 5.9 quedó en `0689b7d` y su registro en este repo en
   `53da8f0`. El
@@ -3219,7 +3220,11 @@ Avance del paso 6.5 (la marca de salida en los candidatos) al 2026-10-09:
   `scripts/verify.py` → **2211 pruebas pasan, 0 fallan**, Ruff y `pip check`
   limpios con una `DATABASE_URL` ficticia; `git diff --check` limpio.
 - Documentado en `docs/API_ENDPOINTS.md` y `docs/CAMBIOS_BACKEND.md`.
-  **Paso 6.5 terminado localmente, sin commit.**
+  **Paso 6.5 terminado; el usuario lo confirmó en el commit `a3f7086`.**
+- **6.6 (frontend), 2026-10-09:** marcar Retirado, Egresado o quitar la marca
+  en la promoción, terminado localmente en el frontend, sin commit;
+  `pnpm run check:deploy` pasa 2257 pruebas. Detalle en el avance del 6.6 del
+  documento del frontend.
 
 ### Fase 7 — Reutilizar el planeador anual y los planes de clase (antes de iniciar clases 2027)
 
@@ -3596,11 +3601,11 @@ cosa, gana lo que se pueda verificar.
 - **Fase 6 del frontend autorizada el 2026-10-09**, pasos 6.5 a 6.10 (ver
   "Fase 6 del frontend" en la fase 6). La marca de salida va en la pantalla
   de promoción (decisión del usuario). El **6.5**, la marca en los
-  candidatos (backend), quedó terminado localmente, sin commit:
-  `scripts/verify.py` pasa 2211 pruebas.
-- **Siguiente acción exacta:** el usuario revisa y hace el commit del 6.5.
-  Después, con su visto bueno, el **6.6** en el frontend: en la promoción,
-  Retirado, Egresado o quitar la marca a quien no pasa
-  (`PUT /anios-lectivos/{id}/matriculas/salida`), y quien está marcado no se
-  puede seleccionar para matricular. No iniciarlo sin autorización.
+  candidatos (backend), quedó en `a3f7086`. El **6.6**, marcar en la
+  promoción (frontend), quedó terminado localmente, sin commit:
+  `pnpm run check:deploy` pasa 2257 pruebas.
+- **Siguiente acción exacta:** el usuario revisa y hace el commit del 6.6 en
+  el frontend. Después, con su visto bueno, el **6.7**: la sección "Activar"
+  de la página de años lectivos (vista previa, pendientes, activar con el año
+  escrito y el resumen). No iniciarlo sin autorización.
 - Prompt para retomar: `docs/funcionalidades/PROMPT_CONTINUACION_ANIO_LECTIVO.md`.

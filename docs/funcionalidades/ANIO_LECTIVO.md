@@ -2,9 +2,12 @@
 
 ## Control
 
-- Estado: **Fase 5 completa en código; pasos 5.1 a 5.9 confirmados y paso 5.10
-  terminado localmente en el frontend, pendiente de revisión y commit del
-  usuario.** El paso 5.9 quedó en `0689b7d` y su registro en este repo en
+- Estado: **Fase 5 completa y confirmada; fase 6 iniciada con autorización
+  explícita del usuario y paso 6.1 terminado localmente el 2026-10-08:
+  migración probada en una rama de Neon y esquema base regenerado desde allí.
+  Pendiente de commit y de aplicarla en producción.** El paso 5.10 quedó en
+  `82675ba`; el ajuste posterior de navegación del frontend, en `365d083`. El
+  paso 5.9 quedó en `0689b7d` y su registro en este repo en
   `53da8f0`. El
   paso 5.6 quedó en `102ec77`, el 5.5 en `144feb1`, el 5.4 en `cffdfd7` y el
   5.3 en `653703c`; el 5.8 del frontend quedó en `817c47e` y su registro en
@@ -13,7 +16,8 @@
   Neon, regeneró el esquema base y después la aplicó y verificó en los dos
   tenants de producción. El paso 5.3 no creó 2027 ni accedió a ninguna base
   real. Los pasos 5.4, 5.5 y 5.6 tampoco accedieron a una base real ni crearon
-  2027. No se inició la fase 6. La
+  2027. La fase 6 se inició el 2026-10-08, sin ejecutar migraciones ni acceder
+  a bases reales. La
   matrícula del año activo ya es la fuente del curso vigente y solo
   `sincronizar_curso_vigente` escribe `estudiantes.curso_id`. La
   fase 4 (frontend) quedó completa y fue confirmada en los commits
@@ -70,7 +74,7 @@
   fase 1, el relleno los marcaría como 2026; entre la fase 1 y la 5 no existe
   todavía un año 2027 donde ponerlos. Al 2026-09-30 no hay ninguno
   registrado (confirmado por el usuario).
-- Última actualización: 2026-10-07.
+- Última actualización: 2026-10-08.
 
 ## Objetivo
 
@@ -2780,6 +2784,60 @@ se adelantó aquí.
    con copia de producción deja la consulta de control en 0 filas, los
    profesores ven solo 2027 y el admin puede consultar e imprimir 2026.
 
+Decisiones confirmadas por el usuario el 2026-10-08 antes de iniciar la fase:
+
+- Quien termina el último grado queda como `egresado`, no como `retirado`.
+  Para no adivinar el grado por el nombre del curso, la decisión explícita se
+  guarda en la matrícula del año que termina como `estado_salida`: `retirado`
+  o `egresado`. `NULL` significa que todavía no se ha decidido; una matrícula
+  en el año siguiente significa que continúa.
+- Certificados podrá pedir estudiantes de todos los estados, conservando
+  "Activos" como filtro visual inicial. Boletines seguirá listando solo
+  activos. Es trabajo posterior del frontend dentro de esta fase.
+
+Avance del paso 6.1 al 2026-10-08:
+
+- Ambos repos estaban en `main`, limpios y sincronizados con `origin/main` al
+  iniciar: backend `cc0f45e` y frontend `365d083`.
+- Antes del cambio pasaron 41 pruebas de migraciones de año lectivo y esquema
+  base. Se escribieron primero 9 pruebas nuevas y las 9 fallaron porque todavía
+  no existía el SQL.
+- Se preparó `migrations/20261008_anios_lectivos_activacion.sql`. Agrega la
+  columna opcional `matriculas.estado_salida`, limitada a `retirado` o
+  `egresado`, y crea `anios_lectivos_materias_ocultas` con una sola fila por
+  pareja año/materia. No inserta, actualiza ni borra datos existentes.
+- Las 9 pruebas nuevas pasan. El bloque completo de migraciones da 49 pruebas
+  correctas y una sola falla intencional en `test_esquema_base.py`: la base aún
+  no declara la migración. La verificación global confirma 2104 pruebas
+  correctas y esa misma única falla; Ruff y `pip check` pasan.
+- No se ejecutó la migración, no se accedió a Neon ni a producción y no se
+  regeneró ni editó a mano el esquema base. Según `docs/MIGRACIONES.md`, el
+  siguiente paso es probar el SQL en una rama de Neon copiada de producción y
+  regenerar desde allí el esquema base. `git diff --check` queda limpio en
+  ambos repos. El paso 6.1 todavía no está terminado.
+
+Prueba en la rama de Neon, 2026-10-08 (la hizo el usuario; el asistente no se
+conectó a Neon ni a producción):
+
+- El usuario creó una rama copiada de `production` y apuntó la terminal a su
+  endpoint directo. Confirmó que el servidor no era `ep-late-smoke-aip41j6x`.
+  El `.env` local sigue en el endpoint `-pooler` de producción, que
+  `apply_migration.py` rechaza.
+- `--dry-run`: `PENDIENTE` en `tenant_colegio_1` y `tenant_2005`. Después el
+  usuario informó que aplicó la migración en la rama.
+- El usuario regeneró `migrations/base/20260813_esquema_base_tenant.sql` desde
+  `tenant_colegio_1` en la rama: 35 tablas, 1 función y 1 disparador. La
+  revisión del diff confirmó solo lo esperado: cabecera con 42 migraciones,
+  la columna `matriculas.estado_salida` con `chk_matriculas_estado_salida`, la
+  tabla `anios_lectivos_materias_ocultas` con su llave primaria, su índice por
+  materia y sus dos claves foráneas. La cabecera confirma que la migración
+  quedó registrada en `tenant_colegio_1` de la rama.
+- Verificación final, con una `DATABASE_URL` ficticia: **50 pruebas
+  específicas pasan** (migraciones de año lectivo y esquema base);
+  `scripts/verify.py` → **2105 pruebas pasan, 0 fallan**, Ruff y `pip check`
+  limpios; `git diff --check` limpio.
+- **Paso 6.1 terminado localmente, sin commit.** No se aplicó en producción.
+
 ### Fase 7 — Reutilizar el planeador anual y los planes de clase (antes de iniciar clases 2027)
 
 Decisiones 14, 15 y 16. Solo tiene sentido después de activar 2027, que es
@@ -2935,12 +2993,11 @@ cuando los profesores empiezan a ver sus clases nuevas.
   2026-10-03: editar lo que ya existe en ese año**, menos crear cursos o
   conceptos y lo de Estudiantes, que siguen solo en el año activo hasta la
   fase 5. Detalle en el documento del frontend.
-- Antes de la fase 6: ¿un estudiante del último grado que termina se marca
-  "no continúa" (retirado) o hace falta un estado distinto como "egresado"?
-  Dato encontrado el 2026-10-01, para cuando se decida: el estado
-  `egresado` ya existe (`ESTADOS_ESTUDIANTE` en
-  `app/controllers/estudiante_controller.py`, y el filtro
-  `GET /estudiantes?estado=egresado`).
+- ~~Antes de la fase 6: ¿un estudiante del último grado que termina se marca
+  "no continúa" (retirado) o hace falta un estado distinto como
+  "egresado"?~~ **Respondida el 2026-10-08: quien termina el último grado
+  queda como `egresado`.** La matrícula guardará la decisión explícita para no
+  deducirla del nombre del curso. El estado y el filtro `egresado` ya existen.
 
 ## Entrega para el siguiente chat
 
@@ -3078,7 +3135,7 @@ cosa, gana lo que se pueda verificar.
   Estudiantes. Pasan 76 pruebas específicas y 2245 globales, además de lint y
   build. En este repo solo se actualizó el documento principal; su verificación
   pasó 2096 pruebas, Ruff y `pip check` con una `DATABASE_URL` ficticia.
-- **Paso 5.10 terminado localmente en el frontend, pendiente de commit:** el
+- **Paso 5.10 confirmado en el frontend (`82675ba`):** el
   año consultado aparece en el estado de cuenta y nombre del CSV de Cartera, y
   se propone en el certificado de matrícula sin bloquear su edición. Pasan 27
   pruebas específicas y 2248 globales, además de lint y build. No cambió
@@ -3113,9 +3170,21 @@ cosa, gana lo que se pueda verificar.
   correr si falta `$env:DATABASE_URL`. Antes de probar la app contra una
   rama, detener el backend local que esté corriendo; si no, el frontend
   sigue hablando con el que apunta a producción.
-- **Siguiente acción exacta:** el usuario revisa y hace el commit del paso 5.10
-  en el frontend y de esta actualización documental en el backend. No iniciar
-  la fase 6 ni crear o activar 2027. Antes de autorizar esa fase hay que
-  responder la pregunta de Certificados con estudiantes retirados/egresados y
-  decidir el estado de quien termina el último grado.
+- **Fase 6 iniciada el 2026-10-08 con autorización explícita del usuario.**
+  También confirmó que quien termina el último grado queda `egresado`, y que
+  Certificados consultará todos los estados manteniendo Activos como filtro
+  inicial; Boletines no cambia. **El paso 6.1 quedó terminado localmente el
+  2026-10-08:** la migración se probó en una rama de Neon y el esquema base se
+  regeneró desde allí; `scripts/verify.py` pasa 2105 pruebas sin fallas. Ver
+  "Prueba en la rama de Neon" en la fase 6. No hubo acceso a producción.
+- **Siguiente acción exacta:** el usuario revisa y hace un solo commit con la
+  migración, el esquema base regenerado, las pruebas y este documento. Después,
+  a una hora tranquila y con la cadena **directa** de `production` en una
+  terminal nueva: `--dry-run` (debe decir `PENDIENTE` en los dos tenants; si
+  dice `OMITIDA`, la terminal apunta a la rama), aplicación (`OK` en los dos) y
+  `--dry-run` final (`OMITIDA (ya aplicada)`). Ningún código usa todavía la
+  columna ni la tabla, así que el orden frente al despliegue no importa en este
+  paso; sí debe estar aplicada en producción antes de desplegar el paso 6.2.
+  Luego borrar la rama de prueba de Neon. No iniciar el paso 6.2 sin
+  autorización.
 - Prompt para retomar: `docs/funcionalidades/PROMPT_CONTINUACION_ANIO_LECTIVO.md`.

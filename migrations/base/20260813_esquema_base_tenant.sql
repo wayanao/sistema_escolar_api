@@ -1,6 +1,6 @@
 -- Esquema base de un tenant. ARCHIVO GENERADO, no editar a mano.
 --
--- Extraido de tenant_colegio_1 el 2026-10-06 con
+-- Extraido de tenant_colegio_1 el 2026-10-08 con
 -- scripts/generar_esquema_base.py. Para rehacerlo, aplica antes la
 -- migracion nueva a ese schema y vuelve a ejecutar el script.
 --
@@ -11,7 +11,7 @@
 -- No usar apply_migration.py con este archivo: es para dar de alta un
 -- tenant nuevo, no para los existentes, que ya tienen estas tablas.
 --
--- MIGRACIONES INCORPORADAS (41):
+-- MIGRACIONES INCORPORADAS (42):
 --   20260429_pagos_tipo_pago_largo.sql
 --   20260429_plan_de_clases_reportes.sql
 --   20260509_branding_plantillas_impresion.sql
@@ -53,6 +53,7 @@
 --   20260930_anios_lectivos.sql
 --   20261001_anios_lectivos_obligatorio.sql
 --   20261006_anios_lectivos_origenes.sql
+--   20261008_anios_lectivos_activacion.sql
 -- FIN MIGRACIONES INCORPORADAS
 
 CREATE TABLE IF NOT EXISTS anios_lectivos (
@@ -66,6 +67,12 @@ CREATE TABLE IF NOT EXISTS anios_lectivos (
     CONSTRAINT chk_anios_lectivos_estado CHECK (((estado)::text = ANY ((ARRAY['preparacion'::character varying, 'activo'::character varying, 'cerrado'::character varying, 'reabierto'::character varying])::text[]))),
     CONSTRAINT anios_lectivos_pkey PRIMARY KEY (id),
     CONSTRAINT anios_lectivos_anio_key UNIQUE (anio)
+);
+
+CREATE TABLE IF NOT EXISTS anios_lectivos_materias_ocultas (
+    anio_lectivo_id integer NOT NULL,
+    materia_id integer NOT NULL,
+    CONSTRAINT anios_lectivos_materias_ocultas_pkey PRIMARY KEY (anio_lectivo_id, materia_id)
 );
 
 CREATE TABLE IF NOT EXISTS asignaciones (
@@ -248,6 +255,8 @@ CREATE TABLE IF NOT EXISTS matriculas (
     curso_id integer,
     anio integer,
     anio_lectivo_id integer NOT NULL,
+    estado_salida character varying(20),
+    CONSTRAINT chk_matriculas_estado_salida CHECK (((estado_salida)::text = ANY ((ARRAY['retirado'::character varying, 'egresado'::character varying])::text[]))),
     CONSTRAINT matriculas_pkey PRIMARY KEY (id)
 );
 
@@ -555,6 +564,7 @@ CREATE TABLE IF NOT EXISTS ventas_detalle (
 -- Indices que no respaldan restricciones
 CREATE UNIQUE INDEX IF NOT EXISTS idx_anios_lectivos_un_activo ON anios_lectivos USING btree (estado) WHERE ((estado)::text = 'activo'::text);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_anios_lectivos_una_preparacion ON anios_lectivos USING btree (estado) WHERE ((estado)::text = 'preparacion'::text);
+CREATE INDEX IF NOT EXISTS idx_anios_lectivos_materias_ocultas_materia ON anios_lectivos_materias_ocultas USING btree (materia_id);
 CREATE INDEX IF NOT EXISTS idx_asignaciones_academica_id ON asignaciones USING btree (asignacion_academica_id);
 CREATE INDEX IF NOT EXISTS idx_asignaciones_activo ON asignaciones USING btree (activo);
 CREATE INDEX IF NOT EXISTS idx_asignaciones_curso_dia_activo ON asignaciones USING btree (curso_id, dia, activo);
@@ -621,6 +631,8 @@ CREATE INDEX IF NOT EXISTS idx_ventas_estado ON ventas USING btree (estado);
 CREATE INDEX IF NOT EXISTS tenant_colegio_1_idx_ventas_estudiante_estado ON ventas USING btree (estudiante_id, estado);
 
 -- Claves foraneas, al final para no depender del orden de creacion
+ALTER TABLE anios_lectivos_materias_ocultas ADD CONSTRAINT anios_lectivos_materias_ocultas_anio_fkey FOREIGN KEY (anio_lectivo_id) REFERENCES anios_lectivos(id);
+ALTER TABLE anios_lectivos_materias_ocultas ADD CONSTRAINT anios_lectivos_materias_ocultas_materia_fkey FOREIGN KEY (materia_id) REFERENCES materias(id);
 ALTER TABLE asignaciones ADD CONSTRAINT asignaciones_asignacion_academica_id_fkey FOREIGN KEY (asignacion_academica_id) REFERENCES asignaciones(id);
 ALTER TABLE asignaciones ADD CONSTRAINT asignaciones_curso_id_fkey FOREIGN KEY (curso_id) REFERENCES cursos(id);
 ALTER TABLE asignaciones ADD CONSTRAINT asignaciones_materia_id_fkey FOREIGN KEY (materia_id) REFERENCES materias(id);

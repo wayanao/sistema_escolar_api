@@ -6,6 +6,25 @@ Ultima revision documental: 2026-10-08.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
+## 2026-10-09 - Año lectivo 6.5: la marca de salida en los candidatos
+
+Primer paso de la fase 6 del frontend (`docs/funcionalidades/ANIO_LECTIVO.md`),
+que necesita un cambio pequeño aquí.
+
+### Qué cambia
+
+- `GET /anios-lectivos/{anio_lectivo_id}/matriculas/candidatos` agrega a cada
+  candidato `estado_salida` (`"retirado"`, `"egresado"` o `null`). El usuario
+  decidió marcar la salida en la pantalla de promoción, y esa pantalla
+  necesita saber quién ya está marcado. Los demás campos no cambian.
+- Sin migración, sin acceso a una base real.
+
+### Pruebas
+
+La prueba del 6.2b que exigía la respuesta sin cambios se reemplazó por una
+que exige el campo nuevo; falló antes del cambio. `scripts/verify.py` pasó con
+2211 pruebas, Ruff y `pip check` limpios, usando una base ficticia.
+
 ## 2026-10-09 - Año lectivo 6.4b: listas de seguimiento por matrícula
 
 Segunda parte del paso 6.4 de la fase 6 de

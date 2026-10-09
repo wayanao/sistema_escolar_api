@@ -568,6 +568,8 @@ def _formatear_candidato(candidato):
         "estado": candidato["estado"],
         "matriculado_en_destino": candidato["curso_destino_id"] is not None,
         "curso_destino_id": candidato["curso_destino_id"],
+        # Fase 6.5: la pantalla de promoción muestra y quita la marca.
+        "estado_salida": candidato.get("estado_salida"),
     }
 
 

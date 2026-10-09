@@ -13,8 +13,10 @@
   todo correcto (ver "Ensayo de activación en una rama de Neon" en la fase
   6). Paso 6.4 autorizado el 2026-10-09 y dividido en 6.4a (reabrir y volver
   a cerrar, commit `0d6d202`) y 6.4b (listas de seguimiento por matrícula,
-  terminado localmente, sin commit); el 6.4c queda para después por decisión
-  del usuario. Con eso, el backend de la fase 6 está completo.** El paso 5.10 quedó en
+  commit `f0e0ca6`); el 6.4c queda para después por decisión del usuario.
+  Fase 6 del frontend autorizada el mismo día, pasos 6.5 a 6.10; el 6.5
+  (backend: la marca de salida en los candidatos) quedó terminado
+  localmente, sin commit.** El paso 5.10 quedó en
   `82675ba`; el ajuste posterior de navegación del frontend, en `365d083`. El
   paso 5.9 quedó en `0689b7d` y su registro en este repo en
   `53da8f0`. El
@@ -3179,8 +3181,45 @@ Avance del paso 6.4b (listas de seguimiento por matrícula) al 2026-10-09:
 - Resuelve el hallazgo del paso 4.6 del frontend (la lista de un curso de
   2026 saldría vacía después de activar 2027) y el del 3.7b (en un año
   reabierto, el admin no podría marcar a sus estudiantes).
-- **Paso 6.4b terminado localmente, sin commit. Con él queda completo el
-  backend de la fase 6, salvo el 6.4c, aplazado por decisión del usuario.**
+- **Paso 6.4b terminado; el usuario lo confirmó en el commit `f0e0ca6`. Con
+  él queda completo el backend de la fase 6, salvo el 6.4c, aplazado por
+  decisión del usuario.**
+
+Fase 6 del frontend, autorizada el 2026-10-09. Plan por pasos, uno a la vez
+con el visto bueno del usuario (numeración compartida con el backend):
+
+- **Decisión del usuario:** la marca de salida se pone **en la pantalla de
+  promoción por curso**: a cada estudiante que no pasa, Retirado, Egresado o
+  quitar la marca. Todo se decide en un solo lugar. Se descartó ponerla en la
+  lista de pendientes de la vista previa, porque para quitar una marca haría
+  falta otra lista.
+- **6.5 (backend):** la lista de candidatos trae `estado_salida`.
+- **6.6 (frontend):** marcar y quitar la marca en la promoción; quien está
+  marcado no se puede seleccionar para matricular.
+- **6.7 (frontend):** sección "Activar": vista previa con la lista de
+  pendientes por curso, activar con el año escrito, la lista que devuelve un
+  `409` con pendientes y el resumen al terminar.
+- **6.8 (frontend):** reabrir y volver a cerrar un año pasado, con el año
+  escrito.
+- **6.9 (frontend):** el título del aviso de año cerrado en Tipos de pago
+  (hallazgo del 4.3).
+- **6.10 (frontend):** Certificados pide todos los estados, con "Activos"
+  como filtro inicial (decisión del 2026-10-08).
+
+Avance del paso 6.5 (la marca de salida en los candidatos) al 2026-10-09:
+
+- Ambos repos en `main` y limpios al iniciar (backend `f0e0ca6`, frontend
+  `e2e470d`, sin push).
+- `_formatear_candidato` agrega `estado_salida`, que el repositorio ya leía
+  desde el 6.2b para que la promoción rechace a los marcados. Los demás campos
+  no cambian.
+- La prueba del 6.2b que exigía la respuesta sin cambios se reemplazó por
+  `test_los_candidatos_dicen_su_marca_de_salida`, que falló antes del cambio.
+- Verificación: 19 pruebas del archivo de matrícula en preparación;
+  `scripts/verify.py` → **2211 pruebas pasan, 0 fallan**, Ruff y `pip check`
+  limpios con una `DATABASE_URL` ficticia; `git diff --check` limpio.
+- Documentado en `docs/API_ENDPOINTS.md` y `docs/CAMBIOS_BACKEND.md`.
+  **Paso 6.5 terminado localmente, sin commit.**
 
 ### Fase 7 — Reutilizar el planeador anual y los planes de clase (antes de iniciar clases 2027)
 
@@ -3552,14 +3591,16 @@ cosa, gana lo que se pueda verificar.
 - **Paso 6.4 autorizado el 2026-10-09** y dividido en 6.4a, 6.4b y 6.4c (ver
   "Decisiones del usuario el 2026-10-09" en la fase 6). El **6.4a, reabrir y
   volver a cerrar**, quedó en `0d6d202`. El **6.4b, listas de seguimiento por
-  matrícula**, quedó terminado localmente, sin commit: `scripts/verify.py`
-  pasa 2211 pruebas. El 6.4c queda para después. **El backend de la fase 6
-  está completo.**
-- **Siguiente acción exacta:** el usuario revisa y hace el commit del 6.4b.
-  Después, con su autorización, la **fase 6 del frontend** (plan en
-  `frontend-react/docs/funcionalidades/ANIO_LECTIVO.md`): vista previa con la
-  lista de pendientes, dónde marcar la salida (pregunta pendiente), activar
-  con el año escrito, reabrir y cerrar, el título del aviso de año cerrado en
-  Tipos de pago (hallazgo del 4.3) y Certificados con todos los estados. No
-  iniciarla sin autorización.
+  matrícula**, quedó en `f0e0ca6`. El 6.4c queda para después. **El backend
+  de la fase 6 está completo.**
+- **Fase 6 del frontend autorizada el 2026-10-09**, pasos 6.5 a 6.10 (ver
+  "Fase 6 del frontend" en la fase 6). La marca de salida va en la pantalla
+  de promoción (decisión del usuario). El **6.5**, la marca en los
+  candidatos (backend), quedó terminado localmente, sin commit:
+  `scripts/verify.py` pasa 2211 pruebas.
+- **Siguiente acción exacta:** el usuario revisa y hace el commit del 6.5.
+  Después, con su visto bueno, el **6.6** en el frontend: en la promoción,
+  Retirado, Egresado o quitar la marca a quien no pasa
+  (`PUT /anios-lectivos/{id}/matriculas/salida`), y quien está marcado no se
+  puede seleccionar para matricular. No iniciarlo sin autorización.
 - Prompt para retomar: `docs/funcionalidades/PROMPT_CONTINUACION_ANIO_LECTIVO.md`.

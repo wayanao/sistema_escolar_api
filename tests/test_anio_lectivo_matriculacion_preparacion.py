@@ -312,9 +312,10 @@ def test_rechaza_promover_a_quien_tiene_marca_de_salida(entorno_matriculas):
     assert entorno_matriculas.rollbacks == 1
 
 
-def test_la_marca_de_salida_no_cambia_la_respuesta_de_candidatos(
-    entorno_matriculas,
-):
+def test_los_candidatos_dicen_su_marca_de_salida(entorno_matriculas):
+    """Fase 6.5: el usuario decidió marcar la salida en la pantalla de
+    promoción (2026-10-09), así que la lista dice quién ya está marcado. Es
+    un campo agregado: los demás no cambian."""
     entorno_matriculas.candidatos[0]["estado_salida"] = "retirado"
 
     respuesta = controlador.listar_candidatos_matricula_controller(3, 10)
@@ -327,7 +328,13 @@ def test_la_marca_de_salida_no_cambia_la_respuesta_de_candidatos(
         "estado",
         "matriculado_en_destino",
         "curso_destino_id",
+        "estado_salida",
     }
+    assert [c["estado_salida"] for c in respuesta["candidatos"]] == [
+        "retirado",
+        None,
+        None,
+    ]
 
 
 def test_rechaza_un_curso_origen_que_no_es_del_anio_activo(entorno_matriculas):

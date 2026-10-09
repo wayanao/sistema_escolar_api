@@ -153,7 +153,10 @@ Notas:
   debe ser del año activo y el id de la ruta debe ser exactamente `N+1` en
   preparación. Devuelve todos los estudiantes de la matrícula del curso,
   incluidos retirados o egresados, y marca `matriculado_en_destino` para no
-  volver a promover a quien ya tenga matrícula allí.
+  volver a promover a quien ya tenga matrícula allí. Desde la fase 6, paso
+  6.5, cada candidato trae también `estado_salida` (`"retirado"`,
+  `"egresado"` o `null`), la marca de su matrícula del año activo, para que
+  la pantalla de promoción la muestre y la quite.
 - La promoción recibe una selección explícita, sin ids vacíos ni repetidos:
 
 ```json

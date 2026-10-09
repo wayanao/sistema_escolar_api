@@ -6,6 +6,34 @@ Ultima revision documental: 2026-10-08.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
+## 2026-10-08 - Año lectivo 6.3b: boletín de un año cerrado
+
+Segunda parte del paso 6.3 de la fase 6 de
+`docs/funcionalidades/ANIO_LECTIVO.md`.
+
+### Qué cambia
+
+- El boletín y el reporte parcial de admin, al mirar un año `cerrado` o
+  `reabierto`, ocultan las materias de su foto al cerrarse
+  (`anios_lectivos_materias_ocultas`) en vez de las inactivas de hoy
+  (decisión 13). En el año activo y en el de preparación nada cambia.
+- Sin `anio_lectivo_id`, o con el del año activo, las dos consultas son
+  idénticas a las de antes, texto y parámetros (comparado contra el commit
+  anterior).
+- Hoy no hay ningún año cerrado, así que ninguna respuesta cambia.
+- Sin migración, sin frontend, sin acceso a una base real.
+
+### Pruebas
+
+6 pruebas nuevas en `tests/test_anio_lectivo_boletin_materias_ocultas.py`; las
+4 que describen el cambio fallaron primero y las 2 que protegen el texto de
+hoy pasaban antes y después. Se ajustaron 2 pruebas existentes que fijaban el
+texto y los parámetros: `test_boletin_caracterizacion.py` (el filtro llega
+ahora por un hueco, y sin año sigue siendo exactamente el de hoy) y
+`test_anio_lectivo_lecturas.py` (con año, las dos consultas repiten el año al
+final). `scripts/verify.py` pasó con 2180 pruebas, Ruff y `pip check` limpios,
+usando una base ficticia.
+
 ## 2026-10-08 - Año lectivo 6.3a: activar el año siguiente
 
 Primera parte del paso 6.3 de la fase 6 de

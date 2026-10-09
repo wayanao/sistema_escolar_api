@@ -42,6 +42,10 @@ las lecturas del boletin de administracion y del reporte parcial aceptan
 estudiante sigue siendo `e.curso_id` y el texto que recibe PostgreSQL es el de
 siempre; con el, el curso es el de su matricula de ese año. La excepcion es el
 puesto, que cambia tambien sin año: ver `leer_puesto_en_el_curso`.
+
+Fase 6 (paso 6.3b): con año, las dos consultas de materias de un año cerrado
+o reabierto ocultan las de su foto al cerrarse, no las inactivas de hoy. Ver
+`_materia_visible`.
 """
 
 from app.repositories.anios_lectivos_repository import ANIO_ACTIVO_ID_SQL
@@ -59,6 +63,31 @@ def _curso_del_estudiante(anio_lectivo_id):
         "(SELECT m.curso_id FROM matriculas m"
         " WHERE m.estudiante_id = e.id AND m.anio_lectivo_id = %s)",
         (anio_lectivo_id,),
+    )
+
+
+_MATERIA_ACTIVA = "COALESCE(LOWER(m.estado), 'activo') = 'activo'"
+
+
+def _materia_visible(anio_lectivo_id):
+    """Qué materias `m` salen en el boletín, y sus parametros.
+
+    Sin año, las activas: el texto de siempre. Con año, si ese año está
+    cerrado o reabierto, todas menos las de su foto al cerrarse (año lectivo,
+    decisión 13 y paso 6.3b); si no, las activas, igual que sin año.
+    """
+    if anio_lectivo_id is None:
+        return _MATERIA_ACTIVA, ()
+    return (
+        f"""CASE WHEN (SELECT estado FROM anios_lectivos WHERE id = %s)
+                     IN ('cerrado', 'reabierto')
+                THEN NOT EXISTS (
+                    SELECT 1 FROM anios_lectivos_materias_ocultas o
+                    WHERE o.anio_lectivo_id = %s AND o.materia_id = m.id
+                )
+                ELSE {_MATERIA_ACTIVA}
+              END""",
+        (anio_lectivo_id, anio_lectivo_id),
     )
 
 
@@ -183,8 +212,10 @@ def leer_materias_del_estudiante(
     la asignatura desaparecia de todas las pantallas menos del boletin.
 
     Con `anio_lectivo_id`, las materias del curso de su matricula de ese año.
+    Si ese año está cerrado, las que oculta su foto: ver `_materia_visible`.
     """
     curso, params_curso = _curso_del_estudiante(anio_lectivo_id)
+    materia_visible, params_materia = _materia_visible(anio_lectivo_id)
     cursor.execute(f'''
             WITH asignaciones_academicas AS (
                 SELECT DISTINCT ON (COALESCE(a.asignacion_academica_id, a.id))
@@ -224,9 +255,12 @@ def leer_materias_del_estudiante(
             ) nd_prom ON TRUE
             WHERE e.id = %s
               AND m.nombre <> %s
-              AND COALESCE(LOWER(m.estado), 'activo') = 'activo'
+              AND {materia_visible}
             ORDER BY asig.orden_boletin, m.nombre
-        ''', (*params_curso, periodo, periodo, estudiante_id, nombre_materia_excluida))
+        ''', (
+            *params_curso, periodo, periodo, estudiante_id, nombre_materia_excluida,
+            *params_materia,
+        ))
     return cursor.fetchall()
 
 
@@ -370,8 +404,10 @@ def leer_planilla_vigente(
     explica alli: las dos consultas del boletin siguen la misma regla.
 
     Con `anio_lectivo_id`, las materias del curso de su matricula de ese año.
+    Si ese año está cerrado, las que oculta su foto: ver `_materia_visible`.
     """
     curso, params_curso = _curso_del_estudiante(anio_lectivo_id)
+    materia_visible, params_materia = _materia_visible(anio_lectivo_id)
     cursor.execute(f'''
             WITH asignaciones_academicas AS (
                 SELECT DISTINCT ON (COALESCE(a.asignacion_academica_id, a.id))
@@ -409,7 +445,7 @@ def leer_planilla_vigente(
                 AND nd.periodo = %s
             WHERE e.id = %s
               AND m.nombre <> %s
-              AND COALESCE(LOWER(m.estado), 'activo') = 'activo'
+              AND {materia_visible}
             ORDER BY asig.orden_boletin, m.nombre, nd.id
-        ''', (*params_curso, periodo, estudiante_id, nombre_materia_excluida))
+        ''', (*params_curso, periodo, estudiante_id, nombre_materia_excluida, *params_materia))
     return cursor.fetchall()

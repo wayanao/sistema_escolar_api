@@ -1193,8 +1193,12 @@ Notas:
   tambien sin el parametro: el periodo 1 existe todos los años y, sin ese
   filtro, con dos años se mezclarian. Mientras haya un solo año, el puesto
   es el mismo de antes.
-- Las materias inactivas se ocultan como hoy en cualquier año. La regla de un
-  año cerrado ("como estaba al cerrar", decision 13) llega en la fase 6.
+- Materias ocultas (fase 6, paso 6.3b): en el año activo y en el de
+  preparación se ocultan las inactivas, como siempre. En un año `cerrado` o
+  `reabierto` se ocultan las de su foto al cerrarse
+  (`anios_lectivos_materias_ocultas`, decisión 13), aunque después se hayan
+  activado o desactivado. Sin `anio_lectivo_id`, o con el activo, las
+  consultas no cambiaron.
 
 ## Branding
 

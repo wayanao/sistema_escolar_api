@@ -480,7 +480,17 @@ def test_las_dos_consultas_del_boletin_dejan_fuera_las_materias_inactivas():
     sql_repositorio = _sql_del_modulo("app/repositories/boletin_repository.py")
     filtro = "COALESCE(LOWER(m.estado), 'activo') = 'activo'"
 
-    con_filtro = [sentencia for sentencia in sql_repositorio if filtro in sentencia]
+    # Año lectivo, fase 6.3b: el filtro llega por un hueco, porque un año
+    # cerrado oculta las materias de su foto (decisión 13). Sin año, el hueco
+    # es exactamente este filtro, sin parámetros.
+    from app.repositories import boletin_repository
+
+    assert boletin_repository._materia_visible(None) == (filtro, ())
+    con_filtro = [
+        sentencia
+        for sentencia in sql_repositorio
+        if "AND m.nombre <> %s AND {...} ORDER BY" in " ".join(sentencia.split())
+    ]
 
     assert len(con_filtro) == 2
     assert all("FROM estudiantes e" in sentencia for sentencia in con_filtro)

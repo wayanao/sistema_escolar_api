@@ -7,9 +7,9 @@
   en una rama de Neon, esquema base regenerado desde allí, commit `6c6aabb` y
   migración aplicada en los dos tenants de producción. Paso 6.2 autorizado y
   dividido en 6.2a (vista previa, commit `5726cf4`) y 6.2b (marcar la salida,
-  commit `2aaee65`). Paso 6.3 autorizado y dividido en 6.3a (activar) y 6.3b
-  (boletín de un año cerrado con su foto de materias); el 6.3a quedó terminado
-  localmente el mismo día, sin commit.** El paso 5.10 quedó en
+  commit `2aaee65`). Paso 6.3 autorizado y dividido en 6.3a (activar, commit
+  `89b83cd`) y 6.3b (boletín de un año cerrado con su foto de materias,
+  terminado localmente el mismo día, sin commit).** El paso 5.10 quedó en
   `82675ba`; el ajuste posterior de navegación del frontend, en `365d083`. El
   paso 5.9 quedó en `0689b7d` y su registro en este repo en
   `53da8f0`. El
@@ -3001,7 +3001,37 @@ Avance del paso 6.3a (activar el año) al 2026-10-08:
   del 6.3b, las probará de verdad.
 - Documentado en `docs/API_ENDPOINTS.md`, `docs/ROLES_PERMISOS_BACKEND.md` y
   `docs/CAMBIOS_BACKEND.md`. Sin migración, sin frontend, sin bases reales.
-  **Paso 6.3a terminado localmente, sin commit.**
+  **Paso 6.3a terminado; el usuario lo confirmó en el commit `89b83cd`.**
+
+Avance del paso 6.3b (boletín de un año cerrado) al 2026-10-08:
+
+- Ambos repos en `main` y limpios al iniciar (backend `89b83cd`, frontend
+  `f22f2b3`, sin push).
+- Antes había dos consultas del boletín que ocultan materias por su estado
+  actual: `leer_materias_del_estudiante` (boletín) y `leer_planilla_vigente`
+  (reporte parcial). Las demás que filtran por `m.estado` son listados de
+  clases (`asignaciones_repository`), fuera de la decisión 13. Los
+  certificados no arman su propia lista de materias en el backend.
+- Se escribieron primero 6 pruebas en
+  `tests/test_anio_lectivo_boletin_materias_ocultas.py`: fallaron las 4 que
+  describen el cambio; las 2 que protegen el texto de hoy pasaban antes y
+  después. Se ajustaron, con explicación, 2 pruebas existentes que fijaban
+  texto y parámetros (`test_boletin_caracterizacion.py`,
+  `test_anio_lectivo_lecturas.py`); las dos fallaron antes del cambio.
+- Nuevo `_materia_visible(anio_lectivo_id)` en `boletin_repository`, al lado de
+  `_curso_del_estudiante`. Sin año devuelve exactamente el filtro de hoy, sin
+  parámetros. Con año, un `CASE`: si el año está `cerrado` o `reabierto`,
+  oculta las materias de su foto; si no, las inactivas, como siempre. El
+  controlador ya convierte el año activo en "sin año"
+  (`anio_distinto_del_activo`).
+- Comparado contra el commit anterior con un script: sin año, las dos consultas
+  reciben el mismo texto y los mismos parámetros, carácter por carácter.
+- Verificación: 194 pruebas de boletín y lecturas por año;
+  `scripts/verify.py` → **2180 pruebas pasan, 0 fallan**, Ruff y `pip check`
+  limpios con una `DATABASE_URL` ficticia; `git diff --check` limpio.
+- Documentado en `docs/API_ENDPOINTS.md` y `docs/CAMBIOS_BACKEND.md`. Sin
+  migración, sin frontend, sin bases reales. **Paso 6.3b terminado
+  localmente, sin commit. Con él queda completo el paso 6.3 en el backend.**
 
 ### Fase 7 — Reutilizar el planeador anual y los planes de clase (antes de iniciar clases 2027)
 
@@ -3355,12 +3385,15 @@ cosa, gana lo que se pueda verificar.
   completo.
 - **Paso 6.3 autorizado el 2026-10-08 y dividido en 6.3a y 6.3b** (ver
   "Decisiones del usuario... al autorizar el paso 6.3" en la fase 6). El
-  **6.3a, la activación**, quedó terminado localmente, sin commit:
-  `scripts/verify.py` pasa 2174 pruebas.
-- **Siguiente acción exacta:** el usuario revisa y hace el commit del 6.3a.
-  Después, con su visto bueno, el 6.3b: que el boletín de un año cerrado o
-  reabierto oculte las materias de `anios_lectivos_materias_ocultas` en vez de
-  mirar su estado actual (las dos consultas de `boletin_repository` que hoy
-  filtran por `m.estado`). Luego, el ensayo en una rama de Neon. No iniciar el
-  6.3b sin autorización.
+  **6.3a, la activación**, quedó en `89b83cd`. El **6.3b, el boletín de un
+  año cerrado**, quedó terminado localmente, sin commit: `scripts/verify.py`
+  pasa 2180 pruebas. El paso 6.3 del backend está completo.
+- **Siguiente acción exacta:** el usuario revisa y hace el commit del 6.3b.
+  Después, con su visto bueno, el **ensayo de activación en una rama de Neon**
+  copiada de producción, con el backend local apuntando a la rama: crear
+  2027, copiar la configuración, matricular, marcar la salida, ver la vista
+  previa, activar, y comprobar que la consulta de control da 0, que un
+  profesor ve solo 2027 y que el admin consulta e imprime 2026. Es la primera
+  vez que las consultas de los pasos 6.2 y 6.3 corren contra una base real.
+  No tocar producción. No iniciarlo sin autorización.
 - Prompt para retomar: `docs/funcionalidades/PROMPT_CONTINUACION_ANIO_LECTIVO.md`.

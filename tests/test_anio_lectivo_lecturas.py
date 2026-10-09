@@ -1825,6 +1825,7 @@ LECTURAS_DEL_CURSO = {
     "leer_datos_basicos_del_estudiante": ((8,), (8,)),
     "leer_planilla_vigente": ((8, 2, "ASISTENCIA"), (2, 8, "ASISTENCIA")),
 }
+CON_FOTO_DE_MATERIAS = {"leer_materias_del_estudiante", "leer_planilla_vigente"}
 
 
 @pytest.mark.parametrize("nombre", sorted(LECTURAS_DEL_CURSO))
@@ -1858,7 +1859,10 @@ def test_con_anio_las_lecturas_del_boletin_usan_el_curso_de_la_matricula(nombre)
     assert CURSO_DE_LA_MATRICULA in sql
     assert "e.curso_id" not in sql
     # El año va primero: el curso aparece en el FROM, antes que los demas.
-    assert recibidos == (1, *params)
+    # Desde la fase 6.3b, las dos consultas de materias repiten el año al
+    # final para ocultar las de su foto si el año está cerrado.
+    extra = (1, 1) if nombre in CON_FOTO_DE_MATERIAS else ()
+    assert recibidos == (1, *params, *extra)
 
 
 class BaseDePuesto:

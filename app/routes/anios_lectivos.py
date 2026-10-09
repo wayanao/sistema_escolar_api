@@ -8,14 +8,16 @@ from app.controllers.anios_lectivos_controller import (
     AnioLectivoActivoInexistenteError,
     AnioLectivoDestinoInvalidoError,
     AnioLectivoEnPreparacionError,
+    AnioLectivoReabiertoExistenteError,
     AnioLectivoSiguienteExistenteError,
     CandidatosMatriculaInvalidosError,
     ConfiguracionAnioDuplicadaError,
     ConfiguracionAnioInconsistenteError,
-    ConfirmacionActivacionInvalidaError,
+    ConfirmacionAnioInvalidaError,
     CursoMatriculaInvalidoError,
     ValoresEspecialesInconsistentesError,
     activar_anio_controller,
+    cerrar_anio_reabierto_controller,
     copiar_configuracion_anio_controller,
     crear_estudiante_en_preparacion_controller,
     crear_anio_lectivo_controller,
@@ -23,12 +25,14 @@ from app.controllers.anios_lectivos_controller import (
     listar_candidatos_matricula_controller,
     listar_anios_lectivos_controller,
     promover_estudiantes_controller,
+    reabrir_anio_controller,
     resumen_anio_preparacion_controller,
     vista_previa_activacion_controller,
 )
 from app.dependencies import get_current_active_admin, get_current_user
 from app.schemas.anio_lectivo import (
     ActivarAnioLectivo,
+    ConfirmacionAnioLectivo,
     CopiarConfiguracionAnio,
     DecisionSalidaEstudiantes,
     PromocionEstudiantes,
@@ -162,9 +166,48 @@ def activar_anio_lectivo(
         AnioLectivoInexistenteError,
         AnioLectivoActivoInexistenteError,
         AnioLectivoDestinoInvalidoError,
-        ConfirmacionActivacionInvalidaError,
+        ConfirmacionAnioInvalidaError,
         ActivacionInconsistenteError,
     ) as exc:
+        _traducir_error_matricula(exc)
+
+
+_ERRORES_DE_ANIO_PASADO = (
+    AnioLectivoInexistenteError,
+    AnioLectivoActivoInexistenteError,
+    AnioLectivoDestinoInvalidoError,
+    ConfirmacionAnioInvalidaError,
+    AnioLectivoReabiertoExistenteError,
+)
+
+
+@router.post(
+    "/anios-lectivos/{anio_lectivo_id}/reabrir",
+    dependencies=[Depends(get_current_active_admin)],
+)
+def reabrir_anio_lectivo(
+    anio_lectivo_id: Annotated[int, Path(gt=0)],
+    datos: ConfirmacionAnioLectivo,
+):
+    """Abre un año cerrado para que el admin corrija algo puntual."""
+    try:
+        return reabrir_anio_controller(anio_lectivo_id, datos)
+    except _ERRORES_DE_ANIO_PASADO as exc:
+        _traducir_error_matricula(exc)
+
+
+@router.post(
+    "/anios-lectivos/{anio_lectivo_id}/cerrar",
+    dependencies=[Depends(get_current_active_admin)],
+)
+def cerrar_anio_lectivo(
+    anio_lectivo_id: Annotated[int, Path(gt=0)],
+    datos: ConfirmacionAnioLectivo,
+):
+    """Vuelve a cerrar un año reabierto."""
+    try:
+        return cerrar_anio_reabierto_controller(anio_lectivo_id, datos)
+    except _ERRORES_DE_ANIO_PASADO as exc:
         _traducir_error_matricula(exc)
 
 

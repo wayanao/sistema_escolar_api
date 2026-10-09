@@ -84,6 +84,8 @@ Notas:
 - `GET /anios-lectivos/{anio_lectivo_id}/activacion/vista-previa` (solo admin)
 - `PUT /anios-lectivos/{anio_lectivo_id}/matriculas/salida` (solo admin)
 - `POST /anios-lectivos/{anio_lectivo_id}/activar` (solo admin)
+- `POST /anios-lectivos/{anio_lectivo_id}/reabrir` (solo admin)
+- `POST /anios-lectivos/{anio_lectivo_id}/cerrar` (solo admin)
 
 Notas:
 
@@ -308,6 +310,27 @@ Notas:
   }
 }
 ```
+
+- Fase 6, paso 6.4a: reabrir pasa un año `cerrado` a `reabierto`, para que
+  el admin corrija algo puntual; cerrar lo devuelve a `cerrado`. Las dos
+  reciben el año escrito, `{ "confirmar_anio": 2026 }`, y solo cambian el
+  estado del año: no tocan estudiantes, cursos, la foto de materias ni
+  `activado_en`/`cerrado_en` (la fecha de cierre sigue siendo la del primero).
+  Solo puede haber un año reabierto a la vez. Bloquean el año activo, que
+  hace de turno para todo cambio de estado, y luego el año pedido.
+- Errores en texto: `404` si el año no existe; `409` si no está en el estado
+  que corresponde ("Solo se puede reabrir un año cerrado.", "Solo se puede
+  volver a cerrar un año reabierto."), si el año escrito no coincide ("Para
+  reabrir, escribe el año 2026."), si ya hay otro reabierto ("Ya está
+  reabierto el año 2025. Ciérralo antes de reabrir otro.") o si falta el año
+  activo. Respuesta:
+
+```json
+{ "anio_lectivo": {"id": 1, "anio": 2026, "estado": "reabierto"} }
+```
+
+- En un año reabierto, la guardia del paso 3.7 deja escribir al admin y
+  responde `403` al profesor, que tampoco lo ve en su lista de años.
 
 ### Guardia de escritura (paso 3.7)
 

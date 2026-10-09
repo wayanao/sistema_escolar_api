@@ -32,14 +32,19 @@ class PromocionEstudiantes(BaseModel):
         return _validar_ids_estudiantes(valores)
 
 
-class ActivarAnioLectivo(BaseModel):
-    """El año que el admin escribe para confirmar la activación (fase 6.3a).
+class ConfirmacionAnioLectivo(BaseModel):
+    """El año que el admin escribe para confirmar un cambio de estado del año.
 
-    El backend lo compara con el año que se activa: protege de una pestaña
-    vieja o de una llamada por error, además de la confirmación del frontend.
+    El backend lo compara con el año que cambia: protege de una pestaña vieja
+    o de una llamada por error, además de la confirmación del frontend. Lo
+    usan reabrir y volver a cerrar (fase 6.4a).
     """
 
     confirmar_anio: int = Field(ge=2000, le=2100)
+
+
+class ActivarAnioLectivo(ConfirmacionAnioLectivo):
+    """La misma confirmación, para activar el año siguiente (fase 6.3a)."""
 
 
 class DecisionSalidaEstudiantes(BaseModel):

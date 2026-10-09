@@ -6,6 +6,32 @@ Ultima revision documental: 2026-10-08.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
+## 2026-10-09 - Año lectivo 6.4a: reabrir y volver a cerrar
+
+Primera parte del paso 6.4 de la fase 6 de
+`docs/funcionalidades/ANIO_LECTIVO.md`.
+
+### Qué cambia
+
+- Nuevos `POST /anios-lectivos/{anio_lectivo_id}/reabrir` y `/cerrar`, solo
+  para admin, con `{"confirmar_anio": 2026}`. Pasan un año de `cerrado` a
+  `reabierto` y de vuelta. Solo un año reabierto a la vez.
+- Solo cambia el estado del año: ni estudiantes, ni cursos, ni la foto de
+  materias, ni las fechas de activación y cierre.
+- El esquema de la confirmación se llama ahora `ConfirmacionAnioLectivo`;
+  `ActivarAnioLectivo` lo hereda sin cambios. El error del año mal escrito se
+  renombró a `ConfirmacionAnioInvalidaError`; la respuesta de activar no
+  cambió.
+- Ninguna ruta existente cambió de comportamiento. Sin migración, sin
+  frontend, sin acceso a una base real.
+
+### Pruebas
+
+30 pruebas nuevas en `tests/test_anio_lectivo_reabrir.py`, que fallaron al
+cargar porque las rutas no existían; las de activación se actualizaron solo en
+el nombre del error. `scripts/verify.py` pasó con 2210 pruebas, Ruff y
+`pip check` limpios, usando una base ficticia.
+
 ## 2026-10-08 - Año lectivo 6.3b: boletín de un año cerrado
 
 Segunda parte del paso 6.3 de la fase 6 de

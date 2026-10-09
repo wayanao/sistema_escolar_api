@@ -166,6 +166,27 @@ def aplicar_marcas_de_salida(cursor, anio_origen_id, anio_destino_id):
     return cursor.rowcount
 
 
+def leer_anio_reabierto(cursor):
+    """El año reabierto como `(id, anio, estado)`, o `None` si no hay (6.4a)."""
+    cursor.execute(
+        "SELECT id, anio, estado FROM anios_lectivos WHERE estado = 'reabierto'"
+    )
+    return cursor.fetchone()
+
+
+def cambiar_estado_anio(cursor, anio_lectivo_id, estado_actual, estado_nuevo):
+    """Cambia solo el estado de un año si sigue en `estado_actual` (6.4a).
+
+    No toca `activado_en` ni `cerrado_en`: la fecha de cierre es la del primer
+    cierre, la de la foto de materias. Devuelve cuántas filas cambió.
+    """
+    cursor.execute(
+        "UPDATE anios_lectivos SET estado = %s WHERE id = %s AND estado = %s",
+        (estado_nuevo, anio_lectivo_id, estado_actual),
+    )
+    return cursor.rowcount
+
+
 def activar_anio_siguiente(cursor, anio_origen_id, anio_destino_id):
     """Cierra el activo y activa el siguiente; devuelve cuántos cambió cada uno.
 

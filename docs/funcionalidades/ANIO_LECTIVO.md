@@ -11,7 +11,9 @@
   `89b83cd`) y 6.3b (boletín de un año cerrado con su foto de materias, commit
   `5cc4f61`). Ensayo completo de activación en una rama de Neon el mismo día:
   todo correcto (ver "Ensayo de activación en una rama de Neon" en la fase
-  6).** El paso 5.10 quedó en
+  6). Paso 6.4 autorizado el 2026-10-09 y dividido en 6.4a (reabrir y volver
+  a cerrar, terminado localmente, sin commit) y 6.4b (listas de seguimiento
+  por matrícula); el 6.4c queda para después por decisión del usuario.** El paso 5.10 quedó en
   `82675ba`; el ajuste posterior de navegación del frontend, en `365d083`. El
   paso 5.9 quedó en `0689b7d` y su registro en este repo en
   `53da8f0`. El
@@ -2828,6 +2830,28 @@ Decisiones del usuario el 2026-10-08, al autorizar el paso 6.3:
   backend local, que es la primera vez que las consultas de los pasos 6.2 y
   6.3 corren contra una base real.
 
+Decisiones del usuario el 2026-10-09, al autorizar el paso 6.4:
+
+- El paso se divide en **6.4a** (reabrir y volver a cerrar), **6.4b** (la
+  lista de seguimiento de un curso y la validación de sus marcas leen a los
+  estudiantes por su matrícula en ese curso, no por `estudiantes.curso_id`) y
+  **6.4c** (asistencia, boletín, observaciones, notas y planilla comprueban
+  al estudiante por la matrícula del año de la clase).
+- **El 6.4c queda para después**, hasta que exista una pantalla del admin que
+  lo necesite. Motivos: el admin no tiene pantallas para escribir notas,
+  asistencia, observaciones ni boletines (son del profesor; su `/boletin`
+  solo consulta e imprime); las comprobaciones viven en
+  `app/core/permissions.py`, zona sensible; y en la lectura de observaciones
+  (`GET /observaciones/...`) el cambio dejaría a un profesor ver datos de un
+  año pasado de sus antiguos estudiantes, contra la decisión 4. Los lugares
+  son: `require_estudiante_in_asignacion` y `require_estudiantes_in_asignacion`
+  (`permissions.py`), `buscar_estudiante_en_curso_de_asignacion`
+  (`notas_repository.py`) y `buscar_estudiante_en_asignacion`
+  (`planilla_repository.py`).
+- Reglas por defecto del 6.4a, que el usuario no objetó: solo un año
+  reabierto a la vez; el backend exige escribir el año, como al activar;
+  volver a cerrar no cambia la foto de materias ni `cerrado_en`.
+
 Avance del paso 6.1 al 2026-10-08:
 
 - Ambos repos estaban en `main`, limpios y sincronizados con `origin/main` al
@@ -3101,6 +3125,33 @@ guiado paso a paso; el asistente no se conectó a ninguna base):
 - Incidente: al arrancar el backend, la cadena completa de la rama, con la
   contraseña heredada de producción, quedó pegada en el chat. Ver
   "Contraseña" en la entrega.
+
+Avance del paso 6.4a (reabrir y volver a cerrar) al 2026-10-09:
+
+- Ambos repos en `main` y limpios al iniciar (backend `c107262`, frontend
+  `1f9cccc`, sin push).
+- Se escribieron primero 30 pruebas en `tests/test_anio_lectivo_reabrir.py`;
+  fallaron al cargar porque las rutas no existían.
+- Nuevos `POST /anios-lectivos/{id}/reabrir` y `/cerrar`, solo admin, con
+  `ConfirmacionAnioLectivo` (`confirmar_anio`). `ActivarAnioLectivo` ahora la
+  hereda sin cambios, y el error del año mal escrito se renombró a
+  `ConfirmacionAnioInvalidaError` (las pruebas del 6.3a solo cambiaron ese
+  nombre).
+- Los dos usan `_cambiar_estado_anio_pasado`: bloquea el año activo (el turno
+  de todo cambio de estado de los años), bloquea el año pedido, exige su
+  estado (`cerrado` para reabrir, `reabierto` para cerrar), compara el año
+  escrito y, al reabrir, rechaza si ya hay otro reabierto
+  (`leer_anio_reabierto`). Luego `cambiar_estado_anio`, que solo cambia
+  `estado` con `WHERE estado = <el esperado>`; si no cambió una fila, `409`
+  "... Nada cambió." y se deshace.
+- No toca estudiantes, cursos, la foto de materias ni `activado_en` o
+  `cerrado_en`.
+- Verificación: 30 pruebas nuevas; 703 de año lectivo; `scripts/verify.py` →
+  **2210 pruebas pasan, 0 fallan**, Ruff y `pip check` limpios con una
+  `DATABASE_URL` ficticia; `git diff --check` limpio.
+- Documentado en `docs/API_ENDPOINTS.md`, `docs/ROLES_PERMISOS_BACKEND.md` y
+  `docs/CAMBIOS_BACKEND.md`. Sin migración, sin frontend, sin bases reales.
+  **Paso 6.4a terminado localmente, sin commit.**
 
 ### Fase 7 — Reutilizar el planeador anual y los planes de clase (antes de iniciar clases 2027)
 
@@ -3469,9 +3520,13 @@ cosa, gana lo que se pueda verificar.
 - **Pendiente urgente del usuario:** rotar la contraseña de `neondb_owner`
   (ver "Contraseña" arriba) y, después, el push de los commits del 6.1 al 6.3,
   que siguen solo en local en los dos repos.
-- **Siguiente acción exacta:** el paso 6.4, reabrir y volver a cerrar un año
-  pasado (solo admin), con los ajustes de rutas que hoy comprueban al
-  estudiante con `estudiantes.curso_id` (asistencia, boletín, observaciones,
-  marcas de listas de seguimiento y la lista de un curso). No iniciarlo sin
-  autorización.
+- **Paso 6.4 autorizado el 2026-10-09** y dividido en 6.4a, 6.4b y 6.4c (ver
+  "Decisiones del usuario el 2026-10-09" en la fase 6). El **6.4a, reabrir y
+  volver a cerrar**, quedó terminado localmente, sin commit:
+  `scripts/verify.py` pasa 2210 pruebas. El 6.4c queda para después.
+- **Siguiente acción exacta:** el usuario revisa y hace el commit del 6.4a.
+  Después, con su visto bueno, el **6.4b**: que `leer_estudiantes_del_curso`
+  (`listas_seguimiento_repository.py`) y la validación de marcas lean a los
+  estudiantes por su matrícula en ese curso. En un curso del año activo el
+  resultado debe quedar idéntico. No iniciarlo sin autorización.
 - Prompt para retomar: `docs/funcionalidades/PROMPT_CONTINUACION_ANIO_LECTIVO.md`.

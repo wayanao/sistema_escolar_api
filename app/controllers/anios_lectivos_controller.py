@@ -49,8 +49,12 @@ class ValoresEspecialesInconsistentesError(Exception):
     """Un valor especial no tiene concepto equivalente en el destino."""
 
 
-class ConfirmacionActivacionInvalidaError(Exception):
-    """El año escrito para confirmar no es el que se activa."""
+class ConfirmacionAnioInvalidaError(Exception):
+    """El año escrito para confirmar no es el que se activa, reabre o cierra."""
+
+
+class AnioLectivoReabiertoExistenteError(Exception):
+    """Ya hay un año reabierto; solo se permite uno a la vez (fase 6.4a)."""
 
 
 class ActivacionConPendientesError(Exception):
@@ -424,7 +428,7 @@ def activar_anio_controller(anio_destino_id, datos):
             cursor, anio_destino_id, bloquear=True
         )
         if datos.confirmar_anio != destino[1]:
-            raise ConfirmacionActivacionInvalidaError(
+            raise ConfirmacionAnioInvalidaError(
                 f"Para activar, escribe el año {destino[1]}."
             )
 
@@ -475,6 +479,73 @@ def activar_anio_controller(anio_destino_id, datos):
             "cursos_vigentes_actualizados": actualizados,
         },
     }
+
+
+def _cambiar_estado_anio_pasado(
+    anio_lectivo_id, datos, estado_actual, estado_nuevo, accion, rechazo
+):
+    """Reabre o vuelve a cerrar un año pasado; solo cambia su estado.
+
+    Bloquea primero el año activo, que hace de turno para todo cambio de
+    estado de los años, y después el año pedido. No toca estudiantes, cursos,
+    la foto de materias ni las fechas de activación y cierre.
+    """
+    with get_cursor(commit=True) as cursor:
+        repositorio = anios_lectivos_repository
+        if repositorio.leer_anio_activo_para_actualizar(cursor) is None:
+            raise AnioLectivoActivoInexistenteError("No hay un año lectivo activo.")
+
+        anio = repositorio.leer_anio_lectivo_para_actualizar(cursor, anio_lectivo_id)
+        if anio is None:
+            raise AnioLectivoInexistenteError("El año lectivo seleccionado no existe.")
+        if anio[2] != estado_actual:
+            raise AnioLectivoDestinoInvalidoError(rechazo)
+        if datos.confirmar_anio != anio[1]:
+            raise ConfirmacionAnioInvalidaError(
+                f"Para {accion}, escribe el año {anio[1]}."
+            )
+
+        if estado_nuevo == "reabierto":
+            otro = repositorio.leer_anio_reabierto(cursor)
+            if otro is not None:
+                raise AnioLectivoReabiertoExistenteError(
+                    f"Ya está reabierto el año {otro[1]}. "
+                    "Ciérralo antes de reabrir otro."
+                )
+
+        cambiadas = repositorio.cambiar_estado_anio(
+            cursor, anio[0], estado_actual, estado_nuevo
+        )
+        if cambiadas != 1:
+            raise AnioLectivoDestinoInvalidoError(
+                "El año cambió de estado mientras se guardaba. Nada cambió."
+            )
+
+    return {"anio_lectivo": {"id": anio[0], "anio": anio[1], "estado": estado_nuevo}}
+
+
+def reabrir_anio_controller(anio_lectivo_id, datos):
+    """Abre un año cerrado para correcciones del admin (fase 6.4a)."""
+    return _cambiar_estado_anio_pasado(
+        anio_lectivo_id,
+        datos,
+        "cerrado",
+        "reabierto",
+        "reabrir",
+        "Solo se puede reabrir un año cerrado.",
+    )
+
+
+def cerrar_anio_reabierto_controller(anio_lectivo_id, datos):
+    """Vuelve a cerrar un año reabierto (fase 6.4a)."""
+    return _cambiar_estado_anio_pasado(
+        anio_lectivo_id,
+        datos,
+        "reabierto",
+        "cerrado",
+        "cerrar",
+        "Solo se puede volver a cerrar un año reabierto.",
+    )
 
 
 def _exigir_curso_del_anio(

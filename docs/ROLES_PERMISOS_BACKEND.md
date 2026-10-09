@@ -170,7 +170,9 @@ Con usuario autenticado y alcance por rol, sin ownership:
   matrículas y rechaza el choque con una matrícula siguiente. Activar el año
   (`POST /anios-lectivos/{id}/activar`) también es solo para admin: el backend
   exige el año escrito, vuelve a revisar los pendientes y decide todo lo que
-  cambia; el cliente no elige estados ni cursos. La regla de
+  cambia; el cliente no elige estados ni cursos. Reabrir y volver a cerrar
+  un año pasado (`POST /anios-lectivos/{id}/reabrir` y `/cerrar`) también son
+  solo para admin, con el año escrito y un solo año reabierto a la vez. La regla de
   lectura vive en `app/services/anio_lectivo.py`
   (`listar_anios_visibles`), junto con `resolver_anio_pedido`, que los
   listados por año usaran para negar con 403 a un profesor que pida otro

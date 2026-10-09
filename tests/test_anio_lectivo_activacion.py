@@ -173,7 +173,7 @@ def test_activa_todo_en_una_transaccion_y_en_orden(entorno_activacion):
 
 def test_no_activa_si_el_anio_escrito_no_coincide(entorno_activacion):
     with pytest.raises(
-        controlador.ConfirmacionActivacionInvalidaError,
+        controlador.ConfirmacionAnioInvalidaError,
         match="escribe el año 2027",
     ):
         controlador.activar_anio_controller(3, _confirmacion(2026))
@@ -388,7 +388,7 @@ def test_la_ruta_responde_los_pendientes_con_codigo_y_lista(monkeypatch):
         (AnioLectivoInexistenteError("El año lectivo seleccionado no existe."), 404),
         (controlador.AnioLectivoActivoInexistenteError("Sin activo."), 409),
         (controlador.AnioLectivoDestinoInvalidoError("No es el siguiente."), 409),
-        (controlador.ConfirmacionActivacionInvalidaError("Escribe 2027."), 409),
+        (controlador.ConfirmacionAnioInvalidaError("Escribe 2027."), 409),
         (controlador.ActivacionInconsistenteError("Nada cambió."), 409),
     ],
 )

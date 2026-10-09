@@ -106,6 +106,8 @@ def _es_admin(usuario):
 # Guardia de escritura (fase 3, paso 3.7).
 # ---------------------------------------------------------------------------
 
+# El frontend reconoce este texto para titular su aviso (`esAvisoAnioCerrado`
+# en frontend-react/src/utils/anioLectivo.js, paso 6.9): cambiarlos juntos.
 MENSAJE_ANIO_CERRADO = "El año lectivo {anio} está cerrado. Solo se puede consultar."
 MENSAJE_SOLO_ANIO_ACTIVO = "Solo se pueden guardar cambios en el año lectivo activo."
 ESTADOS_EDITABLES_POR_ADMIN = {"preparacion", "reabierto"}

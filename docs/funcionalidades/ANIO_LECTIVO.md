@@ -17,8 +17,9 @@
   Fase 6 del frontend autorizada el mismo día, pasos 6.5 a 6.10; el 6.5
   (backend: la marca de salida en los candidatos) quedó en `a3f7086`, el
   6.6 (frontend: marcar en la promoción) en `5892602`, el 6.7 (frontend:
-  sección "Activar") en `f6a035e` y el 6.8 (frontend: reabrir y volver a
-  cerrar) terminado localmente, sin commit.** El paso 5.10 quedó en
+  sección "Activar") en `f6a035e`, el 6.8 (frontend: reabrir y volver a
+  cerrar) en `5f69b77` y el 6.9 (frontend: aviso de año cerrado en Tipos de
+  pago) terminado localmente, sin commit.** El paso 5.10 quedó en
   `82675ba`; el ajuste posterior de navegación del frontend, en `365d083`. El
   paso 5.9 quedó en `0689b7d` y su registro en este repo en
   `53da8f0`. El
@@ -3230,9 +3231,14 @@ Avance del paso 6.5 (la marca de salida en los candidatos) al 2026-10-09:
   lista del `409` y resumen), commit `f6a035e` del frontend. Detalle en el
   avance del 6.7 del documento del frontend.
 - **6.8 (frontend), 2026-10-09:** sección "Años pasados" para reabrir y
-  volver a cerrar escribiendo el año, terminado localmente, sin commit;
-  `pnpm run check:deploy` pasa 2288 pruebas. Detalle en el avance del 6.8 del
-  documento del frontend.
+  volver a cerrar escribiendo el año, commit `5f69b77` del frontend. Detalle
+  en el avance del 6.8 del documento del frontend.
+- **6.9 (frontend), 2026-10-09:** en Tipos de pago, el `409` de año cerrado
+  sale con el título "Año cerrado". El frontend reconoce el texto fijo de
+  `MENSAJE_ANIO_CERRADO` (`app/services/anio_lectivo.py`): **si ese texto
+  cambia, hay que cambiar también `esAvisoAnioCerrado` en
+  `frontend-react/src/utils/anioLectivo.js`.** Terminado localmente, sin
+  commit; `pnpm run check:deploy` pasa 2292 pruebas.
 
 ### Fase 7 — Reutilizar el planeador anual y los planes de clase (antes de iniciar clases 2027)
 
@@ -3611,11 +3617,12 @@ cosa, gana lo que se pueda verificar.
   de promoción (decisión del usuario). El **6.5**, la marca en los
   candidatos (backend), quedó en `a3f7086` y el **6.6**, marcar en la
   promoción (frontend), en `5892602` y el **6.7**, la sección "Activar"
-  (frontend), en `f6a035e`. El **6.8**, reabrir y volver a cerrar
-  (frontend), quedó terminado localmente, sin commit: `pnpm run check:deploy`
-  pasa 2288 pruebas.
-- **Siguiente acción exacta:** el usuario revisa y hace el commit del 6.8 en
-  el frontend. Después, con su visto bueno, el **6.9**: el título del aviso de
-  año cerrado en Tipos de pago (hallazgo del 4.3). No iniciarlo sin
-  autorización.
+  (frontend), en `f6a035e` y el **6.8**, reabrir y volver a cerrar
+  (frontend), en `5f69b77`. El **6.9**, el aviso de año cerrado en Tipos de
+  pago (frontend), quedó terminado localmente, sin commit:
+  `pnpm run check:deploy` pasa 2292 pruebas.
+- **Siguiente acción exacta:** el usuario revisa y hace el commit del 6.9 en
+  el frontend. Después, con su visto bueno, el **6.10**, último paso de la
+  fase: Certificados con todos los estados y "Activos" como filtro inicial.
+  No iniciarlo sin autorización.
 - Prompt para retomar: `docs/funcionalidades/PROMPT_CONTINUACION_ANIO_LECTIVO.md`.

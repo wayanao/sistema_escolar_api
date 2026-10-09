@@ -16,8 +16,9 @@
   commit `f0e0ca6`); el 6.4c queda para después por decisión del usuario.
   Fase 6 del frontend autorizada el mismo día, pasos 6.5 a 6.10; el 6.5
   (backend: la marca de salida en los candidatos) quedó en `a3f7086`, el
-  6.6 (frontend: marcar en la promoción) en `5892602` y el 6.7 (frontend:
-  sección "Activar") terminado localmente, sin commit.** El paso 5.10 quedó en
+  6.6 (frontend: marcar en la promoción) en `5892602`, el 6.7 (frontend:
+  sección "Activar") en `f6a035e` y el 6.8 (frontend: reabrir y volver a
+  cerrar) terminado localmente, sin commit.** El paso 5.10 quedó en
   `82675ba`; el ajuste posterior de navegación del frontend, en `365d083`. El
   paso 5.9 quedó en `0689b7d` y su registro en este repo en
   `53da8f0`. El
@@ -3226,8 +3227,11 @@ Avance del paso 6.5 (la marca de salida en los candidatos) al 2026-10-09:
   6.6 del documento del frontend.
 - **6.7 (frontend), 2026-10-09:** sección "Activar" en la página de años
   lectivos (vista previa, pendientes por curso, activar escribiendo el año,
-  lista del `409` y resumen), terminado localmente, sin commit;
-  `pnpm run check:deploy` pasa 2275 pruebas. Detalle en el avance del 6.7 del
+  lista del `409` y resumen), commit `f6a035e` del frontend. Detalle en el
+  avance del 6.7 del documento del frontend.
+- **6.8 (frontend), 2026-10-09:** sección "Años pasados" para reabrir y
+  volver a cerrar escribiendo el año, terminado localmente, sin commit;
+  `pnpm run check:deploy` pasa 2288 pruebas. Detalle en el avance del 6.8 del
   documento del frontend.
 
 ### Fase 7 — Reutilizar el planeador anual y los planes de clase (antes de iniciar clases 2027)
@@ -3606,11 +3610,12 @@ cosa, gana lo que se pueda verificar.
   "Fase 6 del frontend" en la fase 6). La marca de salida va en la pantalla
   de promoción (decisión del usuario). El **6.5**, la marca en los
   candidatos (backend), quedó en `a3f7086` y el **6.6**, marcar en la
-  promoción (frontend), en `5892602`. El **6.7**, la sección "Activar"
+  promoción (frontend), en `5892602` y el **6.7**, la sección "Activar"
+  (frontend), en `f6a035e`. El **6.8**, reabrir y volver a cerrar
   (frontend), quedó terminado localmente, sin commit: `pnpm run check:deploy`
-  pasa 2275 pruebas.
-- **Siguiente acción exacta:** el usuario revisa y hace el commit del 6.7 en
-  el frontend. Después, con su visto bueno, el **6.8**: reabrir y volver a
-  cerrar un año pasado desde la página de años lectivos. No iniciarlo sin
+  pasa 2288 pruebas.
+- **Siguiente acción exacta:** el usuario revisa y hace el commit del 6.8 en
+  el frontend. Después, con su visto bueno, el **6.9**: el título del aviso de
+  año cerrado en Tipos de pago (hallazgo del 4.3). No iniciarlo sin
   autorización.
 - Prompt para retomar: `docs/funcionalidades/PROMPT_CONTINUACION_ANIO_LECTIVO.md`.

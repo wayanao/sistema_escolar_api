@@ -3,9 +3,9 @@
 ## Control
 
 - Estado: **Fase 5 completa y confirmada; fase 6 iniciada con autorización
-  explícita del usuario y paso 6.1 terminado localmente el 2026-10-08:
-  migración probada en una rama de Neon y esquema base regenerado desde allí.
-  Pendiente de commit y de aplicarla en producción.** El paso 5.10 quedó en
+  explícita del usuario y paso 6.1 terminado el 2026-10-08: migración probada
+  en una rama de Neon, esquema base regenerado desde allí, commit `6c6aabb` y
+  migración aplicada en los dos tenants de producción.** El paso 5.10 quedó en
   `82675ba`; el ajuste posterior de navegación del frontend, en `365d083`. El
   paso 5.9 quedó en `0689b7d` y su registro en este repo en
   `53da8f0`. El
@@ -2836,7 +2836,17 @@ conectó a Neon ni a producción):
   específicas pasan** (migraciones de año lectivo y esquema base);
   `scripts/verify.py` → **2105 pruebas pasan, 0 fallan**, Ruff y `pip check`
   limpios; `git diff --check` limpio.
-- **Paso 6.1 terminado localmente, sin commit.** No se aplicó en producción.
+- El usuario confirmó la migración, el esquema base, las pruebas y este
+  documento en el commit `6c6aabb`.
+- En producción, el 2026-10-08 (lo hizo el usuario): la aplicación terminó `OK`
+  en `tenant_colegio_1` y `tenant_2005`, y el `--dry-run` final los mostró
+  `OMITIDA (ya aplicada)`. Que la aplicación dijera `OK` y no `OMITIDA`
+  descarta que la terminal apuntara a la rama de prueba, donde ya estaba
+  aplicada; el `.env` apuntaba a `ep-late-smoke-aip41j6x`. No se borró ni se
+  rellenó ningún dato.
+- La migración se aplicó antes del push de `6c6aabb`. En este paso no importa,
+  porque ningún código usa todavía la columna ni la tabla.
+- **Paso 6.1 terminado.**
 
 ### Fase 7 — Reutilizar el planeador anual y los planes de clase (antes de iniciar clases 2027)
 
@@ -3173,18 +3183,16 @@ cosa, gana lo que se pueda verificar.
 - **Fase 6 iniciada el 2026-10-08 con autorización explícita del usuario.**
   También confirmó que quien termina el último grado queda `egresado`, y que
   Certificados consultará todos los estados manteniendo Activos como filtro
-  inicial; Boletines no cambia. **El paso 6.1 quedó terminado localmente el
-  2026-10-08:** la migración se probó en una rama de Neon y el esquema base se
-  regeneró desde allí; `scripts/verify.py` pasa 2105 pruebas sin fallas. Ver
-  "Prueba en la rama de Neon" en la fase 6. No hubo acceso a producción.
-- **Siguiente acción exacta:** el usuario revisa y hace un solo commit con la
-  migración, el esquema base regenerado, las pruebas y este documento. Después,
-  a una hora tranquila y con la cadena **directa** de `production` en una
-  terminal nueva: `--dry-run` (debe decir `PENDIENTE` en los dos tenants; si
-  dice `OMITIDA`, la terminal apunta a la rama), aplicación (`OK` en los dos) y
-  `--dry-run` final (`OMITIDA (ya aplicada)`). Ningún código usa todavía la
-  columna ni la tabla, así que el orden frente al despliegue no importa en este
-  paso; sí debe estar aplicada en producción antes de desplegar el paso 6.2.
-  Luego borrar la rama de prueba de Neon. No iniciar el paso 6.2 sin
-  autorización.
+  inicial; Boletines no cambia. **El paso 6.1 quedó terminado el 2026-10-08:**
+  la migración se probó en una rama de Neon, el esquema base se regeneró desde
+  allí (`scripts/verify.py`: 2105 pruebas sin fallas), quedó en el commit
+  `6c6aabb` y se aplicó en los dos tenants de producción. Ver "Prueba en la
+  rama de Neon" en la fase 6.
+- **Pendiente del usuario tras el paso 6.1:** push de `6c6aabb` y de este
+  registro, y confirmar en Render que el despliegue quede **Live**. Devolver el
+  `DATABASE_URL` del `.env` al endpoint `-pooler`: el 2026-10-08 quedó en el
+  directo de producción, y así `apply_migration.py` ya no exige una
+  `$env:DATABASE_URL` en la terminal. Borrar la rama de prueba de Neon.
+- **Siguiente acción exacta:** el paso 6.2, la vista previa de activación,
+  cuando el usuario lo autorice explícitamente. No iniciarlo antes.
 - Prompt para retomar: `docs/funcionalidades/PROMPT_CONTINUACION_ANIO_LECTIVO.md`.

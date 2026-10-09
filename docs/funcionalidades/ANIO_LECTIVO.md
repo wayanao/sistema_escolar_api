@@ -18,8 +18,10 @@
   (backend: la marca de salida en los candidatos) quedó en `a3f7086`, el
   6.6 (frontend: marcar en la promoción) en `5892602`, el 6.7 (frontend:
   sección "Activar") en `f6a035e`, el 6.8 (frontend: reabrir y volver a
-  cerrar) en `5f69b77` y el 6.9 (frontend: aviso de año cerrado en Tipos de
-  pago) terminado localmente, sin commit.** El paso 5.10 quedó en
+  cerrar) en `5f69b77`, el 6.9 (frontend: aviso de año cerrado en Tipos de
+  pago) en `cf00e3d` y el 6.10 (frontend: Certificados con todos los
+  estados) terminado localmente, sin commit. Con él, la fase 6 queda completa
+  en los dos repos, salvo el 6.4c, aplazado.** El paso 5.10 quedó en
   `82675ba`; el ajuste posterior de navegación del frontend, en `365d083`. El
   paso 5.9 quedó en `0689b7d` y su registro en este repo en
   `53da8f0`. El
@@ -3237,8 +3239,14 @@ Avance del paso 6.5 (la marca de salida en los candidatos) al 2026-10-09:
   sale con el título "Año cerrado". El frontend reconoce el texto fijo de
   `MENSAJE_ANIO_CERRADO` (`app/services/anio_lectivo.py`): **si ese texto
   cambia, hay que cambiar también `esAvisoAnioCerrado` en
-  `frontend-react/src/utils/anioLectivo.js`.** Terminado localmente, sin
-  commit; `pnpm run check:deploy` pasa 2292 pruebas.
+  `frontend-react/src/utils/anioLectivo.js`.** Commit `cf00e3d` del
+  frontend; el comentario junto a la constante, en `5634245` de este repo.
+- **6.10 (frontend), 2026-10-09:** Certificados pide `GET /estudiantes` con
+  `estado=todos` (y el año si se mira otro) con una función propia; la
+  pantalla sigue empezando en "Activos" y Boletines no cambia. Es un cambio
+  deliberado de una petición del año activo, por la decisión del usuario del
+  2026-10-08. Terminado localmente, sin commit; `pnpm run check:deploy` pasa
+  2294 pruebas. **Con él queda completa la fase 6**, salvo el 6.4c.
 
 ### Fase 7 — Reutilizar el planeador anual y los planes de clase (antes de iniciar clases 2027)
 
@@ -3605,8 +3613,8 @@ cosa, gana lo que se pueda verificar.
   correcto** (ver "Ensayo de activación en una rama de Neon" en la fase 6).
   La rama ya se borró.
 - **Pendiente urgente del usuario:** rotar la contraseña de `neondb_owner`
-  (ver "Contraseña" arriba) y, después, el push de los commits del 6.1 al 6.3,
-  que siguen solo en local en los dos repos.
+  (ver "Contraseña" arriba) y, después, el push de los commits de la fase 6
+  (del 6.1 al 6.10), que siguen solo en local en los dos repos.
 - **Paso 6.4 autorizado el 2026-10-09** y dividido en 6.4a, 6.4b y 6.4c (ver
   "Decisiones del usuario el 2026-10-09" en la fase 6). El **6.4a, reabrir y
   volver a cerrar**, quedó en `0d6d202`. El **6.4b, listas de seguimiento por
@@ -3618,11 +3626,24 @@ cosa, gana lo que se pueda verificar.
   candidatos (backend), quedó en `a3f7086` y el **6.6**, marcar en la
   promoción (frontend), en `5892602` y el **6.7**, la sección "Activar"
   (frontend), en `f6a035e` y el **6.8**, reabrir y volver a cerrar
-  (frontend), en `5f69b77`. El **6.9**, el aviso de año cerrado en Tipos de
-  pago (frontend), quedó terminado localmente, sin commit:
-  `pnpm run check:deploy` pasa 2292 pruebas.
-- **Siguiente acción exacta:** el usuario revisa y hace el commit del 6.9 en
-  el frontend. Después, con su visto bueno, el **6.10**, último paso de la
-  fase: Certificados con todos los estados y "Activos" como filtro inicial.
-  No iniciarlo sin autorización.
+  (frontend), en `5f69b77` y el **6.9**, el aviso de año cerrado en Tipos de
+  pago (frontend), en `cf00e3d`. El **6.10**, Certificados con todos los
+  estados (frontend), quedó terminado localmente, sin commit:
+  `pnpm run check:deploy` pasa 2294 pruebas. **La fase 6 está completa en
+  los dos repos**, salvo el 6.4c, aplazado por decisión del usuario.
+- **Siguiente acción exacta:** el usuario revisa y hace el commit del 6.10 en
+  el frontend. Después, lo que queda antes de activar el año real (en enero
+  de 2027, cuando empiecen las clases), cada cosa con su autorización:
+  1. Rotar la contraseña de `neondb_owner` y hacer push. Primero el backend,
+     esperando a que Render quede **Live**, y después el frontend, que usa las
+     rutas nuevas. Ninguna de las dos cosas activa nada.
+  2. Un **ensayo completo con las pantallas** en una rama de Neon copiada de
+     producción, con el backend y el frontend locales: marcar en la
+     promoción, ver la vista previa, activar desde el botón, reabrir y volver
+     a cerrar, y sacar un certificado de un retirado.
+  3. La **fase 7** (planeador anual y planes de clase), que también va antes
+     de iniciar las clases de 2027.
+  4. El 6.4c, cuando exista una pantalla del admin que lo necesite.
+  La activación real de `tenant_2005` la hace el usuario desde la pantalla,
+  nunca el asistente.
 - Prompt para retomar: `docs/funcionalidades/PROMPT_CONTINUACION_ANIO_LECTIVO.md`.

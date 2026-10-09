@@ -358,6 +358,98 @@ def leer_resumen_anio(cursor, anio_lectivo_id):
     return dict(fila) if isinstance(fila, dict) else dict(zip(columnas, fila))
 
 
+def contar_decisiones_activacion(cursor, anio_origen_id, anio_destino_id):
+    """Cuántos siguen, llegan nuevos o salen al activar el año siguiente.
+
+    Una matrícula en el destino cuenta como que el estudiante continúa, aunque
+    su matrícula de origen tuviera una marca de salida (fase 6).
+    """
+    columnas = ("continuan", "nuevos", "retirados", "egresados")
+    cursor.execute(
+        """
+        WITH origen AS (
+            SELECT estudiante_id, estado_salida
+            FROM matriculas
+            WHERE anio_lectivo_id = %s
+        ),
+        destino AS (
+            SELECT estudiante_id
+            FROM matriculas
+            WHERE anio_lectivo_id = %s
+        )
+        SELECT
+            (
+                SELECT COUNT(*)
+                FROM destino d
+                WHERE EXISTS (SELECT 1 FROM origen o
+                              WHERE o.estudiante_id = d.estudiante_id)
+            ) AS continuan,
+            (
+                SELECT COUNT(*)
+                FROM destino d
+                WHERE NOT EXISTS (SELECT 1 FROM origen o
+                                  WHERE o.estudiante_id = d.estudiante_id)
+            ) AS nuevos,
+            (
+                SELECT COUNT(*)
+                FROM origen o
+                WHERE o.estado_salida = 'retirado'
+                  AND NOT EXISTS (SELECT 1 FROM destino d
+                                  WHERE d.estudiante_id = o.estudiante_id)
+            ) AS retirados,
+            (
+                SELECT COUNT(*)
+                FROM origen o
+                WHERE o.estado_salida = 'egresado'
+                  AND NOT EXISTS (SELECT 1 FROM destino d
+                                  WHERE d.estudiante_id = o.estudiante_id)
+            ) AS egresados
+        """,
+        (anio_origen_id, anio_destino_id),
+    )
+    fila = cursor.fetchone()
+    return dict(fila) if isinstance(fila, dict) else dict(zip(columnas, fila))
+
+
+def listar_sin_decidir_activacion(cursor, anio_origen_id, anio_destino_id):
+    """Estudiantes activos del año que termina sin matrícula siguiente ni marca.
+
+    Son los que impiden activar el año siguiente (decisión 9). Quien ya no
+    está activo (retirado durante el año, por ejemplo) no necesita decisión.
+    """
+    columnas = (
+        "id",
+        "nombre",
+        "apellido",
+        "documento_identidad",
+        "curso_id",
+        "curso_nombre",
+        "curso_jornada",
+    )
+    cursor.execute(
+        """
+        SELECT e.id, e.nombre, e.apellido, e.documento_identidad,
+               c.id AS curso_id, c.nombre AS curso_nombre,
+               c.jornada AS curso_jornada
+        FROM matriculas origen
+        JOIN estudiantes e ON e.id = origen.estudiante_id
+        LEFT JOIN cursos c ON c.id = origen.curso_id
+        WHERE origen.anio_lectivo_id = %s
+          AND origen.estado_salida IS NULL
+          AND COALESCE(LOWER(e.estado), 'activo') = 'activo'
+          AND NOT EXISTS (
+              SELECT 1
+              FROM matriculas destino
+              WHERE destino.estudiante_id = e.id
+                AND destino.anio_lectivo_id = %s
+          )
+        ORDER BY c.nombre, c.jornada, e.apellido, e.nombre, e.id
+        """,
+        (anio_origen_id, anio_destino_id),
+    )
+    return _filas_como_diccionarios(cursor.fetchall(), columnas)
+
+
 def crear_anio_en_preparacion(cursor, anio):
     """Crea un año en preparación y devuelve `(id, anio, estado)`.
 

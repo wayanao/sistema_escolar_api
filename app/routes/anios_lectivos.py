@@ -19,6 +19,7 @@ from app.controllers.anios_lectivos_controller import (
     listar_anios_lectivos_controller,
     promover_estudiantes_controller,
     resumen_anio_preparacion_controller,
+    vista_previa_activacion_controller,
 )
 from app.dependencies import get_current_active_admin, get_current_user
 from app.schemas.anio_lectivo import CopiarConfiguracionAnio, PromocionEstudiantes
@@ -99,6 +100,24 @@ def resumen_anio_preparacion(
     """Resume la preparación financiera del siguiente año lectivo."""
     try:
         return resumen_anio_preparacion_controller(anio_lectivo_id)
+    except (
+        AnioLectivoInexistenteError,
+        AnioLectivoActivoInexistenteError,
+        AnioLectivoDestinoInvalidoError,
+    ) as exc:
+        _traducir_error_matricula(exc)
+
+
+@router.get(
+    "/anios-lectivos/{anio_lectivo_id}/activacion/vista-previa",
+    dependencies=[Depends(get_current_active_admin)],
+)
+def vista_previa_activacion(
+    anio_lectivo_id: Annotated[int, Path(gt=0)],
+):
+    """Muestra qué pasaría al activar el año en preparación, sin cambiar nada."""
+    try:
+        return vista_previa_activacion_controller(anio_lectivo_id)
     except (
         AnioLectivoInexistenteError,
         AnioLectivoActivoInexistenteError,

@@ -5,7 +5,9 @@
 - Estado: **Fase 5 completa y confirmada; fase 6 iniciada con autorización
   explícita del usuario y paso 6.1 terminado el 2026-10-08: migración probada
   en una rama de Neon, esquema base regenerado desde allí, commit `6c6aabb` y
-  migración aplicada en los dos tenants de producción.** El paso 5.10 quedó en
+  migración aplicada en los dos tenants de producción. Paso 6.2 autorizado y
+  dividido en 6.2a (vista previa) y 6.2b (marcar la salida); el 6.2a quedó
+  terminado localmente el mismo día, sin commit.** El paso 5.10 quedó en
   `82675ba`; el ajuste posterior de navegación del frontend, en `365d083`. El
   paso 5.9 quedó en `0689b7d` y su registro en este repo en
   `53da8f0`. El
@@ -2795,6 +2797,19 @@ Decisiones confirmadas por el usuario el 2026-10-08 antes de iniciar la fase:
   "Activos" como filtro visual inicial. Boletines seguirá listando solo
   activos. Es trabajo posterior del frontend dentro de esta fase.
 
+Decisiones del usuario el 2026-10-08, al autorizar el paso 6.2 (el plan no
+decía cómo se guarda la marca de salida):
+
+- El paso 6.2 incluye la forma de marcar a quien no sigue. Se divide en
+  **6.2a**, la vista previa (solo lectura), y **6.2b**, guardar o quitar la
+  marca `retirado` o `egresado` en la matrícula del año activo. Sin la marca,
+  nadie podría quedar decidido y la activación del 6.3 nunca se podría hacer.
+- **Una marca y una matrícula en el año siguiente se excluyen, y el backend
+  rechaza el choque con un mensaje.** No se puede matricular en el año
+  siguiente a quien tenga marca de salida (el admin la quita primero, a
+  propósito), ni marcar a quien ya tenga esa matrícula. Nada cambia sin que
+  el admin lo vea.
+
 Avance del paso 6.1 al 2026-10-08:
 
 - Ambos repos estaban en `main`, limpios y sincronizados con `origin/main` al
@@ -2847,6 +2862,42 @@ conectó a Neon ni a producción):
 - La migración se aplicó antes del push de `6c6aabb`. En este paso no importa,
   porque ningún código usa todavía la columna ni la tabla.
 - **Paso 6.1 terminado.**
+
+Avance del paso 6.2a (vista previa de activación) al 2026-10-08:
+
+- Ambos repos en `main` y limpios al iniciar, con los commits del 6.1 todavía
+  sin push (backend `69245bc`, frontend `37a9a69`). Antes del cambio pasaban
+  598 pruebas de año lectivo.
+- Se escribieron primero 14 pruebas en
+  `tests/test_anio_lectivo_vista_previa_activacion.py`; las 14 fallaron porque
+  la ruta no existía.
+- Nuevo `GET /anios-lectivos/{id}/activacion/vista-previa`, solo admin. El id
+  debe ser exactamente `N+1` en preparación (`404` si no existe, `409` si no
+  es ese año o falta el activo). Lee el año activo y el destino **sin
+  bloquear filas** (`_contexto_activacion`), a diferencia de matricular, que
+  sí bloquea.
+- Cuenta, en una sola consulta (`contar_decisiones_activacion`): `continuan`
+  (matriculados en los dos años), `nuevos` (solo en el siguiente), y
+  `retirados` y `egresados` (marca en la matrícula del año activo y sin
+  matrícula siguiente). La matrícula siguiente gana sobre una marca, aunque
+  el 6.2b impedirá que coexistan.
+- Lista `sin_decidir` (`listar_sin_decidir_activacion`): matrícula en el año
+  activo, estudiante `activo`, sin marca y sin matrícula siguiente, ordenados
+  por curso y apellido, con su curso para saber dónde resolverlo. Quien ya no
+  está activo (retirado durante el año, por ejemplo) no necesita decisión
+  (decisión 9: "todo estudiante activo").
+- `puede_activar` es `true` solo si `sin_decidir` está vacía. Lo calcula el
+  backend (decisión 11).
+- Verificación: las 14 pruebas nuevas pasan; 612 de año lectivo;
+  `scripts/verify.py` → **2119 pruebas pasan, 0 fallan**, Ruff y `pip check`
+  limpios con una `DATABASE_URL` ficticia; `git diff --check` limpio. Las
+  consultas solo se probaron como texto: la prueba real queda para el ensayo
+  completo del 6.3 en una rama de Neon.
+- Documentado en `docs/API_ENDPOINTS.md`, `docs/ROLES_PERMISOS_BACKEND.md` y
+  `docs/CAMBIOS_BACKEND.md`. Se agregó además a `docs/MIGRACIONES.md` la
+  migración del 6.1, que había quedado sin registrar ahí.
+- Sin migración, sin cambio de frontend, sin acceso a bases reales.
+  **Paso 6.2a terminado localmente, sin commit.**
 
 ### Fase 7 — Reutilizar el planeador anual y los planes de clase (antes de iniciar clases 2027)
 
@@ -3189,10 +3240,17 @@ cosa, gana lo que se pueda verificar.
   `6c6aabb` y se aplicó en los dos tenants de producción. Ver "Prueba en la
   rama de Neon" en la fase 6.
 - **Pendiente del usuario tras el paso 6.1:** push de `6c6aabb` y de este
-  registro, y confirmar en Render que el despliegue quede **Live**. Devolver el
-  `DATABASE_URL` del `.env` al endpoint `-pooler`: el 2026-10-08 quedó en el
-  directo de producción, y así `apply_migration.py` ya no exige una
-  `$env:DATABASE_URL` en la terminal. Borrar la rama de prueba de Neon.
-- **Siguiente acción exacta:** el paso 6.2, la vista previa de activación,
-  cuando el usuario lo autorice explícitamente. No iniciarlo antes.
+  registro, y confirmar en Render que el despliegue quede **Live**. Borrar la
+  rama de prueba de Neon. El `DATABASE_URL` del `.env`, que el 2026-10-08
+  quedó un rato en el directo de producción, ya volvió al endpoint `-pooler`
+  (verificado ese mismo día, solo el servidor).
+- **Paso 6.2 autorizado el 2026-10-08 y dividido en 6.2a y 6.2b** (ver
+  "Decisiones del usuario... al autorizar el paso 6.2" en la fase 6). El
+  **6.2a, la vista previa de activación, quedó terminado localmente**, sin
+  commit: `scripts/verify.py` pasa 2119 pruebas.
+- **Siguiente acción exacta:** el usuario revisa y hace el commit del 6.2a.
+  Después, con su visto bueno, el 6.2b: guardar o quitar la marca de salida
+  en la matrícula del año activo, rechazando el choque con una matrícula en el
+  año siguiente en los dos sentidos (también en la promoción del paso 5.5). No
+  iniciar el 6.2b sin autorización.
 - Prompt para retomar: `docs/funcionalidades/PROMPT_CONTINUACION_ANIO_LECTIVO.md`.

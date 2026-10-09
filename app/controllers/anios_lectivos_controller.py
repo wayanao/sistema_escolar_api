@@ -1,7 +1,8 @@
 """Años lectivos: consulta, preparación y matrícula del año siguiente.
 
-Ver docs/funcionalidades/ANIO_LECTIVO.md (fase 3, paso 3.1, y fase 5, paso
-5.3 a 5.5). Qué años ve cada usuario lo decide `app/services/anio_lectivo.py`.
+Ver docs/funcionalidades/ANIO_LECTIVO.md (fase 3, paso 3.1; fase 5, pasos
+5.3 a 5.5, y fase 6, paso 6.2a). Qué años ve cada usuario lo decide
+`app/services/anio_lectivo.py`.
 """
 from app.database import get_cursor
 from app.repositories import anios_lectivos_repository, estudiantes_repository
@@ -322,6 +323,60 @@ def resumen_anio_preparacion_controller(anio_destino_id):
             "pagos_registrados": resumen["pagos_registrados"],
             "total_pagado": float(resumen["total_pagado"] or 0),
         },
+    }
+
+
+def _contexto_activacion(cursor, anio_destino_id):
+    """Año activo y el siguiente en preparación, leídos sin bloquear."""
+    activo = anios_lectivos_repository.leer_anio_activo(cursor)
+    if activo is None:
+        raise AnioLectivoActivoInexistenteError(
+            "No hay un año lectivo activo para cerrar."
+        )
+
+    destino = anios_lectivos_repository.leer_anio_lectivo(cursor, anio_destino_id)
+    if destino is None:
+        raise AnioLectivoInexistenteError(
+            "El año lectivo seleccionado no existe."
+        )
+    if destino[2] != "preparacion":
+        raise AnioLectivoDestinoInvalidoError(
+            "Solo se puede activar un año en preparación."
+        )
+    if destino[1] != activo[1] + 1:
+        raise AnioLectivoDestinoInvalidoError(
+            f"El año que se activa debe ser el {activo[1] + 1}."
+        )
+    return activo, destino
+
+
+def vista_previa_activacion_controller(anio_destino_id):
+    """Cuenta quién sigue y quién sale, y lista quién falta por decidir.
+
+    Solo lee (fase 6, paso 6.2a). Con alguien sin decidir no se puede activar
+    (decisión 9); lo dice el backend para que el frontend no lo calcule.
+    """
+    with get_cursor() as cursor:
+        activo, destino = _contexto_activacion(cursor, anio_destino_id)
+        conteos = anios_lectivos_repository.contar_decisiones_activacion(
+            cursor, activo[0], destino[0]
+        )
+        pendientes = anios_lectivos_repository.listar_sin_decidir_activacion(
+            cursor, activo[0], destino[0]
+        )
+
+    return {
+        "anio_origen": {"id": activo[0], "anio": activo[1]},
+        "anio_destino": {"id": destino[0], "anio": destino[1]},
+        "resumen": {
+            "continuan": conteos["continuan"],
+            "nuevos": conteos["nuevos"],
+            "retirados": conteos["retirados"],
+            "egresados": conteos["egresados"],
+            "sin_decidir": len(pendientes),
+        },
+        "puede_activar": not pendientes,
+        "sin_decidir": pendientes,
     }
 
 

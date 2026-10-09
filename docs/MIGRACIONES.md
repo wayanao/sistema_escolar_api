@@ -51,6 +51,7 @@ Archivos actuales:
 - `20260930_anios_lectivos.sql`
 - `20261001_anios_lectivos_obligatorio.sql`
 - `20261006_anios_lectivos_origenes.sql`
+- `20261008_anios_lectivos_activacion.sql`
 - `README.md`
 
 Migraciones globales `public`:
@@ -775,3 +776,38 @@ Estado al 2026-10-06:
   `OMITIDA (ya aplicada)` en ambos. No rellenó ni borró datos existentes.
 - A partir de aquí el archivo no se puede editar: el runner guarda su checksum.
   Cualquier cambio posterior debe ir en una migración nueva.
+
+## Migracion 20261008_anios_lectivos_activacion.sql
+
+Objetivo:
+
+- Año lectivo, fase 6, paso 6.1: guardar la decisión de quien no sigue el año
+  siguiente (decisión 9) y las materias ocultas de un año al cerrarlo
+  (decisión 13).
+
+Cambios:
+
+- `matriculas.estado_salida`, opcional, limitado a `retirado` o `egresado`
+  por `chk_matriculas_estado_salida`. `NULL` significa sin decidir; una
+  matrícula en el año siguiente significa que el estudiante continúa.
+- Tabla `anios_lectivos_materias_ocultas (anio_lectivo_id, materia_id)`, con
+  llave primaria compuesta, claves foráneas a `anios_lectivos` y `materias`
+  sin borrado en cascada e índice `idx_anios_lectivos_materias_ocultas_materia`.
+
+No rellena, actualiza ni borra datos existentes. Es reejecutable.
+
+Estado al 2026-10-08:
+
+- SQL y 9 pruebas de texto; las 9 fallaron antes de crear el archivo.
+- El usuario la probó en una rama de Neon con endpoint directo: simulación
+  `PENDIENTE` en los dos tenants y aplicación en la rama.
+- Esquema base regenerado desde `tenant_colegio_1` en esa rama: 35 tablas, 1
+  función y 1 disparador. El diff agregó solo la migración a la cabecera, la
+  columna con su restricción, la tabla, su índice y sus dos claves foráneas.
+- Verificación local: 50 pruebas específicas y 2105 globales pasan; Ruff,
+  `pip check` y `git diff --check` limpios. Commit `6c6aabb`.
+- **Aplicada en producción el 2026-10-08** a `tenant_colegio_1` y
+  `tenant_2005`: aplicación `OK` y simulación posterior `OMITIDA (ya
+  aplicada)` en ambos. Se aplicó antes del push de `6c6aabb`; no importa en
+  este paso porque ningún código usaba todavía la columna ni la tabla.
+- A partir de aquí el archivo no se puede editar: el runner guarda su checksum.

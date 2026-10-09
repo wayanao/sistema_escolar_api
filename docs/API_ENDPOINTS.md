@@ -81,6 +81,7 @@ Notas:
 - `POST /anios-lectivos/{anio_lectivo_id}/matriculas/promocion` (solo admin)
 - `POST /anios-lectivos/{anio_lectivo_id}/estudiantes` (solo admin)
 - `GET /anios-lectivos/{anio_lectivo_id}/resumen` (solo admin)
+- `GET /anios-lectivos/{anio_lectivo_id}/activacion/vista-previa` (solo admin)
 
 Notas:
 
@@ -187,6 +188,42 @@ Notas:
     "pagos_registrados": 1,
     "total_pagado": 250000.0
   }
+}
+```
+
+- Fase 6, paso 6.2a: la vista previa de activación solo lee. Exige que el id
+  sea exactamente `N+1` en preparación (`404` si no existe, `409` si no es
+  ese año o si falta el activo). Cuenta quién `continua` (matriculado en los
+  dos años), quién llega `nuevo` (solo en el siguiente), y quién sale como
+  `retirado` o `egresado` según `matriculas.estado_salida` del año activo.
+  Una matrícula en el siguiente año gana sobre una marca de salida. Lista
+  `sin_decidir`: estudiantes activos del año activo sin matrícula siguiente ni
+  marca. `puede_activar` es `true` solo si esa lista está vacía; lo decide el
+  backend. Respuesta de ejemplo:
+
+```json
+{
+  "anio_origen": {"id": 2, "anio": 2026},
+  "anio_destino": {"id": 3, "anio": 2027},
+  "resumen": {
+    "continuan": 170,
+    "nuevos": 4,
+    "retirados": 2,
+    "egresados": 18,
+    "sin_decidir": 1
+  },
+  "puede_activar": false,
+  "sin_decidir": [
+    {
+      "id": 7,
+      "nombre": "Ana",
+      "apellido": "Pérez",
+      "documento_identidad": "1001",
+      "curso_id": 20,
+      "curso_nombre": "Quinto A",
+      "curso_jornada": "Mañana"
+    }
+  ]
 }
 ```
 

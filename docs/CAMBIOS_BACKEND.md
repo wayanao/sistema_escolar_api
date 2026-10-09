@@ -1,10 +1,33 @@
 # Cambios Backend
 
-Ultima revision documental: 2026-10-06.
+Ultima revision documental: 2026-10-08.
 
 ## Proposito
 
 Bitacora de cambios documentales y tecnicos observables del backend.
+
+## 2026-10-08 - Año lectivo 6.2a: vista previa de activación
+
+Primera parte del paso 6.2 de la fase 6 de
+`docs/funcionalidades/ANIO_LECTIVO.md`.
+
+### Qué cambia
+
+- Nuevo `GET /anios-lectivos/{anio_lectivo_id}/activacion/vista-previa`, solo
+  para admin y limitado al siguiente año en preparación. Cuenta quién continúa,
+  quién llega nuevo, quién sale como retirado o egresado, y lista quién falta
+  por decidir. Devuelve `puede_activar`, calculado en el backend.
+- Solo lee: no bloquea filas, no activa el año ni cambia estudiantes o
+  matrículas. Ninguna ruta existente cambió su respuesta.
+- No hay migración nueva, cambio de frontend, acceso a una base real ni
+  creación de 2027.
+
+### Pruebas
+
+Las 14 pruebas nuevas fallaron primero porque la ruta no existía. Antes del
+cambio pasaban 598 pruebas de año lectivo; después pasan 612.
+`scripts/verify.py` pasó con 2119 pruebas, Ruff y `pip check` limpios, usando
+una base ficticia.
 
 ## 2026-10-06 - Año lectivo 5.6: resumen y recorrido financiero
 

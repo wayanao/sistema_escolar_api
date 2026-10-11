@@ -24,7 +24,9 @@
   salvo el 6.4c, aplazado. Al 2026-10-10 los dos repos estaban subidos a
   GitHub (`origin/main` en `0517c41` y `b7184f8`). Fase 7 iniciada el
   2026-10-10 con autorización explícita del usuario: paso 7.1 (backend: traer
-  el planeador del año pasado) terminado localmente, sin commit.** El paso 5.10 quedó en
+  el planeador del año pasado) en `16c9052` y paso 7.2 (backend: los planes de
+  clase del año pasado) terminado localmente, sin commit. Con él, el backend de
+  la fase 7 queda completo.** El paso 5.10 quedó en
   `82675ba`; el ajuste posterior de navegación del frontend, en `365d083`. El
   paso 5.9 quedó en `0689b7d` y su registro en este repo en
   `53da8f0`. El
@@ -3374,7 +3376,63 @@ Avance del paso 7.1 (traer el planeador del año pasado) al 2026-10-10:
   limpios con una `DATABASE_URL` ficticia; `git diff --check` limpio.
 - Documentado en `docs/API_ENDPOINTS.md`, `docs/ROLES_PERMISOS_BACKEND.md` y
   `docs/CAMBIOS_BACKEND.md`. Sin migración, sin frontend, sin bases reales.
-  **Paso 7.1 terminado localmente, sin commit.**
+  **Paso 7.1 terminado; el usuario lo confirmó en el commit `16c9052`.**
+
+Avance del paso 7.2 (los planes de clase del año pasado) al 2026-10-10:
+
+- Autorizado por el usuario el 2026-10-10 ("continua"), con la fase 7 ya
+  iniciada y el 7.2 nombrado como siguiente paso. Ambos repos en `main` y
+  limpios al iniciar (backend `16c9052`, frontend `b7184f8`). Antes del cambio
+  pasaban 414 pruebas de planes, de la guardia y del 7.1.
+- Se escribieron primero 22 pruebas en
+  `tests/test_anio_lectivo_planes_anterior.py`, que fallaron al cargar porque
+  nada de lo que prueban existía.
+- `plan_de_clases_repository.py`: `listar_planes_de_origen` (id, fecha,
+  periodo, unidad y tema de los planes del origen, por fecha, la más antigua
+  primero) y `obtener_plan_de_origen` (los ocho textos de un plan, cada vacío
+  como `""`, solo si el plan es del origen de la clase). Las dos usan
+  `CLASES_DE_ORIGEN_SQL`, la regla del 7.1, y corren primero la guardia del año
+  sobre la clase en su misma conexión, como el guardado de un plan: sirven
+  para crear un plan en esa clase. Siguen el estilo del módulo (cada función
+  abre su conexión).
+- `plan_de_clases_controller.py`: `listar_planes_anio_anterior_controller` y
+  `obtener_plan_anio_anterior_controller`, que responde `403` "Ese plan no es
+  del año pasado de esta clase." si el plan no es del origen o no existe (el
+  mismo `403`, para no decir si existe en otra clase). El servicio solo pasa
+  la llamada, como el resto del módulo.
+- `app/routes/plan_de_clases.py`: `GET /plan-de-clases/{asignacion_id}/anio-anterior`
+  y `/anio-anterior/{plan_id}`, con el permiso en la ruta
+  (`require_asignacion_access`), como las demás rutas de planes. No chocan con
+  ninguna ruta existente.
+- Qué no se copia, por diseño: la fecha, las evidencias, el periodo (queda el
+  que el profesor tiene elegido, regla por defecto del 2026-10-10) ni el estado
+  de revisión. No se crea nada: el plan nuevo se guarda por `POST
+  /plan-de-clases`, que no cambió.
+- Consultas, medidas en pruebas: como `GET /plan-de-clases/{asignacion_id}`,
+  dos conexiones y tres consultas para el profesor (su permiso en la ruta; la
+  guardia y la lectura) y una conexión y dos consultas para el admin.
+- Pruebas, con las consultas corriendo en SQLite como en el 7.1: la lista trae
+  los planes de los dos profesores de 2026 (también del que se fue), por
+  fecha, sin otra materia, otro curso ni el plan de 2027 de la propia clase;
+  desde otra franja, la misma lista; sin origen, lista vacía; el texto viene
+  sin fecha, evidencias ni periodo, y con `""` donde no hay texto; un plan de
+  otra materia, de otro curso, de 2027 o inexistente da `403`; profesor ajeno
+  (`403`); año en preparación (profesor `403`, admin lee); año cerrado
+  (`409`); nada se escribe; la ruta de los planes de la clase sigue igual; y
+  el conteo de conexiones y consultas. Catorce versiones dañadas del código
+  hacen fallar alguna prueba.
+- Ajustadas a propósito: las cuatro pruebas de
+  `test_plan_de_clases_caracterizacion.py` que fijan el inventario del módulo
+  (total de líneas 1421 → 1542, rutas 11 → 13, consultas 27 → 29 y qué
+  funciones abren conexión). Fallaron solo esas cuatro; las demás 410 pasaron
+  sin tocarlas.
+- Verificación: 436 pruebas de planes, la guardia, el 7.1 y el 7.2;
+  `scripts/verify.py` → **2265 pruebas pasan, 0 fallan**, Ruff y `pip check`
+  limpios con una `DATABASE_URL` ficticia; `git diff --check` limpio.
+- Documentado en `docs/API_ENDPOINTS.md`, `docs/ROLES_PERMISOS_BACKEND.md` y
+  `docs/CAMBIOS_BACKEND.md`. Sin migración, sin frontend, sin bases reales.
+  **Paso 7.2 terminado localmente, sin commit. Con él queda completo el
+  backend de la fase 7.**
 
 ## Pruebas
 
@@ -3734,26 +3792,33 @@ cosa, gana lo que se pueda verificar.
   paso 7.1. El usuario decidió que, si una materia tuvo dos profesores en
   2026, cada periodo se trae del último que escribió algo en él (ver la fase
   7). Plan: 7.1 y 7.2 en el backend, 7.3 y 7.4 en el frontend. **El 7.1, traer
-  el planeador del año pasado**, quedó terminado localmente, sin commit:
-  `GET` y `POST /planeador-anual/{asignacion_id}/anio-anterior`;
-  `scripts/verify.py` pasa 2243 pruebas. Sin migración, sin frontend, sin
-  bases reales.
-- **Siguiente acción exacta:** el usuario revisa y hace el commit del 7.1.
-  Subirlo no es urgente: ninguna pantalla usa las rutas nuevas hasta el 7.3, y
-  con ellas sin usar nada cambia en producción. Después, cada cosa con su
-  autorización:
-  1. **Paso 7.2** (backend): los planes de clase del año pasado, con
-     `CLASES_DE_ORIGEN_SQL`.
-  2. Pasos 7.3 y 7.4 (frontend). Al subirlos, primero el backend, esperando a
-     que Render quede **Live**, y después el frontend, que usa las rutas
-     nuevas.
+  el planeador del año pasado**, quedó en `16c9052`: `GET` y `POST
+  /planeador-anual/{asignacion_id}/anio-anterior`. **El 7.2, los planes de
+  clase del año pasado**, quedó terminado localmente, sin commit: `GET
+  /plan-de-clases/{asignacion_id}/anio-anterior` y `/{plan_id}`;
+  `scripts/verify.py` pasa 2265 pruebas. **Con él queda completo el backend de
+  la fase 7.** Sin migración, sin frontend, sin bases reales.
+- **Siguiente acción exacta:** el usuario revisa y hace el commit del 7.2.
+  Subir el 7.1 y el 7.2 no es urgente: ninguna pantalla usa las rutas nuevas
+  hasta el 7.3, y con ellas sin usar nada cambia en producción. Después, cada
+  cosa con su autorización:
+  1. **Paso 7.3** (frontend): el botón "Traer el planeador del año pasado".
+     Al empezarlo, anotar en `frontend-react/docs/funcionalidades/ANIO_LECTIVO.md`
+     el contrato de las cuatro rutas de la fase 7 (está en
+     `docs/API_ENDPOINTS.md`, "Planeador anual" y "Plan de clases") y corregir
+     allí la línea que todavía dice que el 6.10 está "sin commit" (es
+     `b7184f8`).
+  2. **Paso 7.4** (frontend): "Usar un plan del año pasado". Al subir la fase
+     7, primero el backend, esperando a que Render quede **Live**, y después
+     el frontend, que usa las rutas nuevas.
   3. Rotar la contraseña de `neondb_owner`, si no se hizo.
   4. Un **ensayo completo con las pantallas** en una rama de Neon copiada de
      producción, con el backend y el frontend locales: marcar en la
      promoción, ver la vista previa, activar desde el botón, reabrir y volver
      a cerrar, sacar un certificado de un retirado y, con la fase 7, traer el
-     planeador con un profesor de 2027. Es también la primera vez que las
-     consultas del 7.1 corren en PostgreSQL.
+     planeador y usar un plan del año pasado con un profesor de 2027. Es
+     también la primera vez que las consultas del 7.1 y el 7.2 corren en
+     PostgreSQL.
   5. El 6.4c, cuando exista una pantalla del admin que lo necesite.
   La activación real de `tenant_2005` la hace el usuario desde la pantalla,
   nunca el asistente.

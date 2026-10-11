@@ -11,9 +11,11 @@ from app.controllers.plan_de_clases_controller import (
     eliminar_imagen_plan_admin_controller,
     listar_observaciones_plan_controller,
     listar_planes_admin_controller,
+    listar_planes_anio_anterior_controller,
     marcar_observacion_vista_controller,
     obtener_notificaciones_planeadores_controller,
     obtener_plan_admin_controller,
+    obtener_plan_anio_anterior_controller,
     obtener_plan_del_dia_controller,
     obtener_planes_por_asignacion_controller,
 )
@@ -98,6 +100,29 @@ def obtener_planes_por_asignacion(
         return planes
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# Año lectivo, fase 7 (paso 7.2): usar un plan del año pasado como base. El
+# profesor solo manda su clase de este año y el id del plan; el origen lo
+# encuentra el servidor. Solo leen: el plan nuevo se guarda con POST
+# /plan-de-clases.
+@router.get("/plan-de-clases/{asignacion_id}/anio-anterior")
+def listar_planes_anio_anterior(
+    asignacion_id: int,
+    current_user: dict = Depends(get_current_user),
+):
+    require_asignacion_access(asignacion_id, current_user, detail="No tienes permisos para esta asignación")
+    return listar_planes_anio_anterior_controller(asignacion_id, usuario=current_user)
+
+
+@router.get("/plan-de-clases/{asignacion_id}/anio-anterior/{plan_id}")
+def obtener_plan_anio_anterior(
+    asignacion_id: int,
+    plan_id: int,
+    current_user: dict = Depends(get_current_user),
+):
+    require_asignacion_access(asignacion_id, current_user, detail="No tienes permisos para esta asignación")
+    return obtener_plan_anio_anterior_controller(asignacion_id, plan_id, usuario=current_user)
 
 
 @router.delete("/plan-de-clases/{plan_id}/imagen")

@@ -199,6 +199,12 @@ Con usuario autenticado y alcance por rol, sin ownership:
   nunca manda ids del año pasado. El `GET` no niega al profesor fuera del año
   activo: responde `puede_traer: false`, con la misma regla de la guardia
   (`puede_guardar_en_anio`).
+- planes del año pasado (año lectivo, paso 7.2,
+  `/plan-de-clases/{asignacion_id}/anio-anterior` y `/{plan_id}`): el mismo
+  ownership de las demás rutas de planes (`require_asignacion_access` en la
+  ruta) y la guardia del año sobre la clase, que aquí sí niega (`403` o
+  `409`), porque solo sirven para crear un plan en esa clase. El backend
+  comprueba que el plan pedido sea del origen de la clase; si no, `403`.
 
 ## Riesgos pendientes documentados
 

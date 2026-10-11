@@ -1,5 +1,5 @@
 from app.database import get_cursor
-from app.repositories.anios_lectivos_repository import condicion_anio
+from app.repositories.anios_lectivos_repository import CLASES_DE_ORIGEN_SQL, condicion_anio
 from app.services.anio_lectivo import (
     exigir_asignacion_editable,
     exigir_plan_editable,
@@ -324,6 +324,68 @@ def obtener_plan_por_id(plan_id):
         )
         row = cursor.fetchone()
         return _row_to_plan(row) if row else None
+
+
+# Año lectivo, fase 7 (paso 7.2): los planes del año pasado de una clase, para
+# usar uno como base (decisión 16). Salen de `CLASES_DE_ORIGEN_SQL`: la misma
+# materia en el curso del que se copió el de la clase, de cualquier profesor.
+# Solo leen. La guardia del año va primero, en la misma conexión: se usan para
+# crear un plan, así que el año de la clase tiene que admitir ese guardado.
+TEXTOS_PLAN_ANIO_ANTERIOR = (
+    "unidad",
+    "proposito",
+    "clase",
+    "estandar",
+    "dba",
+    "competencias",
+    "actividad_casa",
+    "tema",
+)
+
+
+def listar_planes_de_origen(asignacion_id, *, usuario):
+    """Los planes del año pasado de la clase, por fecha, para elegir uno."""
+    with get_cursor() as cursor:
+        exigir_asignacion_editable(cursor, asignacion_id, usuario)
+        cursor.execute(
+            f"""
+            SELECT pdc.id, pdc.fecha, COALESCE(pdc.periodo, 1) AS periodo, pdc.unidad, pdc.tema
+            FROM plan_de_clases pdc
+            WHERE pdc.asignacion_id IN ({CLASES_DE_ORIGEN_SQL})
+            ORDER BY pdc.fecha, pdc.id
+            """,
+            (asignacion_id,),
+        )
+        return [
+            {"id": row[0], "fecha": row[1], "periodo": row[2], "unidad": row[3], "tema": row[4]}
+            for row in cursor.fetchall()
+        ]
+
+
+def obtener_plan_de_origen(asignacion_id, plan_id, *, usuario):
+    """El texto de un plan del año pasado de la clase, o `None` si no es de él.
+
+    Solo el texto, cada campo vacío como `""`: ni fecha, ni evidencias, ni
+    periodo, ni estado de revisión. El plan nuevo se guarda por la ruta normal.
+    """
+    with get_cursor() as cursor:
+        exigir_asignacion_editable(cursor, asignacion_id, usuario)
+        textos = ", ".join(
+            f"COALESCE(pdc.{campo}, '') AS {campo}" for campo in TEXTOS_PLAN_ANIO_ANTERIOR
+        )
+        cursor.execute(
+            f"""
+            SELECT pdc.id, {textos}
+            FROM plan_de_clases pdc
+            WHERE pdc.id = %s
+              AND pdc.asignacion_id IN ({CLASES_DE_ORIGEN_SQL})
+            """,
+            (plan_id, asignacion_id),
+        )
+        row = cursor.fetchone()
+        if row is None:
+            return None
+        return {"id": row[0], **dict(zip(TEXTOS_PLAN_ANIO_ANTERIOR, row[1:]))}
 
 
 def listar_planes_admin(

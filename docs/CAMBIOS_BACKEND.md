@@ -6,6 +6,34 @@ Ultima revision documental: 2026-10-10.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
+## 2026-10-10 - Año lectivo 7.2: usar un plan de clases del año pasado
+
+Segundo paso de la fase 7 de `docs/funcionalidades/ANIO_LECTIVO.md`
+(decisiones 15 y 16). Con él queda completo el backend de la fase 7.
+
+### Qué cambia
+
+- Rutas nuevas, solo de lectura: `GET /plan-de-clases/{asignacion_id}/anio-anterior`
+  (la lista de planes del año pasado de esa clase: id, fecha, periodo, unidad y
+  tema) y `GET /plan-de-clases/{asignacion_id}/anio-anterior/{plan_id}` (el
+  texto de uno, sin fecha, evidencias ni periodo). Contrato en
+  `docs/API_ENDPOINTS.md`, "Plan de clases".
+- El origen es el mismo del paso 7.1 (`CLASES_DE_ORIGEN_SQL`): la misma
+  materia en el curso del que se copió el de la clase, de cualquier profesor.
+- Un plan que no es del origen de la clase recibe `403`. Las dos rutas pasan
+  por la guardia del año de la clase.
+- No se crea nada: el plan nuevo se guarda por `POST /plan-de-clases`, que no
+  cambió. Sin migración, sin acceso a una base real.
+
+### Pruebas
+
+`tests/test_anio_lectivo_planes_anterior.py`, 22 pruebas, escritas antes del
+código, con las consultas corriendo en SQLite. Catorce versiones dañadas del
+código hacen fallar alguna. Se ampliaron, a propósito, las cuatro pruebas de
+`test_plan_de_clases_caracterizacion.py` que fijan el inventario del módulo
+(rutas, consultas, conexiones y total de líneas). `scripts/verify.py` pasó con
+2265 pruebas, Ruff y `pip check` limpios, usando una base ficticia.
+
 ## 2026-10-10 - Año lectivo 7.1: traer el planeador del año pasado
 
 Primer paso de la fase 7 de `docs/funcionalidades/ANIO_LECTIVO.md`

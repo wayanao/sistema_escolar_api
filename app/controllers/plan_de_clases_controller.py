@@ -15,10 +15,12 @@ from app.services.plan_de_clases_service import (
     crear_observacion_plan,
     eliminar_imagen_plan_admin,
     guardar_plan,
+    listar_planes_anio_anterior,
     listar_reportes_admin,
     obtener_observaciones_plan,
     obtener_notificaciones_planeadores,
     obtener_plan_admin,
+    obtener_plan_anio_anterior,
     obtener_historial_asignacion,
     obtener_plan_del_dia,
 )
@@ -34,6 +36,9 @@ MAX_PDF_BYTES = 15 * 1024 * 1024
 # Los cinco primeros bytes de todo PDF. Se verifica el contenido y no solo el
 # nombre para que renombrar un archivo a .pdf no alcance para subirlo.
 FIRMA_PDF = b"%PDF-"
+
+# Año lectivo, fase 7 (paso 7.2): usar un plan del año pasado como base.
+MENSAJE_PLAN_NO_ES_DEL_ANIO_ANTERIOR = "Ese plan no es del año pasado de esta clase."
 
 
 def obtener_directorio_archivos():
@@ -136,6 +141,25 @@ def obtener_plan_admin_controller(plan_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Plan de clases no encontrado",
+        )
+    return plan
+
+
+def listar_planes_anio_anterior_controller(asignacion_id, *, usuario):
+    return listar_planes_anio_anterior(asignacion_id, usuario=usuario)
+
+
+def obtener_plan_anio_anterior_controller(asignacion_id, plan_id, *, usuario):
+    """El texto de un plan del año pasado; 403 si no es del origen de la clase.
+
+    Un plan que no existe recibe el mismo 403: no se dice si existe en otra
+    clase.
+    """
+    plan = obtener_plan_anio_anterior(asignacion_id, plan_id, usuario=usuario)
+    if plan is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=MENSAJE_PLAN_NO_ES_DEL_ANIO_ANTERIOR,
         )
     return plan
 

@@ -42,6 +42,9 @@ EXPECTED_ROUTES = {
         "/plan-de-clases/{plan_id}/observaciones/{observacion_id}/vista",
     ),
     ("DELETE", "/admin/plan-de-clases/{plan_id}/imagen"),
+    # Año lectivo, paso 7.2: usar un plan del año pasado como base.
+    ("GET", "/plan-de-clases/{asignacion_id}/anio-anterior"),
+    ("GET", "/plan-de-clases/{asignacion_id}/anio-anterior/{plan_id}"),
 }
 PLAN_ACCESS_SQL = (
     "\n"
@@ -289,21 +292,24 @@ def test_domain_boundary_is_five_own_product_files():
     # admin por año (repositorio y ruta). 1395 -> 1413: paso 3.7a, la guardia
     # de escritura en crear, borrar imagen y marcar vista (quien guarda llega
     # hasta el repositorio, y la ruta del admin recibe al admin). 1413 ->
-    # 1421: paso 3.7b, la guardia en la revision y las observaciones.
-    assert sum(len(_source(path).splitlines()) for path in DOMAIN_FILES) == 1421
+    # 1421: paso 3.7b, la guardia en la revision y las observaciones. 1421 ->
+    # 1542: paso 7.2, los planes del año pasado (dos rutas que solo leen, con
+    # su controlador, servicio y repositorio).
+    assert sum(len(_source(path).splitlines()) for path in DOMAIN_FILES) == 1542
     own_source = "\n".join(_source(path) for path in DOMAIN_FILES)
     assert "planeador_anual" not in own_source
     assert "app.routes.observaciones" not in own_source
 
 
-def test_router_has_exactly_eleven_entries_and_no_response_models():
+def test_router_has_exactly_thirteen_entries_and_no_response_models():
+    # 11 -> 13: año lectivo, paso 7.2 (ver EXPECTED_ROUTES).
     routes = [
         route
         for route in plan_de_clases.router.routes
         if isinstance(route, APIRoute)
     ]
 
-    assert len(routes) == 11
+    assert len(routes) == 13
     assert {
         (method, route.path)
         for route in routes
@@ -334,9 +340,11 @@ def test_create_schema_keeps_optional_concurrency_and_unbounded_period_and_text(
     assert len(model.unidad) == 4000
 
 
-def test_sql_boundary_has_twenty_seven_repository_executions_and_no_shared_ones():
+def test_sql_boundary_has_twenty_nine_repository_executions_and_no_shared_ones():
+    # 27 -> 29: año lectivo, paso 7.2, la lista y el texto de los planes del
+    # año pasado. Siguen viviendo solo en el repositorio.
     repository_tree = _tree("app/repositories/plan_de_clases_repository.py")
-    assert len(_execute_calls(repository_tree)) == 27
+    assert len(_execute_calls(repository_tree)) == 29
     for path in (
         "app/routes/plan_de_clases.py",
         "app/controllers/plan_de_clases_controller.py",
@@ -445,6 +453,9 @@ def test_repository_resource_ownership_is_fixed_per_operation():
         "obtener_plan_por_dia": False,
         "obtener_planes_por_asignacion": False,
         "obtener_plan_por_id": False,
+        # Año lectivo, paso 7.2: solo leen.
+        "listar_planes_de_origen": False,
+        "obtener_plan_de_origen": False,
         "listar_planes_admin": False,
         "actualizar_estado_revision_plan": True,
         "agregar_observacion_plan": True,

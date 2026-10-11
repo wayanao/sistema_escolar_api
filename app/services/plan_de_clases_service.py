@@ -7,7 +7,9 @@ from app.repositories.plan_de_clases_repository import (
     listar_notificaciones_admin,
     listar_notificaciones_profesor,
     listar_planes_admin,
+    listar_planes_de_origen,
     marcar_observacion_vista,
+    obtener_plan_de_origen,
     obtener_plan_por_id,
     obtener_plan_por_dia,
     obtener_planes_por_asignacion,
@@ -53,6 +55,14 @@ def listar_reportes_admin(**filtros):
 
 def obtener_plan_admin(plan_id):
     return obtener_plan_por_id(plan_id)
+
+
+def listar_planes_anio_anterior(asignacion_id, *, usuario):
+    return listar_planes_de_origen(asignacion_id, usuario=usuario)
+
+
+def obtener_plan_anio_anterior(asignacion_id, plan_id, *, usuario):
+    return obtener_plan_de_origen(asignacion_id, plan_id, usuario=usuario)
 
 
 def actualizar_revision(plan_id, estado, admin_id, version, comentario=None):

@@ -745,6 +745,8 @@ consultar el año lectivo activo.`; un año que no existe, `404`.
 - `PATCH /plan-de-clases/{plan_id}/observaciones/{observacion_id}/vista`
 - `GET /notificaciones/planeadores`
 - `DELETE /admin/plan-de-clases/{plan_id}/imagen`
+- `GET /plan-de-clases/{asignacion_id}/anio-anterior`
+- `GET /plan-de-clases/{asignacion_id}/anio-anterior/{plan_id}`
 
 Notas:
 
@@ -802,6 +804,28 @@ Notas:
 - Abrir o revisar el detalle administrativo marca como leidos los eventos del
   plan hasta esa version. Para el profesor, una observacion solo deja de estar
   pendiente cuando confirma su lectura mediante el endpoint `vista`.
+
+Usar un plan del año pasado como base (año lectivo, fase 7, paso 7.2; ver
+`docs/funcionalidades/ANIO_LECTIVO.md`). Las dos rutas solo leen; el plan
+nuevo se guarda con `POST /plan-de-clases`, con fecha nueva, en `pendiente` y
+sin evidencias:
+
+- `GET /plan-de-clases/{asignacion_id}/anio-anterior` responde una lista de
+  `{"id", "fecha", "periodo", "unidad", "tema"}`, por fecha (la mas antigua
+  primero): los planes de la misma materia en el curso del que se copio el
+  curso de la clase (`cursos.curso_origen_id`), de cualquier profesor y de
+  cualquier estado de revision. Sin origen (curso creado desde cero o materia
+  que no se dictaba alli), lista vacia.
+- `GET /plan-de-clases/{asignacion_id}/anio-anterior/{plan_id}` responde
+  `{"id", "unidad", "proposito", "clase", "estandar", "dba", "competencias",
+  "actividad_casa", "tema"}`, cada texto vacio como `""`. Sin fecha, sin
+  evidencias, sin periodo (el formulario conserva el que eligio el profesor) y
+  sin estado de revision. `403` "Ese plan no es del año pasado de esta
+  clase." si el plan no es del origen de esa clase o no existe.
+- En las dos: `403` "No tienes permisos para esta asignación" si el profesor
+  no dicta la clase, y la guardia del año sobre la clase (`409` año cerrado,
+  `403` profesor fuera del año activo), porque sirven para crear un plan en
+  ella. El cliente nunca manda ids de clases del año pasado.
 
 ## Planeador anual
 

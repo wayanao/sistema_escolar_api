@@ -25,8 +25,9 @@
   GitHub (`origin/main` en `0517c41` y `b7184f8`). Fase 7 iniciada el
   2026-10-10 con autorización explícita del usuario: paso 7.1 (backend: traer
   el planeador del año pasado) en `16c9052` y paso 7.2 (backend: los planes de
-  clase del año pasado) terminado localmente, sin commit. Con él, el backend de
-  la fase 7 queda completo.** El paso 5.10 quedó en
+  clase del año pasado) en `c5dd384`. Con él, el backend de la fase 7 quedó
+  completo. Paso 7.3 (frontend: el botón del planeador) terminado localmente,
+  sin commit.** El paso 5.10 quedó en
   `82675ba`; el ajuste posterior de navegación del frontend, en `365d083`. El
   paso 5.9 quedó en `0689b7d` y su registro en este repo en
   `53da8f0`. El
@@ -3431,8 +3432,16 @@ Avance del paso 7.2 (los planes de clase del año pasado) al 2026-10-10:
   limpios con una `DATABASE_URL` ficticia; `git diff --check` limpio.
 - Documentado en `docs/API_ENDPOINTS.md`, `docs/ROLES_PERMISOS_BACKEND.md` y
   `docs/CAMBIOS_BACKEND.md`. Sin migración, sin frontend, sin bases reales.
-  **Paso 7.2 terminado localmente, sin commit. Con él queda completo el
-  backend de la fase 7.**
+  **Paso 7.2 terminado; el usuario lo confirmó en el commit `c5dd384`. Con él
+  queda completo el backend de la fase 7.**
+- **7.3 (frontend), 2026-10-10:** el botón "Traer el planeador del año pasado"
+  en el planeador del profesor, terminado localmente en el frontend, sin
+  commit. Pregunta `GET /planeador-anual/{id}/anio-anterior` solo cuando el
+  periodo que se abre llega vacío, y una vez por visita; el botón depende de
+  `puede_traer`, y se esconde si hay cambios sin guardar. `pnpm run
+  check:deploy` pasa 2320 pruebas. Detalle, contrato de las cuatro rutas de la
+  fase 7 y verificación en el avance del 7.3 del documento del frontend. En
+  este repo no cambió código.
 
 ## Pruebas
 
@@ -3794,23 +3803,20 @@ cosa, gana lo que se pueda verificar.
   7). Plan: 7.1 y 7.2 en el backend, 7.3 y 7.4 en el frontend. **El 7.1, traer
   el planeador del año pasado**, quedó en `16c9052`: `GET` y `POST
   /planeador-anual/{asignacion_id}/anio-anterior`. **El 7.2, los planes de
-  clase del año pasado**, quedó terminado localmente, sin commit: `GET
+  clase del año pasado**, quedó en `c5dd384`: `GET
   /plan-de-clases/{asignacion_id}/anio-anterior` y `/{plan_id}`;
-  `scripts/verify.py` pasa 2265 pruebas. **Con él queda completo el backend de
-  la fase 7.** Sin migración, sin frontend, sin bases reales.
-- **Siguiente acción exacta:** el usuario revisa y hace el commit del 7.2.
-  Subir el 7.1 y el 7.2 no es urgente: ninguna pantalla usa las rutas nuevas
-  hasta el 7.3, y con ellas sin usar nada cambia en producción. Después, cada
-  cosa con su autorización:
-  1. **Paso 7.3** (frontend): el botón "Traer el planeador del año pasado".
-     Al empezarlo, anotar en `frontend-react/docs/funcionalidades/ANIO_LECTIVO.md`
-     el contrato de las cuatro rutas de la fase 7 (está en
-     `docs/API_ENDPOINTS.md`, "Planeador anual" y "Plan de clases") y corregir
-     allí la línea que todavía dice que el 6.10 está "sin commit" (es
-     `b7184f8`).
-  2. **Paso 7.4** (frontend): "Usar un plan del año pasado". Al subir la fase
-     7, primero el backend, esperando a que Render quede **Live**, y después
-     el frontend, que usa las rutas nuevas.
+  `scripts/verify.py` pasa 2265 pruebas. **Con él quedó completo el backend de
+  la fase 7.** Sin migración, sin frontend, sin bases reales. **El 7.3, el
+  botón del planeador (frontend)**, quedó terminado localmente, sin commit;
+  el contrato de las cuatro rutas ya está anotado en el documento del
+  frontend, y allí se corrigió la línea vieja del 6.10.
+- **Siguiente acción exacta:** el usuario revisa y hace el commit del 7.3 en
+  el frontend y el de este registro aquí. Subir la fase 7 no es urgente
+  todavía. Después, cada cosa con su autorización:
+  1. **Paso 7.4** (frontend): "Usar un plan del año pasado" en el formulario
+     del plan de clases.
+  2. Al subir la fase 7, primero el backend, esperando a que Render quede
+     **Live**, y después el frontend, que usa las rutas nuevas.
   3. Rotar la contraseña de `neondb_owner`, si no se hizo.
   4. Un **ensayo completo con las pantallas** en una rama de Neon copiada de
      producción, con el backend y el frontend locales: marcar en la

@@ -55,7 +55,14 @@ def test_frontera_propia_incluye_un_repositorio_y_no_un_servicio():
     assert "app.include_router(planeador_anual.router)" in _source(ROOT / "app" / "main.py")
 
 
-def test_router_expone_exactamente_get_y_put_sin_response_model():
+# Año lectivo, fase 7 (paso 7.1): el modulo suma traer el planeador del año
+# pasado, con su ruta GET y POST, sus dos controladores y sus dos consultas.
+# Las cuatro pruebas siguientes fijaban el inventario exacto del modulo y se
+# ampliaron a proposito; lo de siempre no cambio. El comportamiento nuevo lo
+# prueba `test_anio_lectivo_planeador_anterior.py`.
+
+
+def test_router_expone_exactamente_sus_rutas_sin_response_model():
     rutas = {
         (method, route.path): route
         for route in planeador_anual.router.routes
@@ -65,11 +72,13 @@ def test_router_expone_exactamente_get_y_put_sin_response_model():
     assert set(rutas) == {
         ("GET", "/planeador-anual/{asignacion_id}/{periodo}"),
         ("PUT", "/planeador-anual/{asignacion_id}/{periodo}"),
+        ("GET", "/planeador-anual/{asignacion_id}/anio-anterior"),
+        ("POST", "/planeador-anual/{asignacion_id}/anio-anterior"),
     }
     assert all(route.response_model is None for route in rutas.values())
 
 
-def test_ruta_solo_importa_los_dos_controladores_con_consumidor_http():
+def test_ruta_solo_importa_los_controladores_con_consumidor_http():
     tree = ast.parse(_source(ROUTE_PATH))
     importados = {
         alias.name
@@ -82,26 +91,34 @@ def test_ruta_solo_importa_los_dos_controladores_con_consumidor_http():
     assert importados == {
         "obtener_planeadores_anual_controller",
         "bulk_actualizar_planeadores_controller",
+        "consultar_planeador_anio_anterior_controller",
+        "traer_planeador_anio_anterior_controller",
     }
     assert "crear_planeador_anual_controller" not in _source(ROUTE_PATH)
     assert "actualizar_planeador_anual_controller" not in _source(ROUTE_PATH)
 
 
-def test_cinco_sql_viven_unicamente_en_el_repositorio():
-    sql_repositorio = _sql_literals(REPOSITORY_PATH)
-
-    assert len(sql_repositorio) == 5
+def test_las_sql_viven_unicamente_en_el_repositorio():
     assert _sql_literals(CONTROLLER_PATH) == []
     assert _sql_literals(ROUTE_PATH) == []
     assert _sql_literals(SCHEMA_PATH) == []
-    operaciones = [sql.lstrip().split(None, 1)[0].upper() for sql in sql_repositorio]
-    assert operaciones.count("INSERT") == 2
-    assert operaciones.count("SELECT") == 1
+    # Solo las sentencias: el fragmento de filas que comparten las dos de la
+    # fase 7 y el docstring que las nombra no empiezan por una operacion.
+    operaciones = [
+        primera
+        for primera in (
+            sql.lstrip().split(None, 1)[0].upper() for sql in _sql_literals(REPOSITORY_PATH)
+        )
+        if primera in {"SELECT", "INSERT", "UPDATE", "DELETE"}
+    ]
+    assert len(operaciones) == 7
+    assert operaciones.count("INSERT") == 3
+    assert operaciones.count("SELECT") == 2
     assert operaciones.count("UPDATE") == 1
     assert operaciones.count("DELETE") == 1
 
 
-def test_repositorio_tiene_cinco_funciones_cursor_first_sin_administrar_recursos():
+def test_repositorio_tiene_sus_funciones_cursor_first_sin_administrar_recursos():
     tree = ast.parse(_source(REPOSITORY_PATH))
     funciones = [node for node in tree.body if isinstance(node, ast.FunctionDef)]
 
@@ -111,6 +128,8 @@ def test_repositorio_tiene_cinco_funciones_cursor_first_sin_administrar_recursos
         "actualizar_planeador_anual",
         "eliminar_slot_planeador",
         "guardar_slot_planeador",
+        "leer_planeador_anio_anterior",
+        "copiar_planeador_anio_anterior",
     ]
     assert all(funcion.args.args[0].arg == "cursor" for funcion in funciones)
     source = _source(REPOSITORY_PATH)

@@ -153,6 +153,20 @@ def exigir_anio_editable(anio_y_estado, usuario):
     )
 
 
+def puede_guardar_en_anio(anio_y_estado, usuario):
+    """Si la guardia dejaria guardar a `usuario` en ese año, sin lanzar nada.
+
+    Para las lecturas que dicen de antemano si un boton va a funcionar (fase
+    7: "Traer el planeador del año pasado"). Es la misma regla de
+    `exigir_anio_editable`, asi el boton y el guardado nunca se contradicen.
+    """
+    try:
+        exigir_anio_editable(anio_y_estado, usuario)
+    except AnioLectivoNoEditableError:
+        return False
+    return True
+
+
 def exigir_asignacion_editable(cursor, asignacion_id, usuario):
     """Guardia para lo que cuelga de una clase. Una consulta, en el cursor dado."""
     exigir_anio_editable(leer_anio_de_asignacion(cursor, asignacion_id), usuario)

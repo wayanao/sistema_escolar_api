@@ -1,10 +1,43 @@
 # Cambios Backend
 
-Ultima revision documental: 2026-10-08.
+Ultima revision documental: 2026-10-10.
 
 ## Proposito
 
 Bitacora de cambios documentales y tecnicos observables del backend.
+
+## 2026-10-10 - Año lectivo 7.1: traer el planeador del año pasado
+
+Primer paso de la fase 7 de `docs/funcionalidades/ANIO_LECTIVO.md`
+(decisiones 14 y 15).
+
+### Qué cambia
+
+- Rutas nuevas `GET` y `POST /planeador-anual/{asignacion_id}/anio-anterior`.
+  El `GET` dice si se puede traer el planeador del año pasado
+  (`puede_traer`, decidido aquí); el `POST` lo copia, sin fechas, y nunca
+  sobrescribe: con cualquier fila ya escrita responde `409`. Contrato en
+  `docs/API_ENDPOINTS.md`, "Planeador anual".
+- El origen sale de la clase de este año: la misma materia en el curso del que
+  se copió su curso (`cursos.curso_origen_id`), de cualquier profesor. La regla
+  vive en `CLASES_DE_ORIGEN_SQL` (`anios_lectivos_repository.py`), para que
+  los planes de clase del paso 7.2 usen la misma.
+- Decisión del usuario del 2026-10-10: si la materia cambió de profesor a
+  mitad de año, cada periodo se trae del último que escribió algo en él.
+- Nuevo `puede_guardar_en_anio` en `app/services/anio_lectivo.py`: la regla de
+  la guardia sin lanzar, para que el botón y el guardado no se contradigan.
+- Las rutas del planeador de siempre no cambian. Sin migración, sin acceso a
+  una base real.
+
+### Pruebas
+
+`tests/test_anio_lectivo_planeador_anterior.py`, 32 pruebas, escritas antes del
+código. Sus consultas corren de verdad en SQLite (viene con Python), además de
+leerse como texto. Veintiuna versiones dañadas del código hacen fallar alguna.
+Se ampliaron, a propósito, las cuatro pruebas de
+`test_planeador_anual_caracterizacion.py` que fijan el inventario exacto del
+módulo. `scripts/verify.py` pasó con 2243 pruebas, Ruff y `pip check` limpios,
+usando una base ficticia.
 
 ## 2026-10-09 - Año lectivo 6.5: la marca de salida en los candidatos
 

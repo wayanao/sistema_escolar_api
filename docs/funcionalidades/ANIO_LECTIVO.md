@@ -20,8 +20,11 @@
   sección "Activar") en `f6a035e`, el 6.8 (frontend: reabrir y volver a
   cerrar) en `5f69b77`, el 6.9 (frontend: aviso de año cerrado en Tipos de
   pago) en `cf00e3d` y el 6.10 (frontend: Certificados con todos los
-  estados) terminado localmente, sin commit. Con él, la fase 6 queda completa
-  en los dos repos, salvo el 6.4c, aplazado.** El paso 5.10 quedó en
+  estados) en `b7184f8`. Con él, la fase 6 queda completa en los dos repos,
+  salvo el 6.4c, aplazado. Al 2026-10-10 los dos repos estaban subidos a
+  GitHub (`origin/main` en `0517c41` y `b7184f8`). Fase 7 iniciada el
+  2026-10-10 con autorización explícita del usuario: paso 7.1 (backend: traer
+  el planeador del año pasado) terminado localmente, sin commit.** El paso 5.10 quedó en
   `82675ba`; el ajuste posterior de navegación del frontend, en `365d083`. El
   paso 5.9 quedó en `0689b7d` y su registro en este repo en
   `53da8f0`. El
@@ -90,7 +93,7 @@
   fase 1, el relleno los marcaría como 2026; entre la fase 1 y la 5 no existe
   todavía un año 2027 donde ponerlos. Al 2026-09-30 no hay ninguno
   registrado (confirmado por el usuario).
-- Última actualización: 2026-10-08.
+- Última actualización: 2026-10-10.
 
 ## Objetivo
 
@@ -3245,7 +3248,7 @@ Avance del paso 6.5 (la marca de salida en los candidatos) al 2026-10-09:
   `estado=todos` (y el año si se mira otro) con una función propia; la
   pantalla sigue empezando en "Activos" y Boletines no cambia. Es un cambio
   deliberado de una petición del año activo, por la decisión del usuario del
-  2026-10-08. Terminado localmente, sin commit; `pnpm run check:deploy` pasa
+  2026-10-08. Commit `b7184f8` del frontend; `pnpm run check:deploy` pasa
   2294 pruebas. **Con él queda completa la fase 6**, salvo el 6.4c.
 
 ### Fase 7 — Reutilizar el planeador anual y los planes de clase (antes de iniciar clases 2027)
@@ -3279,6 +3282,99 @@ cuando los profesores empiezan a ver sus clases nuevas.
    profesor distinto al de 2026, planeador de destino no vacío (409), plan
    que no pertenece al origen (403), y de que la fecha y las evidencias no
    se copian; `verify.py` pasa.
+
+**Inicio autorizado el 2026-10-10.** Al empezar, los dos repos estaban en
+`main`, limpios y subidos a GitHub (`origin/main` en `0517c41` y `b7184f8`).
+La fase 7 no necesita migración: `cursos.curso_origen_id` existe desde el paso
+5.2. No se leyó `docs/MIGRACIONES.md` por eso.
+
+Decisión del usuario el 2026-10-10, antes del paso 7.1 (los documentos no lo
+decían): **si en 2026 una materia cambió de profesor a mitad de año, para cada
+periodo se trae lo del último profesor que escribió algo en ese periodo.** El
+caso existe porque editar una clase con historial obliga a desactivarla y
+crear otra (`editar_asignacion_controller`: "Desactívala y crea una nueva…"),
+así que el curso de 2026 queda con dos planeadores de la misma materia. "El
+último" es la clase de id mayor: el planeador no guarda cuándo se escribió, y
+la clase del profesor que llegó se crea después. Se descartaron traer solo el
+del último profesor (si no escribió nada, no se trae nada) y no traer nada si
+hay dos.
+
+Reglas por defecto del asistente, que el usuario no objetó:
+
+- Un profesor solo puede usar lo del año pasado desde una clase del año
+  activo (decisión 4).
+- La lista de planes del 7.2 trae todos los de esa materia en el curso de
+  origen, de cualquier profesor (decisión 15).
+- Al usar un plan viejo se llena solo el texto; el periodo queda el que el
+  profesor tiene elegido; la fecha y las evidencias, vacías (decisión 16).
+
+Plan por pasos, uno a la vez con el visto bueno del usuario:
+
+- **7.1 (backend):** el origen y el planeador (consultar si se puede traer y
+  traerlo).
+- **7.2 (backend):** los planes del año pasado (la lista y el texto de uno).
+- **7.3 (frontend):** el botón "Traer el planeador del año pasado".
+- **7.4 (frontend):** "Usar un plan del año pasado" en el formulario.
+
+Avance del paso 7.1 (traer el planeador del año pasado) al 2026-10-10:
+
+- Antes del cambio pasaban 307 pruebas del planeador y de la guardia. Se
+  escribieron primero 31 pruebas en
+  `tests/test_anio_lectivo_planeador_anterior.py`, que fallaron al cargar
+  porque nada de lo que prueban existía; al revisarlas se sumó una (32).
+- El origen, en un solo lugar: `CLASES_DE_ORIGEN_SQL`
+  (`anios_lectivos_repository.py`), las clases de la misma materia en el curso
+  `curso_origen_id` del curso de la clase, sin mirar el profesor ni si la clase
+  sigue activa. El 7.2 la reutiliza.
+- `planeador_anual_repository.py`: `leer_planeador_anio_anterior` (una
+  consulta: año y estado de la clase, si su planeador ya tiene filas y si hay
+  algo escrito que traer) y `copiar_planeador_anio_anterior` (un solo `INSERT
+  ... SELECT`: periodo, slot y los cuatro textos; `fecha` `NULL`). Las filas
+  que se traen: por periodo, las de la clase de origen de id mayor con algún
+  texto en ese periodo; una fila sin texto no cuenta.
+- `planeador_anual_controller.py`: `consultar_planeador_anio_anterior_controller`
+  (`hay_origen`, `planeador_vacio`, `puede_traer`) y
+  `traer_planeador_anio_anterior_controller`. El permiso del profesor
+  (`require_asignacion_access`) se revisa con la misma conexión, como en el
+  inicio del profesor. Al traer, la guardia del año usa el estado ya leído,
+  antes de escribir; luego `409` si ya hay filas y `404` si no hay nada que
+  traer. Si llegan dos clics a la vez, el segundo choca con la regla única
+  (clase, periodo, slot) y recibe el mismo `409`; no queda nada a medias.
+- `app/services/anio_lectivo.py`: `puede_guardar_en_anio`, la regla de la
+  guardia sin lanzar, para `puede_traer`. Así el botón no aparece cuando el
+  guardado lo rechazaría.
+- `app/routes/planeador_anual.py`: `GET` y `POST
+  /planeador-anual/{asignacion_id}/anio-anterior`, declaradas antes de las de
+  un periodo (si no, `anio-anterior` se leería como periodo y daría `422`).
+  Las rutas de siempre no cambian.
+- Consultas, medidas en pruebas: el `GET`, 3 para el profesor y 2 para el
+  admin; el `POST`, 4 y 3. Una conexión en cada caso.
+- Pruebas: por primera vez en esta funcionalidad, las consultas **corren de
+  verdad**, en SQLite (viene con Python; el equipo no tiene PostgreSQL), con
+  un curso de 2026 donde la materia cambió de profesor, otra materia, otro
+  curso, un curso de 2027 creado desde cero y una materia nueva. Comprueban:
+  cada periodo del último que lo escribió y sin mezclar periodos, sin fechas,
+  2026 intacto, sin origen (`404`), profesor distinto al de 2026, otra franja
+  de la misma clase, planeador no vacío (`409`), profesor ajeno (`403`), año en
+  preparación (profesor `403`, admin trae), año cerrado (`409`), clase
+  inexistente (`404`), dos clics a la vez, la ruta de un periodo intacta y el
+  conteo de consultas. Veintiuna versiones dañadas del código hacen fallar
+  alguna prueba; la primera vuelta dejó pasar dos y por eso se sumaron una
+  fila sin texto en un periodo elegido y la prueba desde otra franja.
+- Ajustadas a propósito: las cuatro pruebas de
+  `test_planeador_anual_caracterizacion.py` que fijan el inventario exacto del
+  módulo (rutas, controladores importados, sentencias SQL y funciones del
+  repositorio), ampliadas con lo nuevo. Fallaron solo esas cuatro; las demás
+  303 pasaron sin tocarlas.
+- Límite: SQLite no es PostgreSQL. Lo propio de PostgreSQL (tipos, el
+  parámetro dentro del `SELECT` del `INSERT`) lo confirma el ensayo en una
+  rama de Neon con el backend local.
+- Verificación: 339 pruebas del planeador, la guardia y el paso;
+  `scripts/verify.py` → **2243 pruebas pasan, 0 fallan**, Ruff y `pip check`
+  limpios con una `DATABASE_URL` ficticia; `git diff --check` limpio.
+- Documentado en `docs/API_ENDPOINTS.md`, `docs/ROLES_PERMISOS_BACKEND.md` y
+  `docs/CAMBIOS_BACKEND.md`. Sin migración, sin frontend, sin bases reales.
+  **Paso 7.1 terminado localmente, sin commit.**
 
 ## Pruebas
 
@@ -3411,7 +3507,7 @@ cuando los profesores empiezan a ver sus clases nuevas.
 
 ## Entrega para el siguiente chat
 
-Estado al 2026-10-07. Si `git status` o el historial de git dicen otra
+Estado al 2026-10-10. Si `git status` o el historial de git dicen otra
 cosa, gana lo que se pueda verificar.
 
 - **Hecho:** fase 0 y **fase 1 completas**. Migración A (2026-09-30) y
@@ -3628,22 +3724,37 @@ cosa, gana lo que se pueda verificar.
   (frontend), en `f6a035e` y el **6.8**, reabrir y volver a cerrar
   (frontend), en `5f69b77` y el **6.9**, el aviso de año cerrado en Tipos de
   pago (frontend), en `cf00e3d`. El **6.10**, Certificados con todos los
-  estados (frontend), quedó terminado localmente, sin commit:
-  `pnpm run check:deploy` pasa 2294 pruebas. **La fase 6 está completa en
-  los dos repos**, salvo el 6.4c, aplazado por decisión del usuario.
-- **Siguiente acción exacta:** el usuario revisa y hace el commit del 6.10 en
-  el frontend. Después, lo que queda antes de activar el año real (en enero
-  de 2027, cuando empiecen las clases), cada cosa con su autorización:
-  1. Rotar la contraseña de `neondb_owner` y hacer push. Primero el backend,
-     esperando a que Render quede **Live**, y después el frontend, que usa las
-     rutas nuevas. Ninguna de las dos cosas activa nada.
-  2. Un **ensayo completo con las pantallas** en una rama de Neon copiada de
+  estados (frontend), quedó en `b7184f8`: `pnpm run check:deploy` pasa 2294
+  pruebas. **La fase 6 está completa en los dos repos**, salvo el 6.4c,
+  aplazado por decisión del usuario. Al 2026-10-10 los dos repos estaban
+  subidos a GitHub (visto con `git fetch`): `origin/main` en `0517c41` y
+  `b7184f8`. Que Render haya desplegado, y si ya se rotó la contraseña, no se
+  ve desde el repo.
+- **Fase 7 iniciada el 2026-10-10 con autorización explícita del usuario**,
+  paso 7.1. El usuario decidió que, si una materia tuvo dos profesores en
+  2026, cada periodo se trae del último que escribió algo en él (ver la fase
+  7). Plan: 7.1 y 7.2 en el backend, 7.3 y 7.4 en el frontend. **El 7.1, traer
+  el planeador del año pasado**, quedó terminado localmente, sin commit:
+  `GET` y `POST /planeador-anual/{asignacion_id}/anio-anterior`;
+  `scripts/verify.py` pasa 2243 pruebas. Sin migración, sin frontend, sin
+  bases reales.
+- **Siguiente acción exacta:** el usuario revisa y hace el commit del 7.1.
+  Subirlo no es urgente: ninguna pantalla usa las rutas nuevas hasta el 7.3, y
+  con ellas sin usar nada cambia en producción. Después, cada cosa con su
+  autorización:
+  1. **Paso 7.2** (backend): los planes de clase del año pasado, con
+     `CLASES_DE_ORIGEN_SQL`.
+  2. Pasos 7.3 y 7.4 (frontend). Al subirlos, primero el backend, esperando a
+     que Render quede **Live**, y después el frontend, que usa las rutas
+     nuevas.
+  3. Rotar la contraseña de `neondb_owner`, si no se hizo.
+  4. Un **ensayo completo con las pantallas** en una rama de Neon copiada de
      producción, con el backend y el frontend locales: marcar en la
      promoción, ver la vista previa, activar desde el botón, reabrir y volver
-     a cerrar, y sacar un certificado de un retirado.
-  3. La **fase 7** (planeador anual y planes de clase), que también va antes
-     de iniciar las clases de 2027.
-  4. El 6.4c, cuando exista una pantalla del admin que lo necesite.
+     a cerrar, sacar un certificado de un retirado y, con la fase 7, traer el
+     planeador con un profesor de 2027. Es también la primera vez que las
+     consultas del 7.1 corren en PostgreSQL.
+  5. El 6.4c, cuando exista una pantalla del admin que lo necesite.
   La activación real de `tenant_2005` la hace el usuario desde la pantalla,
   nunca el asistente.
 - Prompt para retomar: `docs/funcionalidades/PROMPT_CONTINUACION_ANIO_LECTIVO.md`.

@@ -821,6 +821,32 @@ Notas:
   validar.
 - Este contrato usa la tabla existente y no requiere migracion.
 
+Traer el planeador del año pasado (año lectivo, fase 7, paso 7.1; ver
+`docs/funcionalidades/ANIO_LECTIVO.md`):
+
+- `GET /planeador-anual/{asignacion_id}/anio-anterior` responde
+  `{"hay_origen": bool, "planeador_vacio": bool, "puede_traer": bool}`.
+  `hay_origen`: hay algo escrito en el planeador de esa materia en el curso
+  del que se copio el curso de la clase (`cursos.curso_origen_id`), de
+  cualquier profesor. `planeador_vacio`: el planeador de la clase no tiene
+  ninguna fila, en ningun periodo. `puede_traer` lo decide el backend: las dos
+  anteriores y que la guardia del año deje guardar a este usuario. El
+  frontend muestra el boton solo con `puede_traer`.
+- `POST /planeador-anual/{asignacion_id}/anio-anterior`, sin cuerpo, copia
+  ese planeador a la clase y responde `{"message": "...", "filas_copiadas":
+  n}`. Copia periodo, slot y los cuatro textos; la `fecha` queda `null` (al
+  guardar un periodo con el `PUT`, cada fila con contenido vuelve a exigir su
+  fecha). Si la materia tuvo dos profesores en 2026, cada periodo sale entero
+  de la clase mas reciente que escribio algo en el. Una fila sin texto no
+  cuenta.
+- Errores del `POST`, con `detail` de texto listo para mostrar: `409` si el
+  planeador de la clase ya tiene alguna fila (nunca sobrescribe; tambien si
+  llegan dos clics a la vez); `404` si no hay nada que traer o la clase no
+  existe; y los de la guardia del año (`409` año cerrado, `403` profesor fuera
+  del año activo). `403` si el profesor no dicta la clase.
+- Las dos rutas van declaradas antes de las de un periodo: si no,
+  `anio-anterior` se leeria como periodo y daria `422`.
+
 ## Dashboard
 
 - `GET /dashboard/cumpleanos/admin?dias=7`

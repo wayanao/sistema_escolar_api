@@ -191,6 +191,14 @@ Con usuario autenticado y alcance por rol, sin ownership:
   un año cerrado las frena), porque su router ya exige admin; si alguna se
   abriera a profesores, tendria que pasar a la version con usuario. Lista
   completa en `docs/API_ENDPOINTS.md`, "Guardia de escritura".
+- traer el planeador del año pasado (año lectivo, paso 7.1,
+  `/planeador-anual/{asignacion_id}/anio-anterior`): el mismo ownership del
+  planeador (`require_asignacion_access`, revisado en el controlador con su
+  misma conexion) y la guardia del año sobre la clase de destino. El origen
+  lo encuentra siempre el servidor desde la clase de este año; el cliente
+  nunca manda ids del año pasado. El `GET` no niega al profesor fuera del año
+  activo: responde `puede_traer: false`, con la misma regla de la guardia
+  (`puede_guardar_en_anio`).
 
 ## Riesgos pendientes documentados
 

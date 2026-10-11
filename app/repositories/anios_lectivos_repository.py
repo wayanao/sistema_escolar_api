@@ -9,7 +9,8 @@ una anotacion, un curso o un concepto (guardia de escritura). Como el resto de
 repositorios, cada funcion recibe el cursor de quien llama y no abre, confirma
 ni cierra nada. La fase 5 agrega la copia de configuración y, en el paso 5.5,
 las matrículas y valores especiales del año en preparación. La fase 6 agrega la
-vista previa de activación y la marca de salida.
+vista previa de activación y la marca de salida. La fase 7, de dónde sale lo
+del año pasado de una clase (`CLASES_DE_ORIGEN_SQL`).
 """
 
 # Id del año activo como subconsulta, para escribirlo dentro del mismo INSERT
@@ -20,6 +21,24 @@ vista previa de activación y la marca de salida.
 # que el alta lo sembrara). La columna todavia lo admite; la migracion B
 # inserta el año que falte antes de volverla obligatoria.
 ANIO_ACTIVO_ID_SQL = "(SELECT id FROM anios_lectivos WHERE estado = 'activo')"
+
+# Fase 7 (decisiones 14 y 15): las clases del año pasado de donde se trae el
+# planeador y los planes de una clase. Son las de la misma materia en el curso
+# del que se copió el curso de esta clase (`cursos.curso_origen_id`, paso 5.4),
+# de cualquier profesor y activas o no: lo traído sigue al curso y la materia,
+# no a la persona, y si la materia cambió de profesor a mitad de año, la clase
+# del que se fue quedó desactivada. Un curso creado desde cero no tiene origen,
+# y una materia que no se dictaba allí no encuentra ninguna. Un `%s`: el id de
+# la clase de este año. Es una constante del código; se puede interpolar.
+CLASES_DE_ORIGEN_SQL = """
+    SELECT origen.id
+    FROM asignaciones destino
+    JOIN cursos curso_destino ON curso_destino.id = destino.curso_id
+    JOIN asignaciones origen
+      ON origen.curso_id = curso_destino.curso_origen_id
+     AND origen.materia_id = destino.materia_id
+    WHERE destino.id = %s
+"""
 
 
 def condicion_anio(columna, anio_lectivo_id=None):

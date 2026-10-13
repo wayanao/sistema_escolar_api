@@ -394,6 +394,82 @@ def obtener_conceptos_mensuales_estudiante(
     return conceptos
 
 
+def obtener_motivos_personalizados_estudiante(cursor, estudiante_id: int) -> dict[int, Optional[str]]:
+    """El motivo de cada valor personalizado vigente del estudiante."""
+    if not _tabla_valores_estudiantes_existe(cursor):
+        return {}
+
+    cursor.execute(
+        """
+        SELECT tipo_pago_id, motivo
+        FROM tipos_pagos_estudiantes
+        WHERE estudiante_id = %s AND activo = TRUE
+        """,
+        (estudiante_id,),
+    )
+    return {row[0]: row[1] for row in cursor.fetchall()}
+
+
+def obtener_valores_pago_estudiante(cursor, estudiante_id: int, anio_lectivo_id=None):
+    """Lo que se le cobra al estudiante en un año, concepto por concepto.
+
+    Devuelve `(curso_id, conceptos)`; sin `anio_lectivo_id`, el año activo.
+    Son los mismos conceptos que cuenta `_calcular_deudas` (activos, no
+    opcionales y con precio en el curso de su matricula), aunque todavia no
+    deba nada: en noviembre de 2026 la mensualidad de 2027 no tiene cuotas
+    vencidas y la ruta de deudas no la trae. Cada uno con el precio de su curso,
+    su valor personalizado si tiene y lo que paga; los tres salen de
+    `_valor_unitario_concepto`, la regla de los cobros, asi que lo que se ve es
+    lo que se cobra. Solo lee.
+    """
+    datos = obtener_curso_estudiante(cursor, estudiante_id, **con_anio(anio_lectivo_id))
+    if not datos:
+        raise _sin_curso_en_el_anio(anio_lectivo_id)
+
+    curso_id = datos[0]
+    asignaciones_curso = obtener_asignaciones_cobro_por_curso(cursor, curso_id)
+    valores_estudiante = obtener_valores_personalizados_estudiante(cursor, estudiante_id)
+    motivos = (
+        obtener_motivos_personalizados_estudiante(cursor, estudiante_id)
+        if valores_estudiante
+        else {}
+    )
+    conceptos = []
+
+    for tipo_pago in obtener_tipos_pago(cursor, **con_anio(anio_lectivo_id)):
+        tipo_cobro = normalizar_concepto(tipo_pago["tipo_cobro"] or "unico")
+        if not tipo_pago["activo"] or tipo_cobro == "opcional":
+            continue
+
+        # La misma regla dos veces: sin el valor del estudiante da el precio
+        # de su curso; con el, lo que paga.
+        precio_curso, _origen = _valor_unitario_concepto(
+            tipo_pago=tipo_pago,
+            asignaciones_curso=asignaciones_curso,
+            valores_estudiante={},
+        )
+        if precio_curso is None:
+            continue
+        valor_a_pagar, origen = _valor_unitario_concepto(
+            tipo_pago=tipo_pago,
+            asignaciones_curso=asignaciones_curso,
+            valores_estudiante=valores_estudiante,
+        )
+        personalizado = origen == "estudiante"
+
+        conceptos.append({
+            "tipo_pago_id": tipo_pago["id"],
+            "nombre": tipo_pago["nombre"],
+            "tipo_cobro": tipo_cobro,
+            "precio_curso": max(0.0, float(precio_curso or 0)),
+            "valor_personalizado": valor_a_pagar if personalizado else None,
+            "motivo": motivos.get(tipo_pago["id"]) if personalizado else None,
+            "valor_a_pagar": max(0.0, float(valor_a_pagar or 0)),
+        })
+
+    return curso_id, conceptos
+
+
 def obtener_cuotas_vencidas_estudiante(
     cursor,
     estudiante_id: int,

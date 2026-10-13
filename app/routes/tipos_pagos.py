@@ -17,6 +17,7 @@ from app.controllers.tipos_pagos_controller import (
     upsert_cursos_asignados,
     eliminar_curso_asignado,
     listar_valores_personalizados_estudiante,
+    listar_valores_pago_estudiante,
     upsert_valor_personalizado_estudiante,
     eliminar_valor_personalizado_estudiante,
     MigracionPendienteError,
@@ -241,6 +242,22 @@ def get_valores_personalizados_estudiante(
         raise HTTPException(status_code=409, detail=str(e))
     except AnioLectivoInexistenteError as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.get('/estudiantes/{estudiante_id}/valores-pago')
+def get_valores_pago_estudiante(
+    estudiante_id: int,
+    anio_lectivo_id: Annotated[Optional[int], Query(gt=0)] = None,
+):
+    """Lo que se le cobra al estudiante en un año, con el precio de su curso y
+    su valor personalizado; sin `anio_lectivo_id`, el año activo. Solo lee."""
+    try:
+        return listar_valores_pago_estudiante(
+            estudiante_id, anio_lectivo_id=anio_lectivo_id
+        )
+    except ValueError as e:
+        # Año inexistente o estudiante sin matrícula en ese año.
+        raise HTTPException(status_code=404, detail=str(e)) from e
 
 
 @router.put('/estudiantes/{estudiante_id}/valores-pago-personalizados/{tipo_pago_id}')

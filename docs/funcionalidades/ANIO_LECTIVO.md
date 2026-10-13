@@ -27,9 +27,12 @@
   el planeador del año pasado) en `16c9052` y paso 7.2 (backend: los planes de
   clase del año pasado) en `c5dd384`. Con él, el backend de la fase 7 quedó
   completo. Paso 7.3 (frontend: el botón del planeador) en `df2afe3` y paso
-  7.4 (frontend: usar un plan del año pasado) terminado localmente, sin
-  commit. Con él, la fase 7 queda completa en código en los dos repos; falta
-  su revisión con un profesor de prueba en el ensayo.** El paso 5.10 quedó en
+  7.4 (frontend: usar un plan del año pasado) en `4e71c2b`. Con él, la fase 7
+  queda completa en código en los dos repos; falta su revisión con un profesor
+  de prueba en el ensayo. El 2026-10-12, ajustes pedidos por el usuario (ver
+  "Ajustes pedidos por el usuario el 2026-10-12" al final de la fase 5): dos
+  en el frontend y la ruta de solo lectura `GET
+  /estudiantes/{id}/valores-pago` aquí, todos sin commit.** El paso 5.10 quedó en
   `82675ba`; el ajuste posterior de navegación del frontend, en `365d083`. El
   paso 5.9 quedó en `0689b7d` y su registro en este repo en
   `53da8f0`. El
@@ -98,7 +101,7 @@
   fase 1, el relleno los marcaría como 2026; entre la fase 1 y la 5 no existe
   todavía un año 2027 donde ponerlos. Al 2026-09-30 no hay ninguno
   registrado (confirmado por el usuario).
-- Última actualización: 2026-10-10.
+- Última actualización: 2026-10-12.
 
 ## Objetivo
 
@@ -2783,6 +2786,52 @@ se adelantó aquí.
   pasa **2096 pruebas**, Ruff y `pip check` con una `DATABASE_URL` ficticia.
   `git diff --check` queda limpio en ambos repos.
 
+**Ajustes pedidos por el usuario el 2026-10-12, después de la fase 7** (no
+estaban en los documentos; el usuario los pidió y autorizó uno por uno):
+
+- **Frontend, sin cambios aquí:** la copia de configuración explica cada
+  casilla, y en la sección de matricular se pueden editar los datos de un
+  estudiante con el formulario y el `PUT /estudiantes/{id}` de siempre.
+  Detalle en los "Ajuste del 2026-10-12" del documento del frontend.
+- **Valores de pago al matricular.** El usuario quiere, al pasar a un
+  estudiante de curso, ver el precio de cada concepto de su curso nuevo y
+  personalizar lo que pagará. Decidió verlo **en la misma sección de
+  matricular** (se descartó un botón que llevara a Pagos) y con **todos los
+  conceptos que se cobran**, no solo la mensualidad. Hace falta backend: la
+  ruta de deudas solo trae conceptos con deuda, y en noviembre de 2026 la
+  mensualidad de 2027 no debe nada (comprobado con `calcular_deuda_concepto`:
+  mensual 2027 el 15-nov-2026 → deuda 0; anual → deuda completa). Se le
+  explicó y eligió hacer primero el backend. Se descartó que el frontend
+  calculara el precio con la lista de conceptos: la regla es del backend
+  (decisión 11).
+- **Paso de backend, terminado localmente sin commit:** `GET
+  /estudiantes/{id}/valores-pago?anio_lectivo_id=`, solo admin y solo de
+  lectura. `cobros.obtener_valores_pago_estudiante` recorre los mismos
+  conceptos que `_calcular_deudas` (activos, no opcionales, con precio en el
+  curso de la matrícula de ese año) y llama dos veces a
+  `_valor_unitario_concepto`: sin el valor del estudiante da `precio_curso`;
+  con él, `valor_a_pagar` (y `valor_personalizado` si viene de él). El motivo
+  sale de `obtener_motivos_personalizados_estudiante`, que solo corre si hay
+  algún valor personalizado. Controlador
+  `tipos_pagos_controller.listar_valores_pago_estudiante` (valida el año si
+  llega y siempre cierra la conexión); ruta en `app/routes/tipos_pagos.py`,
+  `404` con el mensaje para un año inexistente o sin matrícula. Guardar y
+  quitar siguen por `PUT` y `DELETE` de `valores-pago-personalizados`, sin
+  cambios.
+- Pruebas: 14 nuevas en `tests/test_anio_lectivo_valores_pago.py`, escritas
+  antes del código (fallaron las 14). Entre ellas, una que compara con
+  `_calcular_deudas`: mismos conceptos y mismo valor, para que lo que se vea
+  sea lo que se cobra. Ajustada a propósito: la prueba que fija las rutas del
+  dominio de pagos (`test_pagos_escrituras_caracterizacion.py`, 19 → 20; sigue
+  exigiendo admin y rutas síncronas). `scripts/verify.py` → **2279 pruebas
+  pasan, 0 fallan**, Ruff y `pip check` limpios con una `DATABASE_URL`
+  ficticia; `git diff --check` limpio. Documentado en
+  `docs/API_ENDPOINTS.md` y `docs/CAMBIOS_BACKEND.md`. Sin migración, sin
+  bases reales.
+- **Siguiente paso, sin empezar:** el recuadro "Valores de pago" en el
+  frontend. Antes de usarlo en producción, el usuario sube este backend y
+  espera a que Render quede **Live**.
+
 ### Fase 6 — Activar el año nuevo, cerrar y reabrir (antes de iniciar clases 2027)
 
 1. Migración: marca "no continúa" en `matriculas` (decisión 9) y tabla
@@ -3824,15 +3873,22 @@ cosa, gana lo que se pueda verificar.
   la fase 7.** Sin migración, sin frontend, sin bases reales. **El 7.3, el
   botón del planeador (frontend)**, quedó en `df2afe3`; el contrato de las
   cuatro rutas está anotado en el documento del frontend. **El 7.4, "Usar un
-  plan del año pasado" (frontend)**, quedó terminado localmente, sin commit.
+  plan del año pasado" (frontend)**, quedó en `4e71c2b`.
   **Con él, la fase 7 queda completa en código en los dos repos.** Falta su
   revisión con un profesor de prueba, que es parte del ensayo de abajo.
-- **Siguiente acción exacta:** el usuario revisa y hace el commit del 7.4 en
-  el frontend y el de este registro aquí. Después, cada cosa con su
-  autorización:
-  1. Subir la fase 7: primero el backend, esperando a que Render quede
-     **Live**, y después el frontend, que usa las rutas nuevas. Sin un año
-     2027 activo, nada de esto se ve en producción.
+- **Ajustes del 2026-10-12, pedidos por el usuario** (ver el final de la fase
+  5): en el frontend, la explicación de las casillas de la copia y "Editar
+  datos" en la sección de matricular; aquí, la ruta de solo lectura `GET
+  /estudiantes/{id}/valores-pago` para "Valores de pago" al matricular. Todo
+  terminado localmente, sin commit. Sin subir a GitHub al empezar: 4 commits
+  aquí (`16c9052` a `144f93b`) y 2 en el frontend (`df2afe3`, `4e71c2b`).
+- **Siguiente acción exacta:** el usuario revisa y hace el commit de la ruta
+  `valores-pago` aquí, y el de los dos ajustes en el frontend. El siguiente
+  paso, sin empezar y con su visto bueno, es el recuadro "Valores de pago" en
+  el frontend. Después, cada cosa con su autorización:
+  1. Subir la fase 7 y la ruta `valores-pago`: primero el backend, esperando
+     a que Render quede **Live**, y después el frontend, que usa las rutas
+     nuevas. Sin un año 2027 activo, la fase 7 no se ve en producción.
   2. Antes del ensayo, en el SQL Editor de Neon (solo lectura), la consulta
      de faltas sin clase del paso 3.5b, que sigue pendiente.
   3. Rotar la contraseña de `neondb_owner`, si no se hizo.

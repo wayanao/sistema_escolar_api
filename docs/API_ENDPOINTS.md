@@ -934,6 +934,42 @@ el usuario el 2026-10-02). Con un curso del año activo, el resto es como antes.
 - `GET /estudiantes/{estudiante_id}/valores-pago-personalizados`
 - `PUT /estudiantes/{estudiante_id}/valores-pago-personalizados/{tipo_pago_id}`
 - `DELETE /estudiantes/{estudiante_id}/valores-pago-personalizados/{tipo_pago_id}`
+- `GET /estudiantes/{estudiante_id}/valores-pago`
+
+`GET /estudiantes/{estudiante_id}/valores-pago?anio_lectivo_id=` (año
+lectivo, 2026-10-12; solo admin, solo lee): lo que se le cobra al estudiante en
+ese año, concepto por concepto. Sin el año, el activo. Son los mismos conceptos
+que cuenta el cálculo de deudas (activos, no opcionales y con precio en el curso
+de su matrícula de ese año), **aunque todavía no deba nada**: a diferencia de
+`GET /estudiantes/{id}/deudas`, que solo trae conceptos con deuda, aquí sale la
+mensualidad de un año que no ha empezado. Los valores salen de la regla de los
+cobros (`_valor_unitario_concepto`), así que coinciden con lo que se cobra.
+
+```json
+{
+  "estudiante_id": 7,
+  "anio_lectivo_id": 3,
+  "curso_id": 20,
+  "conceptos": [
+    {
+      "tipo_pago_id": 12,
+      "nombre": "MENSUALIDAD",
+      "tipo_cobro": "mensual",
+      "precio_curso": 200000.0,
+      "valor_personalizado": 180000.0,
+      "motivo": "Beca parcial",
+      "valor_a_pagar": 180000.0
+    }
+  ]
+}
+```
+
+`precio_curso` es el precio del curso (o el valor base del concepto si el
+curso lo tiene en `0`); `valor_personalizado` y `motivo` son `null` sin valor
+personalizado; `valor_a_pagar` es lo que paga. Un año inexistente o un
+estudiante sin matrícula en ese año responden `404` con el mensaje en `detail`.
+Para guardar o quitar un valor se siguen usando `PUT` y `DELETE` de
+`valores-pago-personalizados`.
 
 Desde la fase 5.6, el `GET` de valores personalizados acepta
 `?anio_lectivo_id=`. Si se omite, conserva el año activo. La lectura toma el

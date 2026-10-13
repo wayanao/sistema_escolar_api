@@ -9,6 +9,7 @@ from app.services.anio_lectivo import (
     exigir_anio_lectivo,
     exigir_concepto_editable_para_admin,
 )
+from app.services.cobros import con_anio, obtener_valores_pago_estudiante
 
 logger = logging.getLogger(__name__)
 
@@ -694,6 +695,34 @@ def listar_valores_personalizados_estudiante(
     finally:
         cursor.close()
         conn.close()
+
+
+def listar_valores_pago_estudiante(estudiante_id, anio_lectivo_id=None):
+    """Lo que se le cobra al estudiante en un año, con el precio de su curso,
+    su valor personalizado y lo que paga. Sin `anio_lectivo_id`, el activo.
+
+    Solo lee. Para el recuadro "Valores de pago" de la sección de matricular
+    (pedido del usuario, 2026-10-12). Un año inexistente o un estudiante sin
+    matrícula en ese año lanzan `ValueError` con el mensaje listo para mostrar.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        if anio_lectivo_id is not None:
+            exigir_anio_lectivo(cursor, anio_lectivo_id)
+        curso_id, conceptos = obtener_valores_pago_estudiante(
+            cursor, estudiante_id, **con_anio(anio_lectivo_id)
+        )
+    finally:
+        cursor.close()
+        conn.close()
+
+    return {
+        "estudiante_id": estudiante_id,
+        "anio_lectivo_id": anio_lectivo_id,
+        "curso_id": curso_id,
+        "conceptos": conceptos,
+    }
 
 
 def upsert_valor_personalizado_estudiante(

@@ -261,7 +261,7 @@ def _rutas(*routers):
     }
 
 
-def test_la_frontera_http_del_dominio_son_diecinueve_entradas_admin_sincronas():
+def test_la_frontera_http_del_dominio_son_veinte_entradas_admin_sincronas():
     rutas = _rutas(rutas_pagos.router, rutas_tipos_pagos.router)
 
     esperadas = {
@@ -284,10 +284,13 @@ def test_la_frontera_http_del_dominio_son_diecinueve_entradas_admin_sincronas():
         ("/estudiantes/{estudiante_id}/valores-pago-personalizados", "GET"),
         ("/estudiantes/{estudiante_id}/valores-pago-personalizados/{tipo_pago_id}", "PUT"),
         ("/estudiantes/{estudiante_id}/valores-pago-personalizados/{tipo_pago_id}", "DELETE"),
+        # Año lectivo, 2026-10-12: lo que se le cobra a un estudiante en un
+        # año, para "Valores de pago" en la sección de matricular. Solo lee.
+        ("/estudiantes/{estudiante_id}/valores-pago", "GET"),
     }
 
     assert set(rutas) == esperadas
-    assert len(rutas) == 19
+    assert len(rutas) == 20
 
     for (path, metodo), ruta in rutas.items():
         assert ruta.status_code is None, f"{metodo} {path} fijaba status_code"

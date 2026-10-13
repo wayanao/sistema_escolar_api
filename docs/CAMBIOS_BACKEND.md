@@ -1,10 +1,45 @@
 # Cambios Backend
 
-Ultima revision documental: 2026-10-10.
+Ultima revision documental: 2026-10-12.
 
 ## Proposito
 
 Bitacora de cambios documentales y tecnicos observables del backend.
+
+## 2026-10-12 - Año lectivo: valores de pago de un estudiante en un año
+
+Pedido del usuario: en la sección de matricular del frontend, ver lo que se le
+cobrará a cada estudiante en el año siguiente y personalizarlo. Ver
+`docs/funcionalidades/ANIO_LECTIVO.md`.
+
+### Qué cambia
+
+- Ruta nueva, solo de lectura y solo admin:
+  `GET /estudiantes/{estudiante_id}/valores-pago?anio_lectivo_id=`. Devuelve
+  cada concepto que se le cobra en ese año con `precio_curso`,
+  `valor_personalizado`, `motivo` y `valor_a_pagar`. Contrato en
+  `docs/API_ENDPOINTS.md`, "Tipos de pagos".
+- Hacía falta porque `GET /estudiantes/{id}/deudas` solo trae conceptos con
+  deuda: en noviembre de 2026 la mensualidad de 2027 no debe nada y no sale
+  (comprobado con `calcular_deuda_concepto`).
+- `app/services/cobros.py`: `obtener_valores_pago_estudiante`, que usa la
+  misma regla de precios de los cobros (`_valor_unitario_concepto`), y
+  `obtener_motivos_personalizados_estudiante`, que solo corre si el
+  estudiante tiene algún valor personalizado.
+- No cambia ningún cálculo, ninguna ruta existente ni ninguna escritura.
+  Guardar y quitar valores siguen por `PUT` y `DELETE` de
+  `valores-pago-personalizados`. Sin migración, sin acceso a una base real.
+
+### Pruebas
+
+`tests/test_anio_lectivo_valores_pago.py`, 14 pruebas, escritas antes del
+código (fallaron las 14). Comprueban los conceptos que salen y los que no
+(opcional, inactivo, sin precio en el curso), el precio base cuando el curso lo
+tiene en `0`, una beca completa en `0`, que coincide con el cálculo de deudas,
+el año activo sin parámetro, el error sin matrícula, que la conexión siempre se
+cierra y la ruta (solo admin, año opcional, `404`). Ajustada a propósito:
+`test_pagos_escrituras_caracterizacion.py` fija las rutas del dominio, de 19 a
+20. `scripts/verify.py`: 2279 pruebas, Ruff y `pip check` limpios.
 
 ## 2026-10-10 - Año lectivo 7.2: usar un plan de clases del año pasado
 

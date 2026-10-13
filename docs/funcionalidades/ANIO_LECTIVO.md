@@ -2842,6 +2842,24 @@ estaban en los documentos; el usuario los pidió y autorizó uno por uno):
   especiales del año sin mirar `tpe.activo`, y quitar un valor solo lo
   desactiva; así, el conteo del resumen no baja al volver al precio del curso.
   Sería un cambio aparte, pequeño, si el usuario lo quiere.
+- El recuadro "Valores de pago" quedó en el commit `93c0c22` del frontend.
+- **Hecho después, solo en el frontend (sin commit):** la página de años
+  lectivos dice qué está pasando mientras trabaja: spinner en lo que carga o
+  guarda, y un aviso al copiar la configuración y al activar ("puede tardar
+  unos segundos; no cierres ni recargues la página; si algo falla, no cambia
+  nada"). Esa última frase se comprobó aquí: `copiar_configuracion_anio_controller`
+  y `activar_anio_controller` corren en un solo `get_cursor(commit=True)`, que
+  deshace todo si algo falla. Detalle en el documento del frontend.
+- **Pregunta del usuario, sin decidir:** ¿se puede deshacer la preparación? No
+  hay ninguna ruta para borrar un año, una matrícula, un curso ni un concepto.
+  Se puede desactivar cursos y conceptos, borrar o cambiar clases, quitar
+  valores personalizados, anular pagos y quitar marcas de salida. **No se
+  puede quitar ni cambiar de curso una matrícula del año en preparación**: el
+  error de matricular en el curso equivocado no tiene arreglo desde la app, y
+  marca y matrícula se excluyen. Se le propuso agregar "Quitar o cambiar la
+  matrícula de 2027" antes de noviembre (backend y frontend; decidir qué pasa
+  con pagos de matrícula 2027 y valores copiados), y no hacer un "deshacer
+  todo". Espera su decisión.
 
 ### Fase 6 — Activar el año nuevo, cerrar y reabrir (antes de iniciar clases 2027)
 
@@ -3893,11 +3911,13 @@ cosa, gana lo que se pueda verificar.
   "Valores de pago" (sin commit); aquí, la ruta de solo lectura `GET
   /estudiantes/{id}/valores-pago` que usa ese recuadro (`1a732cc`). Nada de
   esto, ni la fase 7, está en GitHub todavía.
-- **Siguiente acción exacta:** la ruta `valores-pago` quedó en `1a732cc` y los
-  dos primeros ajustes del frontend en `bf8289e` y `6853db0`. El recuadro
-  "Valores de pago" del frontend quedó terminado localmente: el usuario lo
-  revisa en local (rama de Neon o Colegio Demo, nunca con estudiantes de
-  `tenant_2005`) y hace su commit. Después, cada cosa con su autorización:
+- **Siguiente acción exacta:** la ruta `valores-pago` quedó en `1a732cc`; en
+  el frontend, los ajustes en `bf8289e`, `6853db0` y `93c0c22`. Los avisos de
+  "qué está pasando" de la página de años lectivos quedaron terminados
+  localmente: el usuario los revisa en local (rama de Neon o Colegio Demo,
+  nunca con estudiantes de `tenant_2005`) y hace su commit. Pendiente de su
+  decisión: "Quitar o cambiar la matrícula de 2027" (ver el final de la fase
+  5). Después, cada cosa con su autorización:
   1. Subir la fase 7 y la ruta `valores-pago`: primero el backend, esperando
      a que Render quede **Live**, y después el frontend, que usa las rutas
      nuevas. Sin un año 2027 activo, la fase 7 no se ve en producción.

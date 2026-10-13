@@ -71,6 +71,10 @@ class ActivacionInconsistenteError(Exception):
     """Una comprobación final falló; la transacción se deshace entera."""
 
 
+class EstudianteNoReingresableError(Exception):
+    """Quien ya es estudiante no puede matricularse así desde una admisión."""
+
+
 def _formatear_anio(row):
     return {
         "id": row[0],
@@ -817,28 +821,40 @@ def _valores_globales_estudiante(est):
     )
 
 
+def _crear_estudiante_en_preparacion(cursor, destino, est):
+    """Ficha nueva y solo su matrícula del año en preparación: `(id, matrícula)`.
+
+    La usan el alta directa (paso 5.5) y la matrícula desde una admisión
+    (entrevista de admisión, paso E3), cada una en su transacción.
+    """
+    _exigir_curso_del_anio(
+        cursor,
+        est.curso_id,
+        destino[0],
+        "seleccionado",
+        "año en preparación",
+    )
+    estudiante_id = estudiantes_repository.insertar_estudiante(
+        cursor, _valores_globales_estudiante(est)
+    )
+    matricula_id = anios_lectivos_repository.insertar_matricula_en_anio(
+        cursor, estudiante_id, est.curso_id, destino[0]
+    )
+    # Al no tener matrícula activa, esta sincronización conserva NULL.
+    anios_lectivos_repository.sincronizar_curso_vigente(
+        cursor, estudiante_id
+    )
+    return estudiante_id, matricula_id
+
+
 def crear_estudiante_en_preparacion_controller(anio_destino_id, est):
     """Crea datos globales y solo la matrícula del año en preparación."""
     with get_cursor(commit=True) as cursor:
         _activo, destino = _contexto_matricula_en_preparacion(
             cursor, anio_destino_id
         )
-        _exigir_curso_del_anio(
-            cursor,
-            est.curso_id,
-            destino[0],
-            "seleccionado",
-            "año en preparación",
-        )
-        estudiante_id = estudiantes_repository.insertar_estudiante(
-            cursor, _valores_globales_estudiante(est)
-        )
-        matricula_id = anios_lectivos_repository.insertar_matricula_en_anio(
-            cursor, estudiante_id, est.curso_id, destino[0]
-        )
-        # Al no tener matrícula activa, esta sincronización conserva NULL.
-        anios_lectivos_repository.sincronizar_curso_vigente(
-            cursor, estudiante_id
+        estudiante_id, matricula_id = _crear_estudiante_en_preparacion(
+            cursor, destino, est
         )
 
     return {
@@ -849,4 +865,85 @@ def crear_estudiante_en_preparacion_controller(anio_destino_id, est):
         "curso_id": est.curso_id,
         "curso_vigente_id": None,
         "valores_especiales_copiados": [],
+    }
+
+
+def _exigir_reingreso_posible(existente, activo, destino):
+    nombre = " ".join(
+        parte for parte in (existente["nombre"], existente["apellido"]) if parte
+    )
+    if existente["matricula_destino_id"] is not None:
+        raise EstudianteNoReingresableError(
+            f"{nombre} ya tiene matrícula en {destino[1]}."
+        )
+    if existente["curso_activo_id"] is not None and existente["estado"] == "activo":
+        raise EstudianteNoReingresableError(
+            f"{nombre} estudia en {activo[1]}: pásalo a {destino[1]} desde la "
+            "promoción (Matricular estudiantes)."
+        )
+    if existente["curso_activo_id"] is not None and existente["estado_salida"]:
+        # Como en la promoción (6.2b): marca de salida y matrícula siguiente
+        # se excluyen.
+        raise EstudianteNoReingresableError(
+            f"{nombre} está marcado como que no sigue en {destino[1]}. Quita la "
+            "marca antes de matricularlo."
+        )
+
+
+def matricular_aspirante_en_preparacion(cursor, anio_destino_id, est):
+    """Matrícula de un aspirante aprobado (entrevista de admisión, paso E3).
+
+    Corre dentro de la transacción de quien llama (`admisiones_controller`),
+    que además copia los datos de la entrevista y enlaza la admisión: todo o
+    nada.
+
+    - El aspirante queda `activo`, diga lo que diga la ficha: se está
+      matriculando.
+    - Si el documento de la ficha no es de nadie, se crea como en el alta
+      directa del paso 5.5.
+    - Si es de un estudiante (un exalumno que vuelve, decisión 11), se usa su
+      mismo registro: se actualiza su ficha como en `PUT /estudiantes/{id}` y
+      conserva su historial. No vale para quien ya tiene matrícula en el año
+      en preparación, para quien estudia en el año activo (va por la
+      promoción) ni para quien está marcado como que no sigue.
+    """
+    activo, destino = _contexto_matricula_en_preparacion(cursor, anio_destino_id)
+    est = est.model_copy(update={"estado": "activo"})
+
+    existente = None
+    if est.documento_identidad:
+        existente = anios_lectivos_repository.leer_estudiante_para_reingreso(
+            cursor, est.documento_identidad, activo[0], destino[0]
+        )
+
+    if existente is None:
+        estudiante_id, matricula_id = _crear_estudiante_en_preparacion(
+            cursor, destino, est
+        )
+    else:
+        _exigir_reingreso_posible(existente, activo, destino)
+        _exigir_curso_del_anio(
+            cursor,
+            est.curso_id,
+            destino[0],
+            "seleccionado",
+            "año en preparación",
+        )
+        estudiante_id = existente["id"]
+        estudiantes_repository.actualizar_estudiante(
+            cursor, (*_valores_globales_estudiante(est), estudiante_id)
+        )
+        matricula_id = anios_lectivos_repository.insertar_matricula_en_anio(
+            cursor, estudiante_id, est.curso_id, destino[0]
+        )
+        # El curso vigente sigue siendo el de su matrícula activa, si tiene.
+        anios_lectivos_repository.sincronizar_curso_vigente(cursor, estudiante_id)
+
+    return {
+        "estudiante_id": estudiante_id,
+        "matricula_id": matricula_id,
+        "anio_lectivo_id": destino[0],
+        "anio": destino[1],
+        "curso_id": est.curso_id,
+        "estudiante_existente": existente is not None,
     }

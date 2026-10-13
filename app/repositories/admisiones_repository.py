@@ -215,3 +215,79 @@ def buscar_estudiante_con_documento(cursor, documento, excluir_id=None):
         params.append(excluir_id)
     cursor.execute(sql + " LIMIT 1", tuple(params))
     return _como_diccionario(cursor.fetchone(), ("id", "nombre", "apellido", "estado"))
+
+
+# ---------------------------------------------------------------------------
+# Paso E3: resultado y matrícula.
+# ---------------------------------------------------------------------------
+
+# Lo que salió del formulario del estudiante y pasó a la entrevista (decisión
+# 6). Al matricular se copia a las columnas que el estudiante ya tiene
+# (decisión 7), para que la ficha lo lea en un solo lugar.
+COLUMNAS_COPIADAS_A_ESTUDIANTE = (
+    "colegio_anterior",
+    "anio_cursado_anterior",
+    "pre_escolar_anterior",
+    "ebp_anterior",
+    "motivo_retiro_anterior",
+    "paz_salvo_anterior",
+    "ocupacion_padre",
+    "ocupacion_madre",
+)
+
+
+def guardar_resultado(cursor, admision_id, resultado, motivo):
+    """Guarda el resultado y cuándo se decidió. Devuelve cuántas filas cambió.
+
+    Volver a `pendiente` borra la fecha de la decisión. No cambia una admisión
+    matriculada: en ese caso devuelve 0.
+    """
+    cursor.execute(
+        """
+        UPDATE admisiones
+        SET resultado = %s, motivo_resultado = %s,
+            decidido_en = CASE WHEN %s THEN CURRENT_TIMESTAMP ELSE NULL END,
+            actualizado_en = CURRENT_TIMESTAMP
+        WHERE id = %s AND estudiante_id IS NULL
+        """,
+        (resultado, motivo, resultado != "pendiente", admision_id),
+    )
+    return cursor.rowcount
+
+
+def copiar_datos_a_estudiante(cursor, admision_id, estudiante_id):
+    """Copia a la ficha lo que pasó a la entrevista. Devuelve cuántas filas cambió.
+
+    Un dato que la entrevista dejó vacío no borra el que el estudiante ya
+    tenía (un exalumno, o lo que traiga la ficha): no se pierde nada.
+    """
+    asignaciones = ", ".join(
+        f"{columna} = COALESCE(a.{columna}, e.{columna})"
+        for columna in COLUMNAS_COPIADAS_A_ESTUDIANTE
+    )
+    cursor.execute(
+        f"""
+        UPDATE estudiantes e
+        SET {asignaciones}
+        FROM admisiones a
+        WHERE a.id = %s AND e.id = %s
+        """,
+        (admision_id, estudiante_id),
+    )
+    return cursor.rowcount
+
+
+def enlazar_estudiante(cursor, admision_id, estudiante_id):
+    """Enlaza la admisión aprobada con su estudiante. Devuelve cuántas cambió.
+
+    Desde aquí la admisión queda de solo consulta.
+    """
+    cursor.execute(
+        """
+        UPDATE admisiones
+        SET estudiante_id = %s, actualizado_en = CURRENT_TIMESTAMP
+        WHERE id = %s AND estudiante_id IS NULL AND resultado = 'aprobado'
+        """,
+        (estudiante_id, admision_id),
+    )
+    return cursor.rowcount

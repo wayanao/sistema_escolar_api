@@ -12,6 +12,7 @@ import json
 import pytest
 
 from app.controllers import admisiones_controller as controlador
+from app.controllers import anios_lectivos_controller as controlador_anios
 from app.routes import admisiones as rutas
 from app.services.anio_lectivo import AnioLectivoInexistenteError
 
@@ -25,6 +26,29 @@ ASPIRANTE = {
     "autoriza_datos": True,
     "autoriza_nombre": "Marta Díaz",
 }
+
+FICHA = {"nombre": "Lina", "apellido": "Díaz", "curso_id": 20}
+RESULTADO = {"resultado": "aprobado"}
+
+TODAS = [
+    ("GET", "/anios-lectivos/3/admisiones", None),
+    ("POST", "/anios-lectivos/3/admisiones", ASPIRANTE),
+    ("GET", "/admisiones/7", None),
+    ("PUT", "/admisiones/7", ASPIRANTE),
+    ("DELETE", "/admisiones/7", None),
+    ("PUT", "/admisiones/7/resultado", RESULTADO),
+    ("POST", "/admisiones/7/matricular", FICHA),
+]
+
+CONTROLADORES = (
+    "listar_admisiones_controller",
+    "registrar_admision_controller",
+    "obtener_admision_controller",
+    "actualizar_admision_controller",
+    "borrar_admision_controller",
+    "cambiar_resultado_controller",
+    "matricular_admision_controller",
+)
 
 
 def peticion(aplicacion, metodo, ruta, cuerpo=None, query=b""):
@@ -111,16 +135,7 @@ def test_la_proteccion_vive_en_el_router():
     assert get_current_active_admin in [d.dependency for d in rutas.router.dependencies]
 
 
-@pytest.mark.parametrize(
-    "metodo,ruta,cuerpo",
-    [
-        ("GET", "/anios-lectivos/3/admisiones", None),
-        ("POST", "/anios-lectivos/3/admisiones", ASPIRANTE),
-        ("GET", "/admisiones/7", None),
-        ("PUT", "/admisiones/7", ASPIRANTE),
-        ("DELETE", "/admisiones/7", None),
-    ],
-)
+@pytest.mark.parametrize("metodo,ruta,cuerpo", TODAS)
 def test_un_profesor_no_entra_a_ninguna(app_profesor, metodo, ruta, cuerpo):
     estado, _ = peticion(app_profesor, metodo, ruta, cuerpo)
 
@@ -142,6 +157,8 @@ def test_las_rutas_son_las_del_documento():
         ("/admisiones/{admision_id}", "GET"),
         ("/admisiones/{admision_id}", "PUT"),
         ("/admisiones/{admision_id}", "DELETE"),
+        ("/admisiones/{admision_id}/resultado", "PUT"),
+        ("/admisiones/{admision_id}/matricular", "POST"),
     }
 
 
@@ -237,27 +254,20 @@ def test_ver_editar_y_borrar_responden_200(app_admin):
         (controlador.AdmisionMatriculadaError("Ya está matriculada."), 409),
         (controlador.CursoAdmisionInvalidoError("Curso de otro año."), 409),
         (controlador.DocumentoAdmisionRepetidoError("Documento repetido."), 409),
+        (controlador.AdmisionNoAprobadaError("No está aprobado."), 409),
+        (controlador.AdmisionMatriculaConflictoError("Choque al matricular."), 409),
+        (controlador_anios.EstudianteNoReingresableError("Estudia hoy."), 409),
+        (controlador_anios.AnioLectivoDestinoInvalidoError("No está en preparación."), 409),
+        (controlador_anios.AnioLectivoActivoInexistenteError("No hay año activo."), 409),
+        (controlador_anios.CursoMatriculaInvalidoError("Curso de otro año."), 409),
     ],
 )
 def test_cada_error_sale_con_su_codigo_y_su_mensaje(app_admin, error, codigo):
     app, doblar, _ = app_admin
-    for nombre in (
-        "listar_admisiones_controller",
-        "registrar_admision_controller",
-        "obtener_admision_controller",
-        "actualizar_admision_controller",
-        "borrar_admision_controller",
-    ):
+    for nombre in CONTROLADORES:
         doblar(nombre, error=error)
 
-    llamadas = [
-        ("GET", "/anios-lectivos/3/admisiones", None),
-        ("POST", "/anios-lectivos/3/admisiones", ASPIRANTE),
-        ("GET", "/admisiones/7", None),
-        ("PUT", "/admisiones/7", ASPIRANTE),
-        ("DELETE", "/admisiones/7", None),
-    ]
-    for metodo, ruta, cuerpo in llamadas:
+    for metodo, ruta, cuerpo in TODAS:
         estado, respuesta = peticion(app, metodo, ruta, cuerpo)
         assert estado == codigo, (metodo, ruta)
         assert respuesta == {"detail": str(error)}
@@ -268,6 +278,62 @@ def test_un_id_que_no_es_positivo_da_422(app_admin):
     doblar("obtener_admision_controller", resultado={"id": 0})
 
     estado, _ = peticion(app, "GET", "/admisiones/0")
+
+    assert estado == 422
+    assert llamadas == []
+
+
+# ---------------------------------------------------------------------------
+# Resultado y matricular (paso E3)
+# ---------------------------------------------------------------------------
+
+
+def test_poner_el_resultado_responde_200(app_admin):
+    app, doblar, llamadas = app_admin
+    doblar("cambiar_resultado_controller", resultado={"id": 7, "resultado": "aprobado"})
+
+    estado, cuerpo = peticion(app, "PUT", "/admisiones/7/resultado", RESULTADO)
+
+    assert estado == 200
+    assert cuerpo == {"id": 7, "resultado": "aprobado"}
+    admision_id, datos = llamadas[0][1]
+    assert admision_id == 7
+    assert datos.resultado == "aprobado"
+
+
+def test_no_aprobado_sin_motivo_da_422_sin_llegar_al_controlador(app_admin):
+    app, doblar, llamadas = app_admin
+    doblar("cambiar_resultado_controller", resultado={})
+
+    estado, cuerpo = peticion(
+        app, "PUT", "/admisiones/7/resultado", {"resultado": "no_aprobado"}
+    )
+
+    assert estado == 422
+    assert "motivo" in json.dumps(cuerpo, ensure_ascii=False)
+    assert llamadas == []
+
+
+def test_matricular_responde_201_con_la_ficha_del_estudiante(app_admin):
+    app, doblar, llamadas = app_admin
+    doblar("matricular_admision_controller", resultado={"estudiante_id": 55})
+
+    estado, cuerpo = peticion(app, "POST", "/admisiones/7/matricular", FICHA)
+
+    assert estado == 201
+    assert cuerpo == {"estudiante_id": 55}
+    admision_id, ficha = llamadas[0][1]
+    assert admision_id == 7
+    assert ficha.curso_id == 20
+
+
+def test_matricular_sin_curso_da_422_sin_llegar_al_controlador(app_admin):
+    app, doblar, llamadas = app_admin
+    doblar("matricular_admision_controller", resultado={})
+
+    estado, _ = peticion(
+        app, "POST", "/admisiones/7/matricular", {"nombre": "Lina", "apellido": "Díaz"}
+    )
 
     assert estado == 422
     assert llamadas == []

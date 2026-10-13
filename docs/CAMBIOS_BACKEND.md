@@ -6,6 +6,38 @@ Ultima revision documental: 2026-10-13.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
+## 2026-10-13 - Entrevista de admisión E3: resultado y matricular desde la admisión
+
+Tercer paso con código de `docs/funcionalidades/ENTREVISTA_ADMISION.md`. El
+usuario decidió que un exalumno que vuelve usa su mismo registro (decisión
+11).
+
+### Qué cambia
+
+- `PUT /admisiones/{id}/resultado`: aprobado, no aprobado (exige motivo) o
+  de vuelta a pendiente; guarda `decidido_en`.
+- `POST /admisiones/{id}/matricular` (`201`): con la ficha del estudiante
+  (cuerpo de `POST /estudiantes`), solo un aprobado y una vez. En una
+  transacción crea la ficha y la matrícula del año en preparación (o usa la
+  del exalumno), copia lo que pasó a la entrevista sin borrar lo que ya
+  había y enlaza la admisión. El estudiante queda `activo`. Contrato en
+  `docs/API_ENDPOINTS.md`, "Admisiones".
+- `anios_lectivos_controller`: lo que crea ficha y matrícula en el alta
+  directa (paso 5.5) pasó a `_crear_estudiante_en_preparacion`, sin cambiar
+  su comportamiento; la nueva `matricular_aspirante_en_preparacion` lo
+  reutiliza. `anios_lectivos_repository.leer_estudiante_para_reingreso`
+  busca al exalumno con sus matrículas de los dos años, bloqueado.
+- No cambia ninguna ruta ni respuesta existente. Sin migración.
+
+### Pruebas
+
+52 nuevas, escritas antes: `tests/test_admisiones_matricular.py` (nuevo) y
+ampliaciones de `test_admisiones_esquema.py`, `test_admisiones_controller.py`
+y `test_admisiones_routes.py`. Las 19 del alta directa
+(`test_anio_lectivo_matriculacion_preparacion.py`) siguen pasando sin
+cambios. `scripts/verify.py`: 2426 pasan, 0 fallan; Ruff y `pip check`
+limpios.
+
 ## 2026-10-13 - Entrevista de admisión E2: registrar, ver, editar y borrar aspirantes
 
 Segundo paso con código de `docs/funcionalidades/ENTREVISTA_ADMISION.md`.

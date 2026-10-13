@@ -21,7 +21,14 @@ manda; la de aquí es la que se lee. Los límites de texto son los `VARCHAR` de
 from datetime import date
 from typing import Annotated, Literal, Optional, get_args
 
-from pydantic import BaseModel, BeforeValidator, Field, StringConstraints, field_validator
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    Field,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
 
 
 ResultadoAdmision = Literal["pendiente", "aprobado", "no_aprobado"]
@@ -31,6 +38,7 @@ MENSAJE_AUTORIZACION_OBLIGATORIA = (
     "La autorización de datos es obligatoria: sin ella no se puede registrar "
     "al aspirante."
 )
+MENSAJE_MOTIVO_OBLIGATORIO = 'Para marcar "No aprobado" hay que escribir el motivo.'
 
 
 def _recortado(valor):
@@ -106,3 +114,21 @@ class AdmisionUpdate(AdmisionCreate):
     vive_con: _opcional(250) = None
     expectativas: _opcional() = None
     observaciones: _opcional() = None
+
+
+class ResultadoAdmisionUpdate(BaseModel):
+    """El resultado de la entrevista (paso E3).
+
+    "No aprobado" exige el motivo (no discriminación, T-510 de 1994), igual
+    que `chk_admisiones_motivo_no_aprobado` en la base. Volver a "pendiente"
+    se permite mientras la admisión no esté matriculada.
+    """
+
+    resultado: ResultadoAdmision
+    motivo_resultado: _opcional() = None
+
+    @model_validator(mode="after")
+    def exigir_motivo(self):
+        if self.resultado == "no_aprobado" and self.motivo_resultado is None:
+            raise ValueError(MENSAJE_MOTIVO_OBLIGATORIO)
+        return self

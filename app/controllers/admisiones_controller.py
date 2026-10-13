@@ -1,7 +1,7 @@
 """Admisiones: aspirantes nuevos del año en preparación y su entrevista.
 
-Ver `docs/funcionalidades/ENTREVISTA_ADMISION.md`, paso E2: registrar,
-listar, ver, editar y borrar. El resultado y la matrícula son del paso E3.
+Ver `docs/funcionalidades/ENTREVISTA_ADMISION.md`: paso E2 (registrar,
+listar, ver, editar y borrar) y paso E3 (resultado y matricular).
 
 Reglas:
 
@@ -10,14 +10,19 @@ Reglas:
 - Una admisión matriculada (con `estudiante_id`) es de solo consulta.
 - El curso, si se elige, es un curso activo del año de la admisión.
 - Un documento no se repite entre los aspirantes de un año. Si ya es de un
-  estudiante del colegio, se avisa pero se registra: qué hacer con quien
-  vuelve es una pregunta abierta para antes del paso E3.
+  estudiante del colegio, se avisa pero se registra: al matricularlo se usa
+  ese mismo estudiante (decisión 11, paso E3).
+- Solo se matricula un aprobado, una vez, en una sola transacción: ficha,
+  matrícula, copia de lo que pasó a la entrevista y enlace.
 
 Los mensajes de los errores son constantes escritas aquí, nunca texto de
 PostgreSQL: las rutas los muestran con `str(exc)`.
 """
 from psycopg2 import IntegrityError
 
+from app.controllers.anios_lectivos_controller import (
+    matricular_aspirante_en_preparacion,
+)
 from app.database import get_cursor
 from app.repositories import admisiones_repository, anios_lectivos_repository
 from app.services.anio_lectivo import exigir_anio_lectivo
@@ -27,6 +32,14 @@ INDICE_DOCUMENTO_POR_ANIO = "idx_admisiones_documento_por_anio"
 
 MENSAJE_ADMISION_INEXISTENTE = "La admisión no existe."
 MENSAJE_ADMISION_MATRICULADA = "Esta admisión ya está matriculada. Solo se puede consultar."
+MENSAJE_NO_APROBADA = "Solo se puede matricular a un aspirante aprobado."
+MENSAJE_MATRICULA_INCOMPLETA = (
+    "No se pudo enlazar la admisión con el estudiante. Nada cambió."
+)
+MENSAJE_ENLAZADO_A_OTRA = (
+    "Este estudiante ya está enlazado a la admisión de otro año. Por ahora un "
+    "estudiante solo puede enlazarse a una admisión."
+)
 
 
 class AdmisionNoEncontradaError(Exception):
@@ -47,6 +60,14 @@ class CursoAdmisionInvalidoError(Exception):
 
 class DocumentoAdmisionRepetidoError(Exception):
     """Otro aspirante del mismo año ya tiene ese documento."""
+
+
+class AdmisionNoAprobadaError(Exception):
+    """Se quiso matricular una admisión pendiente o no aprobada."""
+
+
+class AdmisionMatriculaConflictoError(Exception):
+    """La matrícula chocó con algo guardado a la vez; nada cambió."""
 
 
 def _exigir_preparacion(anio, estado):
@@ -81,11 +102,14 @@ def _exigir_documento_libre(cursor, anio_lectivo_id, anio, documento, excluir_id
         raise DocumentoAdmisionRepetidoError(_mensaje_documento_repetido(documento, anio))
 
 
+def _regla_violada(exc):
+    return getattr(getattr(exc, "diag", None), "constraint_name", None)
+
+
 def _es_documento_repetido(exc):
     # Dos altas a la vez con el mismo documento pasan la comprobación previa;
     # el índice único frena la segunda y aquí se le pone el mismo mensaje.
-    diag = getattr(exc, "diag", None)
-    return getattr(diag, "constraint_name", None) == INDICE_DOCUMENTO_POR_ANIO
+    return _regla_violada(exc) == INDICE_DOCUMENTO_POR_ANIO
 
 
 def _aviso_documento(cursor, fila):
@@ -218,3 +242,81 @@ def borrar_admision_controller(admision_id):
         if admisiones_repository.borrar_admision(cursor, admision_id) != 1:
             raise AdmisionMatriculadaError(MENSAJE_ADMISION_MATRICULADA)
     return {"mensaje": "Admisión borrada", "id": admision_id}
+
+
+def cambiar_resultado_controller(admision_id, datos):
+    """Guarda el resultado de la entrevista (paso E3). No aprobado exige motivo."""
+    with get_cursor(commit=True) as cursor:
+        fila = _leer_admision(cursor, admision_id, bloquear=True)
+        _exigir_admision_editable(fila)
+        cambiadas = admisiones_repository.guardar_resultado(
+            cursor, admision_id, datos.resultado, datos.motivo_resultado
+        )
+        if cambiadas != 1:
+            raise AdmisionMatriculadaError(MENSAJE_ADMISION_MATRICULADA)
+        detalle = _detalle(cursor, _leer_admision(cursor, admision_id))
+    return detalle
+
+
+def _conflicto_de_matricula(exc, est, anio):
+    """El mensaje de un choque con algo guardado a la vez, o `None` si es otro error."""
+    regla = _regla_violada(exc)
+    if regla == "estudiantes_documento_identidad_key":
+        return AdmisionMatriculaConflictoError(
+            f"Ya hay un estudiante con el documento {est.documento_identidad}. "
+            "Vuelve a intentarlo."
+        )
+    if regla == "idx_matriculas_estudiante_anio_unico":
+        return AdmisionMatriculaConflictoError(
+            f"El estudiante ya tiene matrícula en {anio}."
+        )
+    if regla == "admisiones_estudiante_id_key":
+        # La tabla admite una sola admisión por estudiante en toda su vida
+        # (E1); un exalumno que entró por admisión y vuelve otro año choca.
+        return AdmisionMatriculaConflictoError(MENSAJE_ENLAZADO_A_OTRA)
+    return None
+
+
+def matricular_admision_controller(admision_id, est):
+    """Matricula a un aspirante aprobado en el año de su admisión (paso E3).
+
+    Todo en una transacción: la ficha (nueva, o la del exalumno que vuelve) y
+    su matrícula, la copia de lo que pasó a la entrevista y el enlace. Si algo
+    falla, no cambia nada.
+    """
+    with get_cursor(commit=True) as cursor:
+        fila = _leer_admision(cursor, admision_id, bloquear=True)
+        if fila["estudiante_id"] is not None:
+            raise AdmisionMatriculadaError(MENSAJE_ADMISION_MATRICULADA)
+        if fila["resultado"] != "aprobado":
+            raise AdmisionNoAprobadaError(MENSAJE_NO_APROBADA)
+        try:
+            matricula = matricular_aspirante_en_preparacion(
+                cursor, fila["anio_lectivo_id"], est
+            )
+            estudiante_id = matricula["estudiante_id"]
+            copiadas = admisiones_repository.copiar_datos_a_estudiante(
+                cursor, admision_id, estudiante_id
+            )
+            enlazadas = admisiones_repository.enlazar_estudiante(
+                cursor, admision_id, estudiante_id
+            )
+        except IntegrityError as exc:
+            conflicto = _conflicto_de_matricula(exc, est, fila["anio"])
+            if conflicto is None:
+                raise
+            raise conflicto from exc
+        if copiadas != 1 or enlazadas != 1:
+            raise AdmisionMatriculaConflictoError(MENSAJE_MATRICULA_INCOMPLETA)
+        detalle = _detalle(cursor, _leer_admision(cursor, admision_id))
+
+    nombre = " ".join(parte for parte in (est.nombre, est.apellido) if parte)
+    return {
+        "mensaje": f"Matrícula creada en {matricula['anio']} para {nombre}.",
+        "estudiante_id": estudiante_id,
+        "matricula_id": matricula["matricula_id"],
+        "anio_lectivo_id": matricula["anio_lectivo_id"],
+        "curso_id": matricula["curso_id"],
+        "estudiante_existente": matricula["estudiante_existente"],
+        "admision": detalle,
+    }

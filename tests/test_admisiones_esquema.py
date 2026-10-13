@@ -151,3 +151,35 @@ def test_cada_texto_cabe_en_su_columna_y_uno_mas_largo_da_422():
 
 def test_el_filtro_de_resultado_solo_admite_los_tres_resultados():
     assert set(esquemas.RESULTADOS_ADMISION) == {"pendiente", "aprobado", "no_aprobado"}
+
+
+# ---------------------------------------------------------------------------
+# Resultado (paso E3)
+# ---------------------------------------------------------------------------
+
+
+def test_aprobar_no_pide_motivo():
+    datos = esquemas.ResultadoAdmisionUpdate(resultado="aprobado")
+
+    assert datos.motivo_resultado is None
+
+
+@pytest.mark.parametrize("motivo", [None, "", "   "])
+def test_no_aprobado_exige_el_motivo(motivo):
+    with pytest.raises(ValidationError) as exc:
+        esquemas.ResultadoAdmisionUpdate(resultado="no_aprobado", motivo_resultado=motivo)
+
+    assert esquemas.MENSAJE_MOTIVO_OBLIGATORIO in str(exc.value)
+
+
+def test_el_motivo_se_recorta():
+    datos = esquemas.ResultadoAdmisionUpdate(
+        resultado="no_aprobado", motivo_resultado="  Cupo lleno "
+    )
+
+    assert datos.motivo_resultado == "Cupo lleno"
+
+
+def test_un_resultado_inventado_no_vale():
+    with pytest.raises(ValidationError):
+        esquemas.ResultadoAdmisionUpdate(resultado="matriculado")

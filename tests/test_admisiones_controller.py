@@ -152,6 +152,13 @@ def entorno(monkeypatch):
         estado.eventos.append(("documento_estudiante", documento, excluir_id))
         return estado.estudiantes_por_documento.get(documento)
 
+    def guardar_resultado(cursor_recibido, admision_id, resultado, motivo):
+        estado.eventos.append(("resultado", admision_id, resultado, motivo))
+        estado.admisiones[admision_id].update(
+            resultado=resultado, motivo_resultado=motivo
+        )
+        return estado.filas_afectadas
+
     monkeypatch.setattr(controlador, "get_cursor", get_cursor_falso)
     monkeypatch.setattr(controlador, "exigir_anio_lectivo", exigir_anio)
     monkeypatch.setattr(
@@ -166,6 +173,7 @@ def entorno(monkeypatch):
         "contar_admisiones": contar,
         "buscar_admision_con_documento": buscar_admision,
         "buscar_estudiante_con_documento": buscar_estudiante,
+        "guardar_resultado": guardar_resultado,
     }
     for nombre, doble in dobles.items():
         monkeypatch.setattr(controlador.admisiones_repository, nombre, doble)
@@ -491,6 +499,74 @@ def test_si_se_matriculo_mientras_tanto_no_se_borra(entorno):
 
 
 # ---------------------------------------------------------------------------
+# Resultado (paso E3)
+# ---------------------------------------------------------------------------
+
+
+def _resultado(**datos):
+    from app.schemas.admision import ResultadoAdmisionUpdate
+
+    return ResultadoAdmisionUpdate(**datos)
+
+
+def test_aprobar_guarda_el_resultado_con_la_fila_bloqueada(entorno):
+    detalle = controlador.cambiar_resultado_controller(7, _resultado(resultado="aprobado"))
+
+    assert ("leer", 7, True) in entorno.eventos
+    assert ("resultado", 7, "aprobado", None) in entorno.eventos
+    assert detalle["resultado"] == "aprobado"
+    assert entorno.commits == 1
+
+
+def test_no_aprobar_guarda_el_motivo(entorno):
+    controlador.cambiar_resultado_controller(
+        7, _resultado(resultado="no_aprobado", motivo_resultado=" Cupo lleno ")
+    )
+
+    assert ("resultado", 7, "no_aprobado", "Cupo lleno") in entorno.eventos
+
+
+def test_se_puede_volver_a_pendiente_mientras_no_este_matriculada(entorno):
+    entorno.admisiones[7] = _fila(7, resultado="aprobado")
+
+    detalle = controlador.cambiar_resultado_controller(7, _resultado(resultado="pendiente"))
+
+    assert detalle["resultado"] == "pendiente"
+
+
+def test_no_cambia_el_resultado_de_una_matriculada(entorno):
+    entorno.admisiones[7] = _fila(7, resultado="aprobado", estudiante_id=55)
+
+    with pytest.raises(controlador.AdmisionMatriculadaError):
+        controlador.cambiar_resultado_controller(7, _resultado(resultado="pendiente"))
+
+    assert not _hubo(entorno, "resultado")
+
+
+def test_no_cambia_el_resultado_si_el_anio_ya_no_esta_en_preparacion(entorno):
+    entorno.admisiones[7] = _fila(7, anio=2026, estado_anio="activo")
+
+    with pytest.raises(controlador.AnioNoEnPreparacionError):
+        controlador.cambiar_resultado_controller(7, _resultado(resultado="aprobado"))
+
+    assert not _hubo(entorno, "resultado")
+
+
+def test_resultado_de_una_admision_que_no_existe(entorno):
+    with pytest.raises(controlador.AdmisionNoEncontradaError):
+        controlador.cambiar_resultado_controller(404, _resultado(resultado="aprobado"))
+
+
+def test_si_se_matriculo_mientras_tanto_no_cambia_el_resultado(entorno):
+    entorno.filas_afectadas = 0
+
+    with pytest.raises(controlador.AdmisionMatriculadaError):
+        controlador.cambiar_resultado_controller(7, _resultado(resultado="pendiente"))
+
+    assert entorno.rollbacks == 1
+
+
+# ---------------------------------------------------------------------------
 # SQL del repositorio
 # ---------------------------------------------------------------------------
 
@@ -651,3 +727,22 @@ def test_buscar_estudiante_con_el_mismo_documento():
     assert "AND id <> %s" in sql_excluyendo
     assert params_excluyendo == ("2001", 55)
     assert otro is None
+
+
+def test_guardar_resultado_marca_cuando_se_decidio_y_no_toca_una_matriculada():
+    cursor = CursorFalso(rowcount=1)
+
+    filas = repositorio.guardar_resultado(cursor, 7, "no_aprobado", "Cupo lleno")
+    repositorio.guardar_resultado(cursor, 7, "pendiente", None)
+
+    sql, params = cursor.consultas[0]
+    assert filas == 1
+    assert sql == (
+        "UPDATE admisiones SET resultado = %s, motivo_resultado = %s, "
+        "decidido_en = CASE WHEN %s THEN CURRENT_TIMESTAMP ELSE NULL END, "
+        "actualizado_en = CURRENT_TIMESTAMP "
+        "WHERE id = %s AND estudiante_id IS NULL"
+    )
+    assert params == ("no_aprobado", "Cupo lleno", True, 7)
+    # Volver a pendiente borra la fecha de la decisión.
+    assert cursor.consultas[1][1] == ("pendiente", None, False, 7)

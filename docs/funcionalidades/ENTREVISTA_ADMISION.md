@@ -2,14 +2,14 @@
 
 ## Control
 
-- Estado: **Paso E2 escrito el 2026-10-13, sin commit.** Las cinco rutas de
-  registrar, listar, ver, editar y borrar admisiones, solo admin, con sus
-  pruebas (ver "Avance del paso E2"). **El E1 quedó terminado** el mismo día:
-  migración `migrations/20261013_admisiones.sql` probada en la rama de Neon
-  `prueba-entrevista`, esquema base regenerado, commit `4db1f15` en **Live**
-  en Render y migración aplicada en producción por el usuario. El 2026-10-13
-  el usuario confirmó el reparto de campos y las decisiones 7 a 9, y decidió
-  que quien entrevista se escribe a mano (decisión 10).
+- Estado: **Paso E3 escrito el 2026-10-13, sin commit** (resultado y
+  matricular desde la admisión; ver "Avance del paso E3"). Con él, el backend
+  de la funcionalidad queda completo hasta el E6; falta el E7, que va al
+  final. El E2 quedó en el commit `ee8aba2` (sin subir al iniciar el E3). El
+  E1 está terminado: migración en producción y commit `4db1f15` en **Live**.
+  Decisiones del usuario del 2026-10-13: reparto de campos y decisiones 7 a
+  9, quien entrevista a mano (10) y el exalumno que vuelve usa su mismo
+  registro (11).
 - Tipo: función nueva de producto. No es una capa del programa de
   modularización de `docs/modularizacion/`.
 - Repos afectados: este repo (`sistema_escolar_api`) y `frontend-react`. Ver
@@ -109,6 +109,16 @@ pero cambia la tabla de E1):
 10. **Quien entrevista se escribe a mano** (`entrevistador`, texto), no se
     elige de los usuarios del sistema. Así sirve aunque quien entrevista
     (psicoorientación, rectoría) no tenga usuario.
+
+Decidida por el usuario el 2026-10-13, al autorizar el E3:
+
+11. **El exalumno que vuelve usa su mismo registro.** Se le hace la
+    entrevista igual; al matricularlo, si el documento de la ficha ya es de
+    un estudiante, se actualiza esa ficha, queda `activo`, se le crea la
+    matrícula del año en preparación y conserva su historial (notas, pagos,
+    boletines). Motivo: hoy un exalumno sin matrícula en el año activo no
+    tiene ninguna forma de entrar al año siguiente (la promoción no lo
+    muestra y el alta directa falla por el documento repetido).
 
 ## Qué va en cada formulario (decisión 6, confirmada)
 
@@ -251,9 +261,9 @@ WHERE documento_identidad IS NOT NULL;
 ## Rutas (pasos E2 y E3)
 
 Todas solo para admin. Las que escriben exigen que el año de la admisión esté
-en `preparacion` (`409` con mensaje si no). Las cinco del E2 están hechas; su
-contrato completo (cuerpos, respuestas y errores) está en
-`docs/API_ENDPOINTS.md`, sección "Admisiones". Las del E3 siguen siendo
+en `preparacion` (`409` con mensaje si no). Las del E2 y el E3 están hechas;
+su contrato completo (cuerpos, respuestas y errores) está en
+`docs/API_ENDPOINTS.md`, sección "Admisiones". La del E7 sigue siendo
 propuesta.
 
 | Ruta | Qué hace |
@@ -264,7 +274,7 @@ propuesta.
 | `PUT /admisiones/{admision_id}` | Edita datos del aspirante y de la entrevista. No cambia el resultado. `409` si ya está matriculada |
 | `PUT /admisiones/{admision_id}/resultado` | `{ resultado, motivo_resultado }`. `no_aprobado` exige motivo. `409` si ya está matriculada |
 | `DELETE /admisiones/{admision_id}` | Borra una admisión no matriculada (decisión 9) |
-| `POST /admisiones/{admision_id}/matricular` | Cuerpo: la ficha del estudiante (como `POST /anios-lectivos/{id}/estudiantes`). Solo si está `aprobado` y sin estudiante. En una transacción: crea el estudiante y su matrícula en el año de la admisión (reutiliza `crear_estudiante_en_preparacion_controller`), copia los datos movidos a sus columnas y enlaza `estudiante_id` |
+| `POST /admisiones/{admision_id}/matricular` | Cuerpo: la ficha del estudiante (como `POST /anios-lectivos/{id}/estudiantes`). Solo si está `aprobado` y sin estudiante. En una transacción: crea el estudiante (o usa el del exalumno, decisión 11) y su matrícula en el año de la admisión (`matricular_aspirante_en_preparacion`, que reutiliza lo del alta directa), copia los datos movidos a sus columnas y enlaza `estudiante_id` |
 | `POST /anios-lectivos/{id}/estudiantes` (existente) | Paso E7: responde `409` "Un estudiante nuevo en 2027 se matricula desde su entrevista aprobada (Admisiones)." |
 
 ## Plan por pasos (uno a la vez, con el visto bueno del usuario)
@@ -273,8 +283,8 @@ propuesta.
 |---|---|---|
 | E0 | ambos | Este diseño. **Hecho el 2026-10-12** |
 | E1 | backend | Migración `admisiones` y esquema base (rama de Neon; la aplica el usuario). **Hecho el 2026-10-13** (`4db1f15`, aplicada en producción) |
-| E2 | backend | Registrar, listar, ver, editar y borrar admisiones; guardia del año; autorización obligatoria. **Escrito el 2026-10-13, sin commit** |
-| E3 | backend | Resultado y matricular desde la admisión (con la copia de los datos movidos) |
+| E2 | backend | Registrar, listar, ver, editar y borrar admisiones; guardia del año; autorización obligatoria. **Hecho el 2026-10-13** (`ee8aba2`) |
+| E3 | backend | Resultado y matricular desde la admisión (con la copia de los datos movidos). **Escrito el 2026-10-13, sin commit** |
 | E4 | frontend | Página de admisiones: lista, nuevo aspirante, entrevista y resultado; acceso desde la preparación del año |
 | E5 | frontend | Matricular desde una admisión aprobada (ficha con los datos ya puestos); quitar "Crear estudiante en 2027" de Estudiantes y de "Continuar la preparación" |
 | E6 | frontend | Formulario del estudiante sin lo que pasó a la entrevista; "Datos de admisión" de solo lectura en la ficha |
@@ -314,10 +324,19 @@ estudiante en 2027" fallaría en producción.
 - ~~Antes de E4: ¿quién entrevista se escribe a mano (propuesta) o se elige de
   los usuarios del sistema?~~ **Respondida el 2026-10-13, antes de E1 porque
   cambia la tabla: se escribe a mano** (decisión 10).
-- Antes de E3: un aspirante que **ya fue estudiante** del colegio (se retiró y
+- ~~Antes de E3: un aspirante que **ya fue estudiante** del colegio (se retiró y
   vuelve) ya existe en `estudiantes` con su documento. ¿Se le hace entrevista
   y, si se aprueba, se matricula el estudiante que ya existe (propuesta), o se
-  deja fuera de este módulo?
+  deja fuera de este módulo?~~ **Respondida el 2026-10-13: se usa el que ya
+  existe** (decisión 11).
+- Antes de la preparación de 2028 (encontrada en el E3): la tabla del E1 tiene
+  `admisiones_estudiante_id_key UNIQUE (estudiante_id)`, es decir, **un
+  estudiante solo puede enlazarse a una admisión en toda su vida**. Quien
+  entre por admisión en 2027, se vaya y vuelva a entrar por admisión otro año
+  chocaría; hoy responde `409` con un mensaje claro y no cambia nada. El
+  arreglo es una migración nueva que cambie esa regla por una de un enlace
+  por año (`UNIQUE (anio_lectivo_id, estudiante_id)`). No corre prisa: no
+  puede pasar antes de preparar 2028.
 - Más adelante: ¿los estudiantes nuevos que llegan a mitad del año activo
   también pasan por entrevista? Por ahora no: el módulo vive en la
   preparación del año.
@@ -624,21 +643,98 @@ a ninguna base):
   actual, al activar 2027 ya no se podrán borrar los aspirantes que no se
   matricularon (derecho de supresión).
 
+## Avance del paso E3 (2026-10-13)
+
+- Autorizado explícitamente por el usuario ("continúa e3"). Antes de
+  empezar respondió la pregunta del exalumno: se usa el que ya existe
+  (decisión 11). Al iniciar, los dos repos estaban en `main` y limpios, sin
+  subir: backend `ee8aba2` (el E2), frontend `d0b92d7`.
+- Lo que se encontró antes de decidir (verificado en el código): un exalumno
+  retirado durante el año activo todavía tiene su matrícula y aparece en la
+  promoción; uno sin matrícula en el año activo no aparece en ningún lado, y
+  el alta directa (`POST /anios-lectivos/{id}/estudiantes`) responde `500`
+  por el documento repetido (`estudiantes_documento_identidad_key`; la ruta
+  no traduce ese error). Al activar, quien sigue conserva su estado
+  (`aplicar_marcas_de_salida`), así que un exalumno `retirado` matriculado en
+  2027 seguiría `retirado` si nadie lo cambia: por eso queda `activo` al
+  matricular.
+- Pruebas primero, 52 nuevas; antes del código fallaban (las del controlador
+  ni arrancaban porque el doble de `guardar_resultado` no tenía qué
+  reemplazar). Antes del cambio pasaban las 19 del alta directa del paso 5.5
+  (`test_anio_lectivo_matriculacion_preparacion.py`), que caracterizan lo que
+  se iba a tocar.
+  - `test_admisiones_esquema.py`: `no_aprobado` exige motivo no vacío,
+    `aprobado` no, el motivo se recorta, un resultado inventado no vale.
+  - `test_admisiones_controller.py`: poner el resultado con la fila
+    bloqueada, volver a pendiente, no en una matriculada ni fuera de
+    preparación, y su SQL (`decidido_en` y una matriculada intocable).
+  - `test_admisiones_matricular.py` (nuevo): la matrícula de punta a punta
+    con dobles de los repositorios. Aspirante nuevo (ficha, matrícula, copia
+    y enlace en ese orden, una transacción, queda `activo`); exalumno que
+    vuelve (su mismo registro, sin crear otro); quien estudia hoy va por la
+    promoción; quien ya tiene matrícula en el año o está marcado como que no
+    sigue no entra; solo un aprobado, una vez; año fuera de preparación;
+    curso de otro año; cada choque de la base con su mensaje y todo
+    deshecho; y el SQL nuevo (copia que no borra con vacíos, enlace solo de
+    un aprobado sin estudiante, estudiante existente bloqueado con sus
+    matrículas de los dos años).
+  - `test_admisiones_routes.py`: las dos rutas nuevas (un profesor recibe
+    `403`, `200` y `201`, `422` sin motivo o sin curso, y los errores nuevos
+    con `409`).
+- Código:
+  - `app/schemas/admision.py`: `ResultadoAdmisionUpdate`.
+  - `app/repositories/admisiones_repository.py`: `guardar_resultado`,
+    `copiar_datos_a_estudiante` (las 8 columnas que pasaron a la entrevista;
+    `COALESCE` para no borrar lo que ya había) y `enlazar_estudiante`.
+  - `app/repositories/anios_lectivos_repository.py`:
+    `leer_estudiante_para_reingreso`.
+  - `app/controllers/anios_lectivos_controller.py`: lo que crea la ficha y la
+    matrícula del alta directa pasó a `_crear_estudiante_en_preparacion`, sin
+    cambiar lo que hace (sus 19 pruebas siguen pasando), y la nueva
+    `matricular_aspirante_en_preparacion` lo reutiliza, o usa el registro del
+    exalumno. Vive aquí porque es matrícula del año en preparación, con las
+    mismas comprobaciones de año y curso.
+  - `app/controllers/admisiones_controller.py`: `cambiar_resultado_controller`
+    y `matricular_admision_controller`, con los choques de la base
+    traducidos a mensajes.
+  - `app/routes/admisiones.py`: `PUT /admisiones/{id}/resultado` y `POST
+    /admisiones/{id}/matricular` (`201`).
+- Decisiones de detalle (dentro del contrato):
+  - Volver a "pendiente" se permite mientras no esté matriculada (el diseño
+    dice que el resultado se puede cambiar); borra `decidido_en`.
+  - La ficha manda en los datos del estudiante; lo que pasó a la entrevista
+    lo pone la admisión (decisión 7), pero un dato vacío en la entrevista no
+    borra el que ya había.
+  - Para un exalumno, la ficha se reemplaza como en `PUT /estudiantes/{id}`:
+    la pantalla del E5 tiene que llenarla con lo que el estudiante ya tiene,
+    o se perderían datos como `condicion_diagnostico`.
+  - Matricular no copia valores de pago especiales, como el alta directa.
+- Verificación, con una `DATABASE_URL` ficticia: 151 pruebas de admisiones y
+  del alta directa pasan; `scripts/verify.py` → **2426 pasan, 0 fallan**,
+  Ruff y `pip check` limpios; `git diff --check` limpio. Las 4 consultas
+  nuevas se revisaron con `pglast`: se leen bien. Como en el E2, este SQL
+  todavía no ha corrido en un PostgreSQL de verdad.
+- Sin migración, sin frontend, sin acceso a bases reales.
+- Encontrado en el E3: la regla de un solo enlace por estudiante en toda su
+  vida (anotada en "Preguntas abiertas", para antes de preparar 2028) y el
+  `500` del alta directa con un documento repetido (no se toca: el E7 cierra
+  esa ruta en el año en preparación).
+
 ## Entrega para el siguiente chat
 
-- Estado al 2026-10-13: **paso E2 escrito, sin commit** (ver "Avance del
-  paso E2"); `scripts/verify.py` 2374 pasan, 0 fallan. **El E1 está
-  terminado:** tabla `admisiones` en producción (los dos tenants), probada
-  antes en la rama de Neon `prueba-entrevista` con la consulta de reglas (15
-  de 15 bien), commit `4db1f15` en **Live** en Render. Ver "Avance del paso
-  E1", "Prueba en la rama de Neon" y "En producción".
-- Siguiente acción exacta: el usuario revisa el E2 y, si quiere, lo prueba en
-  local antes de subirlo: backend local contra una rama de Neon (con
-  `$env:DATABASE_URL`, nunca el `.env`) y las cinco rutas en `/docs` con un
-  admin. Después hace el commit y el push (no lleva migración; las rutas
-  nuevas no las usa nadie hasta el E4). El E3 (resultado y matricular desde
-  la admisión) necesita su propia autorización y, antes, la respuesta a la
-  pregunta del exalumno que vuelve ("Preguntas abiertas").
+- Estado al 2026-10-13: **paso E3 escrito, sin commit** (ver "Avance del
+  paso E3"); `scripts/verify.py` 2426 pasan, 0 fallan. El E2 está en
+  `ee8aba2` y el E1 en producción. Con el E3, el backend tiene todo lo que
+  necesitan las pantallas (E4 a E6); el E7 va al final.
+- Siguiente acción exacta: el usuario revisa el E3 y, antes de subir E2 y
+  E3, conviene probarlos juntos en local contra una rama de Neon, porque es
+  la primera vez que su SQL corre en PostgreSQL: backend local con
+  `$env:DATABASE_URL` en la rama (nunca el `.env`) y en `/docs`, como admin,
+  registrar un aspirante, editarlo, aprobarlo, matricularlo (uno nuevo y,
+  si hay, un exalumno) y ver que la admisión queda de solo consulta. Después
+  commit y push del backend (sin migración; nadie usa estas rutas hasta el
+  E4). El E4 (la página de admisiones, en el frontend) necesita su propia
+  autorización.
 - Por qué el push del E1 fue antes de aplicar en producción (igual que el paso 5.2
   del año lectivo, `a6f3cc0`): un colegio nuevo nace del archivo base y
   copia el historial de migraciones de la plantilla

@@ -1074,3 +1074,42 @@ def crear_anio_activo_inicial(cursor, anio):
         """,
         (anio,),
     )
+
+
+def leer_estudiante_para_reingreso(cursor, documento, anio_activo_id, anio_destino_id):
+    """El estudiante con ese documento y sus matrículas de los dos años.
+
+    Para matricular desde una admisión a quien ya fue estudiante (entrevista
+    de admisión, paso E3, decisión 11). Deja bloqueada la fila del estudiante
+    hasta el final de la transacción. `None` si nadie tiene ese documento.
+    """
+    columnas = (
+        "id",
+        "nombre",
+        "apellido",
+        "estado",
+        "curso_activo_id",
+        "estado_salida",
+        "matricula_destino_id",
+    )
+    cursor.execute(
+        """
+        SELECT e.id, e.nombre, e.apellido,
+               COALESCE(LOWER(e.estado), 'activo') AS estado,
+               activa.curso_id AS curso_activo_id,
+               activa.estado_salida,
+               destino.id AS matricula_destino_id
+        FROM estudiantes e
+        LEFT JOIN matriculas activa
+          ON activa.estudiante_id = e.id AND activa.anio_lectivo_id = %s
+        LEFT JOIN matriculas destino
+          ON destino.estudiante_id = e.id AND destino.anio_lectivo_id = %s
+        WHERE e.documento_identidad = %s
+        FOR UPDATE OF e
+        """,
+        (anio_activo_id, anio_destino_id, documento),
+    )
+    fila = cursor.fetchone()
+    if fila is None:
+        return None
+    return dict(fila) if isinstance(fila, dict) else dict(zip(columnas, fila))

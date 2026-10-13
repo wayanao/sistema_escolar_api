@@ -1,4 +1,4 @@
-"""Admisiones (entrevista de admisión), paso E2.
+"""Admisiones (entrevista de admisión), pasos E2 y E3.
 
 Ver `docs/funcionalidades/ENTREVISTA_ADMISION.md`, sección "Rutas".
 
@@ -14,19 +14,35 @@ from typing import Annotated, Optional
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 
 from app.controllers.admisiones_controller import (
+    AdmisionMatriculaConflictoError,
     AdmisionMatriculadaError,
+    AdmisionNoAprobadaError,
     AdmisionNoEncontradaError,
     AnioNoEnPreparacionError,
     CursoAdmisionInvalidoError,
     DocumentoAdmisionRepetidoError,
     actualizar_admision_controller,
     borrar_admision_controller,
+    cambiar_resultado_controller,
     listar_admisiones_controller,
+    matricular_admision_controller,
     obtener_admision_controller,
     registrar_admision_controller,
 )
+from app.controllers.anios_lectivos_controller import (
+    AnioLectivoActivoInexistenteError,
+    AnioLectivoDestinoInvalidoError,
+    CursoMatriculaInvalidoError,
+    EstudianteNoReingresableError,
+)
 from app.dependencies import get_current_active_admin
-from app.schemas.admision import AdmisionCreate, AdmisionUpdate, ResultadoAdmision
+from app.schemas.admision import (
+    AdmisionCreate,
+    AdmisionUpdate,
+    ResultadoAdmision,
+    ResultadoAdmisionUpdate,
+)
+from app.schemas.estudiante import EstudianteCreate
 from app.services.anio_lectivo import AnioLectivoInexistenteError
 
 
@@ -41,6 +57,13 @@ _ERRORES = _NO_EXISTE + (
     AdmisionMatriculadaError,
     CursoAdmisionInvalidoError,
     DocumentoAdmisionRepetidoError,
+    # Paso E3.
+    AdmisionNoAprobadaError,
+    AdmisionMatriculaConflictoError,
+    EstudianteNoReingresableError,
+    AnioLectivoActivoInexistenteError,
+    AnioLectivoDestinoInvalidoError,
+    CursoMatriculaInvalidoError,
 )
 
 
@@ -105,5 +128,32 @@ def borrar_admision(admision_id: Annotated[int, Path(gt=0)]):
     """Borra una admisión que todavía no se matriculó (decisión 9)."""
     try:
         return borrar_admision_controller(admision_id)
+    except _ERRORES as exc:
+        _traducir_error(exc)
+
+
+@router.put("/admisiones/{admision_id}/resultado")
+def cambiar_resultado(
+    admision_id: Annotated[int, Path(gt=0)],
+    datos: ResultadoAdmisionUpdate,
+):
+    """Aprobado, no aprobado (con motivo) o de vuelta a pendiente (paso E3)."""
+    try:
+        return cambiar_resultado_controller(admision_id, datos)
+    except _ERRORES as exc:
+        _traducir_error(exc)
+
+
+@router.post(
+    "/admisiones/{admision_id}/matricular",
+    status_code=status.HTTP_201_CREATED,
+)
+def matricular_admision(
+    admision_id: Annotated[int, Path(gt=0)],
+    est: EstudianteCreate,
+):
+    """Matricula a un aspirante aprobado con la ficha del estudiante (paso E3)."""
+    try:
+        return matricular_admision_controller(admision_id, est)
     except _ERRORES as exc:
         _traducir_error(exc)

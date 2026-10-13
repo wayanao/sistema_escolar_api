@@ -389,8 +389,8 @@ el del plan o el de la anotacion) y aplica esta regla:
 
 ## Admisiones
 
-Entrevista de admisión, paso E2: aspirantes nuevos del año en preparación.
-Router **solo admin** (datos de menores, Ley 1581 de 2012), en
+Entrevista de admisión, pasos E2 y E3: aspirantes nuevos del año en
+preparación. Router **solo admin** (datos de menores, Ley 1581 de 2012), en
 `app/routes/admisiones.py`. Detalle y decisiones en
 `docs/funcionalidades/ENTREVISTA_ADMISION.md`.
 
@@ -399,10 +399,12 @@ Router **solo admin** (datos de menores, Ley 1581 de 2012), en
 - `GET /admisiones/{admision_id}`
 - `PUT /admisiones/{admision_id}`
 - `DELETE /admisiones/{admision_id}`
+- `PUT /admisiones/{admision_id}/resultado` (paso E3)
+- `POST /admisiones/{admision_id}/matricular` (paso E3)
 
-Se consulta cualquier año. **Registrar, editar y borrar solo en un año en
-`preparacion`**; una admisión matriculada (`estudiante_id`) es de solo
-consulta. El resultado y la matrícula llegan en el paso E3.
+Se consulta cualquier año. **Registrar, editar, borrar, poner el resultado y
+matricular solo en un año en `preparacion`**; una admisión matriculada
+(`estudiante_id`) es de solo consulta.
 
 `GET /anios-lectivos/{anio_lectivo_id}/admisiones` acepta `resultado`
 (`pendiente`, `aprobado` o `no_aprobado`; otro valor da `422`). Los conteos
@@ -484,21 +486,62 @@ las columnas de la tabla (`resultado`, `motivo_resultado`, `decidido_en`,
 }
 ```
 
-El aviso no impide registrar: qué hacer con quien vuelve se decide antes del
-paso E3.
+El aviso no impide registrar. Al matricular, ese estudiante se usa como
+exalumno que vuelve (ver `matricular` abajo).
 
 `DELETE /admisiones/{admision_id}` responde
 `{"mensaje": "Admisión borrada", "id": 7}`.
+
+`PUT /admisiones/{admision_id}/resultado` recibe
+`{"resultado": "aprobado" | "no_aprobado" | "pendiente", "motivo_resultado": "..."}`
+y responde la admisión completa. `no_aprobado` exige `motivo_resultado` que
+no esté en blanco (`422`). Guarda `decidido_en` con la fecha y hora; volver a
+`pendiente` la borra. Se puede cambiar mientras la admisión no esté
+matriculada.
+
+`POST /admisiones/{admision_id}/matricular` recibe **la ficha del estudiante**,
+el mismo cuerpo de `POST /estudiantes` (`curso_id` obligatorio, de un curso
+activo del año de la admisión) y responde `201`:
+
+```jsonc
+{
+  "mensaje": "Matrícula creada en 2027 para Lina Díaz.",
+  "estudiante_id": 55,
+  "matricula_id": 1055,
+  "anio_lectivo_id": 3,
+  "curso_id": 20,
+  "estudiante_existente": false,   // true si era un exalumno que vuelve
+  "admision": { /* la admisión completa, ya matriculada y no editable */ }
+}
+```
+
+- Solo un aspirante `aprobado` y sin matricular (`409` si no).
+- En una sola transacción: crea la ficha y la matrícula del año de la
+  admisión, copia a la ficha lo que pasó a la entrevista (estudios
+  anteriores y ocupación de los padres; un dato vacío en la entrevista no
+  borra el que ya había) y enlaza la admisión. Si algo falla, no cambia nada.
+- El estudiante queda `activo`, diga lo que diga la ficha.
+- **Exalumno que vuelve (decisión 11):** si el `documento_identidad` de la
+  ficha ya es de un estudiante, se usa ese mismo registro: su ficha se
+  reemplaza como en `PUT /estudiantes/{id}` (la pantalla debe llenarla con lo
+  que ya tiene) y conserva su historial. `409` si ya tiene matrícula en ese
+  año, si estudia en el año activo (va por la promoción) o si está marcado
+  como que no sigue.
+- Valores de pago especiales: no se crean; se manejan aparte, como en el
+  alta directa.
 
 Errores (el `detail` es un texto listo para mostrar):
 
 - `403`: no es admin.
 - `404`: el año o la admisión no existen.
 - `409`: el año no está en preparación; la admisión está matriculada; el
-  curso no es un curso activo del año; o el documento ya lo tiene otro
-  aspirante del año (también si dos altas llegan a la vez).
+  curso no es un curso activo del año; el documento ya lo tiene otro
+  aspirante del año (también si dos altas llegan a la vez); al matricular,
+  la admisión no está aprobada, el estudiante existente no puede entrar así,
+  o algo se guardó a la vez (documento, matrícula o enlace).
 - `422`: cuerpo inválido (falta un obligatorio, `autoriza_datos` no es
-  `true`, un texto demasiado largo, `curso_id` no positivo).
+  `true`, un texto demasiado largo, `curso_id` no positivo, `no_aprobado`
+  sin motivo).
 
 ## Estudiantes
 

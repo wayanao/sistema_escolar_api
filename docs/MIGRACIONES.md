@@ -863,6 +863,10 @@ Estado al 2026-10-13:
   función y 1 disparador. El diff agregó solo la migración a la cabecera, la
   tabla con sus reglas, sus dos índices y sus tres claves foráneas.
 - `scripts/verify.py`: **2294 pasan, 0 fallan**; Ruff y `pip check` limpios.
-- **No aplicada en producción** todavía. Orden: commit de migración y base
-  juntas, push y Render **Live**, y después aplicar (ver "Entrega para el
-  siguiente chat" en `docs/funcionalidades/ENTREVISTA_ADMISION.md`).
+- Migración y base regenerada quedaron juntas en el commit `4db1f15`,
+  confirmado **Live** en Render antes de la aplicación productiva.
+- **Aplicada en producción el 2026-10-13** por el usuario, con el endpoint
+  directo: simulación `PENDIENTE` y aplicación informadas por el usuario. No
+  rellenó ni cambió datos existentes.
+- A partir de aquí el archivo no se puede editar: el runner guarda su
+  checksum. Cualquier cambio posterior debe ir en una migración nueva.

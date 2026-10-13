@@ -22,8 +22,8 @@ entrevista, las decisiones 7 a 9 y que quien entrevista se escribe a mano.
 - Esquema base regenerado desde la rama de Neon `prueba-entrevista`: 36
   tablas. Los colegios nuevos nacerán con la tabla.
 - No cambia ninguna tabla, ruta ni respuesta existente. Ningún código la usa
-  todavía. **No aplicada en producción** todavía: se aplica después del push,
-  con Render en **Live**.
+  todavía. Commit `4db1f15`; con Render en **Live**, el usuario la aplicó en
+  producción el mismo día.
 
 ### Pruebas
 

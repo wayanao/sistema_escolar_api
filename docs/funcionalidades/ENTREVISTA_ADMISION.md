@@ -2,12 +2,12 @@
 
 ## Control
 
-- Estado: **Paso E1 probado en una rama de Neon (2026-10-13).** Migración
-  `migrations/20261013_admisiones.sql` y sus pruebas escritas; el usuario la
-  aplicó en la rama `prueba-entrevista`, regeneró desde allí el esquema base
-  y la consulta de reglas dio las 15 filas bien (ver "Prueba en la rama de
-  Neon"). Falta el commit y aplicarla en producción. Ningún código de la app
-  la usa todavía. El 2026-10-13 el usuario confirmó el reparto de campos y
+- Estado: **Paso E1 terminado el 2026-10-13.** Migración
+  `migrations/20261013_admisiones.sql` probada en la rama de Neon
+  `prueba-entrevista` (la consulta de reglas dio las 15 filas bien), esquema
+  base regenerado desde allí, commit `4db1f15` en **Live** en Render y
+  migración aplicada en producción por el usuario. Ningún código de la app
+  usa la tabla todavía. Siguiente: E2, con su propia autorización. El 2026-10-13 el usuario confirmó el reparto de campos y
   las decisiones 7 a 9, y decidió que quien entrevista se escribe a mano
   (decisión 10).
 - Tipo: función nueva de producto. No es una capa del programa de
@@ -269,7 +269,7 @@ en `preparacion` (`409` con mensaje si no).
 | Paso | Repo | Qué |
 |---|---|---|
 | E0 | ambos | Este diseño. **Hecho el 2026-10-12** |
-| E1 | backend | Migración `admisiones` y esquema base (rama de Neon; la aplica el usuario). **SQL, pruebas, rama de Neon y esquema base el 2026-10-13; falta aplicarla en producción** |
+| E1 | backend | Migración `admisiones` y esquema base (rama de Neon; la aplica el usuario). **Hecho el 2026-10-13** (`4db1f15`, aplicada en producción) |
 | E2 | backend | Registrar, listar, ver, editar y borrar admisiones; guardia del año; autorización obligatoria |
 | E3 | backend | Resultado y matricular desde la admisión (con la copia de los datos movidos) |
 | E4 | frontend | Página de admisiones: lista, nuevo aspirante, entrevista y resultado; acceso desde la preparación del año |
@@ -535,33 +535,47 @@ producción):
   `scripts/verify.py` → **2294 pasan, 0 fallan**, Ruff y `pip check`
   limpios; `git diff --check` limpio.
 
+**En producción, 2026-10-13** (lo hizo el usuario; el asistente no se conectó
+a ninguna base):
+
+- El usuario confirmó la migración, el esquema base, las pruebas y los
+  documentos en el commit `4db1f15` (los 6 archivos juntos, revisado con
+  `git show --stat`), lo subió junto con el del E0 (`7949de8`) y confirmó
+  el despliegue en Render como **Live**. El commit no traía código de la
+  app.
+- Después, con `$env:DATABASE_URL` en el endpoint directo de producción, la
+  simulación dio `PENDIENTE` (informado por el usuario), lo que descarta
+  que la terminal apuntara a la rama de prueba, donde ya estaba aplicada. El
+  usuario informó luego que la aplicó. La tabla se crea vacía; no se tocó
+  ningún dato existente.
+- A partir de aquí el archivo `20261013_admisiones.sql` **no se puede
+  editar**: el runner guarda su checksum. Cualquier cambio posterior va en
+  una migración nueva.
+- **Paso E1 terminado.**
+
 ## Entrega para el siguiente chat
 
-- Estado al 2026-10-13: **paso E1 probado en la rama de Neon, sin commit y
-  sin aplicar en producción.** El usuario confirmó el reparto de campos y las
-  decisiones 7 a 9, decidió la 10 (quien entrevista, a mano) y autorizó el
-  E1. Migración `migrations/20261013_admisiones.sql`,
-  `tests/test_migracion_admisiones.py` (15 pruebas) y el esquema base
-  regenerado desde la rama `prueba-entrevista` (36 tablas). La consulta de
-  reglas dio las 15 filas bien. `scripts/verify.py` 2294 pasan, 0 fallan,
-  Ruff y `pip check` limpios; `git diff --check` limpio. Ver "Avance del paso
-  E1" y "Prueba en la rama de Neon". En el frontend solo cambió su
-  documento. Al 2026-10-13 los dos repos tenían sin subir solo el commit del
-  E0 (`7949de8` y `f2dda8c`, documentos).
-- Siguiente acción exacta, la hace el usuario: commit de migración, base,
-  pruebas y documentos juntos; push del backend y esperar a que Render quede
-  **Live** (no trae código de la app, solo la migración y la base); después,
-  con `$env:DATABASE_URL` en el endpoint directo de producción
-  (`ep-late-smoke-aip41j6x`, sin `-pooler`), `--dry-run` (`PENDIENTE` en los
-  dos tenants), aplicar (`OK`) y `--dry-run` (`OMITIDA (ya aplicada)`). Con
-  eso el E1 queda terminado; anotar el resultado aquí y en
-  `docs/MIGRACIONES.md`. Borrar la rama `prueba-entrevista`. El E2 necesita
-  su propia autorización.
-- Por qué el push va antes de aplicar en producción (igual que el paso 5.2
-  del año lectivo, `a6f3cc0`): si se aplicara primero, un colegio creado en
-  ese rato nacería del archivo base viejo, sin la tabla, pero con la
-  migración en su historial, y nadie la volvería a aplicar. Con el push
-  primero, lo peor es que un colegio nuevo tenga la tabla y no el registro;
-  el runner la aplicaría de nuevo y `CREATE TABLE IF NOT EXISTS` no haría
-  nada.
+- Estado al 2026-10-13: **paso E1 terminado.** Tabla `admisiones` en
+  producción (los dos tenants), probada antes en la rama de Neon
+  `prueba-entrevista` con la consulta de reglas (15 de 15 bien). Commit
+  `4db1f15` en GitHub y **Live** en Render; frontend en `b5434b2` (solo su
+  documento). Ningún código de la app usa la tabla todavía. Ver "Avance del
+  paso E1", "Prueba en la rama de Neon" y "En producción".
+- Por qué el push fue antes de aplicar en producción (igual que el paso 5.2
+  del año lectivo, `a6f3cc0`): un colegio nuevo nace del archivo base y
+  copia el historial de migraciones de la plantilla
+  (`copiar_historial_migraciones` en `super_admin_repository.py`). Si se
+  aplicara primero, un colegio creado en ese rato nacería sin la tabla pero
+  con la migración en su historial, y nadie la volvería a aplicar. Con el
+  push primero, lo peor es que tenga la tabla sin el registro; el runner la
+  aplicaría de nuevo y `CREATE TABLE IF NOT EXISTS` no haría nada.
+- Pendiente del usuario: borrar la rama `prueba-entrevista` en Neon, si no
+  se borró.
+- Siguiente acción exacta: **E2 (backend)**, que necesita la autorización
+  explícita del usuario: registrar, listar, ver, editar y borrar admisiones,
+  solo admin, con la guardia del año en `preparacion` y la autorización de
+  datos obligatoria (contrato en "Rutas"). Recordar del diseño: guardar el
+  documento vacío como `NULL` (índice único por año) y avisar al registrar
+  si el documento ya es de un estudiante. Ninguna pregunta abierta bloquea
+  el E2; la del exalumno que vuelve es para antes del E3.
 - Prompt para retomar: `docs/funcionalidades/PROMPT_CONTINUACION_ENTREVISTA_ADMISION.md`.

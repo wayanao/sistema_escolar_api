@@ -1,10 +1,38 @@
 # Cambios Backend
 
-Ultima revision documental: 2026-10-12.
+Ultima revision documental: 2026-10-13.
 
 ## Proposito
 
 Bitacora de cambios documentales y tecnicos observables del backend.
+
+## 2026-10-13 - Entrevista de admisión E1: tabla de admisiones
+
+Primer paso con código de `docs/funcionalidades/ENTREVISTA_ADMISION.md`. El
+usuario confirmó el reparto de campos entre la ficha del estudiante y la
+entrevista, las decisiones 7 a 9 y que quien entrevista se escribe a mano.
+
+### Qué cambia
+
+- Migración nueva `migrations/20261013_admisiones.sql`: tabla `admisiones`
+  (aspirante, entrevista y resultado en una fila por año), con las reglas de
+  autorización de datos, resultado, motivo de "no aprobado", enlace único a
+  un estudiante aprobado y curso del mismo año, y dos índices. Detalle en
+  `docs/MIGRACIONES.md`.
+- Esquema base regenerado desde la rama de Neon `prueba-entrevista`: 36
+  tablas. Los colegios nuevos nacerán con la tabla.
+- No cambia ninguna tabla, ruta ni respuesta existente. Ningún código la usa
+  todavía. **No aplicada en producción** todavía: se aplica después del push,
+  con Render en **Live**.
+
+### Pruebas
+
+`tests/test_migracion_admisiones.py`, 15 pruebas sobre el texto del SQL,
+escritas antes (fallaron las 15). Una de ellas compara los tamaños de los
+datos que se copiarán al matricular con los de `estudiantes` en el esquema
+base. En la rama de Neon, una consulta intentó 15 altas buenas y malas,
+deshechas al instante: las 15 dieron lo esperado. `scripts/verify.py`: 2294
+pasan, 0 fallan; Ruff y `pip check` limpios.
 
 ## 2026-10-12 - Año lectivo: valores de pago de un estudiante en un año
 

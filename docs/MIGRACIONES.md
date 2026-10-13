@@ -1,6 +1,6 @@
 # Migraciones
 
-Ultima revision documental: 2026-10-06.
+Ultima revision documental: 2026-10-13.
 
 ## Carpeta de migraciones
 
@@ -52,6 +52,7 @@ Archivos actuales:
 - `20261001_anios_lectivos_obligatorio.sql`
 - `20261006_anios_lectivos_origenes.sql`
 - `20261008_anios_lectivos_activacion.sql`
+- `20261013_admisiones.sql`
 - `README.md`
 
 Migraciones globales `public`:
@@ -811,3 +812,57 @@ Estado al 2026-10-08:
   aplicada)` en ambos. Se aplicó antes del push de `6c6aabb`; no importa en
   este paso porque ningún código usaba todavía la columna ni la tabla.
 - A partir de aquí el archivo no se puede editar: el runner guarda su checksum.
+
+## Migracion 20261013_admisiones.sql
+
+Objetivo:
+
+- Entrevista de admisión, paso E1: crear la tabla `admisiones`, una fila por
+  aspirante nuevo y año, con sus datos, su entrevista y el resultado
+  (`pendiente`, `aprobado` o `no_aprobado`). Invisible: ningún código la usa
+  todavía.
+
+Reglas que exige la base:
+
+- `chk_admisiones_autoriza`: la autorización de datos (Ley 1581 de 2012) es
+  obligatoria; `autoriza_datos` y `autoriza_nombre` son `NOT NULL`.
+- `chk_admisiones_resultado`: solo los tres resultados.
+- `chk_admisiones_motivo_no_aprobado`: "no aprobado" exige un motivo que no
+  esté en blanco.
+- `chk_admisiones_matricula_aprobada` y `admisiones_estudiante_id_key`: solo
+  un aprobado queda enlazado a un estudiante, y a uno solo.
+- `admisiones_curso_anio_lectivo_fkey`: el curso es del mismo año que la
+  admisión (contra `cursos_id_anio_lectivo_key`, igual que `matriculas`).
+- Claves foráneas a `anios_lectivos`, `cursos` y `estudiantes` sin borrado en
+  cascada.
+
+Indices creados:
+
+- `idx_admisiones_anio (anio_lectivo_id, resultado)`.
+- `idx_admisiones_documento_por_anio` (único, parcial): un documento una
+  sola vez por año, sin contar los que llegan sin documento.
+
+No toca ninguna tabla ni dato existente. No quita columnas de `estudiantes`.
+Es reejecutable.
+
+Detalle completo (decisiones, reparto de campos, lista de comprobación para
+la rama de Neon con una consulta que prueba las reglas):
+
+- `docs/funcionalidades/ENTREVISTA_ADMISION.md`.
+
+Estado al 2026-10-13:
+
+- SQL y 15 pruebas de texto (`tests/test_migracion_admisiones.py`); las 15
+  fallaron antes de crear el archivo.
+- El usuario la probó en la rama de Neon `prueba-entrevista` (copia de
+  `production`): simulación `PENDIENTE` y aplicación en la rama. Una
+  consulta en el SQL Editor intentó 15 altas en `tenant_colegio_1`, cada una
+  deshecha al instante: las 15 dieron lo esperado (cada regla rechazó lo que
+  debía y se aceptaron los casos válidos).
+- Esquema base regenerado desde `tenant_colegio_1` en esa rama: 36 tablas, 1
+  función y 1 disparador. El diff agregó solo la migración a la cabecera, la
+  tabla con sus reglas, sus dos índices y sus tres claves foráneas.
+- `scripts/verify.py`: **2294 pasan, 0 fallan**; Ruff y `pip check` limpios.
+- **No aplicada en producción** todavía. Orden: commit de migración y base
+  juntas, push y Render **Live**, y después aplicar (ver "Entrega para el
+  siguiente chat" en `docs/funcionalidades/ENTREVISTA_ADMISION.md`).

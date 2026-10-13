@@ -2,11 +2,14 @@
 
 ## Control
 
-- Estado: **Diseño y documentación (paso E0), 2026-10-12. No hay código de
-  esta funcionalidad todavía.** El reparto de campos entre la ficha del
-  estudiante y la entrevista es una propuesta del asistente que el usuario
-  pidió ("ayúdame y ten una base de qué va en cada formulario") y falta que
-  la confirme.
+- Estado: **Paso E1 probado en una rama de Neon (2026-10-13).** Migración
+  `migrations/20261013_admisiones.sql` y sus pruebas escritas; el usuario la
+  aplicó en la rama `prueba-entrevista`, regeneró desde allí el esquema base
+  y la consulta de reglas dio las 15 filas bien (ver "Prueba en la rama de
+  Neon"). Falta el commit y aplicarla en producción. Ningún código de la app
+  la usa todavía. El 2026-10-13 el usuario confirmó el reparto de campos y
+  las decisiones 7 a 9, y decidió que quien entrevista se escribe a mano
+  (decisión 10).
 - Tipo: función nueva de producto. No es una capa del programa de
   modularización de `docs/modularizacion/`.
 - Repos afectados: este repo (`sistema_escolar_api`) y `frontend-react`. Ver
@@ -21,7 +24,7 @@
   año en preparación.
 - Fecha límite: **principios de noviembre de 2026**, cuando el colegio
   empieza a matricular para 2027.
-- Última actualización: 2026-10-12.
+- Última actualización: 2026-10-13.
 
 ## Objetivo
 
@@ -85,7 +88,7 @@ matricular, y al hacerlo no se vuelve a digitar lo que ya se escribió.
 5. Se quita del formulario del estudiante lo que pasa a la entrevista, y se
    añade la entrevista como formulario nuevo.
 
-Propuestas del asistente, **a confirmar por el usuario**:
+Propuestas del asistente, **confirmadas por el usuario el 2026-10-13**:
 
 6. El reparto de campos de la tabla siguiente.
 7. Los datos que se mueven **se copian** a las columnas que ya tiene el
@@ -100,7 +103,14 @@ Propuestas del asistente, **a confirmar por el usuario**:
    si la familia pide retirar sus datos: derecho de supresión de la Ley
    1581). Una matriculada no.
 
-## Qué va en cada formulario (propuesta, decisión 6)
+Decidida por el usuario el 2026-10-13 (la pregunta estaba para antes de E4,
+pero cambia la tabla de E1):
+
+10. **Quien entrevista se escribe a mano** (`entrevistador`, texto), no se
+    elige de los usuarios del sistema. Así sirve aunque quien entrevista
+    (psicoorientación, rectoría) no tenga usuario.
+
+## Qué va en cada formulario (decisión 6, confirmada)
 
 Regla: en la **ficha del estudiante** queda lo que se necesita mientras
 estudia (identidad, contacto, salud, a quién llamar) y lo que pide el SIMAT;
@@ -147,12 +157,16 @@ Resultado ──► no_aprobado (con motivo): termina aquí; no se matricula
 
 Tabla nueva por tenant. Una fila por aspirante y año: aspirante, entrevista y
 resultado juntos (en este colegio, cada aspirante tiene una sola entrevista
-por año).
+por año). El SQL definitivo está en `migrations/20261013_admisiones.sql`;
+este bloque es igual. Frente al diseño del E0 solo cambiaron nombres: las
+claves foráneas siguen el patrón de la base (`admisiones_..._fkey`, como
+`matriculas_curso_anio_lectivo_fkey`) y la regla del enlace único se llama
+`admisiones_estudiante_id_key`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS admisiones (
     id SERIAL PRIMARY KEY,
-    anio_lectivo_id INTEGER NOT NULL REFERENCES anios_lectivos (id),
+    anio_lectivo_id INTEGER NOT NULL,
     -- Aspirante
     nombre VARCHAR(100) NOT NULL,
     apellido VARCHAR(100) NOT NULL,
@@ -184,12 +198,16 @@ CREATE TABLE IF NOT EXISTS admisiones (
     resultado VARCHAR(20) NOT NULL DEFAULT 'pendiente',
     motivo_resultado TEXT,
     decidido_en TIMESTAMPTZ,
-    estudiante_id INTEGER UNIQUE REFERENCES estudiantes (id),
+    estudiante_id INTEGER,
     creado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     actualizado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT fk_admisiones_curso_del_anio
-        FOREIGN KEY (curso_id, anio_lectivo_id)
-        REFERENCES cursos (id, anio_lectivo_id),
+    CONSTRAINT admisiones_anio_lectivo_fkey
+        FOREIGN KEY (anio_lectivo_id) REFERENCES anios_lectivos (id),
+    CONSTRAINT admisiones_curso_anio_lectivo_fkey
+        FOREIGN KEY (curso_id, anio_lectivo_id) REFERENCES cursos (id, anio_lectivo_id),
+    CONSTRAINT admisiones_estudiante_id_key UNIQUE (estudiante_id),
+    CONSTRAINT admisiones_estudiante_fkey
+        FOREIGN KEY (estudiante_id) REFERENCES estudiantes (id),
     CONSTRAINT chk_admisiones_resultado
         CHECK (resultado IN ('pendiente', 'aprobado', 'no_aprobado')),
     CONSTRAINT chk_admisiones_autoriza CHECK (autoriza_datos),
@@ -198,10 +216,12 @@ CREATE TABLE IF NOT EXISTS admisiones (
     CONSTRAINT chk_admisiones_matricula_aprobada
         CHECK (estudiante_id IS NULL OR resultado = 'aprobado')
 );
-CREATE INDEX IF NOT EXISTS idx_admisiones_anio ON admisiones (anio_lectivo_id, resultado);
+CREATE INDEX IF NOT EXISTS idx_admisiones_anio
+ON admisiones (anio_lectivo_id, resultado);
+
 CREATE UNIQUE INDEX IF NOT EXISTS idx_admisiones_documento_por_anio
-    ON admisiones (anio_lectivo_id, documento_identidad)
-    WHERE documento_identidad IS NOT NULL;
+ON admisiones (anio_lectivo_id, documento_identidad)
+WHERE documento_identidad IS NOT NULL;
 ```
 
 - La clave foránea compuesta impide que un aspirante de 2027 apunte a un
@@ -219,6 +239,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_admisiones_documento_por_anio
   ya es de un estudiante, y matricular responde `409` con un mensaje claro en
   vez de un error de la base. Qué hacer con quien vuelve queda en "Preguntas
   abiertas".
+- Un documento vacío (`''`) sí contaría como repetido en el índice único;
+  por eso, en E2, la API debe guardar un documento vacío como `NULL`.
+- Nada se borra en cascada. Hoy no hay ninguna ruta que borre años, cursos ni
+  estudiantes (revisado el 2026-10-13), así que las referencias sin cascada no
+  chocan con nada existente; `matriculas` apunta igual a `estudiantes`.
 - No toca datos existentes. Se prueba en una rama de Neon, se regenera el
   esquema base desde allí y el usuario la aplica en los tenants
   (`docs/MIGRACIONES.md`).
@@ -244,7 +269,7 @@ en `preparacion` (`409` con mensaje si no).
 | Paso | Repo | Qué |
 |---|---|---|
 | E0 | ambos | Este diseño. **Hecho el 2026-10-12** |
-| E1 | backend | Migración `admisiones` y esquema base (rama de Neon; la aplica el usuario) |
+| E1 | backend | Migración `admisiones` y esquema base (rama de Neon; la aplica el usuario). **SQL, pruebas, rama de Neon y esquema base el 2026-10-13; falta aplicarla en producción** |
 | E2 | backend | Registrar, listar, ver, editar y borrar admisiones; guardia del año; autorización obligatoria |
 | E3 | backend | Resultado y matricular desde la admisión (con la copia de los datos movidos) |
 | E4 | frontend | Página de admisiones: lista, nuevo aspirante, entrevista y resultado; acceso desde la preparación del año |
@@ -280,10 +305,12 @@ estudiante en 2027" fallaría en producción.
 
 ## Preguntas abiertas
 
-- **Antes de E1:** ¿el usuario confirma el reparto de campos de la tabla
-  (decisión 6) y las decisiones 7, 8 y 9?
-- Antes de E4: ¿quién entrevista se escribe a mano (propuesta) o se elige de
-  los usuarios del sistema?
+- ~~Antes de E1: ¿el usuario confirma el reparto de campos de la tabla
+  (decisión 6) y las decisiones 7, 8 y 9?~~ **Respondida el 2026-10-13: sí,
+  las cuatro.**
+- ~~Antes de E4: ¿quién entrevista se escribe a mano (propuesta) o se elige de
+  los usuarios del sistema?~~ **Respondida el 2026-10-13, antes de E1 porque
+  cambia la tabla: se escribe a mano** (decisión 10).
 - Antes de E3: un aspirante que **ya fue estudiante** del colegio (se retiró y
   vuelve) ya existe en `estudiantes` con su documento. ¿Se le hace entrevista
   y, si se aprueba, se matricula el estudiante que ya existe (propuesta), o se
@@ -294,16 +321,247 @@ estudiante en 2027" fallaría en producción.
 - Más adelante: ¿se consultan las admisiones de años pasados (incluidas las no
   aprobadas)? Quedan guardadas; no hay pantalla para eso en este diseño.
 
+## Avance del paso E1 (2026-10-13)
+
+- Al iniciar, los dos repos estaban en `main` y limpios: backend `7949de8`,
+  frontend `f2dda8c`. El usuario confirmó el reparto de campos y las
+  decisiones 7 a 9, decidió que quien entrevista se escribe a mano (decisión
+  10) y autorizó explícitamente el paso E1.
+- Pruebas primero: `tests/test_migracion_admisiones.py`, 15 pruebas sobre el
+  texto del SQL; las 15 fallaron porque el archivo no existía. Comprueban
+  cada columna; que los datos que se copian al matricular tengan el mismo
+  tamaño que en `estudiantes` (leído del esquema base, para que la copia no
+  se corte); que no haya columnas que puedan discriminar; la autorización
+  obligatoria; los tres resultados; el motivo de "no aprobado"; el enlace
+  único y solo de un aprobado; el curso del mismo año; que nada se borre en
+  cascada; los dos índices; que sea reejecutable; y que no cambie datos ni
+  tablas existentes.
+- `migrations/20261013_admisiones.sql`: crea la tabla `admisiones`, sus
+  reglas y sus dos índices. No toca ninguna tabla existente.
+- Verificación local, con una `DATABASE_URL` ficticia: las 15 pruebas
+  pasan; el bloque de migraciones y esquema base da 102 pasan y **1 falla
+  esperada** (`test_esquema_base.py`: la base aún no declara la migración);
+  `scripts/verify.py` → 2293 pasan y esa misma única falla, Ruff y
+  `pip check` limpios; en el frontend (solo cambió su documento),
+  `pnpm run check:deploy` → 2409 pruebas en 355 archivos, lint y build
+  limpios; `git diff --check` limpio en los dos repos.
+- La consulta de reglas de la lista de abajo y la migración se revisaron con
+  `pglast` (el lector de SQL de PostgreSQL, instalado en una carpeta temporal
+  fuera del proyecto): se leen bien, incluido el bloque `DO` y las 15 altas.
+  Eso solo prueba que están bien escritas; que funcionen lo prueba la rama
+  de Neon.
+- No se ejecutó la migración, no se accedió a Neon ni a producción y no se
+  regeneró ni editó a mano el esquema base. **El paso E1 todavía no está
+  terminado.**
+- Relación con una pregunta pendiente del año lectivo ("Quitar o cambiar la
+  matrícula de 2027", al final de la fase 5 de `ANIO_LECTIVO.md`): si se
+  hace, quitarle la matrícula a un estudiante que vino de una admisión deja
+  la admisión enlazada a él. Tenerlo en cuenta al diseñarla.
+
+**Lista de comprobación en una rama de Neon** (la hace el usuario; el
+asistente no se conecta a Neon):
+
+1. En console.neon.tech → Branches → **Create branch** desde `production`,
+   con los datos actuales. Nombre sugerido: `prueba-admisiones`.
+2. En la rama nueva → **Connect**: copiar la cadena de conexión **directa**
+   (con "Connection pooling" apagado; el host no debe tener `-pooler`). No
+   pegarla en el chat.
+3. En una terminal de PowerShell, en la carpeta del backend. La variable
+   solo vive en esa ventana y gana sobre el `.env`:
+
+   ```powershell
+   $env:DATABASE_URL = "<cadena directa de la rama>"
+   ([uri]$env:DATABASE_URL).Host
+   .\venv\Scripts\python.exe apply_migration.py migrations/20261013_admisiones.sql --dry-run
+   .\venv\Scripts\python.exe apply_migration.py migrations/20261013_admisiones.sql
+   .\venv\Scripts\python.exe apply_migration.py migrations/20261013_admisiones.sql --dry-run
+   ```
+
+   El host que se imprime debe ser el de la rama, **no**
+   `ep-late-smoke-aip41j6x` (producción). Esperado: `PENDIENTE` → `OK` →
+   `OMITIDA (ya aplicada)` en `tenant_colegio_1` y `tenant_2005`.
+4. En la misma terminal, regenerar el esquema base desde la rama:
+
+   ```powershell
+   .\venv\Scripts\python.exe scripts\generar_esquema_base.py --schema tenant_colegio_1
+   ```
+
+   Esperado en el diff: la migración en la cabecera, la tabla `admisiones`
+   con sus reglas, sus dos índices y sus tres claves foráneas, y nada más.
+   Después, cerrar esa terminal.
+5. En el SQL Editor de Neon, **con la rama de prueba elegida**, pegar todo
+   esto junto y correrlo una vez. Intenta 15 altas en `tenant_colegio_1`;
+   cada una se deshace al instante, así que no queda nada guardado. La
+   columna `bien` debe salir `true` en las 15 filas:
+
+   ```sql
+   SET search_path TO tenant_colegio_1, public;
+
+   CREATE TEMP TABLE prueba_admisiones (orden INT, caso TEXT, debe TEXT, obtuvo TEXT);
+
+   DO $$
+   DECLARE
+       anio_id INTEGER := (SELECT id FROM anios_lectivos ORDER BY anio DESC LIMIT 1);
+       estudiante INTEGER := (SELECT MIN(id) FROM estudiantes);
+       curso_otro_anio INTEGER;
+       fila RECORD;
+       texto_sql TEXT;
+   BEGIN
+       SELECT MIN(id) INTO curso_otro_anio FROM cursos WHERE anio_lectivo_id <> anio_id;
+
+       FOR fila IN
+           SELECT * FROM (VALUES
+               (1, 'Aspirante con lo mínimo', 'aceptar',
+                $q$INSERT INTO admisiones (anio_lectivo_id, nombre, apellido, autoriza_datos, autoriza_nombre)
+                   VALUES ({anio}, 'Prueba', 'Admision', TRUE, 'Acudiente')$q$),
+               (2, 'Autorización en falso', 'chk_admisiones_autoriza',
+                $q$INSERT INTO admisiones (anio_lectivo_id, nombre, apellido, autoriza_datos, autoriza_nombre)
+                   VALUES ({anio}, 'Prueba', 'Admision', FALSE, 'Acudiente')$q$),
+               (3, 'Autorización vacía', 'autoriza_datos',
+                $q$INSERT INTO admisiones (anio_lectivo_id, nombre, apellido, autoriza_datos, autoriza_nombre)
+                   VALUES ({anio}, 'Prueba', 'Admision', NULL, 'Acudiente')$q$),
+               (4, 'Sin quién autoriza', 'autoriza_nombre',
+                $q$INSERT INTO admisiones (anio_lectivo_id, nombre, apellido, autoriza_datos, autoriza_nombre)
+                   VALUES ({anio}, 'Prueba', 'Admision', TRUE, NULL)$q$),
+               (5, 'Resultado inventado', 'chk_admisiones_resultado',
+                $q$INSERT INTO admisiones (anio_lectivo_id, nombre, apellido, autoriza_datos, autoriza_nombre, resultado)
+                   VALUES ({anio}, 'Prueba', 'Admision', TRUE, 'Acudiente', 'tal_vez')$q$),
+               (6, 'No aprobado sin motivo', 'chk_admisiones_motivo_no_aprobado',
+                $q$INSERT INTO admisiones (anio_lectivo_id, nombre, apellido, autoriza_datos, autoriza_nombre, resultado)
+                   VALUES ({anio}, 'Prueba', 'Admision', TRUE, 'Acudiente', 'no_aprobado')$q$),
+               (7, 'No aprobado con motivo en blanco', 'chk_admisiones_motivo_no_aprobado',
+                $q$INSERT INTO admisiones (anio_lectivo_id, nombre, apellido, autoriza_datos, autoriza_nombre, resultado, motivo_resultado)
+                   VALUES ({anio}, 'Prueba', 'Admision', TRUE, 'Acudiente', 'no_aprobado', '   ')$q$),
+               (8, 'No aprobado con motivo', 'aceptar',
+                $q$INSERT INTO admisiones (anio_lectivo_id, nombre, apellido, autoriza_datos, autoriza_nombre, resultado, motivo_resultado)
+                   VALUES ({anio}, 'Prueba', 'Admision', TRUE, 'Acudiente', 'no_aprobado', 'Motivo de prueba')$q$),
+               (9, 'Pendiente enlazado a un estudiante', 'chk_admisiones_matricula_aprobada',
+                $q$INSERT INTO admisiones (anio_lectivo_id, nombre, apellido, autoriza_datos, autoriza_nombre, estudiante_id)
+                   VALUES ({anio}, 'Prueba', 'Admision', TRUE, 'Acudiente', {estudiante})$q$),
+               (10, 'Aprobado enlazado a un estudiante', 'aceptar',
+                $q$INSERT INTO admisiones (anio_lectivo_id, nombre, apellido, autoriza_datos, autoriza_nombre, resultado, estudiante_id)
+                   VALUES ({anio}, 'Prueba', 'Admision', TRUE, 'Acudiente', 'aprobado', {estudiante})$q$),
+               (11, 'Dos admisiones del mismo estudiante', 'admisiones_estudiante_id_key',
+                $q$INSERT INTO admisiones (anio_lectivo_id, nombre, apellido, autoriza_datos, autoriza_nombre, resultado, estudiante_id)
+                   VALUES ({anio}, 'Prueba', 'Uno', TRUE, 'Acudiente', 'aprobado', {estudiante}),
+                          ({anio}, 'Prueba', 'Dos', TRUE, 'Acudiente', 'aprobado', {estudiante})$q$),
+               (12, 'Mismo documento dos veces en el año', 'idx_admisiones_documento_por_anio',
+                $q$INSERT INTO admisiones (anio_lectivo_id, nombre, apellido, autoriza_datos, autoriza_nombre, documento_identidad)
+                   VALUES ({anio}, 'Prueba', 'Uno', TRUE, 'Acudiente', '0000000001'),
+                          ({anio}, 'Prueba', 'Dos', TRUE, 'Acudiente', '0000000001')$q$),
+               (13, 'Dos aspirantes sin documento', 'aceptar',
+                $q$INSERT INTO admisiones (anio_lectivo_id, nombre, apellido, autoriza_datos, autoriza_nombre)
+                   VALUES ({anio}, 'Prueba', 'Uno', TRUE, 'Acudiente'),
+                          ({anio}, 'Prueba', 'Dos', TRUE, 'Acudiente')$q$),
+               (14, 'Curso de otro año', 'admisiones_curso_anio_lectivo_fkey',
+                $q$INSERT INTO admisiones (anio_lectivo_id, nombre, apellido, autoriza_datos, autoriza_nombre, curso_id)
+                   VALUES ({anio}, 'Prueba', 'Admision', TRUE, 'Acudiente', {curso_otro_anio})$q$),
+               (15, 'Año que no existe', 'admisiones_anio_lectivo_fkey',
+                $q$INSERT INTO admisiones (anio_lectivo_id, nombre, apellido, autoriza_datos, autoriza_nombre)
+                   VALUES (-1, 'Prueba', 'Admision', TRUE, 'Acudiente')$q$)
+           ) AS c (orden, caso, debe, sentencia)
+           ORDER BY orden
+       LOOP
+           IF (position('{estudiante}' IN fila.sentencia) > 0 AND estudiante IS NULL)
+              OR (position('{curso_otro_anio}' IN fila.sentencia) > 0 AND curso_otro_anio IS NULL) THEN
+               INSERT INTO prueba_admisiones
+               VALUES (fila.orden, fila.caso, fila.debe, 'no se pudo probar: faltan datos en este colegio');
+               CONTINUE;
+           END IF;
+           texto_sql := replace(replace(replace(fila.sentencia,
+               '{anio}', anio_id::text),
+               '{estudiante}', coalesce(estudiante::text, 'NULL')),
+               '{curso_otro_anio}', coalesce(curso_otro_anio::text, 'NULL'));
+           BEGIN
+               EXECUTE texto_sql;
+               RAISE EXCEPTION 'aceptada';
+           EXCEPTION
+               WHEN raise_exception THEN
+                   INSERT INTO prueba_admisiones VALUES (fila.orden, fila.caso, fila.debe, 'aceptada');
+               WHEN OTHERS THEN
+                   INSERT INTO prueba_admisiones VALUES (fila.orden, fila.caso, fila.debe, SQLERRM);
+           END;
+       END LOOP;
+   END
+   $$;
+
+   SELECT orden, caso, debe, obtuvo,
+          CASE WHEN debe = 'aceptar' THEN obtuvo = 'aceptada'
+               ELSE position(debe IN obtuvo) > 0 END AS bien
+   FROM prueba_admisiones
+   ORDER BY orden;
+   ```
+
+   Cómo funciona: cada alta corre en un bloque que, si la base la acepta, se
+   deshace a propósito con `RAISE EXCEPTION 'aceptada'`; si la base la
+   rechaza, también se deshace. Solo queda el resultado en una tabla
+   temporal, que desaparece al cerrar la sesión. El caso 14 necesita dos
+   años; `tenant_colegio_1` tiene 2026 y 2027 desde la prueba del usuario
+   en el Colegio Demo (fase 6 del año lectivo). Si un caso dice "no se pudo
+   probar", faltan datos en ese colegio, no es un error de la migración.
+6. Contarle al asistente lo que salió en los puntos 3, 4 y 5, sin cadenas de
+   conexión. Después se puede borrar la rama.
+
+**Prueba en la rama de Neon, 2026-10-13** (rama `prueba-entrevista`, copia
+de `production`; la hizo el usuario, el asistente no se conectó a Neon ni a
+producción):
+
+- `--dry-run`: `PENDIENTE` (informado por el usuario). Después el usuario
+  informó que aplicó la migración en la rama.
+- Esquema base regenerado desde `tenant_colegio_1` en la rama: 36 tablas, 1
+  función y 1 disparador (antes 35). La revisión del diff confirmó solo lo
+  esperado: cabecera con la fecha y 43 migraciones (antes 42), incluida
+  `20261013_admisiones.sql`; la tabla `admisiones` con sus 33 columnas, las
+  cuatro reglas `chk_admisiones_*`, la llave primaria y
+  `admisiones_estudiante_id_key`; los dos índices; y las tres claves
+  foráneas. La cabecera confirma que la migración quedó registrada en
+  `tenant_colegio_1` de la rama.
+- Consulta de reglas en el SQL Editor, sobre `tenant_colegio_1` de la rama:
+  **las 15 filas con `bien = true`**. Se aceptaron el aspirante mínimo, el
+  "no aprobado" con motivo, el aprobado enlazado a un estudiante y dos
+  aspirantes sin documento. Se rechazaron, cada uno con la regla esperada:
+  autorización en falso (`chk_admisiones_autoriza`), autorización vacía y sin
+  quién autoriza (`NOT NULL`), resultado inventado
+  (`chk_admisiones_resultado`), "no aprobado" sin motivo y con motivo en
+  blanco (`chk_admisiones_motivo_no_aprobado`), pendiente enlazado
+  (`chk_admisiones_matricula_aprobada`), dos admisiones del mismo estudiante
+  (`admisiones_estudiante_id_key`), documento repetido en el año
+  (`idx_admisiones_documento_por_anio`), curso de otro año
+  (`admisiones_curso_anio_lectivo_fkey`) y año inexistente
+  (`admisiones_anio_lectivo_fkey`). Ningún caso dijo "no se pudo probar":
+  la rama tenía estudiantes y cursos de dos años.
+- Verificación final, con una `DATABASE_URL` ficticia: 20 pruebas
+  específicas pasan (las 15 de la migración y las 5 del esquema base);
+  `scripts/verify.py` → **2294 pasan, 0 fallan**, Ruff y `pip check`
+  limpios; `git diff --check` limpio.
+
 ## Entrega para el siguiente chat
 
-- Estado al 2026-10-12: **diseño y documentación (E0)**. No hay código de
-  esta funcionalidad. Al empezar, los dos repos estaban en `main` y limpios
-  (backend `2295928`, frontend `8319356`). Verificación del paso documental:
-  `scripts/verify.py` 2279 pruebas, Ruff y `pip check` limpios (con una
-  `DATABASE_URL` ficticia); `pnpm run check:deploy` 2409 pruebas, lint y
-  build; `git diff --check` limpio en los dos repos.
-- Siguiente acción exacta: el usuario confirma el reparto de campos y las
-  decisiones 7 a 9 (ver "Preguntas abiertas"). Con eso, y su autorización
-  explícita, empieza E1 (la migración). La migración se prueba en una rama de
-  Neon; el asistente no se conecta a ninguna base.
+- Estado al 2026-10-13: **paso E1 probado en la rama de Neon, sin commit y
+  sin aplicar en producción.** El usuario confirmó el reparto de campos y las
+  decisiones 7 a 9, decidió la 10 (quien entrevista, a mano) y autorizó el
+  E1. Migración `migrations/20261013_admisiones.sql`,
+  `tests/test_migracion_admisiones.py` (15 pruebas) y el esquema base
+  regenerado desde la rama `prueba-entrevista` (36 tablas). La consulta de
+  reglas dio las 15 filas bien. `scripts/verify.py` 2294 pasan, 0 fallan,
+  Ruff y `pip check` limpios; `git diff --check` limpio. Ver "Avance del paso
+  E1" y "Prueba en la rama de Neon". En el frontend solo cambió su
+  documento. Al 2026-10-13 los dos repos tenían sin subir solo el commit del
+  E0 (`7949de8` y `f2dda8c`, documentos).
+- Siguiente acción exacta, la hace el usuario: commit de migración, base,
+  pruebas y documentos juntos; push del backend y esperar a que Render quede
+  **Live** (no trae código de la app, solo la migración y la base); después,
+  con `$env:DATABASE_URL` en el endpoint directo de producción
+  (`ep-late-smoke-aip41j6x`, sin `-pooler`), `--dry-run` (`PENDIENTE` en los
+  dos tenants), aplicar (`OK`) y `--dry-run` (`OMITIDA (ya aplicada)`). Con
+  eso el E1 queda terminado; anotar el resultado aquí y en
+  `docs/MIGRACIONES.md`. Borrar la rama `prueba-entrevista`. El E2 necesita
+  su propia autorización.
+- Por qué el push va antes de aplicar en producción (igual que el paso 5.2
+  del año lectivo, `a6f3cc0`): si se aplicara primero, un colegio creado en
+  ese rato nacería del archivo base viejo, sin la tabla, pero con la
+  migración en su historial, y nadie la volvería a aplicar. Con el push
+  primero, lo peor es que un colegio nuevo tenga la tabla y no el registro;
+  el runner la aplicaría de nuevo y `CREATE TABLE IF NOT EXISTS` no haría
+  nada.
 - Prompt para retomar: `docs/funcionalidades/PROMPT_CONTINUACION_ENTREVISTA_ADMISION.md`.

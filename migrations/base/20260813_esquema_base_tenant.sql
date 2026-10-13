@@ -1,6 +1,6 @@
 -- Esquema base de un tenant. ARCHIVO GENERADO, no editar a mano.
 --
--- Extraido de tenant_colegio_1 el 2026-10-08 con
+-- Extraido de tenant_colegio_1 el 2026-10-13 con
 -- scripts/generar_esquema_base.py. Para rehacerlo, aplica antes la
 -- migracion nueva a ese schema y vuelve a ejecutar el script.
 --
@@ -11,7 +11,7 @@
 -- No usar apply_migration.py con este archivo: es para dar de alta un
 -- tenant nuevo, no para los existentes, que ya tienen estas tablas.
 --
--- MIGRACIONES INCORPORADAS (42):
+-- MIGRACIONES INCORPORADAS (43):
 --   20260429_pagos_tipo_pago_largo.sql
 --   20260429_plan_de_clases_reportes.sql
 --   20260509_branding_plantillas_impresion.sql
@@ -54,7 +54,50 @@
 --   20261001_anios_lectivos_obligatorio.sql
 --   20261006_anios_lectivos_origenes.sql
 --   20261008_anios_lectivos_activacion.sql
+--   20261013_admisiones.sql
 -- FIN MIGRACIONES INCORPORADAS
+
+CREATE TABLE IF NOT EXISTS admisiones (
+    id SERIAL,
+    anio_lectivo_id integer NOT NULL,
+    nombre character varying(100) NOT NULL,
+    apellido character varying(100) NOT NULL,
+    tipo_documento character varying(50),
+    documento_identidad character varying(20),
+    fecha_nacimiento date,
+    curso_id integer,
+    acudiente_nombre character varying(150),
+    acudiente_parentesco character varying(50),
+    acudiente_telefono character varying(50),
+    autoriza_datos boolean NOT NULL,
+    autoriza_nombre character varying(150) NOT NULL,
+    fecha_entrevista date,
+    entrevistador character varying(150),
+    asistentes character varying(250),
+    colegio_anterior character varying(150),
+    anio_cursado_anterior character varying(50),
+    pre_escolar_anterior character varying(50),
+    ebp_anterior character varying(50),
+    motivo_retiro_anterior text,
+    paz_salvo_anterior character varying(10),
+    ocupacion_padre character varying(100),
+    ocupacion_madre character varying(100),
+    vive_con character varying(250),
+    expectativas text,
+    observaciones text,
+    resultado character varying(20) DEFAULT 'pendiente'::character varying NOT NULL,
+    motivo_resultado text,
+    decidido_en timestamp with time zone,
+    estudiante_id integer,
+    creado_en timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    actualizado_en timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT chk_admisiones_autoriza CHECK (autoriza_datos),
+    CONSTRAINT chk_admisiones_matricula_aprobada CHECK (((estudiante_id IS NULL) OR ((resultado)::text = 'aprobado'::text))),
+    CONSTRAINT chk_admisiones_motivo_no_aprobado CHECK ((((resultado)::text <> 'no_aprobado'::text) OR (NULLIF(TRIM(BOTH FROM motivo_resultado), ''::text) IS NOT NULL))),
+    CONSTRAINT chk_admisiones_resultado CHECK (((resultado)::text = ANY ((ARRAY['pendiente'::character varying, 'aprobado'::character varying, 'no_aprobado'::character varying])::text[]))),
+    CONSTRAINT admisiones_pkey PRIMARY KEY (id),
+    CONSTRAINT admisiones_estudiante_id_key UNIQUE (estudiante_id)
+);
 
 CREATE TABLE IF NOT EXISTS anios_lectivos (
     id SERIAL,
@@ -562,6 +605,8 @@ CREATE TABLE IF NOT EXISTS ventas_detalle (
 );
 
 -- Indices que no respaldan restricciones
+CREATE INDEX IF NOT EXISTS idx_admisiones_anio ON admisiones USING btree (anio_lectivo_id, resultado);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_admisiones_documento_por_anio ON admisiones USING btree (anio_lectivo_id, documento_identidad) WHERE (documento_identidad IS NOT NULL);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_anios_lectivos_un_activo ON anios_lectivos USING btree (estado) WHERE ((estado)::text = 'activo'::text);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_anios_lectivos_una_preparacion ON anios_lectivos USING btree (estado) WHERE ((estado)::text = 'preparacion'::text);
 CREATE INDEX IF NOT EXISTS idx_anios_lectivos_materias_ocultas_materia ON anios_lectivos_materias_ocultas USING btree (materia_id);
@@ -631,6 +676,9 @@ CREATE INDEX IF NOT EXISTS idx_ventas_estado ON ventas USING btree (estado);
 CREATE INDEX IF NOT EXISTS tenant_colegio_1_idx_ventas_estudiante_estado ON ventas USING btree (estudiante_id, estado);
 
 -- Claves foraneas, al final para no depender del orden de creacion
+ALTER TABLE admisiones ADD CONSTRAINT admisiones_anio_lectivo_fkey FOREIGN KEY (anio_lectivo_id) REFERENCES anios_lectivos(id);
+ALTER TABLE admisiones ADD CONSTRAINT admisiones_curso_anio_lectivo_fkey FOREIGN KEY (curso_id, anio_lectivo_id) REFERENCES cursos(id, anio_lectivo_id);
+ALTER TABLE admisiones ADD CONSTRAINT admisiones_estudiante_fkey FOREIGN KEY (estudiante_id) REFERENCES estudiantes(id);
 ALTER TABLE anios_lectivos_materias_ocultas ADD CONSTRAINT anios_lectivos_materias_ocultas_anio_fkey FOREIGN KEY (anio_lectivo_id) REFERENCES anios_lectivos(id);
 ALTER TABLE anios_lectivos_materias_ocultas ADD CONSTRAINT anios_lectivos_materias_ocultas_materia_fkey FOREIGN KEY (materia_id) REFERENCES materias(id);
 ALTER TABLE asignaciones ADD CONSTRAINT asignaciones_asignacion_academica_id_fkey FOREIGN KEY (asignacion_academica_id) REFERENCES asignaciones(id);

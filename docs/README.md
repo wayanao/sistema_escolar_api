@@ -42,6 +42,11 @@ continuacion para retomarla en otro chat u otro LLM.
   **Fases 0 a 4 completas; fase 5 en curso. Los pasos 5.1 (`d113e15`) y 5.2
   (`a6f3cc0`) están completos; la migración de 5.2 fue verificada y aplicada en
   producción. Fecha limite: noviembre de 2026.**
+- `funcionalidades/ENTREVISTA_ADMISION.md`: registrar aspirantes nuevos del
+  año en preparación, hacerles la entrevista con la familia y dejar el
+  resultado (aprobado o no aprobado); solo un aprobado se matricula. Vive en la
+  preparación del año lectivo. **Diseñado (E0, 2026-10-12), nada
+  implementado. Fecha limite: noviembre de 2026.**
 
 ## Estado actual resumido
 

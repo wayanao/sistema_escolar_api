@@ -3911,12 +3911,16 @@ cosa, gana lo que se pueda verificar.
   "Valores de pago" (sin commit); aquí, la ruta de solo lectura `GET
   /estudiantes/{id}/valores-pago` que usa ese recuadro (`1a732cc`). Nada de
   esto, ni la fase 7, está en GitHub todavía.
+- **Función aparte que vive en la preparación del año (2026-10-12):
+  Entrevista de admisión.** Aspirantes nuevos, entrevista con la familia,
+  resultado aprobado o no; solo un aprobado se matricula en el año en
+  preparación (reemplazará el alta directa de `POST
+  /anios-lectivos/{id}/estudiantes`, al final de su plan). Diseñada (paso E0),
+  nada implementado: ver `docs/funcionalidades/ENTREVISTA_ADMISION.md`.
 - **Siguiente acción exacta:** la ruta `valores-pago` quedó en `1a732cc`; en
-  el frontend, los ajustes en `bf8289e`, `6853db0` y `93c0c22`. Los avisos de
-  "qué está pasando" de la página de años lectivos quedaron terminados
-  localmente: el usuario los revisa en local (rama de Neon o Colegio Demo,
-  nunca con estudiantes de `tenant_2005`) y hace su commit. Pendiente de su
-  decisión: "Quitar o cambiar la matrícula de 2027" (ver el final de la fase
+  el frontend, los ajustes en `bf8289e`, `6853db0`, `93c0c22` y los avisos de
+  "qué está pasando" en `885691e` y `a252f6e`. Pendiente de la decisión del
+  usuario: "Quitar o cambiar la matrícula de 2027" (ver el final de la fase
   5). Después, cada cosa con su autorización:
   1. Subir la fase 7 y la ruta `valores-pago`: primero el backend, esperando
      a que Render quede **Live**, y después el frontend, que usa las rutas

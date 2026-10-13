@@ -2,8 +2,9 @@
 
 ## Control
 
-- Estado: **Paso E4 (frontend) escrito el 2026-10-13, sin commit**: la página
-  de admisiones y la tarjeta en Años lectivos; ver
+- Estado: **Paso E5 (frontend) escrito el 2026-10-13, sin commit**:
+  matricular desde la admisión y fuera "Crear estudiante en {año}"; el E4
+  (la página de admisiones) está en `22b3dcf`. Ver
   `frontend-react/docs/funcionalidades/ENTREVISTA_ADMISION.md`. En este repo,
   el E2 (`ee8aba2`) y el E3 (`d099c29`) están en commits sin subir; con ellos
   el backend tiene todo lo que usan las pantallas y falta solo el E7, que va
@@ -287,8 +288,8 @@ propuesta.
 | E1 | backend | Migración `admisiones` y esquema base (rama de Neon; la aplica el usuario). **Hecho el 2026-10-13** (`4db1f15`, aplicada en producción) |
 | E2 | backend | Registrar, listar, ver, editar y borrar admisiones; guardia del año; autorización obligatoria. **Hecho el 2026-10-13** (`ee8aba2`) |
 | E3 | backend | Resultado y matricular desde la admisión (con la copia de los datos movidos). **Hecho el 2026-10-13** (`d099c29`) |
-| E4 | frontend | Página de admisiones: lista, nuevo aspirante, entrevista y resultado; acceso desde la preparación del año. **Escrito el 2026-10-13, sin commit** |
-| E5 | frontend | Matricular desde una admisión aprobada (ficha con los datos ya puestos); quitar "Crear estudiante en 2027" de Estudiantes y de "Continuar la preparación" |
+| E4 | frontend | Página de admisiones: lista, nuevo aspirante, entrevista y resultado; acceso desde la preparación del año. **Hecho el 2026-10-13** (frontend `22b3dcf`) |
+| E5 | frontend | Matricular desde una admisión aprobada (ficha con los datos ya puestos); quitar "Crear estudiante en 2027" de Estudiantes y de "Continuar la preparación". **Escrito el 2026-10-13, sin commit** |
 | E6 | frontend | Formulario del estudiante sin lo que pasó a la entrevista; "Datos de admisión" de solo lectura en la ficha |
 | E7 | backend | Bloquear el alta directa en el año en preparación |
 
@@ -724,18 +725,22 @@ a ninguna base):
 
 ## Entrega para el siguiente chat
 
-- Estado al 2026-10-13: **paso E4 (frontend) escrito, sin commit**. Aquí, el
-  E2 (`ee8aba2`) y el E3 (`d099c29`) en commits sin subir; `scripts/verify.py`
-  2426 pasan, 0 fallan. El E1 en producción. Con el E3, el backend tiene todo
-  lo que necesitan las pantallas (E4 a E6); el E7 va al final.
+- Estado al 2026-10-13: **paso E5 (frontend) escrito, sin commit**; el E4 en
+  `22b3dcf`. Aquí, el E2 (`ee8aba2`) y el E3 (`d099c29`) en commits sin
+  subir; `scripts/verify.py` 2426 pasan, 0 fallan. El E1 en producción. Las
+  pantallas ya cubren todo el flujo (registrar, entrevista, resultado,
+  matricular); faltan el E6 (formulario del estudiante) y el E7 (bloqueo),
+  que va al final.
 - Siguiente acción exacta: probar juntos en local, contra una rama de Neon,
-  el backend (E2 y E3, cuyo SQL nunca ha corrido en PostgreSQL) y la página
-  del E4: backend local con `$env:DATABASE_URL` en la rama (nunca el `.env`),
-  frontend local, y como admin recorrer la tarjeta de Años lectivos →
-  Admisiones → nuevo aspirante → entrevista → resultado → borrar. Matricular
-  todavía no tiene pantalla (E5): si se quiere probar, en `/docs`. Después,
-  push del backend y Render **Live**, y solo entonces el frontend. El E5
-  necesita su propia autorización.
+  el backend (E2 y E3, cuyo SQL nunca ha corrido en PostgreSQL) y el
+  frontend (E4 y E5): backend local con `$env:DATABASE_URL` en la rama
+  (nunca el `.env`), frontend local, y como admin recorrer la tarjeta de
+  Años lectivos → Admisiones → nuevo aspirante → entrevista → aprobar →
+  matricular (uno nuevo y, si hay, un exalumno). Después, push del backend y
+  Render **Live**, y solo entonces el frontend: desde el E5 el frontend ya no
+  tiene "Crear estudiante en 2027", así que sin el backend nuevo no habría
+  forma de crear un estudiante nuevo en 2027. El E6 necesita su propia
+  autorización.
 - Por qué el push del E1 fue antes de aplicar en producción (igual que el paso 5.2
   del año lectivo, `a6f3cc0`): un colegio nuevo nace del archivo base y
   copia el historial de migraciones de la plantilla

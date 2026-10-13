@@ -30,9 +30,10 @@
   7.4 (frontend: usar un plan del año pasado) en `4e71c2b`. Con él, la fase 7
   queda completa en código en los dos repos; falta su revisión con un profesor
   de prueba en el ensayo. El 2026-10-12, ajustes pedidos por el usuario (ver
-  "Ajustes pedidos por el usuario el 2026-10-12" al final de la fase 5): dos
-  en el frontend y la ruta de solo lectura `GET
-  /estudiantes/{id}/valores-pago` aquí, todos sin commit.** El paso 5.10 quedó en
+  "Ajustes pedidos por el usuario el 2026-10-12" al final de la fase 5): la
+  ruta de solo lectura `GET /estudiantes/{id}/valores-pago` aquí (`1a732cc`)
+  y tres en el frontend (`bf8289e`, `6853db0` y "Valores de pago" al
+  matricular, este último sin commit).** El paso 5.10 quedó en
   `82675ba`; el ajuste posterior de navegación del frontend, en `365d083`. El
   paso 5.9 quedó en `0689b7d` y su registro en este repo en
   `53da8f0`. El
@@ -2828,9 +2829,19 @@ estaban en los documentos; el usuario los pidió y autorizó uno por uno):
   ficticia; `git diff --check` limpio. Documentado en
   `docs/API_ENDPOINTS.md` y `docs/CAMBIOS_BACKEND.md`. Sin migración, sin
   bases reales.
-- **Siguiente paso, sin empezar:** el recuadro "Valores de pago" en el
-  frontend. Antes de usarlo en producción, el usuario sube este backend y
-  espera a que Render quede **Live**.
+- **El usuario confirmó la ruta en el commit `1a732cc`.**
+- **Paso de frontend, terminado localmente sin commit (autorizado con
+  "continua"):** el recuadro "Valores de pago" en la sección de matricular,
+  solo para estudiantes ya matriculados en el año en preparación. Lee esta
+  ruta y guarda o quita con las mismas llamadas de Pagos; tras cada cambio
+  recarga la lista y el resumen. Detalle y verificación en el "Ajuste del
+  2026-10-12 — valores de pago al matricular" del documento del frontend.
+  Antes de usarlo en producción, el usuario sube este backend y espera a que
+  Render quede **Live**.
+- **Hallazgo de antes, sin cambiar:** `leer_resumen_anio` cuenta los valores
+  especiales del año sin mirar `tpe.activo`, y quitar un valor solo lo
+  desactiva; así, el conteo del resumen no baja al volver al precio del curso.
+  Sería un cambio aparte, pequeño, si el usuario lo quiere.
 
 ### Fase 6 — Activar el año nuevo, cerrar y reabrir (antes de iniciar clases 2027)
 
@@ -3877,15 +3888,16 @@ cosa, gana lo que se pueda verificar.
   **Con él, la fase 7 queda completa en código en los dos repos.** Falta su
   revisión con un profesor de prueba, que es parte del ensayo de abajo.
 - **Ajustes del 2026-10-12, pedidos por el usuario** (ver el final de la fase
-  5): en el frontend, la explicación de las casillas de la copia y "Editar
-  datos" en la sección de matricular; aquí, la ruta de solo lectura `GET
-  /estudiantes/{id}/valores-pago` para "Valores de pago" al matricular. Todo
-  terminado localmente, sin commit. Sin subir a GitHub al empezar: 4 commits
-  aquí (`16c9052` a `144f93b`) y 2 en el frontend (`df2afe3`, `4e71c2b`).
-- **Siguiente acción exacta:** el usuario revisa y hace el commit de la ruta
-  `valores-pago` aquí, y el de los dos ajustes en el frontend. El siguiente
-  paso, sin empezar y con su visto bueno, es el recuadro "Valores de pago" en
-  el frontend. Después, cada cosa con su autorización:
+  5): en el frontend, la explicación de las casillas de la copia (`bf8289e`),
+  "Editar datos" en la sección de matricular (`6853db0`) y el recuadro
+  "Valores de pago" (sin commit); aquí, la ruta de solo lectura `GET
+  /estudiantes/{id}/valores-pago` que usa ese recuadro (`1a732cc`). Nada de
+  esto, ni la fase 7, está en GitHub todavía.
+- **Siguiente acción exacta:** la ruta `valores-pago` quedó en `1a732cc` y los
+  dos primeros ajustes del frontend en `bf8289e` y `6853db0`. El recuadro
+  "Valores de pago" del frontend quedó terminado localmente: el usuario lo
+  revisa en local (rama de Neon o Colegio Demo, nunca con estudiantes de
+  `tenant_2005`) y hace su commit. Después, cada cosa con su autorización:
   1. Subir la fase 7 y la ruta `valores-pago`: primero el backend, esperando
      a que Render quede **Live**, y después el frontend, que usa las rutas
      nuevas. Sin un año 2027 activo, la fase 7 no se ve en producción.

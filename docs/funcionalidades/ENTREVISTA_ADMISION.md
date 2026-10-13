@@ -2,11 +2,13 @@
 
 ## Control
 
-- Estado: **Paso E3 escrito el 2026-10-13, sin commit** (resultado y
-  matricular desde la admisión; ver "Avance del paso E3"). Con él, el backend
-  de la funcionalidad queda completo hasta el E6; falta el E7, que va al
-  final. El E2 quedó en el commit `ee8aba2` (sin subir al iniciar el E3). El
-  E1 está terminado: migración en producción y commit `4db1f15` en **Live**.
+- Estado: **Paso E4 (frontend) escrito el 2026-10-13, sin commit**: la página
+  de admisiones y la tarjeta en Años lectivos; ver
+  `frontend-react/docs/funcionalidades/ENTREVISTA_ADMISION.md`. En este repo,
+  el E2 (`ee8aba2`) y el E3 (`d099c29`) están en commits sin subir; con ellos
+  el backend tiene todo lo que usan las pantallas y falta solo el E7, que va
+  al final. El E1 está terminado: migración en producción y commit `4db1f15`
+  en **Live**.
   Decisiones del usuario del 2026-10-13: reparto de campos y decisiones 7 a
   9, quien entrevista a mano (10) y el exalumno que vuelve usa su mismo
   registro (11).
@@ -284,8 +286,8 @@ propuesta.
 | E0 | ambos | Este diseño. **Hecho el 2026-10-12** |
 | E1 | backend | Migración `admisiones` y esquema base (rama de Neon; la aplica el usuario). **Hecho el 2026-10-13** (`4db1f15`, aplicada en producción) |
 | E2 | backend | Registrar, listar, ver, editar y borrar admisiones; guardia del año; autorización obligatoria. **Hecho el 2026-10-13** (`ee8aba2`) |
-| E3 | backend | Resultado y matricular desde la admisión (con la copia de los datos movidos). **Escrito el 2026-10-13, sin commit** |
-| E4 | frontend | Página de admisiones: lista, nuevo aspirante, entrevista y resultado; acceso desde la preparación del año |
+| E3 | backend | Resultado y matricular desde la admisión (con la copia de los datos movidos). **Hecho el 2026-10-13** (`d099c29`) |
+| E4 | frontend | Página de admisiones: lista, nuevo aspirante, entrevista y resultado; acceso desde la preparación del año. **Escrito el 2026-10-13, sin commit** |
 | E5 | frontend | Matricular desde una admisión aprobada (ficha con los datos ya puestos); quitar "Crear estudiante en 2027" de Estudiantes y de "Continuar la preparación" |
 | E6 | frontend | Formulario del estudiante sin lo que pasó a la entrevista; "Datos de admisión" de solo lectura en la ficha |
 | E7 | backend | Bloquear el alta directa en el año en preparación |
@@ -722,19 +724,18 @@ a ninguna base):
 
 ## Entrega para el siguiente chat
 
-- Estado al 2026-10-13: **paso E3 escrito, sin commit** (ver "Avance del
-  paso E3"); `scripts/verify.py` 2426 pasan, 0 fallan. El E2 está en
-  `ee8aba2` y el E1 en producción. Con el E3, el backend tiene todo lo que
-  necesitan las pantallas (E4 a E6); el E7 va al final.
-- Siguiente acción exacta: el usuario revisa el E3 y, antes de subir E2 y
-  E3, conviene probarlos juntos en local contra una rama de Neon, porque es
-  la primera vez que su SQL corre en PostgreSQL: backend local con
-  `$env:DATABASE_URL` en la rama (nunca el `.env`) y en `/docs`, como admin,
-  registrar un aspirante, editarlo, aprobarlo, matricularlo (uno nuevo y,
-  si hay, un exalumno) y ver que la admisión queda de solo consulta. Después
-  commit y push del backend (sin migración; nadie usa estas rutas hasta el
-  E4). El E4 (la página de admisiones, en el frontend) necesita su propia
-  autorización.
+- Estado al 2026-10-13: **paso E4 (frontend) escrito, sin commit**. Aquí, el
+  E2 (`ee8aba2`) y el E3 (`d099c29`) en commits sin subir; `scripts/verify.py`
+  2426 pasan, 0 fallan. El E1 en producción. Con el E3, el backend tiene todo
+  lo que necesitan las pantallas (E4 a E6); el E7 va al final.
+- Siguiente acción exacta: probar juntos en local, contra una rama de Neon,
+  el backend (E2 y E3, cuyo SQL nunca ha corrido en PostgreSQL) y la página
+  del E4: backend local con `$env:DATABASE_URL` en la rama (nunca el `.env`),
+  frontend local, y como admin recorrer la tarjeta de Años lectivos →
+  Admisiones → nuevo aspirante → entrevista → resultado → borrar. Matricular
+  todavía no tiene pantalla (E5): si se quiere probar, en `/docs`. Después,
+  push del backend y Render **Live**, y solo entonces el frontend. El E5
+  necesita su propia autorización.
 - Por qué el push del E1 fue antes de aplicar en producción (igual que el paso 5.2
   del año lectivo, `a6f3cc0`): un colegio nuevo nace del archivo base y
   copia el historial de migraciones de la plantilla

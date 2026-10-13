@@ -248,6 +248,7 @@ def test_el_repositorio_de_planilla_es_el_duodecimo():
     }
 
     assert repositorios == {
+        "admisiones_repository",
         "anios_lectivos_repository",
         "asignaciones_repository",
         "asistencia_repository",

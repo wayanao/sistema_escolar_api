@@ -6,6 +6,35 @@ Ultima revision documental: 2026-10-13.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
+## 2026-10-13 - Entrevista de admisión E2: registrar, ver, editar y borrar aspirantes
+
+Segundo paso con código de `docs/funcionalidades/ENTREVISTA_ADMISION.md`.
+
+### Qué cambia
+
+- Router nuevo `app/routes/admisiones.py`, **solo admin** a nivel de router:
+  `GET` y `POST /anios-lectivos/{id}/admisiones`, y `GET`, `PUT` y `DELETE
+  /admisiones/{id}`. Contrato en `docs/API_ENDPOINTS.md`, "Admisiones".
+- Se consulta cualquier año; registrar, editar y borrar solo con el año en
+  `preparacion` (`409`). Una admisión matriculada es de solo consulta. El
+  curso debe ser un curso activo del mismo año y el documento no se repite
+  entre los aspirantes de un año (`409`, también si dos altas llegan a la
+  vez). Si el documento ya es de un estudiante, la respuesta trae
+  `aviso_documento`, sin impedir el registro.
+- Capas: `app/schemas/admision.py`, `app/repositories/admisiones_repository.py`
+  y `app/controllers/admisiones_controller.py`. El resultado y la matrícula
+  son del paso E3.
+- No cambia ninguna ruta ni respuesta existente. Sin migración.
+
+### Pruebas
+
+`tests/test_admisiones_esquema.py`, `tests/test_admisiones_controller.py` y
+`tests/test_admisiones_routes.py`, 80 pruebas escritas antes (los tres
+archivos fallaron al importar). Ajustadas a propósito: las cinco guardias que
+enumeran todos los repositorios reconocen `admisiones_repository` (la de
+asistencia, también su total: de 19 a 20). `scripts/verify.py`: 2374 pasan,
+0 fallan; Ruff y `pip check` limpios.
+
 ## 2026-10-13 - Entrevista de admisión E1: tabla de admisiones
 
 Primer paso con código de `docs/funcionalidades/ENTREVISTA_ADMISION.md`. El

@@ -3916,7 +3916,8 @@ cosa, gana lo que se pueda verificar.
   resultado aprobado o no; solo un aprobado se matricula en el año en
   preparación (reemplazará el alta directa de `POST
   /anios-lectivos/{id}/estudiantes`, al final de su plan). Paso E1 (la tabla
-  `admisiones`) en producción el 2026-10-13, sin rutas todavía: ver
+  `admisiones`) en producción el 2026-10-13 y paso E2 (las rutas de
+  aspirantes) escrito el mismo día: ver
   `docs/funcionalidades/ENTREVISTA_ADMISION.md`.
 - **Siguiente acción exacta:** la ruta `valores-pago` quedó en `1a732cc`; en
   el frontend, los ajustes en `bf8289e`, `6853db0`, `93c0c22` y los avisos de

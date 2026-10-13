@@ -215,6 +215,7 @@ def test_el_repositorio_de_asistencia_es_el_noveno():
     )
 
     assert repositorios == [
+        "admisiones_repository",
         "anios_lectivos_repository",
         "asignaciones_repository",
         "asistencia_repository",
@@ -235,7 +236,7 @@ def test_el_repositorio_de_asistencia_es_el_noveno():
         "super_admin_repository",
         "ventas_repository",
     ]
-    assert len(repositorios) == 19
+    assert len(repositorios) == 20
 
 
 def test_las_tres_sentencias_viven_ahora_en_el_repositorio():

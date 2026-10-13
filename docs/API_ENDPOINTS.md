@@ -1,6 +1,6 @@
 # API Endpoints
 
-Ultima revision documental: 2026-10-02.
+Ultima revision documental: 2026-10-13.
 
 ## Routers
 
@@ -386,6 +386,119 @@ el del plan o el de la anotacion) y aplica esta regla:
   de un año que ya no es el activo esa comprobacion responde primero `403`
   ("El estudiante no pertenece a esta asignación"); el efecto es el mismo:
   no se guarda.
+
+## Admisiones
+
+Entrevista de admisión, paso E2: aspirantes nuevos del año en preparación.
+Router **solo admin** (datos de menores, Ley 1581 de 2012), en
+`app/routes/admisiones.py`. Detalle y decisiones en
+`docs/funcionalidades/ENTREVISTA_ADMISION.md`.
+
+- `GET /anios-lectivos/{anio_lectivo_id}/admisiones?resultado=`
+- `POST /anios-lectivos/{anio_lectivo_id}/admisiones`
+- `GET /admisiones/{admision_id}`
+- `PUT /admisiones/{admision_id}`
+- `DELETE /admisiones/{admision_id}`
+
+Se consulta cualquier año. **Registrar, editar y borrar solo en un año en
+`preparacion`**; una admisión matriculada (`estudiante_id`) es de solo
+consulta. El resultado y la matrícula llegan en el paso E3.
+
+`GET /anios-lectivos/{anio_lectivo_id}/admisiones` acepta `resultado`
+(`pendiente`, `aprobado` o `no_aprobado`; otro valor da `422`). Los conteos
+son de todo el año, sin el filtro. Orden: apellido, nombre.
+
+```jsonc
+{
+  "anio_lectivo": {"id": 3, "anio": 2027, "estado": "preparacion"},
+  "editable": true,            // el año está en preparación
+  "conteos": {"pendiente": 4, "aprobado": 2, "no_aprobado": 1, "matriculado": 1, "total": 7},
+  "admisiones": [
+    {
+      "id": 7, "nombre": "Lina", "apellido": "Díaz",
+      "tipo_documento": "RC", "documento_identidad": "2001",
+      "curso_id": 20, "curso_nombre": "PRIMERO A", "curso_jornada": "Mañana",
+      "acudiente_nombre": "Marta Díaz", "acudiente_telefono": "300...",
+      "fecha_entrevista": "2026-10-20", "resultado": "pendiente",
+      "estudiante_id": null, "creado_en": "...", "matriculada": false
+    }
+  ]
+}
+```
+
+`POST /anios-lectivos/{anio_lectivo_id}/admisiones` responde `201` con la
+admisión completa (igual que `GET /admisiones/{id}`). Cuerpo, todos los
+textos recortados y los opcionales vacíos guardados como `null`:
+
+```jsonc
+{
+  "nombre": "Lina",                 // obligatorio, hasta 100
+  "apellido": "Díaz",               // obligatorio, hasta 100
+  "tipo_documento": "RC",           // hasta 50
+  "documento_identidad": "2001",    // hasta 20; no se repite en el año
+  "fecha_nacimiento": "2019-03-04",
+  "curso_id": 20,                   // curso activo del mismo año
+  "acudiente_nombre": "Marta Díaz", // hasta 150
+  "acudiente_parentesco": "Madre",  // hasta 50
+  "acudiente_telefono": "300...",   // hasta 50
+  "autoriza_datos": true,           // obligatorio y true
+  "autoriza_nombre": "Marta Díaz"   // obligatorio, hasta 150
+}
+```
+
+`PUT /admisiones/{admision_id}` recibe lo mismo **más la entrevista**, y
+reemplaza todo (lo que no llega queda en `null`). No cambia el resultado, el
+año ni el enlace al estudiante; si llegan, se ignoran:
+
+```jsonc
+{
+  "fecha_entrevista": "2026-10-20",
+  "entrevistador": "Psicóloga Ruiz",  // texto, hasta 150 (decisión 10)
+  "asistentes": "Madre y abuela",     // hasta 250
+  "colegio_anterior": "...",          // hasta 150
+  "anio_cursado_anterior": "...",     // hasta 50
+  "pre_escolar_anterior": "...",      // hasta 50
+  "ebp_anterior": "...",              // hasta 50
+  "motivo_retiro_anterior": "...",    // texto largo
+  "paz_salvo_anterior": "Sí",         // hasta 10
+  "ocupacion_padre": "...",           // hasta 100
+  "ocupacion_madre": "...",           // hasta 100
+  "vive_con": "...",                  // hasta 250
+  "expectativas": "...",              // texto largo
+  "observaciones": "..."              // texto largo
+}
+```
+
+`GET /admisiones/{admision_id}` (y las respuestas de `POST` y `PUT`): todas
+las columnas de la tabla (`resultado`, `motivo_resultado`, `decidido_en`,
+`estudiante_id`, `creado_en`, `actualizado_en` incluidas), más `anio`,
+`estado_anio`, `curso_nombre`, `curso_jornada`, `matriculada`, `editable`
+(año en preparación y sin matricular) y `aviso_documento`:
+
+```jsonc
+"aviso_documento": null
+// o, si el documento ya es de un estudiante del colegio (cualquier estado):
+"aviso_documento": {
+  "estudiante_id": 55, "nombre": "Lina", "apellido": "Díaz", "estado": "retirado",
+  "mensaje": "El documento 2001 ya es de un estudiante del colegio: Lina Díaz (retirado). Al matricular, chocaría con ese estudiante."
+}
+```
+
+El aviso no impide registrar: qué hacer con quien vuelve se decide antes del
+paso E3.
+
+`DELETE /admisiones/{admision_id}` responde
+`{"mensaje": "Admisión borrada", "id": 7}`.
+
+Errores (el `detail` es un texto listo para mostrar):
+
+- `403`: no es admin.
+- `404`: el año o la admisión no existen.
+- `409`: el año no está en preparación; la admisión está matriculada; el
+  curso no es un curso activo del año; o el documento ya lo tiene otro
+  aspirante del año (también si dos altas llegan a la vez).
+- `422`: cuerpo inválido (falta un obligatorio, `autoriza_datos` no es
+  `true`, un texto demasiado largo, `curso_id` no positivo).
 
 ## Estudiantes
 

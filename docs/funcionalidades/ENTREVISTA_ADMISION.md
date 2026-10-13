@@ -2,14 +2,14 @@
 
 ## Control
 
-- Estado: **Paso E1 terminado el 2026-10-13.** Migración
-  `migrations/20261013_admisiones.sql` probada en la rama de Neon
-  `prueba-entrevista` (la consulta de reglas dio las 15 filas bien), esquema
-  base regenerado desde allí, commit `4db1f15` en **Live** en Render y
-  migración aplicada en producción por el usuario. Ningún código de la app
-  usa la tabla todavía. Siguiente: E2, con su propia autorización. El 2026-10-13 el usuario confirmó el reparto de campos y
-  las decisiones 7 a 9, y decidió que quien entrevista se escribe a mano
-  (decisión 10).
+- Estado: **Paso E2 escrito el 2026-10-13, sin commit.** Las cinco rutas de
+  registrar, listar, ver, editar y borrar admisiones, solo admin, con sus
+  pruebas (ver "Avance del paso E2"). **El E1 quedó terminado** el mismo día:
+  migración `migrations/20261013_admisiones.sql` probada en la rama de Neon
+  `prueba-entrevista`, esquema base regenerado, commit `4db1f15` en **Live**
+  en Render y migración aplicada en producción por el usuario. El 2026-10-13
+  el usuario confirmó el reparto de campos y las decisiones 7 a 9, y decidió
+  que quien entrevista se escribe a mano (decisión 10).
 - Tipo: función nueva de producto. No es una capa del programa de
   modularización de `docs/modularizacion/`.
 - Repos afectados: este repo (`sistema_escolar_api`) y `frontend-react`. Ver
@@ -248,10 +248,13 @@ WHERE documento_identidad IS NOT NULL;
   esquema base desde allí y el usuario la aplica en los tenants
   (`docs/MIGRACIONES.md`).
 
-## Rutas (contrato propuesto; pasos E2 y E3)
+## Rutas (pasos E2 y E3)
 
 Todas solo para admin. Las que escriben exigen que el año de la admisión esté
-en `preparacion` (`409` con mensaje si no).
+en `preparacion` (`409` con mensaje si no). Las cinco del E2 están hechas; su
+contrato completo (cuerpos, respuestas y errores) está en
+`docs/API_ENDPOINTS.md`, sección "Admisiones". Las del E3 siguen siendo
+propuesta.
 
 | Ruta | Qué hace |
 |---|---|
@@ -270,7 +273,7 @@ en `preparacion` (`409` con mensaje si no).
 |---|---|---|
 | E0 | ambos | Este diseño. **Hecho el 2026-10-12** |
 | E1 | backend | Migración `admisiones` y esquema base (rama de Neon; la aplica el usuario). **Hecho el 2026-10-13** (`4db1f15`, aplicada en producción) |
-| E2 | backend | Registrar, listar, ver, editar y borrar admisiones; guardia del año; autorización obligatoria |
+| E2 | backend | Registrar, listar, ver, editar y borrar admisiones; guardia del año; autorización obligatoria. **Escrito el 2026-10-13, sin commit** |
 | E3 | backend | Resultado y matricular desde la admisión (con la copia de los datos movidos) |
 | E4 | frontend | Página de admisiones: lista, nuevo aspirante, entrevista y resultado; acceso desde la preparación del año |
 | E5 | frontend | Matricular desde una admisión aprobada (ficha con los datos ya puestos); quitar "Crear estudiante en 2027" de Estudiantes y de "Continuar la preparación" |
@@ -320,6 +323,14 @@ estudiante en 2027" fallaría en producción.
   preparación del año.
 - Más adelante: ¿se consultan las admisiones de años pasados (incluidas las no
   aprobadas)? Quedan guardadas; no hay pantalla para eso en este diseño.
+- Más adelante, antes de activar 2027 (encontrada en el E2): según el
+  contrato, borrar solo se puede con el año en `preparacion`. Cuando 2027 se
+  active, los aspirantes no aprobados o que nunca se matricularon quedan
+  guardados y ya **no se pueden borrar**, aunque la familia pida retirar sus
+  datos (derecho de supresión de la Ley 1581, el motivo de la decisión 9).
+  ¿Se permite borrar una admisión no matriculada de un año que ya no está en
+  preparación, o se borran solas al activar el año? El E2 sigue el contrato
+  (lo más estricto); aflojarlo después es quitar una comprobación.
 
 ## Avance del paso E1 (2026-10-13)
 
@@ -553,15 +564,82 @@ a ninguna base):
   una migración nueva.
 - **Paso E1 terminado.**
 
+## Avance del paso E2 (2026-10-13)
+
+- Autorizado explícitamente por el usuario ("continúa el E2"). Al iniciar, los
+  dos repos estaban en `main` y limpios, cada uno con un commit de
+  documentos sin subir: backend `c57cbb9`, frontend `09e85a8`.
+- Pruebas primero, 80 en tres archivos; fallaron las tres al importar porque
+  los módulos no existían:
+  - `tests/test_admisiones_esquema.py`: campos en el orden de las columnas,
+    obligatorios, autorización que no se puede quitar ni al editar, textos
+    recortados y vacíos como `null`, cada texto cabe en su columna (leído de
+    la migración) y uno más largo da `422`, y que ningún cuerpo cambie el
+    resultado, el año ni el enlace al estudiante.
+  - `tests/test_admisiones_controller.py`: las reglas con dobles de la base
+    (año en preparación, curso activo del mismo año, documento repetido en el
+    año, también cuando dos altas llegan a la vez, aviso si el documento es de
+    un estudiante, matriculada de solo consulta, fila bloqueada al editar y
+    borrar, todo o nada) y el SQL del repositorio.
+  - `tests/test_admisiones_routes.py`: la aplicación real por ASGI. Solo admin
+    y en el router (un profesor recibe `403` en las cinco), las rutas exactas
+    del documento, registradas en la app, `201` al registrar, cada error con
+    su código (`404`/`409`) y su mensaje, y que un cuerpo o filtro inválido dé
+    `422` sin llegar al controlador.
+- Código, con las capas del proyecto:
+  - `app/schemas/admision.py`: `AdmisionCreate` (aspirante y autorización) y
+    `AdmisionUpdate` (más la entrevista). Repite las reglas de la base para
+    responder `422` y no `500`.
+  - `app/repositories/admisiones_repository.py`: solo SQL.
+  - `app/controllers/admisiones_controller.py`: las reglas y los mensajes.
+  - `app/routes/admisiones.py`: router solo admin; traduce errores a `404` y
+    `409`. Registrado en `app/main.py`.
+- Decisiones de detalle (dentro del contrato, sin funciones nuevas):
+  - Registrar recibe solo los datos del aspirante; la entrevista se escribe al
+    editar, como en el flujo ("Registrar aspirante" → "Entrevista").
+  - Editar reemplaza todo, como `PUT /estudiantes/{id}`.
+  - Las respuestas traen `editable` (año en preparación y sin matricular)
+    para que la pantalla oculte botones sin decidir la regla.
+  - El aviso del documento sale en ver, registrar y editar, y no impide
+    guardar (la pregunta del exalumno sigue abierta para el E3). Una
+    matriculada no se avisa a sí misma.
+  - La comprobación del curso usa `leer_curso_para_matricula` de
+    `anios_lectivos_repository` (curso activo y su año), la misma del alta
+    directa del paso 5.5.
+- Ajustadas a propósito: las cinco guardias que enumeran todos los
+  repositorios (`test_asistencia_caracterizacion.py`,
+  `test_dashboard_caracterizacion.py`, `test_notas_caracterizacion.py`,
+  `test_planilla_caracterizacion.py`, `test_ventas_caracterizacion.py`)
+  reconocen `admisiones_repository`; la de asistencia también su total, de 19
+  a 20. Están hechas para dispararse con cada repositorio nuevo.
+- Verificación, con una `DATABASE_URL` ficticia: 80 pruebas nuevas pasan;
+  `scripts/verify.py` → **2374 pasan, 0 fallan**, Ruff y `pip check`
+  limpios; `git diff --check` limpio. Las 12 consultas del repositorio se
+  revisaron con `pglast` (el lector de SQL de PostgreSQL, en una carpeta
+  temporal fuera del proyecto): se leen bien. Que funcionen contra
+  PostgreSQL no se ha probado todavía: es la primera vez que este SQL corre
+  en una base real.
+- Sin migración, sin frontend, sin acceso a bases reales.
+- Encontrado en el E2 y anotado en "Preguntas abiertas": con el contrato
+  actual, al activar 2027 ya no se podrán borrar los aspirantes que no se
+  matricularon (derecho de supresión).
+
 ## Entrega para el siguiente chat
 
-- Estado al 2026-10-13: **paso E1 terminado.** Tabla `admisiones` en
-  producción (los dos tenants), probada antes en la rama de Neon
-  `prueba-entrevista` con la consulta de reglas (15 de 15 bien). Commit
-  `4db1f15` en GitHub y **Live** en Render; frontend en `b5434b2` (solo su
-  documento). Ningún código de la app usa la tabla todavía. Ver "Avance del
-  paso E1", "Prueba en la rama de Neon" y "En producción".
-- Por qué el push fue antes de aplicar en producción (igual que el paso 5.2
+- Estado al 2026-10-13: **paso E2 escrito, sin commit** (ver "Avance del
+  paso E2"); `scripts/verify.py` 2374 pasan, 0 fallan. **El E1 está
+  terminado:** tabla `admisiones` en producción (los dos tenants), probada
+  antes en la rama de Neon `prueba-entrevista` con la consulta de reglas (15
+  de 15 bien), commit `4db1f15` en **Live** en Render. Ver "Avance del paso
+  E1", "Prueba en la rama de Neon" y "En producción".
+- Siguiente acción exacta: el usuario revisa el E2 y, si quiere, lo prueba en
+  local antes de subirlo: backend local contra una rama de Neon (con
+  `$env:DATABASE_URL`, nunca el `.env`) y las cinco rutas en `/docs` con un
+  admin. Después hace el commit y el push (no lleva migración; las rutas
+  nuevas no las usa nadie hasta el E4). El E3 (resultado y matricular desde
+  la admisión) necesita su propia autorización y, antes, la respuesta a la
+  pregunta del exalumno que vuelve ("Preguntas abiertas").
+- Por qué el push del E1 fue antes de aplicar en producción (igual que el paso 5.2
   del año lectivo, `a6f3cc0`): un colegio nuevo nace del archivo base y
   copia el historial de migraciones de la plantilla
   (`copiar_historial_migraciones` en `super_admin_repository.py`). Si se
@@ -571,11 +649,4 @@ a ninguna base):
   aplicaría de nuevo y `CREATE TABLE IF NOT EXISTS` no haría nada.
 - Pendiente del usuario: borrar la rama `prueba-entrevista` en Neon, si no
   se borró.
-- Siguiente acción exacta: **E2 (backend)**, que necesita la autorización
-  explícita del usuario: registrar, listar, ver, editar y borrar admisiones,
-  solo admin, con la guardia del año en `preparacion` y la autorización de
-  datos obligatoria (contrato en "Rutas"). Recordar del diseño: guardar el
-  documento vacío como `NULL` (índice único por año) y avisar al registrar
-  si el documento ya es de un estudiante. Ninguna pregunta abierta bloquea
-  el E2; la del exalumno que vuelve es para antes del E3.
 - Prompt para retomar: `docs/funcionalidades/PROMPT_CONTINUACION_ENTREVISTA_ADMISION.md`.

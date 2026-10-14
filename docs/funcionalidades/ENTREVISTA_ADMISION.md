@@ -5,9 +5,10 @@
 - Estado: **E1 a E6 en producción (2026-10-14, informado por el usuario).**
   Al 2026-10-14 los dos repos estaban en `main`, limpios e iguales a GitHub
   (visto con `git fetch`): backend `ad4bfb2`, frontend `f50ef7b`. Que Render
-  y el frontend publicado los tengan no se ve desde el repo. Queda solo el
-  E7, que necesita su propia autorización. Pantallas en
-  `frontend-react/docs/funcionalidades/ENTREVISTA_ADMISION.md`.
+  y el frontend publicado los tengan no se ve desde el repo. **Paso E7
+  escrito el 2026-10-14, sin commit**: el alta directa en el año en
+  preparación queda cerrada (ver "Avance del paso E7"). Con él se completa el
+  plan. Pantallas en `frontend-react/docs/funcionalidades/ENTREVISTA_ADMISION.md`.
   Decisiones del usuario del 2026-10-13: reparto de campos y decisiones 7 a
   9, quien entrevista a mano (10) y el exalumno que vuelve usa su mismo
   registro (11).
@@ -276,7 +277,7 @@ propuesta.
 | `PUT /admisiones/{admision_id}/resultado` | `{ resultado, motivo_resultado }`. `no_aprobado` exige motivo. `409` si ya está matriculada |
 | `DELETE /admisiones/{admision_id}` | Borra una admisión no matriculada (decisión 9) |
 | `POST /admisiones/{admision_id}/matricular` | Cuerpo: la ficha del estudiante (como `POST /anios-lectivos/{id}/estudiantes`). Solo si está `aprobado` y sin estudiante. En una transacción: crea el estudiante (o usa el del exalumno, decisión 11) y su matrícula en el año de la admisión (`matricular_aspirante_en_preparacion`, que reutiliza lo del alta directa), copia los datos movidos a sus columnas y enlaza `estudiante_id` |
-| `POST /anios-lectivos/{id}/estudiantes` (existente) | Paso E7: responde `409` "Un estudiante nuevo en 2027 se matricula desde su entrevista aprobada (Admisiones)." |
+| `POST /anios-lectivos/{id}/estudiantes` (existente) | Paso E7 (hecho): con el año en preparación responde `409` "Un estudiante nuevo en 2027 se matricula desde su entrevista aprobada (Admisiones)." y no escribe nada |
 
 ## Plan por pasos (uno a la vez, con el visto bueno del usuario)
 
@@ -289,7 +290,7 @@ propuesta.
 | E4 | frontend | Página de admisiones: lista, nuevo aspirante, entrevista y resultado; acceso desde la preparación del año. **Hecho el 2026-10-13** (frontend `22b3dcf`); en producción el 2026-10-14 |
 | E5 | frontend | Matricular desde una admisión aprobada (ficha con los datos ya puestos); quitar "Crear estudiante en 2027" de Estudiantes y de "Continuar la preparación". **Hecho el 2026-10-13** (frontend `ae5240a`); en producción el 2026-10-14 |
 | E6 | frontend | Formulario del estudiante sin lo que pasó a la entrevista; "Datos de admisión" de solo lectura en la ficha. **Hecho el 2026-10-13** (frontend `f50ef7b`; se piden con un botón, solo si se usan); en producción el 2026-10-14 |
-| E7 | backend | Bloquear el alta directa en el año en preparación |
+| E7 | backend | Bloquear el alta directa en el año en preparación. **Escrito el 2026-10-14, sin commit** |
 
 Orden de subida a producción: E1 (migración aplicada) → E2 y E3 (backend
 Live) → E4 a E6 (frontend) → E7 (backend). **E7 va al final a propósito:** si
@@ -721,20 +722,56 @@ a ninguna base):
   `500` del alta directa con un documento repetido (no se toca: el E7 cierra
   esa ruta en el año en preparación).
 
+## Avance del paso E7 (2026-10-14)
+
+- Autorizado explícitamente por el usuario ("e7", después de aclarar que se
+  refería a este paso y no a la fase 7 del año lectivo). Antes, el usuario
+  informó que E1 a E6 estaban en producción: la condición del E7 (el
+  frontend nuevo publicado) se cumple según él. Al iniciar, los dos repos en
+  `main` y limpios, cada uno con un commit de documentos sin subir: backend
+  `259f8d1`, frontend `05d35d8`.
+- Pruebas primero, en `tests/test_anio_lectivo_matriculacion_preparacion.py`.
+  La que fijaba el alta directa (creaba ficha y matrícula) se **reescribió a
+  propósito** como prueba de `_crear_estudiante_en_preparacion`, que sigue
+  viva para la matrícula desde una admisión: mismo orden, los 34 datos,
+  solo la matrícula de preparación y el curso vigente sin tocar. Nuevas: el
+  alta directa con el año en preparación responde con el mensaje y no
+  escribe nada (sin ficha, matrícula ni sincronización, sin commit); con un
+  año que no está en preparación, el mensaje de siempre; la ruta lo
+  traduce a `409`. Antes del código fallaban las dos que dependían de él.
+- Código: `AltaDirectaCerradaError` y `crear_estudiante_en_preparacion_controller`
+  (valida el año como siempre y, si está en preparación, rechaza; ya no
+  escribe) en `app/controllers/anios_lectivos_controller.py`; la ruta la
+  traduce a `409` en `app/routes/anios_lectivos.py`. La ruta se conserva para
+  que una pestaña vieja reciba un mensaje claro en lugar de un `404`.
+- No cambia `POST /estudiantes` (alta en el año activo): un estudiante que
+  llega a mitad del año activo se sigue creando desde Estudiantes. Con esto
+  también desaparece el `500` del alta directa con un documento repetido
+  (encontrado en el E3): la ruta ya no intenta crear.
+- Verificación, con una `DATABASE_URL` ficticia: 80 pruebas de matrícula y
+  admisiones pasan; `scripts/verify.py` → **2429 pasan, 0 fallan**, Ruff y
+  `pip check` limpios; `git diff --check` limpio. Sin migración, sin
+  acceso a bases reales.
+- Pendiente de decisión del usuario: borrar del frontend
+  `crearEstudianteEnPreparacion` (sin uso desde el E5). Recomendado; no se
+  hizo sin su "sí".
+
 ## Entrega para el siguiente chat
 
-- Estado al 2026-10-14: **E1 a E6 en producción**, según el usuario. Los dos
-  repos en `main`, limpios e iguales a GitHub: backend `ad4bfb2`, frontend
-  `f50ef7b`. Hasta donde consta en estos documentos, el SQL del E2 y el E3
-  no se probó en una rama de Neon antes de publicar: la primera vez que
-  corrió en PostgreSQL fue en producción.
-- Siguiente acción exacta: una prueba de humo en producción con el Colegio
-  Demo (`tenant_colegio_1`, que tiene 2027 en preparación; nunca con
-  `tenant_2005`): tarjeta → Admisiones → nuevo aspirante → entrevista →
-  aprobar → matricular → ficha del estudiante con "Datos de admisión".
-  Después, el **E7** (backend: `POST /anios-lectivos/{id}/estudiantes`
-  responde `409`), con su propia autorización; ahí se decide también si se
-  borra `crearEstudianteEnPreparacion` del frontend.
+- Estado al 2026-10-14: **E1 a E6 en producción**, según el usuario; **E7
+  escrito, sin commit** (ver "Avance del paso E7"). Con el E7 se completa el
+  plan de la funcionalidad. Hasta donde consta en estos documentos, el SQL
+  del E2 y el E3 no se probó en una rama de Neon antes de publicar.
+- Siguiente acción exacta: el usuario hace el commit y el push del E7 (sin
+  migración; el frontend ya no usa esa ruta desde el E5) y confirma en
+  Render que quede **Live**. Recomendado: una prueba de humo en producción
+  con el Colegio Demo (`tenant_colegio_1`, nunca `tenant_2005`): tarjeta →
+  Admisiones → nuevo aspirante → entrevista → aprobar → matricular → ficha
+  con "Datos de admisión". Pendiente: si se borra
+  `crearEstudianteEnPreparacion` del frontend. Abiertas para más adelante:
+  ver "Preguntas abiertas" (supresión de datos al activar 2027, un enlace
+  por año para quien vuelve por admisión antes de preparar 2028, entrevista
+  a mitad de año).
 - Por qué el push del E1 fue antes de aplicar en producción (igual que el paso 5.2
   del año lectivo, `a6f3cc0`): un colegio nuevo nace del archivo base y
   copia el historial de migraciones de la plantilla

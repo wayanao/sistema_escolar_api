@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from app.controllers.anios_lectivos_controller import (
     ActivacionConPendientesError,
     ActivacionInconsistenteError,
+    AltaDirectaCerradaError,
     AnioLectivoActivoInexistenteError,
     AnioLectivoDestinoInvalidoError,
     AnioLectivoEnPreparacionError,
@@ -285,7 +286,11 @@ def crear_estudiante_en_preparacion(
     anio_lectivo_id: Annotated[int, Path(gt=0)],
     est: EstudianteCreate,
 ):
-    """Crea un estudiante con matrícula solo en el año en preparación."""
+    """Cerrada desde el paso E7 de la entrevista de admisión: responde 409.
+
+    Un estudiante nuevo del año en preparación entra por
+    `POST /admisiones/{id}/matricular`. Ver el controlador.
+    """
     try:
         return crear_estudiante_en_preparacion_controller(anio_lectivo_id, est)
     except (
@@ -293,5 +298,6 @@ def crear_estudiante_en_preparacion(
         AnioLectivoActivoInexistenteError,
         AnioLectivoDestinoInvalidoError,
         CursoMatriculaInvalidoError,
+        AltaDirectaCerradaError,
     ) as exc:
         _traducir_error_matricula(exc)

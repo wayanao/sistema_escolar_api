@@ -387,12 +387,18 @@ def test_un_choque_concurrente_de_matricula_se_informa_y_revierte(
     assert entorno_matriculas.rollbacks == 1
 
 
-def test_alta_directa_crea_solo_la_matricula_de_preparacion_y_deja_curso_vigente_nulo(
+# Hasta el paso E7 de la entrevista de admisión, esta prueba fijaba que el
+# alta directa creaba los datos globales y solo la matrícula de preparación.
+# Esa parte vive en `_crear_estudiante_en_preparacion` y la sigue usando la
+# matrícula desde una admisión: se fija aquí, llamándola dentro de una
+# transacción como lo hace `matricular_aspirante_en_preparacion`.
+def test_crear_en_preparacion_crea_solo_la_matricula_y_deja_curso_vigente_nulo(
     entorno_matriculas,
 ):
-    funcion = getattr(controlador, "crear_estudiante_en_preparacion_controller")
-
-    respuesta = funcion(3, _estudiante_nuevo())
+    with controlador.get_cursor(commit=True) as cursor:
+        estudiante_id, matricula_id = controlador._crear_estudiante_en_preparacion(
+            cursor, entorno_matriculas.destino, _estudiante_nuevo()
+        )
 
     nombres = [evento[0] for evento in entorno_matriculas.eventos]
     assert nombres.index("estudiante") < nombres.index("matricula")
@@ -402,16 +408,54 @@ def test_alta_directa_crea_solo_la_matricula_de_preparacion_y_deja_curso_vigente
     valores_globales = next(e[2] for e in entorno_matriculas.eventos if e[0] == "estudiante")
     assert len(valores_globales) == 34
     assert 20 not in valores_globales
-    assert respuesta == {
-        "mensaje": "Estudiante creado y matriculado en el año en preparación",
-        "id": 55,
-        "matricula_id": 1055,
-        "anio_lectivo_id": 3,
-        "curso_id": 20,
-        "curso_vigente_id": None,
-        "valores_especiales_copiados": [],
-    }
+    assert (estudiante_id, matricula_id) == (55, 1055)
     assert entorno_matriculas.commits == 1
+
+
+# Paso E7: un estudiante nuevo del año en preparación solo entra desde una
+# admisión aprobada (decisión 3 de docs/funcionalidades/ENTREVISTA_ADMISION.md).
+def test_el_alta_directa_en_preparacion_queda_cerrada(entorno_matriculas):
+    error = getattr(controlador, "AltaDirectaCerradaError")
+
+    with pytest.raises(error) as exc:
+        controlador.crear_estudiante_en_preparacion_controller(3, _estudiante_nuevo())
+
+    assert str(exc.value) == (
+        "Un estudiante nuevo en 2027 se matricula desde su entrevista aprobada "
+        "(Admisiones)."
+    )
+    nombres = [evento[0] for evento in entorno_matriculas.eventos]
+    for escritura in ("estudiante", "matricula", "sincroniza"):
+        assert escritura not in nombres
+    assert entorno_matriculas.commits == 0
+    assert entorno_matriculas.eventos[-1] == ("cierra",)
+
+
+def test_en_un_anio_que_no_esta_en_preparacion_dice_lo_de_siempre(entorno_matriculas):
+    entorno_matriculas.destino = (3, 2027, "activo")
+
+    with pytest.raises(controlador.AnioLectivoDestinoInvalidoError) as exc:
+        controlador.crear_estudiante_en_preparacion_controller(3, _estudiante_nuevo())
+
+    assert str(exc.value) == "Solo se puede matricular en un año en preparación."
+
+
+def test_la_ruta_del_alta_directa_responde_409_con_el_mensaje(monkeypatch):
+    mensaje = (
+        "Un estudiante nuevo en 2027 se matricula desde su entrevista aprobada "
+        "(Admisiones)."
+    )
+
+    def cerrada(*_args, **_kwargs):
+        raise controlador.AltaDirectaCerradaError(mensaje)
+
+    monkeypatch.setattr(rutas, "crear_estudiante_en_preparacion_controller", cerrada)
+
+    with pytest.raises(HTTPException) as exc:
+        rutas.crear_estudiante_en_preparacion(3, _estudiante_nuevo())
+
+    assert exc.value.status_code == 409
+    assert exc.value.detail == mensaje
 
 
 def test_las_tres_rutas_nuevas_exigen_admin():

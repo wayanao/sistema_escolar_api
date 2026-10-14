@@ -6,6 +6,33 @@ Ultima revision documental: 2026-10-13.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
+## 2026-10-14 - Entrevista de admisión E7: cerrar el alta directa en preparación
+
+Último paso de `docs/funcionalidades/ENTREVISTA_ADMISION.md`. Según el
+usuario, E1 a E6 ya estaban en producción (el frontend dejó de usar esta ruta
+en el E5).
+
+### Qué cambia
+
+- `POST /anios-lectivos/{id}/estudiantes` (alta directa del paso 5.5 del año
+  lectivo): con el año en preparación responde `409` "Un estudiante nuevo en
+  2027 se matricula desde su entrevista aprobada (Admisiones)." y no escribe
+  nada. Con un año que no está en preparación, el `409` de siempre. La ruta
+  se conserva para que una pestaña vieja reciba un mensaje claro.
+- Lo que creaba ficha y matrícula sigue en
+  `_crear_estudiante_en_preparacion`, que usa la matrícula desde una
+  admisión. `POST /estudiantes` (año activo) no cambia.
+- Sin migración.
+
+### Pruebas
+
+`tests/test_anio_lectivo_matriculacion_preparacion.py`: la prueba del alta
+directa se reescribió a propósito como prueba de
+`_crear_estudiante_en_preparacion`; 3 nuevas (cerrada sin escribir, mensaje de
+siempre fuera de preparación, `409` en la ruta), de las que fallaban antes
+las dos que dependían del cambio. `scripts/verify.py`: 2429 pasan, 0
+fallan; Ruff y `pip check` limpios.
+
 ## 2026-10-13 - Entrevista de admisión E3: resultado y matricular desde la admisión
 
 Tercer paso con código de `docs/funcionalidades/ENTREVISTA_ADMISION.md`. El

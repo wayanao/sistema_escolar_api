@@ -75,6 +75,10 @@ class EstudianteNoReingresableError(Exception):
     """Quien ya es estudiante no puede matricularse así desde una admisión."""
 
 
+class AltaDirectaCerradaError(Exception):
+    """El alta directa en el año en preparación quedó cerrada (paso E7)."""
+
+
 def _formatear_anio(row):
     return {
         "id": row[0],
@@ -847,25 +851,26 @@ def _crear_estudiante_en_preparacion(cursor, destino, est):
     return estudiante_id, matricula_id
 
 
-def crear_estudiante_en_preparacion_controller(anio_destino_id, est):
-    """Crea datos globales y solo la matrícula del año en preparación."""
-    with get_cursor(commit=True) as cursor:
+def crear_estudiante_en_preparacion_controller(anio_destino_id, _est):
+    """El alta directa del paso 5.5, cerrada desde el paso E7 de la entrevista
+    de admisión.
+
+    Un estudiante nuevo del año en preparación solo entra desde una admisión
+    aprobada (`POST /admisiones/{id}/matricular`, decisión 3 de
+    docs/funcionalidades/ENTREVISTA_ADMISION.md); quien sigue, por la
+    promoción. La ruta se conserva para que una pestaña vieja reciba un
+    mensaje claro: con un año que no está en preparación responde como
+    siempre, y con el año en preparación, que entre por Admisiones. No
+    escribe nada.
+    """
+    with get_cursor() as cursor:
         _activo, destino = _contexto_matricula_en_preparacion(
             cursor, anio_destino_id
         )
-        estudiante_id, matricula_id = _crear_estudiante_en_preparacion(
-            cursor, destino, est
+        raise AltaDirectaCerradaError(
+            f"Un estudiante nuevo en {destino[1]} se matricula desde su "
+            "entrevista aprobada (Admisiones)."
         )
-
-    return {
-        "mensaje": "Estudiante creado y matriculado en el año en preparación",
-        "id": estudiante_id,
-        "matricula_id": matricula_id,
-        "anio_lectivo_id": destino[0],
-        "curso_id": est.curso_id,
-        "curso_vigente_id": None,
-        "valores_especiales_copiados": [],
-    }
 
 
 def _exigir_reingreso_posible(existente, activo, destino):

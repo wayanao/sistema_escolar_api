@@ -3918,8 +3918,11 @@ cosa, gana lo que se pueda verificar.
   /anios-lectivos/{id}/estudiantes`, al final de su plan). Paso E1 (la tabla
   `admisiones`) en producción el 2026-10-13; pasos E2 (las rutas de
   aspirantes) y E3 (resultado y matricular, que reutiliza lo del alta directa
-  del paso 5.5 en `_crear_estudiante_en_preparacion`) escritos el mismo día:
-  ver `docs/funcionalidades/ENTREVISTA_ADMISION.md`.
+  del paso 5.5 en `_crear_estudiante_en_preparacion`) escritos el mismo día;
+  E1 a E6 en producción el 2026-10-14 según el usuario, y E7 escrito ese
+  día: **el alta directa del paso 5.5 (`POST /anios-lectivos/{id}/estudiantes`)
+  queda cerrada** con un `409` que manda a Admisiones. Ver
+  `docs/funcionalidades/ENTREVISTA_ADMISION.md`.
 - **Siguiente acción exacta:** la ruta `valores-pago` quedó en `1a732cc`; en
   el frontend, los ajustes en `bf8289e`, `6853db0`, `93c0c22` y los avisos de
   "qué está pasando" en `885691e` y `a252f6e`. Pendiente de la decisión del

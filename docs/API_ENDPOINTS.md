@@ -79,7 +79,7 @@ Notas:
 - `POST /anios-lectivos/{anio_lectivo_id}/copiar-configuracion` (solo admin)
 - `GET /anios-lectivos/{anio_lectivo_id}/matriculas/candidatos` (solo admin)
 - `POST /anios-lectivos/{anio_lectivo_id}/matriculas/promocion` (solo admin)
-- `POST /anios-lectivos/{anio_lectivo_id}/estudiantes` (solo admin)
+- `POST /anios-lectivos/{anio_lectivo_id}/estudiantes` (solo admin; **cerrada desde el 2026-10-14**, ver abajo)
 - `GET /anios-lectivos/{anio_lectivo_id}/resumen` (solo admin)
 - `GET /anios-lectivos/{anio_lectivo_id}/activacion/vista-previa` (solo admin)
 - `PUT /anios-lectivos/{anio_lectivo_id}/matriculas/salida` (solo admin)
@@ -173,10 +173,15 @@ Notas:
   `valores_especiales_copiados`, cada uno con `"estado": "revisar"`. Si un
   concepto equivalente falta, o un estudiante no es candidato o ya está
   matriculado, responde `409` y revierte la selección completa.
-- El alta directa usa el mismo cuerpo de estudiante de `POST /estudiantes`,
-  pero el curso debe pertenecer al año en preparación indicado en la ruta.
-  Crea solo esa matrícula y responde `curso_vigente_id: null`; mientras el año
-  activo siga siendo 2026 no cambia `estudiantes.curso_id`.
+- El alta directa (`POST /anios-lectivos/{id}/estudiantes`) **está cerrada
+  desde el paso E7 de la entrevista de admisión (2026-10-14)**: con el año en
+  preparación responde `409` "Un estudiante nuevo en 2027 se matricula desde
+  su entrevista aprobada (Admisiones)." y no escribe nada; con un año que no
+  está en preparación, el `409` de siempre. Un estudiante nuevo entra por
+  `POST /admisiones/{id}/matricular` (sección "Admisiones"), que crea la
+  ficha y solo la matrícula del año en preparación, con
+  `estudiantes.curso_id` sin cambiar mientras el año activo siga siendo 2026.
+  Hasta el E7 la creaba esta ruta, con el cuerpo de `POST /estudiantes`.
 - Las tres rutas validan el año y los cursos en el backend. Un año inexistente
   responde `404`; un destino que no sea el siguiente en preparación responde
   `409`. No crean pagos ni calculan deudas.

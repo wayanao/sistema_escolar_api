@@ -2,15 +2,12 @@
 
 ## Control
 
-- Estado: **Paso E6 (frontend) escrito el 2026-10-13, sin commit**: el
-  formulario del estudiante sin lo que pasó a la entrevista y "Datos de
-  admisión" en la ficha; el E4 (`22b3dcf`) y el E5 (`ae5240a`) en commits
-  sin subir. Con el E6 terminan los pasos del frontend; queda el E7. Ver
-  `frontend-react/docs/funcionalidades/ENTREVISTA_ADMISION.md`. En este repo,
-  el E2 (`ee8aba2`) y el E3 (`d099c29`) están en commits sin subir; con ellos
-  el backend tiene todo lo que usan las pantallas y falta solo el E7, que va
-  al final. El E1 está terminado: migración en producción y commit `4db1f15`
-  en **Live**.
+- Estado: **E1 a E6 en producción (2026-10-14, informado por el usuario).**
+  Al 2026-10-14 los dos repos estaban en `main`, limpios e iguales a GitHub
+  (visto con `git fetch`): backend `ad4bfb2`, frontend `f50ef7b`. Que Render
+  y el frontend publicado los tengan no se ve desde el repo. Queda solo el
+  E7, que necesita su propia autorización. Pantallas en
+  `frontend-react/docs/funcionalidades/ENTREVISTA_ADMISION.md`.
   Decisiones del usuario del 2026-10-13: reparto de campos y decisiones 7 a
   9, quien entrevista a mano (10) y el exalumno que vuelve usa su mismo
   registro (11).
@@ -287,11 +284,11 @@ propuesta.
 |---|---|---|
 | E0 | ambos | Este diseño. **Hecho el 2026-10-12** |
 | E1 | backend | Migración `admisiones` y esquema base (rama de Neon; la aplica el usuario). **Hecho el 2026-10-13** (`4db1f15`, aplicada en producción) |
-| E2 | backend | Registrar, listar, ver, editar y borrar admisiones; guardia del año; autorización obligatoria. **Hecho el 2026-10-13** (`ee8aba2`) |
-| E3 | backend | Resultado y matricular desde la admisión (con la copia de los datos movidos). **Hecho el 2026-10-13** (`d099c29`) |
-| E4 | frontend | Página de admisiones: lista, nuevo aspirante, entrevista y resultado; acceso desde la preparación del año. **Hecho el 2026-10-13** (frontend `22b3dcf`) |
-| E5 | frontend | Matricular desde una admisión aprobada (ficha con los datos ya puestos); quitar "Crear estudiante en 2027" de Estudiantes y de "Continuar la preparación". **Hecho el 2026-10-13** (frontend `ae5240a`) |
-| E6 | frontend | Formulario del estudiante sin lo que pasó a la entrevista; "Datos de admisión" de solo lectura en la ficha. **Escrito el 2026-10-13, sin commit** (se piden con un botón, solo si se usan) |
+| E2 | backend | Registrar, listar, ver, editar y borrar admisiones; guardia del año; autorización obligatoria. **Hecho el 2026-10-13** (`ee8aba2`); en producción el 2026-10-14 |
+| E3 | backend | Resultado y matricular desde la admisión (con la copia de los datos movidos). **Hecho el 2026-10-13** (`d099c29`); en producción el 2026-10-14 |
+| E4 | frontend | Página de admisiones: lista, nuevo aspirante, entrevista y resultado; acceso desde la preparación del año. **Hecho el 2026-10-13** (frontend `22b3dcf`); en producción el 2026-10-14 |
+| E5 | frontend | Matricular desde una admisión aprobada (ficha con los datos ya puestos); quitar "Crear estudiante en 2027" de Estudiantes y de "Continuar la preparación". **Hecho el 2026-10-13** (frontend `ae5240a`); en producción el 2026-10-14 |
+| E6 | frontend | Formulario del estudiante sin lo que pasó a la entrevista; "Datos de admisión" de solo lectura en la ficha. **Hecho el 2026-10-13** (frontend `f50ef7b`; se piden con un botón, solo si se usan); en producción el 2026-10-14 |
 | E7 | backend | Bloquear el alta directa en el año en preparación |
 
 Orden de subida a producción: E1 (migración aplicada) → E2 y E3 (backend
@@ -726,24 +723,18 @@ a ninguna base):
 
 ## Entrega para el siguiente chat
 
-- Estado al 2026-10-13: **paso E6 (frontend) escrito, sin commit**; el E4 en
-  `22b3dcf` y el E5 en `ae5240a`. Aquí, el E2 (`ee8aba2`) y el E3 (`d099c29`) en commits sin
-  subir; `scripts/verify.py` 2426 pasan, 0 fallan. El E1 en producción. Las
-  pantallas ya cubren todo el flujo (registrar, entrevista, resultado,
-  matricular) y el formulario del estudiante ya no pide lo de la
-  entrevista; falta solo el E7 (bloqueo), que va al final.
-- Siguiente acción exacta: probar juntos en local, contra una rama de Neon,
-  el backend (E2 y E3, cuyo SQL nunca ha corrido en PostgreSQL) y el
-  frontend (E4 a E6): backend local con `$env:DATABASE_URL` en la rama
-  (nunca el `.env`), frontend local, y como admin recorrer la tarjeta de
-  Años lectivos → Admisiones → nuevo aspirante → entrevista → aprobar →
-  matricular (uno nuevo y, si hay, un exalumno). Después, push del backend y
-  Render **Live**, y solo entonces el frontend: desde el E5 el frontend ya no
-  tiene "Crear estudiante en 2027", así que sin el backend nuevo no habría
-  forma de crear un estudiante nuevo en 2027. El E7 va solo cuando el
-  frontend nuevo esté en producción, con su propia autorización; ahí se
-  decide también si se borra `crearEstudianteEnPreparacion` del frontend
-  (sin uso desde el E5; se le propuso al usuario decidirlo entonces).
+- Estado al 2026-10-14: **E1 a E6 en producción**, según el usuario. Los dos
+  repos en `main`, limpios e iguales a GitHub: backend `ad4bfb2`, frontend
+  `f50ef7b`. Hasta donde consta en estos documentos, el SQL del E2 y el E3
+  no se probó en una rama de Neon antes de publicar: la primera vez que
+  corrió en PostgreSQL fue en producción.
+- Siguiente acción exacta: una prueba de humo en producción con el Colegio
+  Demo (`tenant_colegio_1`, que tiene 2027 en preparación; nunca con
+  `tenant_2005`): tarjeta → Admisiones → nuevo aspirante → entrevista →
+  aprobar → matricular → ficha del estudiante con "Datos de admisión".
+  Después, el **E7** (backend: `POST /anios-lectivos/{id}/estudiantes`
+  responde `409`), con su propia autorización; ahí se decide también si se
+  borra `crearEstudianteEnPreparacion` del frontend.
 - Por qué el push del E1 fue antes de aplicar en producción (igual que el paso 5.2
   del año lectivo, `a6f3cc0`): un colegio nuevo nace del archivo base y
   copia el historial de migraciones de la plantilla

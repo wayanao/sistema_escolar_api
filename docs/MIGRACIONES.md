@@ -902,9 +902,15 @@ Estado al 2026-10-14:
 
 - SQL y 6 pruebas de texto (`tests/test_migracion_admisiones_cuestionario.py`);
   las 6 fallaron antes de crear el archivo.
-- `scripts/verify.py`: 2434 pasan y **1 falla esperada** de
-  `test_esquema_base.py` hasta aplicar la migración en una rama de Neon y
-  regenerar el esquema base.
-- **No aplicada** en Neon ni en ningún tenant. Pendiente de que el usuario la
-  pruebe en una rama, regenere el esquema base y, después del push, la aplique
-  en producción.
+- El usuario la aplicó en la rama de Neon `prueba-cuestionario` (copia de
+  `production`) y regeneró desde allí el esquema base: 36 tablas, 1 función y
+  1 disparador. El diff agregó solo la migración a la cabecera (44), la
+  columna y su regla.
+- `scripts/verify.py`: **2435 pasan, 0 fallan**; Ruff y `pip check` limpios.
+- En la rama, una consulta intentó 8 altas buenas y malas, deshechas al
+  instante: las 8 dieron lo esperado. Las admisiones que ya existían (1 en
+  cada colegio) quedaron con el bloque vacío.
+- La migración quedó en el commit `9547721` y el esquema base regenerado en
+  un commit aparte, a pedido del usuario; se suben juntos en el mismo push.
+- **No aplicada en producción.** Pendiente: el push con Render **Live** y la
+  aplicación en los tenants.

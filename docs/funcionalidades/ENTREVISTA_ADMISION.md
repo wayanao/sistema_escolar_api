@@ -9,8 +9,9 @@
   preguntas del anexo del colegio** (salud, familia, inclusión,
   comportamiento…) como casillas para chulear. Paso E8 (diseño, solo
   documentos) terminado el 2026-10-14; ver "Preguntas del anexo (pasos E8 a
-  E12)". **Paso E9 (la migración) escrito el 2026-10-14, sin aplicar**: falta
-  la prueba del usuario en una rama de Neon (ver "Avance del paso E9").
+  E12)". **Paso E9 (la migración) escrito y probado en una rama de Neon el
+  2026-10-14, todo correcto**; falta aplicarlo en producción (ver "Avance del
+  paso E9").
   Pantallas en `frontend-react/docs/funcionalidades/ENTREVISTA_ADMISION.md`.
   Decisiones del usuario del 2026-10-13: reparto de campos y decisiones 7 a
   9, quien entrevista a mano (10) y el exalumno que vuelve usa su mismo
@@ -566,7 +567,7 @@ y se cierran, casillas para chulear, ayuda ampliada de "No aprobado"
 | E6 | frontend | Formulario del estudiante sin lo que pasó a la entrevista; "Datos de admisión" de solo lectura en la ficha. **Hecho el 2026-10-13** (frontend `f50ef7b`; se piden con un botón, solo si se usan); en producción el 2026-10-14 |
 | E7 | backend | Bloquear el alta directa en el año en preparación. **Hecho el 2026-10-14** (`24a9a3c`, en GitHub) |
 | E8 | ambos | Diseño de las preguntas del anexo (solo documentos). **Hecho el 2026-10-14** |
-| E9 | backend | Migración: columna `cuestionario` en `admisiones` y esquema base (rama de Neon; la aplica el usuario). **Escrita el 2026-10-14** (`migrations/20261014_admisiones_cuestionario.sql`); falta la rama de Neon, el esquema base y la aplicación |
+| E9 | backend | Migración: columna `cuestionario` en `admisiones` y esquema base (rama de Neon; la aplica el usuario). **Escrita y probada en una rama de Neon el 2026-10-14** (`migrations/20261014_admisiones_cuestionario.sql`, esquema base regenerado); falta aplicarla en producción |
 | E10 | backend | La lista de preguntas, la revisión de respuestas y las rutas (`GET /admisiones/cuestionario`, `cuestionario` en ver y editar, lectura desde la ficha) |
 | E11 | frontend | Formulario con secciones y casillas, ayuda ampliada de "No aprobado" y respuestas en "Datos de admisión" de la ficha |
 | E12 | frontend | **Opcional, solo si el usuario lo pide:** imprimir la entrevista con las firmas (`DocumentoImprimible`) |
@@ -1223,6 +1224,47 @@ asistente no se conecta a Neon):
 7. Contarle al asistente lo que salió en los puntos 3 a 6, sin cadenas de
    conexión. Después se puede borrar la rama.
 
+**Prueba en la rama de Neon, 2026-10-14** (rama `prueba-cuestionario`, copia
+de `production`; la hizo el usuario, el asistente no se conectó a Neon ni a
+producción):
+
+- El usuario informó que hizo los puntos 1 a 4. Los resultados de los tres
+  comandos del punto 3 no se pegaron en el chat; se le pidieron.
+- Esquema base regenerado desde `tenant_colegio_1` en la rama: 36 tablas, 1
+  función y 1 disparador (sin cambio), "el contenido CAMBIO". La revisión del
+  diff confirmó solo lo esperado: la fecha y 44 migraciones en la cabecera
+  (antes 43), incluida `20261014_admisiones_cuestionario.sql`; la columna
+  `cuestionario jsonb DEFAULT '{}'::jsonb NOT NULL` y la regla
+  `chk_admisiones_cuestionario_objeto`. La cabecera confirma que la migración
+  quedó registrada en `tenant_colegio_1` de la rama.
+- Verificación, con una `DATABASE_URL` ficticia: 26 pruebas específicas pasan
+  (6 de esta migración, 15 del E1 y 5 del esquema base); `scripts/verify.py`
+  → **2435 pasan, 0 fallan** (se apagó la falla esperada), Ruff y `pip
+  check` limpios; `git diff --check` limpio.
+- Consulta de la regla (punto 5) en el SQL Editor, sobre `tenant_colegio_1`
+  de la rama: **las 8 filas con `bien = true`**. Se aceptaron la admisión sin
+  cuestionario, con una respuesta y con el bloque vacío. Se rechazaron, cada
+  uno con lo esperado: el bloque en `NULL` (`NOT NULL`), una lista, un texto y
+  un número (`chk_admisiones_cuestionario_objeto`) y un JSON mal escrito
+  ("invalid input syntax for type json").
+- Consulta del punto 6 (solo lectura): `tenant_colegio_1` 1 admisión, 1 con
+  el bloque vacío; `tenant_2005` 1 admisión, 1 con el bloque vacío. Las
+  admisiones que ya existían quedaron con `{}`, y la consulta confirma que la
+  columna existe también en `tenant_2005` de la rama. Dato: en la copia de
+  producción, `tenant_2005` ya tenía una admisión registrada; el colegio real
+  ya usa Admisiones.
+- Los resultados de los tres comandos del punto 3 no se pegaron; la cabecera
+  del esquema base (registro en `tenant_colegio_1`) y las consultas de los
+  puntos 5 y 6 (la columna y su regla en los dos colegios) muestran que se
+  aplicó en ambos.
+- El usuario hizo el commit del E9 (`9547721`) antes de regenerar el esquema
+  base, así que no lo traía. Prefirió un commit aparte con el esquema base y
+  estos documentos, en vez de rehacer el del E9. Los dos se suben juntos en
+  el mismo push: así lo que llega a GitHub y a Render tiene migración y base
+  a la vez, aunque el commit `9547721` solo, sin el siguiente, fallaría
+  `test_esquema_base.py`.
+- **Prueba en la rama terminada, todo correcto.** Falta producción.
+
 Después de la rama, en este orden (como el E1, por lo explicado en la
 entrega): el usuario confirma la migración, el esquema base regenerado, las
 pruebas y los documentos en un solo commit, lo sube, espera a que Render
@@ -1241,15 +1283,18 @@ nuevos.
   `20261014_admisiones_cuestionario.sql` y sus 6 pruebas (ver "Avance del paso
   E9"). Hasta donde consta en estos documentos, el SQL del E2 y el E3 no se
   probó en una rama de Neon antes de publicar.
-- Verificación local del E9, con una `DATABASE_URL` ficticia: las 6 pruebas
-  nuevas y las 15 del E1 pasan; `scripts/verify.py` → **2434 pasan y 1 falla
-  esperada** (`test_esquema_base.py`: la base aún no declara la migración;
-  se apaga al regenerarla desde la rama), Ruff y `pip check` limpios;
-  `git diff --check` limpio. El frontend no cambió en este paso.
-- Siguiente acción exacta: el usuario hace la "Lista de comprobación en una
-  rama de Neon" del E9 (puntos 1 a 7) y cuenta lo que salió. Con eso se
-  revisa el diff del esquema base, se apaga la falla esperada y el E9 queda
-  listo para su commit, push y aplicación en producción. Antes del **E10**
+- Verificación del E9, con una `DATABASE_URL` ficticia y el esquema base ya
+  regenerado desde la rama: `scripts/verify.py` → **2435 pasan, 0 fallan**,
+  Ruff y `pip check` limpios; `git diff --check` limpio. El frontend no
+  cambió en este paso.
+- E9 probado en la rama de Neon `prueba-cuestionario`, todo correcto (ver
+  "Prueba en la rama de Neon, 2026-10-14" en el avance del E9).
+- Siguiente acción exacta: el usuario hace un commit aparte con el esquema
+  base y los documentos, sube ese commit y el del E9 en el mismo push,
+  espera a que Render quede **Live** y aplica la migración en producción con el
+  endpoint directo (`--dry-run` → `PENDIENTE`, aplicar → `OK`, `--dry-run` →
+  `OMITIDA`). Después puede borrar la rama `prueba-cuestionario`. Antes del
+  **E10**
   sigue pendiente que el usuario revise la lista de las 55 preguntas
   (pregunta abierta "Antes del E10"). Sigue recomendada la prueba de humo
   del E7 en producción con el Colegio Demo (`tenant_colegio_1`, nunca `tenant_2005`): tarjeta →

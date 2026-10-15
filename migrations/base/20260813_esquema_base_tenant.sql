@@ -1,6 +1,6 @@
 -- Esquema base de un tenant. ARCHIVO GENERADO, no editar a mano.
 --
--- Extraido de tenant_colegio_1 el 2026-10-13 con
+-- Extraido de tenant_colegio_1 el 2026-10-14 con
 -- scripts/generar_esquema_base.py. Para rehacerlo, aplica antes la
 -- migracion nueva a ese schema y vuelve a ejecutar el script.
 --
@@ -11,7 +11,7 @@
 -- No usar apply_migration.py con este archivo: es para dar de alta un
 -- tenant nuevo, no para los existentes, que ya tienen estas tablas.
 --
--- MIGRACIONES INCORPORADAS (43):
+-- MIGRACIONES INCORPORADAS (44):
 --   20260429_pagos_tipo_pago_largo.sql
 --   20260429_plan_de_clases_reportes.sql
 --   20260509_branding_plantillas_impresion.sql
@@ -55,6 +55,7 @@
 --   20261006_anios_lectivos_origenes.sql
 --   20261008_anios_lectivos_activacion.sql
 --   20261013_admisiones.sql
+--   20261014_admisiones_cuestionario.sql
 -- FIN MIGRACIONES INCORPORADAS
 
 CREATE TABLE IF NOT EXISTS admisiones (
@@ -91,7 +92,9 @@ CREATE TABLE IF NOT EXISTS admisiones (
     estudiante_id integer,
     creado_en timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     actualizado_en timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    cuestionario jsonb DEFAULT '{}'::jsonb NOT NULL,
     CONSTRAINT chk_admisiones_autoriza CHECK (autoriza_datos),
+    CONSTRAINT chk_admisiones_cuestionario_objeto CHECK ((jsonb_typeof(cuestionario) = 'object'::text)),
     CONSTRAINT chk_admisiones_matricula_aprobada CHECK (((estudiante_id IS NULL) OR ((resultado)::text = 'aprobado'::text))),
     CONSTRAINT chk_admisiones_motivo_no_aprobado CHECK ((((resultado)::text <> 'no_aprobado'::text) OR (NULLIF(TRIM(BOTH FROM motivo_resultado), ''::text) IS NOT NULL))),
     CONSTRAINT chk_admisiones_resultado CHECK (((resultado)::text = ANY ((ARRAY['pendiente'::character varying, 'aprobado'::character varying, 'no_aprobado'::character varying])::text[]))),

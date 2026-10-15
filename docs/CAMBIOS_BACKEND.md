@@ -20,15 +20,18 @@ Primer paso con código de la ampliación "Preguntas del anexo" de
   `docs/MIGRACIONES.md`.
 - No cambia ninguna ruta ni respuesta. Ningún código usa la columna todavía
   (paso E10).
-- **Pendiente:** probarla en una rama de Neon, regenerar el esquema base desde
-  allí y, después del push, aplicarla en producción (lo hace el usuario).
+- Esquema base regenerado desde la rama de Neon `prueba-cuestionario`: 36
+  tablas. Los colegios nuevos nacerán con la columna.
+- **Pendiente:** aplicarla en producción después del push, con Render
+  **Live** (lo hace el usuario).
 
 ### Pruebas
 
 `tests/test_migracion_admisiones_cuestionario.py`, 6 pruebas sobre el texto
-del SQL, escritas antes (fallaron las 6). `scripts/verify.py`: 2434 pasan y
-1 falla esperada de `test_esquema_base.py` hasta regenerar el esquema base;
-Ruff y `pip check` limpios.
+del SQL, escritas antes (fallaron las 6). En la rama de Neon, una consulta
+intentó 8 altas buenas y malas, deshechas al instante: las 8 dieron lo
+esperado. `scripts/verify.py`: 2435 pasan, 0 fallan; Ruff y `pip check`
+limpios.
 
 ## 2026-10-14 - Entrevista de admisión E7: cerrar el alta directa en preparación
 

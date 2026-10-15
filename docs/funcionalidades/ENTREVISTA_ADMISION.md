@@ -9,7 +9,9 @@
   preguntas del anexo del colegio** (salud, familia, inclusión,
   comportamiento…) como casillas para chulear. Paso E8 (diseño, solo
   documentos) terminado el 2026-10-14; ver "Preguntas del anexo (pasos E8 a
-  E12)". Pantallas en `frontend-react/docs/funcionalidades/ENTREVISTA_ADMISION.md`.
+  E12)". **Paso E9 (la migración) escrito el 2026-10-14, sin aplicar**: falta
+  la prueba del usuario en una rama de Neon (ver "Avance del paso E9").
+  Pantallas en `frontend-react/docs/funcionalidades/ENTREVISTA_ADMISION.md`.
   Decisiones del usuario del 2026-10-13: reparto de campos y decisiones 7 a
   9, quien entrevista a mano (10) y el exalumno que vuelve usa su mismo
   registro (11). Del 2026-10-14: decisiones 12 a 16.
@@ -564,7 +566,7 @@ y se cierran, casillas para chulear, ayuda ampliada de "No aprobado"
 | E6 | frontend | Formulario del estudiante sin lo que pasó a la entrevista; "Datos de admisión" de solo lectura en la ficha. **Hecho el 2026-10-13** (frontend `f50ef7b`; se piden con un botón, solo si se usan); en producción el 2026-10-14 |
 | E7 | backend | Bloquear el alta directa en el año en preparación. **Hecho el 2026-10-14** (`24a9a3c`, en GitHub) |
 | E8 | ambos | Diseño de las preguntas del anexo (solo documentos). **Hecho el 2026-10-14** |
-| E9 | backend | Migración: columna `cuestionario` en `admisiones` y esquema base (rama de Neon; la aplica el usuario) |
+| E9 | backend | Migración: columna `cuestionario` en `admisiones` y esquema base (rama de Neon; la aplica el usuario). **Escrita el 2026-10-14** (`migrations/20261014_admisiones_cuestionario.sql`); falta la rama de Neon, el esquema base y la aplicación |
 | E10 | backend | La lista de preguntas, la revisión de respuestas y las rutas (`GET /admisiones/cuestionario`, `cuestionario` en ver y editar, lectura desde la ficha) |
 | E11 | frontend | Formulario con secciones y casillas, ayuda ampliada de "No aprobado" y respuestas en "Datos de admisión" de la ficha |
 | E12 | frontend | **Opcional, solo si el usuario lo pide:** imprimir la entrevista con las firmas (`DocumentoImprimible`) |
@@ -1076,6 +1078,158 @@ a ninguna base):
   **2429 pasan, 0 fallan**, Ruff y `pip check` limpios; en el frontend,
   `pnpm run check:deploy` → **2524 pruebas en 364 archivos**, lint y build
   limpios; `git diff --check` limpio en los dos repos.
+- El usuario hizo los commits del E8: backend `ff92f93`, frontend `df2e494`
+  (sin subir al iniciar el E9).
+
+## Avance del paso E9 (2026-10-14)
+
+- Autorizado por el usuario con "continua", respondiendo a la propuesta del
+  E9 como único paso siguiente; antes de tocar nada se le explicó qué cambia
+  (una columna nueva, ningún dato existente) y qué le toca a él (rama de
+  Neon, esquema base, aplicar). Al iniciar, los dos repos en `main` y
+  limpios, con el commit del E8 sin subir: backend `ff92f93`, frontend
+  `df2e494`. Se leyó completa `docs/MIGRACIONES.md`.
+- Pruebas primero: `tests/test_migracion_admisiones_cuestionario.py`, 6
+  pruebas sobre el texto del SQL; las 6 fallaron porque el archivo no
+  existía. Comprueban la columna (`JSONB NOT NULL DEFAULT '{}'::jsonb`), la
+  regla de que sea un objeto (con su comprobación previa en `pg_constraint`),
+  que la regla vaya después de la columna, que solo toque `admisiones` (sin
+  tablas ni índices nuevos), que sea reejecutable y que no cambie ni borre
+  datos.
+- `migrations/20261014_admisiones_cuestionario.sql`: `ADD COLUMN IF NOT
+  EXISTS cuestionario` y `chk_admisiones_cuestionario_objeto` dentro de un
+  `DO`, el mismo patrón de `20261008_anios_lectivos_activacion.sql`.
+- Documentado en `docs/MIGRACIONES.md` (lista y sección propia) y
+  `docs/CAMBIOS_BACKEND.md`.
+- Verificación local en "Entrega para el siguiente chat".
+- No se ejecutó la migración, no se accedió a Neon ni a producción y no se
+  regeneró ni editó a mano el esquema base. **El paso E9 todavía no está
+  terminado.**
+
+**Lista de comprobación en una rama de Neon** (la hace el usuario; el
+asistente no se conecta a Neon):
+
+1. En console.neon.tech → Branches → **Create branch** desde `production`,
+   con los datos actuales. Nombre sugerido: `prueba-cuestionario`.
+2. En la rama nueva → **Connect**: copiar la cadena de conexión **directa**
+   (con "Connection pooling" apagado; el host no debe tener `-pooler`). No
+   pegarla en el chat.
+3. En una terminal de PowerShell, en la carpeta del backend. La variable
+   solo vive en esa ventana y gana sobre el `.env`:
+
+   ```powershell
+   $env:DATABASE_URL = "<cadena directa de la rama>"
+   ([uri]$env:DATABASE_URL).Host
+   .\venv\Scripts\python.exe apply_migration.py migrations/20261014_admisiones_cuestionario.sql --dry-run
+   .\venv\Scripts\python.exe apply_migration.py migrations/20261014_admisiones_cuestionario.sql
+   .\venv\Scripts\python.exe apply_migration.py migrations/20261014_admisiones_cuestionario.sql --dry-run
+   ```
+
+   El host que se imprime debe ser el de la rama, **no**
+   `ep-late-smoke-aip41j6x` (producción). Esperado: `PENDIENTE` → `OK` →
+   `OMITIDA (ya aplicada)` en `tenant_colegio_1` y `tenant_2005`.
+4. En la misma terminal, regenerar el esquema base desde la rama:
+
+   ```powershell
+   .\venv\Scripts\python.exe scripts\generar_esquema_base.py --schema tenant_colegio_1
+   ```
+
+   Esperado en el diff: en la cabecera, 44 migraciones (antes 43), incluida
+   `20261014_admisiones_cuestionario.sql`; en `admisiones`, la columna
+   `cuestionario jsonb DEFAULT '{}'::jsonb NOT NULL` y la regla
+   `chk_admisiones_cuestionario_objeto`; y nada más (siguen 36 tablas, 1
+   función y 1 disparador). Después, cerrar esa terminal.
+5. En el SQL Editor de Neon, **con la rama de prueba elegida**, pegar todo
+   esto junto y correrlo una vez. Intenta 8 altas en `tenant_colegio_1`;
+   cada una se deshace al instante, así que no queda nada guardado. La
+   columna `bien` debe salir `true` en las 8 filas:
+
+   ```sql
+   SET search_path TO tenant_colegio_1, public;
+
+   CREATE TEMP TABLE prueba_cuestionario (orden INT, caso TEXT, debe TEXT, obtuvo TEXT);
+
+   DO $$
+   DECLARE
+       anio_id INTEGER := (SELECT id FROM anios_lectivos ORDER BY anio DESC LIMIT 1);
+       fila RECORD;
+   BEGIN
+       FOR fila IN
+           SELECT * FROM (VALUES
+               (1, 'Sin cuestionario (queda vacío)', 'aceptar',
+                $q$INSERT INTO admisiones (anio_lectivo_id, nombre, apellido, autoriza_datos, autoriza_nombre)
+                   VALUES ({anio}, 'Prueba', 'Cuestionario', TRUE, 'Acudiente')$q$),
+               (2, 'Cuestionario con una respuesta', 'aceptar',
+                $q$INSERT INTO admisiones (anio_lectivo_id, nombre, apellido, autoriza_datos, autoriza_nombre, cuestionario)
+                   VALUES ({anio}, 'Prueba', 'Cuestionario', TRUE, 'Acudiente', '{"usa_panal": {"respuesta": "no"}}')$q$),
+               (3, 'Cuestionario vacío', 'aceptar',
+                $q$INSERT INTO admisiones (anio_lectivo_id, nombre, apellido, autoriza_datos, autoriza_nombre, cuestionario)
+                   VALUES ({anio}, 'Prueba', 'Cuestionario', TRUE, 'Acudiente', '{}')$q$),
+               (4, 'Cuestionario en NULL', 'cuestionario',
+                $q$INSERT INTO admisiones (anio_lectivo_id, nombre, apellido, autoriza_datos, autoriza_nombre, cuestionario)
+                   VALUES ({anio}, 'Prueba', 'Cuestionario', TRUE, 'Acudiente', NULL)$q$),
+               (5, 'Una lista en vez de un bloque', 'chk_admisiones_cuestionario_objeto',
+                $q$INSERT INTO admisiones (anio_lectivo_id, nombre, apellido, autoriza_datos, autoriza_nombre, cuestionario)
+                   VALUES ({anio}, 'Prueba', 'Cuestionario', TRUE, 'Acudiente', '[]')$q$),
+               (6, 'Un texto en vez de un bloque', 'chk_admisiones_cuestionario_objeto',
+                $q$INSERT INTO admisiones (anio_lectivo_id, nombre, apellido, autoriza_datos, autoriza_nombre, cuestionario)
+                   VALUES ({anio}, 'Prueba', 'Cuestionario', TRUE, 'Acudiente', '"hola"')$q$),
+               (7, 'Un número en vez de un bloque', 'chk_admisiones_cuestionario_objeto',
+                $q$INSERT INTO admisiones (anio_lectivo_id, nombre, apellido, autoriza_datos, autoriza_nombre, cuestionario)
+                   VALUES ({anio}, 'Prueba', 'Cuestionario', TRUE, 'Acudiente', '3')$q$),
+               (8, 'JSON mal escrito', 'json',
+                $q$INSERT INTO admisiones (anio_lectivo_id, nombre, apellido, autoriza_datos, autoriza_nombre, cuestionario)
+                   VALUES ({anio}, 'Prueba', 'Cuestionario', TRUE, 'Acudiente', '{"usa_panal":')$q$)
+           ) AS c (orden, caso, debe, sentencia)
+           ORDER BY orden
+       LOOP
+           BEGIN
+               EXECUTE replace(fila.sentencia, '{anio}', anio_id::text);
+               RAISE EXCEPTION 'aceptada';
+           EXCEPTION
+               WHEN raise_exception THEN
+                   INSERT INTO prueba_cuestionario VALUES (fila.orden, fila.caso, fila.debe, 'aceptada');
+               WHEN OTHERS THEN
+                   INSERT INTO prueba_cuestionario VALUES (fila.orden, fila.caso, fila.debe, SQLERRM);
+           END;
+       END LOOP;
+   END
+   $$;
+
+   SELECT orden, caso, debe, obtuvo,
+          CASE WHEN debe = 'aceptar' THEN obtuvo = 'aceptada'
+               ELSE position(debe IN obtuvo) > 0 END AS bien
+   FROM prueba_cuestionario
+   ORDER BY orden;
+   ```
+
+   Mismo mecanismo que la consulta del E1: si la base acepta un alta, se
+   deshace a propósito con `RAISE EXCEPTION 'aceptada'`; si la rechaza,
+   también se deshace. Solo queda el resultado en una tabla temporal, que
+   desaparece al cerrar la sesión.
+6. En el mismo SQL Editor, también con la rama elegida (solo lectura): que
+   las admisiones que ya existían quedaron con el bloque vacío. En cada fila
+   los dos números deben ser iguales:
+
+   ```sql
+   SELECT 'tenant_colegio_1' AS colegio, COUNT(*) AS admisiones,
+          COUNT(*) FILTER (WHERE cuestionario = '{}'::jsonb) AS con_bloque_vacio
+   FROM tenant_colegio_1.admisiones
+   UNION ALL
+   SELECT 'tenant_2005', COUNT(*),
+          COUNT(*) FILTER (WHERE cuestionario = '{}'::jsonb)
+   FROM tenant_2005.admisiones;
+   ```
+7. Contarle al asistente lo que salió en los puntos 3 a 6, sin cadenas de
+   conexión. Después se puede borrar la rama.
+
+Después de la rama, en este orden (como el E1, por lo explicado en la
+entrega): el usuario confirma la migración, el esquema base regenerado, las
+pruebas y los documentos en un solo commit, lo sube, espera a que Render
+quede **Live** y la aplica en producción con el endpoint directo
+(`--dry-run`, aplicar y `--dry-run` otra vez). Ningún código la usa todavía,
+así que el orden no rompe nada visible; el motivo es el de los colegios
+nuevos.
 
 ## Entrega para el siguiente chat
 
@@ -1083,13 +1237,22 @@ a ninguna base):
   GitHub** (`24a9a3c`; que Render lo tenga **Live** no se ve desde el repo).
   Con el E7 se completó el plan original. **E8 terminado**: el diseño de las
   preguntas del anexo (ver "Preguntas del anexo (pasos E8 a E12)"), sin
-  código. Hasta donde consta en estos documentos, el SQL del E2 y el E3 no se
+  código. **E9 escrito, sin aplicar**: la migración
+  `20261014_admisiones_cuestionario.sql` y sus 6 pruebas (ver "Avance del paso
+  E9"). Hasta donde consta en estos documentos, el SQL del E2 y el E3 no se
   probó en una rama de Neon antes de publicar.
-- Siguiente acción exacta: el usuario revisa la lista de las 55 preguntas
-  (pregunta abierta "Antes del E10") y autoriza el **E9**: la migración de
-  `cuestionario`, con pruebas primero, probada en una rama de Neon y aplicada
-  por el usuario. Sigue recomendada la prueba de humo del E7 en producción con
-  el Colegio Demo (`tenant_colegio_1`, nunca `tenant_2005`): tarjeta →
+- Verificación local del E9, con una `DATABASE_URL` ficticia: las 6 pruebas
+  nuevas y las 15 del E1 pasan; `scripts/verify.py` → **2434 pasan y 1 falla
+  esperada** (`test_esquema_base.py`: la base aún no declara la migración;
+  se apaga al regenerarla desde la rama), Ruff y `pip check` limpios;
+  `git diff --check` limpio. El frontend no cambió en este paso.
+- Siguiente acción exacta: el usuario hace la "Lista de comprobación en una
+  rama de Neon" del E9 (puntos 1 a 7) y cuenta lo que salió. Con eso se
+  revisa el diff del esquema base, se apaga la falla esperada y el E9 queda
+  listo para su commit, push y aplicación en producción. Antes del **E10**
+  sigue pendiente que el usuario revise la lista de las 55 preguntas
+  (pregunta abierta "Antes del E10"). Sigue recomendada la prueba de humo
+  del E7 en producción con el Colegio Demo (`tenant_colegio_1`, nunca `tenant_2005`): tarjeta →
   Admisiones → nuevo aspirante → entrevista → aprobar → matricular → ficha
   con "Datos de admisión". Pendiente: si se borra
   `crearEstudianteEnPreparacion` del frontend. Abiertas para más adelante:

@@ -1,6 +1,6 @@
 # Migraciones
 
-Ultima revision documental: 2026-10-13.
+Ultima revision documental: 2026-10-14.
 
 ## Carpeta de migraciones
 
@@ -53,6 +53,7 @@ Archivos actuales:
 - `20261006_anios_lectivos_origenes.sql`
 - `20261008_anios_lectivos_activacion.sql`
 - `20261013_admisiones.sql`
+- `20261014_admisiones_cuestionario.sql`
 - `README.md`
 
 Migraciones globales `public`:
@@ -870,3 +871,40 @@ Estado al 2026-10-13:
   rellenó ni cambió datos existentes.
 - A partir de aquí el archivo no se puede editar: el runner guarda su
   checksum. Cualquier cambio posterior debe ir en una migración nueva.
+
+## Migracion 20261014_admisiones_cuestionario.sql
+
+Objetivo:
+
+- Entrevista de admisión, paso E9: guardar las respuestas a las preguntas del
+  anexo del colegio (familia, vivienda, salud, inclusión, comportamiento...)
+  en un solo bloque JSON por admisión. Invisible: ningún código la usa
+  todavía; el paso E10 la lee y la escribe.
+
+Cambios:
+
+- `admisiones.cuestionario JSONB NOT NULL DEFAULT '{}'::jsonb`. Las
+  admisiones existentes quedan con el bloque vacío; no se rellena nada a mano.
+- `chk_admisiones_cuestionario_objeto`: el bloque siempre es un objeto JSON
+  (no una lista, un texto ni un número). Qué preguntas y qué respuestas valen
+  lo revisa el backend en el paso E10.
+
+Sin índice (nadie busca por una pregunta suelta). No crea tablas ni toca
+otras. No rellena, actualiza ni borra datos existentes. Es reejecutable.
+
+Detalle completo (por qué un bloque y no 55 columnas, la lista de preguntas y
+la lista de comprobación para la rama de Neon con una consulta que prueba la
+regla):
+
+- `docs/funcionalidades/ENTREVISTA_ADMISION.md`.
+
+Estado al 2026-10-14:
+
+- SQL y 6 pruebas de texto (`tests/test_migracion_admisiones_cuestionario.py`);
+  las 6 fallaron antes de crear el archivo.
+- `scripts/verify.py`: 2434 pasan y **1 falla esperada** de
+  `test_esquema_base.py` hasta aplicar la migración en una rama de Neon y
+  regenerar el esquema base.
+- **No aplicada** en Neon ni en ningún tenant. Pendiente de que el usuario la
+  pruebe en una rama, regenere el esquema base y, después del push, la aplique
+  en producción.

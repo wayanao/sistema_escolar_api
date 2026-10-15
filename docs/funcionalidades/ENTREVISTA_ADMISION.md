@@ -13,8 +13,10 @@
   rama de Neon y aplicado en producción por el usuario (ver "Avance del paso
   E9"). **Paso E10 (la lista de preguntas y las rutas) en el commit
   `eb53e2e`, sin subir** (ver "Avance del paso E10"). **E11a (frontend: las
-  preguntas en la página de admisiones) escrito el 2026-10-14, sin commit**;
-  sigue el E11b (las respuestas en la ficha del estudiante).
+  preguntas en la página de admisiones) en el commit `ca810ea`, sin subir;
+  E11b (las respuestas en la ficha del estudiante) escrito el 2026-10-15,
+  sin commit.** Con él termina el código de la ampliación; falta probarla en
+  local y publicarla. El E12 (imprimir) es opcional.
   Pantallas en `frontend-react/docs/funcionalidades/ENTREVISTA_ADMISION.md`.
   Decisiones del usuario del 2026-10-13: reparto de campos y decisiones 7 a
   9, quien entrevista a mano (10) y el exalumno que vuelve usa su mismo
@@ -33,7 +35,7 @@
   año en preparación.
 - Fecha límite: **principios de noviembre de 2026**, cuando el colegio
   empieza a matricular para 2027.
-- Última actualización: 2026-10-14.
+- Última actualización: 2026-10-15.
 
 ## Objetivo
 
@@ -573,8 +575,8 @@ y se cierran, casillas para chulear, ayuda ampliada de "No aprobado"
 | E8 | ambos | Diseño de las preguntas del anexo (solo documentos). **Hecho el 2026-10-14** |
 | E9 | backend | Migración: columna `cuestionario` en `admisiones` y esquema base (rama de Neon; la aplica el usuario). **Hecho el 2026-10-14** (`9547721` y `3728dcb`); probada en una rama de Neon y aplicada en producción por el usuario |
 | E10 | backend | La lista de preguntas, la revisión de respuestas y las rutas (`GET /admisiones/cuestionario`, `cuestionario` en ver y editar, `GET /estudiantes/{estudiante_id}/admision`). **Hecho el 2026-10-14** (`eb53e2e`, sin subir) |
-| E11a | frontend | Formulario con secciones y casillas, guardar con la entrevista y ayuda ampliada de "No aprobado". **Escrito el 2026-10-14, sin commit** (detalle en el documento del frontend) |
-| E11b | frontend | Las respuestas en "Datos de admisión" de la ficha del estudiante. Pendiente |
+| E11a | frontend | Formulario con secciones y casillas, guardar con la entrevista y ayuda ampliada de "No aprobado". **Hecho el 2026-10-14** (`ca810ea`, sin subir; detalle en el documento del frontend) |
+| E11b | frontend | Las respuestas en "Datos de admisión" de la ficha del estudiante. **Escrito el 2026-10-15, sin commit** (detalle en el documento del frontend) |
 | E12 | frontend | **Opcional, solo si el usuario lo pide:** imprimir la entrevista con las firmas (`DocumentoImprimible`) |
 
 Orden de subida a producción: E1 (migración aplicada) → E2 y E3 (backend
@@ -1376,23 +1378,26 @@ a ninguna base):
   `admisiones.cuestionario` (migración `20261014_admisiones_cuestionario.sql`,
   commits `9547721` y `3728dcb`, en GitHub). Ver "Avance del paso E9". **E10
   en el commit `eb53e2e`, sin subir**: la lista de preguntas y las rutas (ver
-  "Avance del paso E10"). **E11a escrito en el frontend, sin commit**: las
-  preguntas en la página de admisiones (ver su avance en el documento del
-  frontend). Hasta donde consta en estos documentos, el SQL del E2 y el E3
-  no se probó en una rama de Neon antes de publicar.
+  "Avance del paso E10"). **E11a en el frontend, commit `ca810ea`, sin
+  subir; E11b escrito el 2026-10-15, sin commit**: las preguntas en la
+  página de admisiones y las respuestas en la ficha del estudiante (ver sus
+  avances en el documento del frontend). Hasta donde consta en estos
+  documentos, el SQL del E2 y el E3 no se probó en una rama de Neon antes de
+  publicar.
 - Verificación del E10, con una `DATABASE_URL` ficticia: `scripts/verify.py`
   → **2533 pasan, 0 fallan**, Ruff y `pip check` limpios; `git diff
   --check` limpio.
 - Pendiente del usuario: borrar las ramas `prueba-cuestionario` y
   `prueba-entrevista` de Neon, si no se borraron. (El `.env` ya volvió al
   endpoint `-pooler`.)
-- Siguiente acción exacta: el usuario prueba el E11a en local, con este
-  backend (E10) y el frontend, con el Colegio Demo o una rama de Neon,
-  nunca con `tenant_2005` (el backend local escribe en la base real): es la
-  primera vez que el bloque pasa por PostgreSQL. Después: commit del
-  frontend, push del backend y Render **Live**, y entonces push del
-  frontend. Con su autorización, el **E11b** (las respuestas en la ficha del
-  estudiante). Sigue recomendada la prueba de humo del E7 en producción con
+- Siguiente acción exacta: el usuario prueba en local el E11a y el E11b
+  juntos, con este backend (E10) y el frontend, con el Colegio Demo o una
+  rama de Neon, nunca con `tenant_2005` (el backend local escribe en la base
+  real): es la primera vez que el bloque pasa por PostgreSQL. Lista de la
+  prueba en la entrega del documento del frontend. Después: commit del
+  E11b, push del backend y Render **Live**, y entonces push del frontend.
+  El E12 (imprimir) solo si el usuario lo pide. Sigue recomendada la prueba
+  de humo del E7 en producción con
   el Colegio Demo (`tenant_colegio_1`, nunca `tenant_2005`): tarjeta →
   Admisiones → nuevo aspirante → entrevista → aprobar → matricular → ficha
   con "Datos de admisión". Pendiente: si se borra

@@ -1,7 +1,8 @@
 """Admisiones: aspirantes nuevos del año en preparación y su entrevista.
 
 Ver `docs/funcionalidades/ENTREVISTA_ADMISION.md`: paso E2 (registrar,
-listar, ver, editar y borrar) y paso E3 (resultado y matricular).
+listar, ver, editar y borrar), paso E3 (resultado y matricular) y paso E10
+(las preguntas del anexo y su lectura desde la ficha del estudiante).
 
 Reglas:
 
@@ -23,6 +24,7 @@ from psycopg2 import IntegrityError
 from app.controllers.anios_lectivos_controller import (
     matricular_aspirante_en_preparacion,
 )
+from app.core import cuestionario_admision
 from app.database import get_cursor
 from app.repositories import admisiones_repository, anios_lectivos_repository
 from app.services.anio_lectivo import exigir_anio_lectivo
@@ -183,6 +185,27 @@ def obtener_admision_controller(admision_id):
     with get_cursor() as cursor:
         detalle = _detalle(cursor, _leer_admision(cursor, admision_id))
     return detalle
+
+
+def obtener_cuestionario_controller():
+    """Las preguntas del anexo, para que el frontend arme el formulario (E10).
+
+    No lee la base: la lista vive en `app/core/cuestionario_admision.py`.
+    """
+    return cuestionario_admision.catalogo()
+
+
+def obtener_admision_de_estudiante_controller(estudiante_id):
+    """Las respuestas de la admisión de un estudiante, para su ficha (E10).
+
+    Un estudiante sin admisión (los de antes, o quien llegó a mitad de año)
+    responde vacío, no un error: la ficha dice "Sin entrevista de admisión".
+    """
+    with get_cursor() as cursor:
+        admision = admisiones_repository.leer_admision_de_estudiante(cursor, estudiante_id)
+    if admision is None:
+        return {"admision_id": None, "anio": None, "fecha_entrevista": None, "cuestionario": {}}
+    return admision
 
 
 def registrar_admision_controller(anio_lectivo_id, datos):

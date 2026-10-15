@@ -7,6 +7,8 @@ viven en `admisiones_controller`.
 Los nombres de columna que se arman en el SQL salen de las tuplas de abajo,
 escritas a mano, nunca de lo que manda el cliente.
 """
+from psycopg2.extras import Json
+
 
 # Lo que se pide al registrar al aspirante (mismo orden que `AdmisionCreate`).
 COLUMNAS_ASPIRANTE = (
@@ -53,6 +55,8 @@ COLUMNAS_DETALLE = (
     "estudiante_id",
     "creado_en",
     "actualizado_en",
+    # Las preguntas del anexo (paso E10): un bloque JSON, ya como diccionario.
+    "cuestionario",
     "anio",
     "estado_anio",
     "curso_nombre",
@@ -167,16 +171,25 @@ def actualizar_admision(cursor, admision_id, valores):
 
     No toca el resultado, el año ni el enlace al estudiante, y no cambia una
     admisión matriculada: en ese caso devuelve 0.
+
+    El bloque de las preguntas del anexo (`cuestionario`, paso E10) solo se
+    reemplaza si llega: con `None` queda como estaba; `{}` sí lo vacía.
     """
     columnas = COLUMNAS_ASPIRANTE + COLUMNAS_ENTREVISTA
-    asignaciones = ", ".join(f"{columna} = %s" for columna in columnas)
+    asignaciones = [f"{columna} = %s" for columna in columnas]
+    parametros = [valores[columna] for columna in columnas]
+    cuestionario = valores.get("cuestionario")
+    if cuestionario is not None:
+        asignaciones.append("cuestionario = %s")
+        parametros.append(Json(cuestionario))
+    sets = ", ".join(asignaciones)
     cursor.execute(
         f"""
         UPDATE admisiones
-        SET {asignaciones}, actualizado_en = CURRENT_TIMESTAMP
+        SET {sets}, actualizado_en = CURRENT_TIMESTAMP
         WHERE id = %s AND estudiante_id IS NULL
         """,
-        (*[valores[columna] for columna in columnas], admision_id),
+        (*parametros, admision_id),
     )
     return cursor.rowcount
 
@@ -275,6 +288,25 @@ def copiar_datos_a_estudiante(cursor, admision_id, estudiante_id):
         (admision_id, estudiante_id),
     )
     return cursor.rowcount
+
+
+def leer_admision_de_estudiante(cursor, estudiante_id):
+    """La admisión enlazada a un estudiante, con sus respuestas, o `None`.
+
+    Para "Datos de admisión" de la ficha (paso E10). Un estudiante se enlaza a
+    una sola admisión (`admisiones_estudiante_id_key`).
+    """
+    columnas = ("admision_id", "anio", "fecha_entrevista", "cuestionario")
+    cursor.execute(
+        """
+        SELECT a.id, al.anio, a.fecha_entrevista, a.cuestionario
+        FROM admisiones a
+        JOIN anios_lectivos al ON al.id = a.anio_lectivo_id
+        WHERE a.estudiante_id = %s
+        """,
+        (estudiante_id,),
+    )
+    return _como_diccionario(cursor.fetchone(), columnas)
 
 
 def enlazar_estudiante(cursor, admision_id, estudiante_id):

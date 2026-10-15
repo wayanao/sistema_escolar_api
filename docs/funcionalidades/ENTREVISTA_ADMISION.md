@@ -11,7 +11,8 @@
   documentos) terminado el 2026-10-14; ver "Preguntas del anexo (pasos E8 a
   E12)". **Paso E9 (la migración) terminado el 2026-10-14**: probado en una
   rama de Neon y aplicado en producción por el usuario (ver "Avance del paso
-  E9"). Sigue el E10.
+  E9"). **Paso E10 (la lista de preguntas y las rutas) escrito el
+  2026-10-14, sin commit** (ver "Avance del paso E10"). Sigue el E11.
   Pantallas en `frontend-react/docs/funcionalidades/ENTREVISTA_ADMISION.md`.
   Decisiones del usuario del 2026-10-13: reparto de campos y decisiones 7 a
   9, quien entrevista a mano (10) y el exalumno que vuelve usa su mismo
@@ -535,10 +536,11 @@ $$;
   como estaba. Si llega, reemplaza el bloque entero. Motivo: una pestaña
   abierta con el formulario de antes no trae el bloque y, con la regla de
   siempre, borraría las respuestas al guardar.
-- **Lectura desde la ficha del estudiante** (nueva, solo admin; nombre a
-  definir en el E10, por ejemplo `GET /estudiantes/{id}/admision`): las
-  respuestas de la admisión enlazada al estudiante, para "Datos de admisión"
-  (decisión 13). Un estudiante sin admisión responde vacío, no un error.
+- **Lectura desde la ficha del estudiante** (nueva, solo admin):
+  `GET /estudiantes/{estudiante_id}/admision`, declarada en el router de
+  admisiones para quedar bajo su protección. Las respuestas de la admisión
+  enlazada al estudiante, para "Datos de admisión" (decisión 13). Un
+  estudiante sin admisión responde vacío, no un error.
 - Revisión de las respuestas (en el backend, con mensajes en español, `422`):
   solo preguntas de la lista; cada respuesta con la forma de su tipo; opciones
   que existen; números dentro de su rango; textos dentro de su límite;
@@ -568,7 +570,7 @@ y se cierran, casillas para chulear, ayuda ampliada de "No aprobado"
 | E7 | backend | Bloquear el alta directa en el año en preparación. **Hecho el 2026-10-14** (`24a9a3c`, en GitHub) |
 | E8 | ambos | Diseño de las preguntas del anexo (solo documentos). **Hecho el 2026-10-14** |
 | E9 | backend | Migración: columna `cuestionario` en `admisiones` y esquema base (rama de Neon; la aplica el usuario). **Hecho el 2026-10-14** (`9547721` y `3728dcb`); probada en una rama de Neon y aplicada en producción por el usuario |
-| E10 | backend | La lista de preguntas, la revisión de respuestas y las rutas (`GET /admisiones/cuestionario`, `cuestionario` en ver y editar, lectura desde la ficha) |
+| E10 | backend | La lista de preguntas, la revisión de respuestas y las rutas (`GET /admisiones/cuestionario`, `cuestionario` en ver y editar, `GET /estudiantes/{estudiante_id}/admision`). **Escrito el 2026-10-14, sin commit** |
 | E11 | frontend | Formulario con secciones y casillas, ayuda ampliada de "No aprobado" y respuestas en "Datos de admisión" de la ficha |
 | E12 | frontend | **Opcional, solo si el usuario lo pide:** imprimir la entrevista con las firmas (`DocumentoImprimible`) |
 
@@ -640,11 +642,14 @@ formulario de hoy: si `cuestionario` no llega, nada cambia.
   ¿Se permite borrar una admisión no matriculada de un año que ya no está en
   preparación, o se borran solas al activar el año? El E2 sigue el contrato
   (lo más estricto); aflojarlo después es quitar una comprobación.
-- **Antes del E10 (la lista se escribe en código ahí):** el usuario revisa la
-  lista de "Preguntas del anexo": los textos, cómo se responde cada una y lo
-  que el asistente agregó al pasarla a casillas ("Ninguno", los cuadros de
-  detalle y "No aprobado"). El E9 no depende de esta revisión: la columna es
-  la misma con cualquier lista.
+- ~~**Antes del E10 (la lista se escribe en código ahí):** el usuario revisa
+  la lista de "Preguntas del anexo": los textos, cómo se responde cada una y
+  lo que el asistente agregó al pasarla a casillas ("Ninguno", los cuadros de
+  detalle y "No aplica").~~ **Respondida el 2026-10-14:** al pedirle revisarla
+  ("si todo te parece bien, dime E10"), el usuario respondió "continua"; se
+  tomó como visto bueno de la lista tal como está. Cambiar una pregunta
+  después es solo código (la lista de `app/core/cuestionario_admision.py`),
+  sin migración.
 
 ## Avance del paso E1 (2026-10-13)
 
@@ -1286,6 +1291,78 @@ a ninguna base):
   en una migración nueva.
 - **Paso E9 terminado.**
 
+## Avance del paso E10 (2026-10-14)
+
+- Autorizado por el usuario con "continua", respondiendo a "si todo te
+  parece bien, dime E10" como único paso siguiente; también se tomó como
+  visto bueno de la lista de 55 preguntas (pregunta abierta "Antes del E10").
+  Al iniciar, los dos repos en `main` y limpios: backend con el commit de
+  documentos del E9 (`1b0cdcd`) sin subir; frontend igual a GitHub
+  (`df2e494`). El `.env` del backend ya estaba otra vez en el endpoint
+  `-pooler` (visto solo el servidor).
+- Pruebas primero, 98 nuevas; antes del código fallaban todas (los dos
+  archivos que importan el módulo nuevo no cargaban y fallaban 17 más):
+  - `tests/test_cuestionario_admision.py` (nuevo, 71): la lista del documento
+    (13 secciones, 55 preguntas numeradas, claves, tipos, textos, opciones,
+    detalles, "Otro", "Ninguno" excluyente, la 26 dependiente de la 25,
+    rangos y límites; que no pregunte estado civil ni religión; que el
+    catálogo que sale sea una copia) y cada regla de revisión por tipo.
+  - `test_admisiones_esquema.py`: registrar no trae el bloque; editar sin
+    él (o con `null`) lo deja en `None`; llega revisado y limpio; `{}`
+    vacía; los inválidos dan error con su mensaje.
+  - `test_admisiones_controller.py`: editar pasa el bloque revisado o `None`
+    al repositorio; la lista sale sin abrir la base; la admisión de un
+    estudiante (con y sin); en el SQL, guardar el bloque como JSON solo si
+    llega, `{}` también se guarda, leerlo al ver y no al listar, y la
+    consulta por estudiante.
+  - `test_admisiones_routes.py`: un profesor no entra a las dos rutas
+    nuevas; `/admisiones/cuestionario` no se confunde con
+    `/admisiones/{admision_id}`; la ruta de la ficha; `422` sin llegar al
+    controlador con un bloque inválido; el bloque llega solo si se manda.
+  - **Ajustadas a propósito:** la que fija los campos de `AdmisionUpdate`
+    (más `cuestionario`) y la que fija las rutas del router (más dos).
+- Código:
+  - `app/core/cuestionario_admision.py` (nuevo, al lado de
+    `nivel_academico.py`): `SECCIONES`, `PREGUNTAS`, `catalogo()` y
+    `limpiar_cuestionario`, con `CuestionarioInvalidoError` (un
+    `ValueError`, así Pydantic lo convierte en `422`).
+  - `app/schemas/admision.py`: `AdmisionUpdate.cuestionario`, revisado antes
+    de la comprobación de tipo de Pydantic para que una lista o un texto
+    reciban el mensaje propio.
+  - `app/repositories/admisiones_repository.py`: `cuestionario` en
+    `COLUMNAS_DETALLE` (de la tabla, antes de las cuatro del JOIN);
+    `actualizar_admision` lo agrega con `Json(...)` solo si no es `None`;
+    `leer_admision_de_estudiante` (nueva).
+  - `app/controllers/admisiones_controller.py`:
+    `obtener_cuestionario_controller` y
+    `obtener_admision_de_estudiante_controller`; editar no cambió (el bloque
+    viaja dentro de los valores).
+  - `app/routes/admisiones.py`: las dos rutas nuevas, antes de
+    `/admisiones/{admision_id}`.
+- Decisiones de detalle (dentro del diseño del E8):
+  - Mensajes con el número y el comienzo del texto de la pregunta (por
+    ejemplo `Pregunta 2 («Número de hermanos»): tiene que estar entre 0 y
+    20.`), para que el frontend los muestre tal cual.
+  - `null` en una respuesta, un texto en blanco y una lista vacía cuentan
+    como sin responder y no se guardan; el bloque guardado va en el orden de
+    la lista, y `marcadas`, en el orden de las opciones.
+  - Las preguntas Sí / No también traen `opciones` (Sí y No), para que el
+    frontend dibuje todas las casillas igual.
+  - La marca de "pregunta retirada" del E8 no se implementó: hoy no hay
+    ninguna. Se agrega el día que se quite una.
+  - La ruta de la ficha devuelve solo las respuestas (y el id, el año y la
+    fecha de la entrevista). Para las etiquetas, el frontend usa la lista de
+    `GET /admisiones/cuestionario`, que puede pedir una sola vez.
+- Comprobado fuera de las pruebas: `psycopg2-binary` 2.9 convierte el JSONB
+  en diccionario al leer, y ningún otro código usa las columnas de
+  `admisiones` que cambiaron.
+- Documentado en `docs/API_ENDPOINTS.md` (contrato completo, "Preguntas del
+  anexo (paso E10)") y `docs/CAMBIOS_BACKEND.md`.
+- Verificación, con una `DATABASE_URL` ficticia: las 230 pruebas de
+  admisiones pasan; `scripts/verify.py` → **2533 pasan, 0 fallan** (antes
+  2435), Ruff y `pip check` limpios; `git diff --check` limpio. Sin
+  migración, sin acceso a bases. **No se ha probado contra una base real.**
+
 ## Entrega para el siguiente chat
 
 - Estado al 2026-10-14: **E1 a E6 en producción**, según el usuario; **E7 en
@@ -1294,22 +1371,24 @@ a ninguna base):
   preguntas del anexo (ver "Preguntas del anexo (pasos E8 a E12)"), sin
   código. **E9 terminado y en producción** según el usuario: la columna
   `admisiones.cuestionario` (migración `20261014_admisiones_cuestionario.sql`,
-  commits `9547721` y `3728dcb`, en GitHub). Ver "Avance del paso E9". Hasta
-  donde consta en estos documentos, el SQL del E2 y el E3 no se probó en una
-  rama de Neon antes de publicar.
-- Verificación del E9, con una `DATABASE_URL` ficticia: `scripts/verify.py`
-  → **2435 pasan, 0 fallan**, Ruff y `pip check` limpios; `git diff
-  --check` limpio. El frontend no cambió en este paso.
-- Pendiente del usuario: devolver el `DATABASE_URL` del `.env` del backend al
-  endpoint `-pooler` (quedó en el directo de producción) y borrar las ramas
-  `prueba-cuestionario` y `prueba-entrevista` de Neon, si no se borraron.
-- Siguiente acción exacta: el usuario revisa la lista de las 55 preguntas
-  (pregunta abierta "Antes del E10") y autoriza el **E10**: la lista de
-  preguntas en el código, la revisión de respuestas y las rutas (`GET
-  /admisiones/cuestionario`, `cuestionario` en ver y editar, lectura desde
-  la ficha), con pruebas primero. Sigue recomendada la prueba de humo del E7
-  en producción con el Colegio Demo (`tenant_colegio_1`, nunca
-  `tenant_2005`): tarjeta →
+  commits `9547721` y `3728dcb`, en GitHub). Ver "Avance del paso E9". **E10
+  escrito, sin commit**: la lista de preguntas y las rutas (ver "Avance del
+  paso E10"). Hasta donde consta en estos documentos, el SQL del E2 y el E3
+  no se probó en una rama de Neon antes de publicar.
+- Verificación del E10, con una `DATABASE_URL` ficticia: `scripts/verify.py`
+  → **2533 pasan, 0 fallan**, Ruff y `pip check` limpios; `git diff
+  --check` limpio.
+- Pendiente del usuario: borrar las ramas `prueba-cuestionario` y
+  `prueba-entrevista` de Neon, si no se borraron. (El `.env` ya volvió al
+  endpoint `-pooler`.)
+- Siguiente acción exacta: el usuario revisa y hace el commit del E10, lo
+  sube y espera a que Render quede **Live**. Sin migración; nada cambia a la
+  vista hasta el E11, porque el frontend de hoy no manda ni lee
+  `cuestionario`. Después, con su autorización, el **E11** en el frontend.
+  La primera vez que el bloque pase por PostgreSQL será al probar el E11 en
+  local: con el Colegio Demo o una rama de Neon, nunca con `tenant_2005`
+  (el backend local escribe en la base real). Sigue recomendada la prueba de humo del E7 en producción con el
+  Colegio Demo (`tenant_colegio_1`, nunca `tenant_2005`): tarjeta →
   Admisiones → nuevo aspirante → entrevista → aprobar → matricular → ficha
   con "Datos de admisión". Pendiente: si se borra
   `crearEstudianteEnPreparacion` del frontend. Abiertas para más adelante:

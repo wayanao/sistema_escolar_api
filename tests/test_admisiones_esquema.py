@@ -44,8 +44,11 @@ def test_registrar_pide_solo_los_datos_del_aspirante():
 
 
 def test_editar_pide_los_datos_del_aspirante_y_de_la_entrevista():
+    # Ajustada a propósito en el E10: al final, el bloque de las preguntas
+    # del anexo, que no está en COLUMNAS_ENTREVISTA porque no se reemplaza
+    # cuando no llega.
     assert tuple(esquemas.AdmisionUpdate.model_fields) == (
-        repositorio.COLUMNAS_ASPIRANTE + repositorio.COLUMNAS_ENTREVISTA
+        repositorio.COLUMNAS_ASPIRANTE + repositorio.COLUMNAS_ENTREVISTA + ("cuestionario",)
     )
 
 
@@ -151,6 +154,53 @@ def test_cada_texto_cabe_en_su_columna_y_uno_mas_largo_da_422():
 
 def test_el_filtro_de_resultado_solo_admite_los_tres_resultados():
     assert set(esquemas.RESULTADOS_ADMISION) == {"pendiente", "aprobado", "no_aprobado"}
+
+
+# ---------------------------------------------------------------------------
+# Preguntas del anexo (paso E10)
+# ---------------------------------------------------------------------------
+
+
+def test_registrar_no_trae_las_preguntas_del_anexo():
+    assert "cuestionario" not in esquemas.AdmisionCreate.model_fields
+
+
+@pytest.mark.parametrize("cambios", [{}, {"cuestionario": None}])
+def test_editar_sin_cuestionario_lo_deja_como_estaba(cambios):
+    """Una pestaña con el formulario de antes no trae el bloque: no lo borra."""
+    datos = esquemas.AdmisionUpdate(**_aspirante(**cambios))
+
+    assert datos.cuestionario is None
+    assert datos.model_dump()["cuestionario"] is None
+
+
+def test_el_cuestionario_llega_revisado_y_limpio():
+    datos = esquemas.AdmisionUpdate(
+        **_aspirante(cuestionario={"como_lo_llaman": " Juancho ", "usa_panal": None})
+    )
+
+    assert datos.cuestionario == {"como_lo_llaman": "Juancho"}
+
+
+def test_un_cuestionario_vacio_quita_todas_las_respuestas():
+    assert esquemas.AdmisionUpdate(**_aspirante(cuestionario={})).cuestionario == {}
+
+
+@pytest.mark.parametrize(
+    "cuestionario,texto",
+    [
+        ({"religion": "x"}, "no existe"),
+        ({"numero_hermanos": 99}, "Pregunta 2"),
+        ({"profesionales": {"marcadas": ["psicologia"]}}, "Pregunta 26"),
+        ([], "bloque"),
+        ("hola", "bloque"),
+    ],
+)
+def test_un_cuestionario_invalido_da_422_con_su_mensaje(cuestionario, texto):
+    with pytest.raises(ValidationError) as exc:
+        esquemas.AdmisionUpdate(**_aspirante(cuestionario=cuestionario))
+
+    assert texto in str(exc.value)
 
 
 # ---------------------------------------------------------------------------

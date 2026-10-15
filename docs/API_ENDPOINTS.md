@@ -394,13 +394,15 @@ el del plan o el de la anotacion) y aplica esta regla:
 
 ## Admisiones
 
-Entrevista de admisión, pasos E2 y E3: aspirantes nuevos del año en
+Entrevista de admisión, pasos E2, E3 y E10: aspirantes nuevos del año en
 preparación. Router **solo admin** (datos de menores, Ley 1581 de 2012), en
 `app/routes/admisiones.py`. Detalle y decisiones en
 `docs/funcionalidades/ENTREVISTA_ADMISION.md`.
 
 - `GET /anios-lectivos/{anio_lectivo_id}/admisiones?resultado=`
 - `POST /anios-lectivos/{anio_lectivo_id}/admisiones`
+- `GET /admisiones/cuestionario` (paso E10)
+- `GET /estudiantes/{estudiante_id}/admision` (paso E10)
 - `GET /admisiones/{admision_id}`
 - `PUT /admisiones/{admision_id}`
 - `DELETE /admisiones/{admision_id}`
@@ -472,13 +474,20 @@ año ni el enlace al estudiante; si llegan, se ignoran:
   "ocupacion_madre": "...",           // hasta 100
   "vive_con": "...",                  // hasta 250
   "expectativas": "...",              // texto largo
-  "observaciones": "..."              // texto largo
+  "observaciones": "...",             // texto largo
+  "cuestionario": { /* las preguntas del anexo, ver abajo (paso E10) */ }
 }
 ```
 
+**`cuestionario` es la excepción al reemplazo completo:** si no llega, o
+llega `null`, queda como estaba; si llega, reemplaza el bloque entero (`{}`
+quita todas las respuestas). Así el formulario de antes, que no lo manda, no
+borra respuestas.
+
 `GET /admisiones/{admision_id}` (y las respuestas de `POST` y `PUT`): todas
 las columnas de la tabla (`resultado`, `motivo_resultado`, `decidido_en`,
-`estudiante_id`, `creado_en`, `actualizado_en` incluidas), más `anio`,
+`estudiante_id`, `creado_en`, `actualizado_en` y `cuestionario` incluidas,
+este último como objeto, `{}` si no hay respuestas), más `anio`,
 `estado_anio`, `curso_nombre`, `curso_jornada`, `matriculada`, `editable`
 (año en preparación y sin matricular) y `aviso_documento`:
 
@@ -534,6 +543,86 @@ activo del año de la admisión) y responde `201`:
   como que no sigue.
 - Valores de pago especiales: no se crean; se manejan aparte, como en el
   alta directa.
+- `cuestionario` no se copia a la ficha: se lee con
+  `GET /estudiantes/{estudiante_id}/admision`.
+
+### Preguntas del anexo (paso E10)
+
+La lista vive solo en el backend (`app/core/cuestionario_admision.py`). El
+frontend la pide y arma el formulario con ella; el backend revisa cada
+respuesta contra ella.
+
+`GET /admisiones/cuestionario` responde la lista (13 secciones, 55
+preguntas numeradas del 1 al 55). No lee la base:
+
+```jsonc
+{
+  "secciones": [
+    {
+      "clave": "salud",
+      "titulo": "Salud",
+      "preguntas": [
+        {
+          "numero": 19, "clave": "dificultad_motora", "tipo": "si_no",
+          "texto": "¿Tiene alguna dificultad motora?",
+          "opciones": [{"valor": "si", "etiqueta": "Sí"}, {"valor": "no", "etiqueta": "No"}],
+          "detalle": {"con": "si", "texto": "¿Cuál?", "maximo": 250}   // solo si la tiene
+        },
+        {
+          "numero": 21, "clave": "enfermedades_padecidas", "tipo": "varias",
+          "texto": "Enfermedades que padeció",
+          "opciones": [{"valor": "hepatitis", "etiqueta": "Hepatitis"}, /* ... */
+                       {"valor": "ninguno", "etiqueta": "Ninguna"}, {"valor": "otro", "etiqueta": "Otra"}],
+          "otro": {"texto": "¿Cuál?", "maximo": 250},   // solo si tiene "Otro"
+          "exclusiva": "ninguno"                         // solo en las preguntas 5 y 21
+        }
+      ]
+    }
+  ]
+}
+```
+
+Otros campos según el tipo: `numero` trae `minimo` y `maximo`; `texto` y
+`texto_largo` traen `maximo` (150 y 1000) y a veces `ayuda`; la pregunta 26
+trae `"depende_de": {"pregunta": "seguimiento_profesional", "respuesta":
+"si"}`. Las claves nunca cambian de significado.
+
+Qué se manda en `cuestionario` (cada respuesta bajo la clave de su pregunta;
+sin responder = la clave no está; `null`, un texto en blanco o una lista
+vacía cuentan como sin responder y no se guardan):
+
+```jsonc
+{
+  "como_lo_llaman": "Juancho",                                   // texto
+  "numero_hermanos": 2,                                          // numero (entero)
+  "usa_panal": {"respuesta": "no"},                              // si_no
+  "dificultad_motora": {"respuesta": "si", "detalle": "Plantillas"},
+  "tipo_vivienda": {"opcion": "otro", "otro": "Finca"},          // una
+  "comidas_del_dia": {"marcadas": ["desayuno", "cena"]},         // varias
+  "con_quien_queda": {"marcadas": ["otro"], "otro": "La vecina"}
+}
+```
+
+Lo que se guarda (y se devuelve) va recortado y en el orden de la lista;
+`marcadas`, en el orden de las opciones. `422` con un mensaje en español
+(por ejemplo `Pregunta 2 («Número de hermanos»): tiene que estar entre 0 y
+20.`) si: la pregunta no existe; la respuesta no tiene la forma de su tipo;
+la opción no existe o está repetida; un número no es entero o está fuera de
+su rango; un texto pasa su límite (detalle y "Otro": 250); hay detalle con la
+respuesta que no lo pide, o "Otro" escrito sin elegir "Otro"; "Ninguno" va
+con otras opciones; la 26 llega sin que la 25 sea "Sí"; o el bloque no es un
+objeto.
+
+`GET /estudiantes/{estudiante_id}/admision` (solo admin, en este router): la
+admisión enlazada al estudiante, para "Datos de admisión" de la ficha. Un
+estudiante sin admisión no es un error:
+
+```jsonc
+{"admision_id": 7, "anio": 2027, "fecha_entrevista": "2026-10-20",
+ "cuestionario": {"usa_panal": {"respuesta": "no"}}}
+// sin admisión:
+{"admision_id": null, "anio": null, "fecha_entrevista": null, "cuestionario": {}}
+```
 
 Errores (el `detail` es un texto listo para mostrar):
 
@@ -546,7 +635,8 @@ Errores (el `detail` es un texto listo para mostrar):
   o algo se guardó a la vez (documento, matrícula o enlace).
 - `422`: cuerpo inválido (falta un obligatorio, `autoriza_datos` no es
   `true`, un texto demasiado largo, `curso_id` no positivo, `no_aprobado`
-  sin motivo).
+  sin motivo, una respuesta de `cuestionario` que no corresponde a su
+  pregunta).
 
 ## Estudiantes
 

@@ -6,6 +6,38 @@ Ultima revision documental: 2026-10-14.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
+## 2026-10-14 - Entrevista de admisión E10: las preguntas del anexo en la API
+
+Segundo paso con código de la ampliación "Preguntas del anexo" de
+`docs/funcionalidades/ENTREVISTA_ADMISION.md`. Usa la columna del E9.
+
+### Qué cambia
+
+- `app/core/cuestionario_admision.py` (nuevo): la lista de 13 secciones y 55
+  preguntas, con su tipo, opciones, detalle, "Otro", rangos y límites, y
+  `limpiar_cuestionario`, que revisa y limpia el bloque de respuestas.
+- `GET /admisiones/cuestionario` (nueva, solo admin): la lista, para que el
+  frontend arme el formulario. Declarada antes de `/admisiones/{admision_id}`.
+- `GET /estudiantes/{estudiante_id}/admision` (nueva, solo admin, en el
+  router de admisiones): las respuestas de la admisión de un estudiante;
+  vacío si no tiene.
+- `GET /admisiones/{id}` y las respuestas de `POST` y `PUT` traen
+  `cuestionario`. `PUT /admisiones/{id}` lo acepta: si no llega o llega
+  `null`, queda como estaba (excepción a propósito al reemplazo completo); si
+  llega, se revisa (`422` con mensaje) y reemplaza el bloque.
+- No cambia: la lista de admisiones, registrar, el resultado, borrar ni
+  matricular (el bloque no se copia a `estudiantes`). Contrato en
+  `docs/API_ENDPOINTS.md`, "Preguntas del anexo (paso E10)". Sin migración.
+
+### Pruebas
+
+98 nuevas, escritas antes (fallaron todas): `tests/test_cuestionario_admision.py`
+(nuevo: la lista del documento y cada regla de revisión) y ampliaciones de
+`test_admisiones_esquema.py`, `test_admisiones_controller.py` y
+`test_admisiones_routes.py`. Ajustadas a propósito: las que fijan los campos
+de `AdmisionUpdate` y las rutas del router (un campo y dos rutas más).
+`scripts/verify.py`: 2533 pasan, 0 fallan; Ruff y `pip check` limpios.
+
 ## 2026-10-14 - Entrevista de admisión E9: columna para las preguntas del anexo
 
 Primer paso con código de la ampliación "Preguntas del anexo" de

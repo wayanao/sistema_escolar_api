@@ -40,6 +40,13 @@ TODAS = [
     ("POST", "/admisiones/7/matricular", FICHA),
 ]
 
+# Paso E10: solo leen. No están en TODAS porque no tienen errores que
+# traducir; sí tienen que estar protegidas como las demás.
+LECTURAS_E10 = [
+    ("GET", "/admisiones/cuestionario", None),
+    ("GET", "/estudiantes/55/admision", None),
+]
+
 CONTROLADORES = (
     "listar_admisiones_controller",
     "registrar_admision_controller",
@@ -135,7 +142,7 @@ def test_la_proteccion_vive_en_el_router():
     assert get_current_active_admin in [d.dependency for d in rutas.router.dependencies]
 
 
-@pytest.mark.parametrize("metodo,ruta,cuerpo", TODAS)
+@pytest.mark.parametrize("metodo,ruta,cuerpo", TODAS + LECTURAS_E10)
 def test_un_profesor_no_entra_a_ninguna(app_profesor, metodo, ruta, cuerpo):
     estado, _ = peticion(app_profesor, metodo, ruta, cuerpo)
 
@@ -151,9 +158,12 @@ def test_las_rutas_son_las_del_documento():
         if metodo != "HEAD"
     }
 
+    # Ajustada a propósito en el E10: las dos rutas de lectura nuevas.
     assert declaradas == {
         ("/anios-lectivos/{anio_lectivo_id}/admisiones", "GET"),
         ("/anios-lectivos/{anio_lectivo_id}/admisiones", "POST"),
+        ("/admisiones/cuestionario", "GET"),
+        ("/estudiantes/{estudiante_id}/admision", "GET"),
         ("/admisiones/{admision_id}", "GET"),
         ("/admisiones/{admision_id}", "PUT"),
         ("/admisiones/{admision_id}", "DELETE"),
@@ -337,3 +347,68 @@ def test_matricular_sin_curso_da_422_sin_llegar_al_controlador(app_admin):
 
     assert estado == 422
     assert llamadas == []
+
+
+# ---------------------------------------------------------------------------
+# Preguntas del anexo (paso E10)
+# ---------------------------------------------------------------------------
+
+
+def test_la_lista_de_preguntas_no_se_confunde_con_una_admision(app_admin):
+    """`/admisiones/cuestionario` va antes de `/admisiones/{admision_id}`: si
+    no, FastAPI intentaría leer "cuestionario" como un número y daría 422."""
+    app, doblar, llamadas = app_admin
+    doblar("obtener_admision_controller", resultado={"id": 0})
+
+    estado, cuerpo = peticion(app, "GET", "/admisiones/cuestionario")
+
+    assert estado == 200
+    assert [s["clave"] for s in cuerpo["secciones"]][:2] == ["datos_personales", "familia"]
+    assert sum(len(s["preguntas"]) for s in cuerpo["secciones"]) == 55
+    assert llamadas == []
+
+
+def test_la_admision_de_un_estudiante_responde_200(app_admin):
+    app, doblar, llamadas = app_admin
+    vacia = {"admision_id": None, "anio": None, "fecha_entrevista": None, "cuestionario": {}}
+    doblar("obtener_admision_de_estudiante_controller", resultado=vacia)
+
+    estado, cuerpo = peticion(app, "GET", "/estudiantes/55/admision")
+
+    assert estado == 200
+    assert cuerpo == vacia
+    assert llamadas[0][1] == (55,)
+
+
+def test_un_estudiante_que_no_es_positivo_da_422(app_admin):
+    app, doblar, llamadas = app_admin
+    doblar("obtener_admision_de_estudiante_controller", resultado={})
+
+    estado, _ = peticion(app, "GET", "/estudiantes/0/admision")
+
+    assert estado == 422
+    assert llamadas == []
+
+
+def test_editar_con_un_cuestionario_invalido_da_422_sin_llegar_al_controlador(app_admin):
+    app, doblar, llamadas = app_admin
+    doblar("actualizar_admision_controller", resultado={"id": 7})
+
+    estado, cuerpo = peticion(
+        app, "PUT", "/admisiones/7", {**ASPIRANTE, "cuestionario": {"numero_hermanos": 99}}
+    )
+
+    assert estado == 422
+    assert "Pregunta 2" in json.dumps(cuerpo, ensure_ascii=False)
+    assert llamadas == []
+
+
+def test_editar_lleva_el_cuestionario_solo_si_llega(app_admin):
+    app, doblar, llamadas = app_admin
+    doblar("actualizar_admision_controller", resultado={"id": 7})
+
+    peticion(app, "PUT", "/admisiones/7", ASPIRANTE)
+    peticion(app, "PUT", "/admisiones/7", {**ASPIRANTE, "cuestionario": {}})
+
+    assert llamadas[0][1][1].cuestionario is None
+    assert llamadas[1][1][1].cuestionario == {}

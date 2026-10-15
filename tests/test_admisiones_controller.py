@@ -1,4 +1,4 @@
-"""Entrevista de admisión, paso E2: reglas y SQL de las admisiones.
+"""Entrevista de admisión, pasos E2 y E10: reglas y SQL de las admisiones.
 
 Ver docs/funcionalidades/ENTREVISTA_ADMISION.md. Las pruebas usan dobles de
 base de datos: no escriben en un tenant real.
@@ -8,8 +8,10 @@ from types import SimpleNamespace
 
 import pytest
 from psycopg2 import IntegrityError
+from psycopg2.extras import Json
 
 from app.controllers import admisiones_controller as controlador
+from app.core import cuestionario_admision
 from app.repositories import admisiones_repository as repositorio
 from app.schemas.admision import AdmisionCreate, AdmisionUpdate
 from app.services.anio_lectivo import AnioLectivoInexistenteError
@@ -84,6 +86,7 @@ def entorno(monkeypatch):
         ],
         error_al_guardar=None,
         filas_afectadas=1,
+        admision_de_estudiante={},
         eventos=[],
         commits=0,
         rollbacks=0,
@@ -159,6 +162,10 @@ def entorno(monkeypatch):
         )
         return estado.filas_afectadas
 
+    def leer_de_estudiante(cursor_recibido, estudiante_id):
+        estado.eventos.append(("de_estudiante", estudiante_id))
+        return estado.admision_de_estudiante.get(estudiante_id)
+
     monkeypatch.setattr(controlador, "get_cursor", get_cursor_falso)
     monkeypatch.setattr(controlador, "exigir_anio_lectivo", exigir_anio)
     monkeypatch.setattr(
@@ -174,6 +181,7 @@ def entorno(monkeypatch):
         "buscar_admision_con_documento": buscar_admision,
         "buscar_estudiante_con_documento": buscar_estudiante,
         "guardar_resultado": guardar_resultado,
+        "leer_admision_de_estudiante": leer_de_estudiante,
     }
     for nombre, doble in dobles.items():
         monkeypatch.setattr(controlador.admisiones_repository, nombre, doble)
@@ -453,6 +461,65 @@ def test_si_se_matriculo_mientras_tanto_no_se_pisa(entorno):
 
 
 # ---------------------------------------------------------------------------
+# Preguntas del anexo (paso E10)
+# ---------------------------------------------------------------------------
+
+
+def test_editar_pasa_el_cuestionario_revisado_al_repositorio(entorno):
+    datos = AdmisionUpdate(
+        **_aspirante(cuestionario={"usa_panal": {"respuesta": "no"}, "como_lo_llaman": " Juan "})
+    )
+
+    detalle = controlador.actualizar_admision_controller(7, datos)
+
+    [actualizacion] = _hubo(entorno, "actualizar")
+    assert actualizacion[2]["cuestionario"] == {
+        "como_lo_llaman": "Juan",
+        "usa_panal": {"respuesta": "no"},
+    }
+    assert detalle["cuestionario"] == actualizacion[2]["cuestionario"]
+
+
+def test_editar_sin_cuestionario_avisa_al_repositorio_que_no_lo_toque(entorno):
+    controlador.actualizar_admision_controller(7, AdmisionUpdate(**_aspirante()))
+
+    [actualizacion] = _hubo(entorno, "actualizar")
+    assert actualizacion[2]["cuestionario"] is None
+
+
+def test_la_lista_de_preguntas_sale_sin_abrir_la_base(entorno):
+    respuesta = controlador.obtener_cuestionario_controller()
+
+    assert respuesta == cuestionario_admision.catalogo()
+    assert entorno.eventos == []
+
+
+def test_la_admision_de_un_estudiante_trae_sus_respuestas(entorno):
+    entorno.admision_de_estudiante[55] = {
+        "admision_id": 7,
+        "anio": 2027,
+        "fecha_entrevista": "2026-10-20",
+        "cuestionario": {"usa_panal": {"respuesta": "no"}},
+    }
+
+    respuesta = controlador.obtener_admision_de_estudiante_controller(55)
+
+    assert respuesta == entorno.admision_de_estudiante[55]
+    assert ("de_estudiante", 55) in entorno.eventos
+    assert ("abre", False) in entorno.eventos
+
+
+def test_un_estudiante_sin_admision_responde_vacio_no_un_error(entorno):
+    """Los estudiantes de antes de Admisiones no tienen entrevista."""
+    assert controlador.obtener_admision_de_estudiante_controller(56) == {
+        "admision_id": None,
+        "anio": None,
+        "fecha_entrevista": None,
+        "cuestionario": {},
+    }
+
+
+# ---------------------------------------------------------------------------
 # Borrar
 # ---------------------------------------------------------------------------
 
@@ -625,6 +692,76 @@ def test_actualizar_no_toca_el_resultado_ni_una_matriculada():
     assert params == (*[valores[c] for c in columnas], 7)
     for ajena in ("resultado", "motivo_resultado", "decidido_en", "anio_lectivo_id"):
         assert ajena not in sql
+
+
+def test_actualizar_sin_cuestionario_no_lo_toca():
+    cursor = CursorFalso(rowcount=1)
+
+    repositorio.actualizar_admision(cursor, 7, {**_valores_completos(), "cuestionario": None})
+
+    sql, params = cursor.consultas[0]
+    assert "cuestionario" not in sql
+    columnas = repositorio.COLUMNAS_ASPIRANTE + repositorio.COLUMNAS_ENTREVISTA
+    assert len(params) == len(columnas) + 1
+
+
+def test_actualizar_con_cuestionario_lo_reemplaza_entero_como_json():
+    cursor = CursorFalso(rowcount=1)
+    bloque = {"usa_panal": {"respuesta": "no"}}
+
+    repositorio.actualizar_admision(cursor, 7, {**_valores_completos(), "cuestionario": bloque})
+
+    sql, params = cursor.consultas[0]
+    assert "observaciones = %s, cuestionario = %s, actualizado_en = CURRENT_TIMESTAMP" in sql
+    assert sql.endswith("WHERE id = %s AND estudiante_id IS NULL")
+    assert isinstance(params[-2], Json)
+    assert params[-2].adapted == bloque
+    assert params[-1] == 7
+
+
+def test_actualizar_con_cuestionario_vacio_tambien_lo_guarda():
+    """`{}` quita todas las respuestas: no es lo mismo que no mandarlo."""
+    cursor = CursorFalso(rowcount=1)
+
+    repositorio.actualizar_admision(cursor, 7, {**_valores_completos(), "cuestionario": {}})
+
+    sql, params = cursor.consultas[0]
+    assert "cuestionario = %s" in sql
+    assert params[-2].adapted == {}
+
+
+def test_leer_trae_el_cuestionario_y_listar_no():
+    assert "cuestionario" in repositorio.COLUMNAS_DETALLE
+    # Es de la tabla, no de un JOIN: va antes de las cuatro del año y el curso.
+    assert repositorio.COLUMNAS_DETALLE.index("cuestionario") < repositorio.COLUMNAS_DETALLE.index(
+        "anio"
+    )
+    cursor = CursorFalso()
+    repositorio.leer_admision(cursor, 7)
+    repositorio.listar_admisiones(cursor, 3)
+
+    assert "a.cuestionario" in cursor.consultas[0][0]
+    assert "cuestionario" not in cursor.consultas[1][0]
+    assert "cuestionario" not in repositorio.COLUMNAS_LISTA
+
+
+def test_leer_la_admision_de_un_estudiante():
+    cursor = CursorFalso(una=[(7, 2027, "2026-10-20", {"usa_panal": {"respuesta": "no"}}), None])
+
+    admision = repositorio.leer_admision_de_estudiante(cursor, 55)
+    ninguna = repositorio.leer_admision_de_estudiante(cursor, 56)
+
+    sql, params = cursor.consultas[0]
+    assert "FROM admisiones a JOIN anios_lectivos al ON al.id = a.anio_lectivo_id" in sql
+    assert sql.endswith("WHERE a.estudiante_id = %s")
+    assert params == (55,)
+    assert admision == {
+        "admision_id": 7,
+        "anio": 2027,
+        "fecha_entrevista": "2026-10-20",
+        "cuestionario": {"usa_panal": {"respuesta": "no"}},
+    }
+    assert ninguna is None
 
 
 def test_borrar_solo_borra_una_no_matriculada():

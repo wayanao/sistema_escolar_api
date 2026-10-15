@@ -1,4 +1,4 @@
-"""Admisiones (entrevista de admisión), pasos E2 y E3.
+"""Admisiones (entrevista de admisión), pasos E2, E3 y E10.
 
 Ver `docs/funcionalidades/ENTREVISTA_ADMISION.md`, sección "Rutas".
 
@@ -27,6 +27,8 @@ from app.controllers.admisiones_controller import (
     listar_admisiones_controller,
     matricular_admision_controller,
     obtener_admision_controller,
+    obtener_admision_de_estudiante_controller,
+    obtener_cuestionario_controller,
     registrar_admision_controller,
 )
 from app.controllers.anios_lectivos_controller import (
@@ -100,6 +102,24 @@ def registrar_admision(
         return registrar_admision_controller(anio_lectivo_id, datos)
     except _ERRORES as exc:
         _traducir_error(exc)
+
+
+# Paso E10. Tiene que ir antes de `/admisiones/{admision_id}`: si no, FastAPI
+# intentaría leer "cuestionario" como un número de admisión y daría 422.
+@router.get("/admisiones/cuestionario")
+def obtener_cuestionario():
+    """Las preguntas del anexo, con sus tipos y opciones, para armar el formulario."""
+    return obtener_cuestionario_controller()
+
+
+@router.get("/estudiantes/{estudiante_id}/admision")
+def obtener_admision_de_estudiante(estudiante_id: Annotated[int, Path(gt=0)]):
+    """Las respuestas de la admisión de un estudiante, para su ficha (paso E10).
+
+    Vive aquí y no en `estudiantes.py` para quedar bajo la protección de este
+    router: solo admin.
+    """
+    return obtener_admision_de_estudiante_controller(estudiante_id)
 
 
 @router.get("/admisiones/{admision_id}")

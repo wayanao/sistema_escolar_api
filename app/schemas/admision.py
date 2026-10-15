@@ -17,6 +17,8 @@ manda; la de aquí es la que se lee. Los límites de texto son los `VARCHAR` de
 - Ningún cuerpo trae el resultado, el motivo, el año ni el enlace al
   estudiante: el resultado tiene su propia ruta (paso E3), el año viaja en la
   ruta y el enlace lo pone la matrícula. Lo que llegue de más se ignora.
+- Las preguntas del anexo (`cuestionario`, paso E10) se revisan contra la
+  lista de `app/core/cuestionario_admision.py`.
 """
 from datetime import date
 from typing import Annotated, Literal, Optional, get_args
@@ -29,6 +31,8 @@ from pydantic import (
     field_validator,
     model_validator,
 )
+
+from app.core.cuestionario_admision import limpiar_cuestionario
 
 
 ResultadoAdmision = Literal["pendiente", "aprobado", "no_aprobado"]
@@ -64,6 +68,12 @@ def _opcional(maximo=None):
     return Annotated[Optional[texto], BeforeValidator(_recortado_o_nulo)]
 
 
+def _revisar_cuestionario(valor):
+    # Antes que la comprobación de tipo de Pydantic, para que una lista o un
+    # texto también reciban el mensaje propio y no uno en inglés.
+    return None if valor is None else limpiar_cuestionario(valor)
+
+
 class AdmisionCreate(BaseModel):
     """Registrar un aspirante: sus datos y la autorización. Queda pendiente.
 
@@ -97,6 +107,11 @@ class AdmisionUpdate(AdmisionCreate):
     Es un reemplazo completo, como `PUT /estudiantes/{id}`: lo que no llega
     queda vacío. El orden de los campos nuevos es el de
     `admisiones_repository.COLUMNAS_ENTREVISTA`.
+
+    **Excepción a propósito: `cuestionario`** (las preguntas del anexo, paso
+    E10). Si no llega, o llega `null`, queda como estaba; si llega, reemplaza
+    el bloque entero (`{}` quita todas las respuestas). Así una pestaña con el
+    formulario de antes, que no lo trae, no borra las respuestas al guardar.
     """
 
     fecha_entrevista: Optional[date] = None
@@ -114,6 +129,7 @@ class AdmisionUpdate(AdmisionCreate):
     vive_con: _opcional(250) = None
     expectativas: _opcional() = None
     observaciones: _opcional() = None
+    cuestionario: Annotated[Optional[dict], BeforeValidator(_revisar_cuestionario)] = None
 
 
 class ResultadoAdmisionUpdate(BaseModel):

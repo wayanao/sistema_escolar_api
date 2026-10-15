@@ -2,16 +2,17 @@
 
 ## Control
 
-- Estado: **E1 a E6 en producción (2026-10-14, informado por el usuario).**
-  Al 2026-10-14 los dos repos estaban en `main`, limpios e iguales a GitHub
-  (visto con `git fetch`): backend `ad4bfb2`, frontend `f50ef7b`. Que Render
-  y el frontend publicado los tengan no se ve desde el repo. **Paso E7
-  escrito el 2026-10-14, sin commit**: el alta directa en el año en
-  preparación queda cerrada (ver "Avance del paso E7"). Con él se completa el
-  plan. Pantallas en `frontend-react/docs/funcionalidades/ENTREVISTA_ADMISION.md`.
+- Estado: **E1 a E6 en producción (2026-10-14, informado por el usuario).
+  E7 en GitHub** (`24a9a3c`, visto con `git fetch` el 2026-10-14; que Render
+  lo tenga **Live** no se ve desde el repo). Con el E7 quedó completo el
+  plan original. **Ampliación pedida por el usuario el 2026-10-14: las
+  preguntas del anexo del colegio** (salud, familia, inclusión,
+  comportamiento…) como casillas para chulear. Paso E8 (diseño, solo
+  documentos) terminado el 2026-10-14; ver "Preguntas del anexo (pasos E8 a
+  E12)". Pantallas en `frontend-react/docs/funcionalidades/ENTREVISTA_ADMISION.md`.
   Decisiones del usuario del 2026-10-13: reparto de campos y decisiones 7 a
   9, quien entrevista a mano (10) y el exalumno que vuelve usa su mismo
-  registro (11).
+  registro (11). Del 2026-10-14: decisiones 12 a 16.
 - Tipo: función nueva de producto. No es una capa del programa de
   modularización de `docs/modularizacion/`.
 - Repos afectados: este repo (`sistema_escolar_api`) y `frontend-react`. Ver
@@ -26,7 +27,7 @@
   año en preparación.
 - Fecha límite: **principios de noviembre de 2026**, cuando el colegio
   empieza a matricular para 2027.
-- Última actualización: 2026-10-13.
+- Última actualización: 2026-10-14.
 
 ## Objetivo
 
@@ -122,6 +123,34 @@ Decidida por el usuario el 2026-10-13, al autorizar el E3:
     tiene ninguna forma de entrar al año siguiente (la promoción no lo
     muestra y el alta directa falla por el documento repetido).
 
+Decididas por el usuario el 2026-10-14, al pedir las preguntas del anexo del
+colegio (detalle en "Preguntas del anexo (pasos E8 a E12)"):
+
+12. **Las preguntas del anexo se agregan a la entrevista**, con casillas
+    para chulear donde el papel tiene cuadritos. Lo que ya existe (en la
+    entrevista o en la ficha) no se repite.
+13. **Todo queda en la entrevista, también salud e inclusión.** Después de
+    matricular se consulta en la ficha, de solo lectura, con "Datos de
+    admisión". Aceptado lo que cuesta: esas respuestas no se actualizan
+    después de matricular y los estudiantes de antes no las tienen. Pasarlas
+    a la ficha sería un cambio aparte.
+14. **La ayuda de "No aprobado" se amplía**: además de religión, origen o
+    composición de la familia, dice que un diagnóstico, una discapacidad, la
+    salud o la situación familiar tampoco pueden ser el motivo (Decreto 1421
+    de 2017, educación inclusiva; Ley 1581 de 2012, datos sensibles).
+15. La pregunta que sale cortada en el anexo queda como **"¿Hace rabietas o
+    muestra irrespeto en lugares públicos?"** (Sí / No).
+16. **Estado civil de los padres y religión no se agregan**, aunque estén en
+    el anexo: lo impide la regla de no discriminación de esta funcionalidad
+    (T-510 de 1994). Solo entrarían si el usuario cambia esa regla a
+    propósito.
+
+Propuestas del asistente que el usuario aceptó al autorizar el E8 (no las
+objetó y pidió seguir con ellas): las respuestas van en **una sola columna**
+(`cuestionario`, un bloque JSON) en lugar de 55 columnas, y **la lista de
+preguntas vive solo en el backend**, que la entrega al frontend para que arme
+el formulario.
+
 ## Qué va en cada formulario (decisión 6, confirmada)
 
 Regla: en la **ficha del estudiante** queda lo que se necesita mientras
@@ -146,6 +175,7 @@ en la **entrevista** va lo que solo sirve para decidir la admisión.
 | Resultado y motivo | Entrevista (nuevo) | La decisión |
 | Curso del año siguiente al que aspira | Aspirante (nuevo) | Pasa a la matrícula |
 | Acudiente: nombre, parentesco, teléfono | Aspirante (nuevo) | Contacto antes de matricular |
+| **Preguntas del anexo** (55: familia, vivienda, nacimiento, alimentación, salud, inclusión, lenguaje, comportamiento, juego, escolar, opinión) | **Entrevista** (pasos E8 a E11) | Decisiones 12 y 13; se ven en la ficha de solo lectura |
 
 ## El flujo
 
@@ -279,6 +309,248 @@ propuesta.
 | `POST /admisiones/{admision_id}/matricular` | Cuerpo: la ficha del estudiante (como `POST /anios-lectivos/{id}/estudiantes`). Solo si está `aprobado` y sin estudiante. En una transacción: crea el estudiante (o usa el del exalumno, decisión 11) y su matrícula en el año de la admisión (`matricular_aspirante_en_preparacion`, que reutiliza lo del alta directa), copia los datos movidos a sus columnas y enlaza `estudiante_id` |
 | `POST /anios-lectivos/{id}/estudiantes` (existente) | Paso E7 (hecho): con el año en preparación responde `409` "Un estudiante nuevo en 2027 se matricula desde su entrevista aprobada (Admisiones)." y no escribe nada |
 
+## Preguntas del anexo (pasos E8 a E12)
+
+Pedido del usuario el 2026-10-14: agregar a la entrevista las preguntas del
+anexo que el colegio usa en papel, con "cuadritos para chulear" (casillas)
+donde el papel los tiene, sin repetir lo que ya existe. Diseño escrito en el
+E8; nada de esto tiene código todavía.
+
+### Tipos de pregunta
+
+| Tipo (nombre interno) | Cómo se ve | Qué se guarda |
+|---|---|---|
+| Sí / No (`si_no`) | Dos casillas; al chulear una se borra la otra | `{"respuesta": "si"}` |
+| Sí / No con detalle (`si_no` con `detalle`) | Igual, y al chulear la respuesta que lo pide aparece un cuadro para escribir | `{"respuesta": "si", "detalle": "texto"}` |
+| Una opción (`una`) | Casillas, pero solo se puede chulear una; "Otro" abre un cuadro | `{"opcion": "casa"}` o `{"opcion": "otro", "otro": "texto"}` |
+| Varias (`varias`) | Se chulean todas las que apliquen; "Otro" abre un cuadro; "Ninguno" borra las demás | `{"marcadas": ["desayuno", "cena"], "otro": "texto"}` |
+| Número (`numero`) | Cuadro solo para números enteros, con mínimo y máximo | `3` |
+| Texto (`texto`, `texto_largo`) | Cuadro corto (150 caracteres) o grande (1000) | `"texto"` |
+
+- **Sin responder = la pregunta no está en el bloque.** Ninguna es
+  obligatoria, como el resto de la entrevista: el papel tampoco obliga.
+- "Ninguno" o "Ninguna" (en las preguntas 5 y 21) existe para distinguir
+  "la familia dijo que no" de "no se preguntó".
+- Límites: detalle y "otro", 250 caracteres; texto corto, 150; texto
+  largo, 1000.
+
+### La lista de preguntas
+
+Los textos son los del anexo, con la ortografía corregida. La clave es el
+nombre interno de cada pregunta: **nunca se reutiliza ni cambia de
+significado**. Si un año se quita una pregunta, se marca como retirada (deja
+de preguntarse, pero sus respuestas viejas se siguen mostrando).
+
+**1. Datos personales** (`datos_personales`)
+
+| # | Pregunta | Cómo se responde | Clave |
+|---|---|---|---|
+| 1 | ¿Cómo lo llaman en casa? | Texto corto | `como_lo_llaman` |
+
+**2. Familia** (`familia`)
+
+| # | Pregunta | Cómo se responde | Clave |
+|---|---|---|---|
+| 2 | Número de hermanos | Número, 0 a 20 | `numero_hermanos` |
+| 3 | Lugar que ocupa entre los hermanos (1 = el mayor) | Número, 1 a 21 | `lugar_entre_hermanos` |
+| 4 | ¿En casa quiénes trabajan? | Texto corto | `quienes_trabajan` |
+| 5 | En la familia, ¿hay algún caso de…? | Varias: Alcoholismo, Drogadicción, Violencia, Abuso, Ninguno, Otro (¿cuál?) | `situaciones_familia` |
+| 6 | ¿Cómo solucionan sus conflictos familiares? | Texto largo | `solucion_conflictos` |
+
+**3. Vivienda** (`vivienda`)
+
+| # | Pregunta | Cómo se responde | Clave |
+|---|---|---|---|
+| 7 | Tipo de vivienda | Una: Casa, Apartamento, Compartida, Otro (¿cuál?) | `tipo_vivienda` |
+| 8 | ¿Pasa el niño(a) algún tiempo solo? | Sí / No | `pasa_tiempo_solo` |
+| 9 | ¿Con quién queda el niño(a) cuando los padres trabajan? | Varias: Empleada, Hermanos, Familiares, Otro (¿quién?) | `con_quien_queda` |
+
+**4. Nacimiento** (`nacimiento`)
+
+| # | Pregunta | Cómo se responde | Clave |
+|---|---|---|---|
+| 10 | ¿El proceso de gestación fue normal? | Sí / No; con "No": ¿Qué pasó? | `gestacion_normal` |
+| 11 | ¿El parto fue normal? | Sí / No; con "No": ¿Qué pasó? | `parto_normal` |
+| 12 | ¿Nació a término completo? | Sí / No; con "No": ¿Qué pasó? | `nacio_a_termino` |
+| 13 | ¿Tuvo alguna dificultad al nacer? | Sí / No; con "Sí": ¿Cuál? | `dificultad_al_nacer` |
+
+**5. Alimentación** (`alimentacion`)
+
+| # | Pregunta | Cómo se responde | Clave |
+|---|---|---|---|
+| 14 | ¿Cuáles de las cuatro comidas del día hace? | Varias: Desayuno, Almuerzo, Merienda, Cena | `comidas_del_dia` |
+| 15 | Alimentos preferidos | Texto corto | `alimentos_preferidos` |
+| 16 | Alimentos prohibidos por el médico | Texto corto | `alimentos_prohibidos` |
+
+**6. Control de esfínteres** (`esfinteres`)
+
+| # | Pregunta | Cómo se responde | Clave |
+|---|---|---|---|
+| 17 | ¿A qué edad controló esfínteres? | Texto corto (por ejemplo, "2 años y medio") | `edad_control_esfinteres` |
+| 18 | ¿Usa pañal desechable? | Sí / No | `usa_panal` |
+
+**7. Salud** (`salud`)
+
+| # | Pregunta | Cómo se responde | Clave |
+|---|---|---|---|
+| 19 | ¿Tiene alguna dificultad motora? | Sí / No; con "Sí": ¿Cuál? | `dificultad_motora` |
+| 20 | ¿Sufrió algún accidente, convulsiones o enfermedades? | Sí / No; con "Sí": ¿Cuál? | `accidentes_enfermedades` |
+| 21 | Enfermedades que padeció | Varias: Hepatitis, Paperas, Asma, Varicela, Ninguna, Otra (¿cuál?) | `enfermedades_padecidas` |
+| 22 | ¿Qué lado predomina más? | Una: Izquierdo, Derecho, Ambidiestro | `lateralidad` |
+| 23 | ¿Le tiene miedo a algo? | Sí / No; con "Sí": ¿A qué? | `miedos` |
+
+**8. Inclusión y necesidades educativas** (`inclusion`)
+
+| # | Pregunta | Cómo se responde | Clave |
+|---|---|---|---|
+| 24 | ¿El estudiante presenta actualmente algún diagnóstico médico, psicológico, neuropsicológico o condición que debamos conocer para acompañar adecuadamente su proceso escolar? | Sí / No; con "Sí": ¿Cuál? | `diagnostico` |
+| 25 | ¿El estudiante ha recibido o recibe actualmente algún tipo de seguimiento o acompañamiento profesional? | Sí / No | `seguimiento_profesional` |
+| 26 | En caso afirmativo, indique cuál | Varias: Psicología, Neuropsicología, Fonoaudiología, Terapia ocupacional, Fisioterapia, Psiquiatría, Otro (¿cuál?). **Solo aparece y solo se guarda si la 25 es "Sí"** | `profesionales` |
+| 27 | ¿Actualmente cuenta con recomendaciones o indicaciones de profesionales para favorecer su desempeño y bienestar en el entorno escolar? | Sí / No; con "Sí": ¿Cuáles? | `recomendaciones_profesionales` |
+| 28 | ¿El estudiante ha contado anteriormente con algún tipo de apoyo o ajuste en el ámbito escolar? | Sí / No; con "Sí": Describa brevemente | `apoyos_anteriores` |
+| 29 | ¿Existe alguna situación, comportamiento, dificultad o necesidad particular que consideren importante que el colegio conozca para brindar un adecuado acompañamiento al estudiante? | Texto largo | `situacion_particular` |
+| 30 | ¿El estudiante presenta alguna dificultad relacionada con el aprendizaje, comunicación, lenguaje, atención, comportamiento, interacción social, autonomía o manejo de emociones? | Sí / No; con "Sí": ¿Cuál(es)? | `dificultades` |
+| 31 | ¿Cuenta actualmente con informes, valoraciones o recomendaciones de profesionales que puedan ser compartidos con la institución para orientar su proceso de acompañamiento? | Sí / No | `informes_profesionales` |
+| 32 | ¿Hay alguna recomendación especial que la familia considere importante para favorecer la adaptación, participación y aprendizaje del estudiante en el colegio? | Texto largo | `recomendacion_familia` |
+
+**9. Lenguaje** (`lenguaje`)
+
+| # | Pregunta | Cómo se responde | Clave |
+|---|---|---|---|
+| 33 | ¿Su pronunciación es clara? | Sí / No | `pronunciacion_clara` |
+| 34 | ¿Su vocabulario es amplio? | Sí / No | `vocabulario_amplio` |
+| 35 | Cuando se equivoca al hablar, ¿es corregido? | Sí / No | `corregido_al_hablar` |
+| 36 | ¿Comunica lo que siente? | Sí / No | `comunica_lo_que_siente` |
+
+**10. Comportamiento** (`comportamiento`)
+
+| # | Pregunta | Cómo se responde | Clave |
+|---|---|---|---|
+| 37 | ¿Manifiesta rabietas? | Sí / No | `rabietas` |
+| 38 | ¿Rompe juguetes? | Sí / No | `rompe_juguetes` |
+| 39 | ¿Cómo lo corrigen cuando presenta ese tipo de comportamiento? | Texto largo | `como_lo_corrigen` |
+| 40 | ¿Pega sin causa? | Sí / No | `pega_sin_causa` |
+| 41 | ¿A quién obedece más? | Texto corto | `a_quien_obedece` |
+| 42 | ¿Le pega a los padres o mayores? | Sí / No | `pega_a_mayores` |
+| 43 | ¿Hace rabietas o muestra irrespeto en lugares públicos? (decisión 15) | Sí / No | `irrespeto_lugares_publicos` |
+| 44 | ¿Cuántas horas diarias usa el celular? | Número, 0 a 24 | `horas_celular` |
+| 45 | ¿Usa el celular para comer? | Sí / No | `celular_para_comer` |
+| 46 | ¿Muestra actitudes agresivas cuando le quitan el celular? | Sí / No | `agresivo_sin_celular` |
+
+**11. Juego y vida social** (`juego_vida_social`)
+
+| # | Pregunta | Cómo se responde | Clave |
+|---|---|---|---|
+| 47 | ¿Juega fuera de casa? | Sí / No | `juega_fuera_de_casa` |
+| 48 | ¿Comparte con dificultad sus juguetes? | Sí / No | `comparte_con_dificultad` |
+| 49 | ¿Tiene alguna mascota? | Sí / No; con "Sí": ¿Cuál? | `mascota` |
+| 50 | ¿Se relaciona fácilmente con los demás? | Sí / No | `se_relaciona_facilmente` |
+
+**12. Escolar** (`escolar`)
+
+| # | Pregunta | Cómo se responde | Clave |
+|---|---|---|---|
+| 51 | ¿Cómo reaccionaría frente a situaciones escolares de su hijo(a)? (golpes, mordidas, etc.) | Texto largo | `reaccion_situaciones_escolares` |
+| 52 | ¿Está dispuesto a dejar que la escuela y las docentes realicen un trabajo integral en su hijo(a)? | Sí / No | `acepta_trabajo_integral` |
+| 53 | ¿Estuvieron ambos de acuerdo para colocar a su hijo(a) en esta escuela? | Una: Sí, No, No aplica | `ambos_de_acuerdo` |
+| 54 | ¿Están en capacidad de sufragar los gastos de una escuela privada? | Sí / No | `capacidad_de_pago` |
+
+**13. Opinión de la familia** (`opinion`)
+
+| # | Pregunta | Cómo se responde | Clave |
+|---|---|---|---|
+| 55 | ¿Cómo cree usted que es nuestro edificio escolar y sus dependencias? | Una: Muy bueno, Regular, Pésimo | `opinion_edificio` |
+
+Lo que el asistente agregó al pasar el papel a casillas (para que el usuario
+lo revise antes del E10): "Ninguno" en la 5 y "Ninguna" en la 21; los cuadros
+"¿Qué pasó?" de la 10 a la 12 y "¿Cuál?" de la 19 y la 49 (el papel tiene una
+línea para escribir o solo casillas); y "No aplica" en la 53, porque una
+familia de un solo padre o madre no puede responder "ambos".
+
+### Lo que no se agrega (ya existe o no se puede)
+
+| Del anexo | Por qué no |
+|---|---|
+| Nombre y apellido | Ya está en el aspirante |
+| Ocupación de los padres | Ya está en la entrevista (`ocupacion_padre`, `ocupacion_madre`) |
+| ¿Quiénes viven en la casa?, ¿con quién vive si los padres están separados?, integrantes de la familia | Ya está: "Con quién vive el aspirante" (`vive_con`) |
+| ¿Cuál fue el motivo de su elección? | Ya está: "Por qué eligen el colegio y qué esperan" (`expectativas`) |
+| Fecha de la entrevista | Ya está (`fecha_entrevista`) |
+| Firma de la psicoorientadora | Ya está "Quién entrevistó" (`entrevistador`); la firma en papel sería el E12 |
+| Enfermedad relacionada con la alimentación y la casilla "Alergias" | Ya está en la ficha: "Datos médicos / Alergias" (`estudiantes.datos_medicos`) |
+| "En casa lo llaman" (el anexo lo tiene dos veces) | Va una sola vez (pregunta 1) |
+| Estado civil de los padres; ¿qué religión practica la familia? | Decisión 16: regla de no discriminación |
+
+### Cómo se guarda (paso E9)
+
+Una columna nueva en `admisiones`, con las respuestas como un bloque (JSON).
+Así no hacen falta 55 columnas, y si el colegio cambia el anexo otro año se
+cambia la lista en el código, sin otra migración en todos los colegios. La
+base ya guarda bloques así en la configuración de impresión
+(`configuracion_extra`, `config_json`). Lo que se pierde, buscar por una
+pregunta suelta en SQL, no se necesita.
+
+Borrador (se ajusta a `docs/MIGRACIONES.md` en el E9):
+
+```sql
+ALTER TABLE admisiones
+    ADD COLUMN IF NOT EXISTS cuestionario JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+-- PostgreSQL no ofrece ADD CONSTRAINT IF NOT EXISTS (mismo patrón que
+-- 20261008_anios_lectivos_activacion.sql).
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'chk_admisiones_cuestionario_objeto'
+          AND conrelid = 'admisiones'::regclass
+    ) THEN
+        ALTER TABLE admisiones
+            ADD CONSTRAINT chk_admisiones_cuestionario_objeto
+            CHECK (jsonb_typeof(cuestionario) = 'object');
+    END IF;
+END
+$$;
+```
+
+- Las admisiones que ya existen quedan con el bloque vacío (`{}`): nada que
+  rellenar. Agregar una columna con un valor fijo por defecto no reescribe la
+  tabla.
+- La base solo exige que sea un bloque; qué preguntas y qué respuestas son
+  válidas lo revisa el backend (E10).
+
+### Rutas (paso E10)
+
+- **`GET /admisiones/cuestionario`** (nueva, solo admin): la lista de
+  secciones y preguntas, con su tipo, opciones, detalle, límites y de qué
+  pregunta dependen. El frontend la pide una vez al abrir Admisiones y arma
+  el formulario con ella. Se declara **antes** de `/admisiones/{admision_id}`,
+  o FastAPI intentaría leer "cuestionario" como un número.
+- **`GET /admisiones/{admision_id}`**: devuelve además `cuestionario`.
+- **`PUT /admisiones/{admision_id}`**: acepta `cuestionario`. **Excepción a
+  propósito al "reemplazo completo"**: si `cuestionario` no llega, se deja
+  como estaba. Si llega, reemplaza el bloque entero. Motivo: una pestaña
+  abierta con el formulario de antes no trae el bloque y, con la regla de
+  siempre, borraría las respuestas al guardar.
+- **Lectura desde la ficha del estudiante** (nueva, solo admin; nombre a
+  definir en el E10, por ejemplo `GET /estudiantes/{id}/admision`): las
+  respuestas de la admisión enlazada al estudiante, para "Datos de admisión"
+  (decisión 13). Un estudiante sin admisión responde vacío, no un error.
+- Revisión de las respuestas (en el backend, con mensajes en español, `422`):
+  solo preguntas de la lista; cada respuesta con la forma de su tipo; opciones
+  que existen; números dentro de su rango; textos dentro de su límite;
+  "detalle" solo con la respuesta que lo pide y "otro" solo si se chuleó
+  "Otro"; "Ninguno" no se combina con otras; la 26 solo si la 25 es "Sí". Un
+  texto vacío se quita del bloque, como los demás campos de la entrevista.
+- No cambia: matricular (el bloque no se copia a `estudiantes`, decisión 13),
+  el resultado, borrar, la lista y los conteos.
+
+### Pantallas (paso E11)
+
+Detalle en el documento del frontend: formulario por secciones que se abren
+y se cierran, casillas para chulear, ayuda ampliada de "No aprobado"
+(decisión 14) y respuestas en "Datos de admisión" de la ficha.
+
 ## Plan por pasos (uno a la vez, con el visto bueno del usuario)
 
 | Paso | Repo | Qué |
@@ -290,12 +562,22 @@ propuesta.
 | E4 | frontend | Página de admisiones: lista, nuevo aspirante, entrevista y resultado; acceso desde la preparación del año. **Hecho el 2026-10-13** (frontend `22b3dcf`); en producción el 2026-10-14 |
 | E5 | frontend | Matricular desde una admisión aprobada (ficha con los datos ya puestos); quitar "Crear estudiante en 2027" de Estudiantes y de "Continuar la preparación". **Hecho el 2026-10-13** (frontend `ae5240a`); en producción el 2026-10-14 |
 | E6 | frontend | Formulario del estudiante sin lo que pasó a la entrevista; "Datos de admisión" de solo lectura en la ficha. **Hecho el 2026-10-13** (frontend `f50ef7b`; se piden con un botón, solo si se usan); en producción el 2026-10-14 |
-| E7 | backend | Bloquear el alta directa en el año en preparación. **Escrito el 2026-10-14, sin commit** |
+| E7 | backend | Bloquear el alta directa en el año en preparación. **Hecho el 2026-10-14** (`24a9a3c`, en GitHub) |
+| E8 | ambos | Diseño de las preguntas del anexo (solo documentos). **Hecho el 2026-10-14** |
+| E9 | backend | Migración: columna `cuestionario` en `admisiones` y esquema base (rama de Neon; la aplica el usuario) |
+| E10 | backend | La lista de preguntas, la revisión de respuestas y las rutas (`GET /admisiones/cuestionario`, `cuestionario` en ver y editar, lectura desde la ficha) |
+| E11 | frontend | Formulario con secciones y casillas, ayuda ampliada de "No aprobado" y respuestas en "Datos de admisión" de la ficha |
+| E12 | frontend | **Opcional, solo si el usuario lo pide:** imprimir la entrevista con las firmas (`DocumentoImprimible`) |
 
 Orden de subida a producción: E1 (migración aplicada) → E2 y E3 (backend
 Live) → E4 a E6 (frontend) → E7 (backend). **E7 va al final a propósito:** si
 el bloqueo se subiera antes que el frontend nuevo, el botón de siempre "Crear
 estudiante en 2027" fallaría en producción.
+
+Para las preguntas del anexo: E9 (push primero y después la migración
+aplicada, como el E1) → E10 (backend **Live**) → E11 (frontend). El E11 va
+después porque pide rutas que antes no existen. El E10 no rompe el
+formulario de hoy: si `cuestionario` no llega, nada cambia.
 
 ## Pruebas
 
@@ -315,7 +597,10 @@ estudiante en 2027" fallaría en producción.
 - Estudiantes que llegan a mitad del año activo (ver preguntas abiertas).
 - Prueba diagnóstica, cobro de la inscripción y lista de espera.
 - Formato impreso de la entrevista para firmar (posible después, con
-  `DocumentoImprimible`).
+  `DocumentoImprimible`; quedó anotado como paso E12, opcional).
+- Pasar las respuestas de salud e inclusión a la ficha del estudiante, para
+  actualizarlas o tenerlas en estudiantes sin admisión (decisión 13: cambio
+  aparte, si se quiere).
 - Borrar columnas de `estudiantes`: solo con permiso explícito.
 
 ## Preguntas abiertas
@@ -352,6 +637,11 @@ estudiante en 2027" fallaría en producción.
   ¿Se permite borrar una admisión no matriculada de un año que ya no está en
   preparación, o se borran solas al activar el año? El E2 sigue el contrato
   (lo más estricto); aflojarlo después es quitar una comprobación.
+- **Antes del E10 (la lista se escribe en código ahí):** el usuario revisa la
+  lista de "Preguntas del anexo": los textos, cómo se responde cada una y lo
+  que el asistente agregó al pasarla a casillas ("Ninguno", los cuadros de
+  detalle y "No aprobado"). El E9 no depende de esta revisión: la columna es
+  la misma con cualquier lista.
 
 ## Avance del paso E1 (2026-10-13)
 
@@ -755,17 +1045,51 @@ a ninguna base):
 - Pendiente de decisión del usuario: borrar del frontend
   `crearEstudianteEnPreparacion` (sin uso desde el E5). Recomendado; no se
   hizo sin su "sí".
+- El usuario hizo el commit y el push: `24a9a3c`, en `origin/main` (visto con
+  `git fetch` el 2026-10-14).
+
+## Avance del paso E8 (2026-10-14)
+
+- Pedido del usuario: agregar a la entrevista las preguntas del anexo del
+  colegio (15 imágenes del formato en papel), con casillas para chulear y sin
+  repetir lo que ya existe. Antes de diseñar se comparó cada pregunta con la
+  tabla `admisiones` (`migrations/20261013_admisiones.sql`), el formulario de
+  la entrevista (`FormularioEntrevistaView.jsx`) y la ficha del estudiante
+  (`estudiantes` en el esquema base y `FormularioEstudianteAdmin.jsx`).
+- El usuario respondió las tres preguntas que cambiaban la lista: todo en la
+  entrevista (decisión 13), ampliar la ayuda de "No aprobado" (14) y el texto
+  de la pregunta cortada (15). Estado civil y religión quedan fuera por la
+  regla de la funcionalidad (16). Autorizó el E8 con "si".
+- Hallado al diseñar: `PUT /admisiones/{id}` es un reemplazo completo
+  (`AdmisionUpdate`, `actualizar_admision`): lo que no llega queda vacío. Por
+  eso `cuestionario` es la excepción: si no llega, no se toca (ver "Rutas
+  (paso E10)"). La ayuda de "No aprobado" ya existe desde el E4
+  (`ResultadoAdmisionView.jsx`); el E11 solo la amplía.
+- Escrito: decisiones 12 a 16, la sección "Preguntas del anexo (pasos E8 a
+  E12)" (tipos, las 55 preguntas, lo que no se agrega, el borrador de la
+  migración, las rutas), los pasos E8 a E12 en el plan, la pregunta abierta
+  de revisar la lista antes del E10 y "Fuera de alcance". En el frontend, su
+  documento con las pantallas del E11. Corregido el estado del E7 (ya en
+  GitHub).
+- Sin código, sin migración, sin acceso a bases. Verificación, aunque solo
+  cambiaron documentos: `scripts/verify.py` con una `DATABASE_URL` ficticia →
+  **2429 pasan, 0 fallan**, Ruff y `pip check` limpios; en el frontend,
+  `pnpm run check:deploy` → **2524 pruebas en 364 archivos**, lint y build
+  limpios; `git diff --check` limpio en los dos repos.
 
 ## Entrega para el siguiente chat
 
-- Estado al 2026-10-14: **E1 a E6 en producción**, según el usuario; **E7
-  escrito, sin commit** (ver "Avance del paso E7"). Con el E7 se completa el
-  plan de la funcionalidad. Hasta donde consta en estos documentos, el SQL
-  del E2 y el E3 no se probó en una rama de Neon antes de publicar.
-- Siguiente acción exacta: el usuario hace el commit y el push del E7 (sin
-  migración; el frontend ya no usa esa ruta desde el E5) y confirma en
-  Render que quede **Live**. Recomendado: una prueba de humo en producción
-  con el Colegio Demo (`tenant_colegio_1`, nunca `tenant_2005`): tarjeta →
+- Estado al 2026-10-14: **E1 a E6 en producción**, según el usuario; **E7 en
+  GitHub** (`24a9a3c`; que Render lo tenga **Live** no se ve desde el repo).
+  Con el E7 se completó el plan original. **E8 terminado**: el diseño de las
+  preguntas del anexo (ver "Preguntas del anexo (pasos E8 a E12)"), sin
+  código. Hasta donde consta en estos documentos, el SQL del E2 y el E3 no se
+  probó en una rama de Neon antes de publicar.
+- Siguiente acción exacta: el usuario revisa la lista de las 55 preguntas
+  (pregunta abierta "Antes del E10") y autoriza el **E9**: la migración de
+  `cuestionario`, con pruebas primero, probada en una rama de Neon y aplicada
+  por el usuario. Sigue recomendada la prueba de humo del E7 en producción con
+  el Colegio Demo (`tenant_colegio_1`, nunca `tenant_2005`): tarjeta →
   Admisiones → nuevo aspirante → entrevista → aprobar → matricular → ficha
   con "Datos de admisión". Pendiente: si se borra
   `crearEstudianteEnPreparacion` del frontend. Abiertas para más adelante:

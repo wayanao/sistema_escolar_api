@@ -22,8 +22,8 @@ Primer paso con código de la ampliación "Preguntas del anexo" de
   (paso E10).
 - Esquema base regenerado desde la rama de Neon `prueba-cuestionario`: 36
   tablas. Los colegios nuevos nacerán con la columna.
-- **Pendiente:** aplicarla en producción después del push, con Render
-  **Live** (lo hace el usuario).
+- Commits `9547721` (migración) y `3728dcb` (esquema base), subidos juntos.
+  El usuario la aplicó en producción el mismo día.
 
 ### Pruebas
 

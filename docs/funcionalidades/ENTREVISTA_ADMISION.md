@@ -9,9 +9,9 @@
   preguntas del anexo del colegio** (salud, familia, inclusión,
   comportamiento…) como casillas para chulear. Paso E8 (diseño, solo
   documentos) terminado el 2026-10-14; ver "Preguntas del anexo (pasos E8 a
-  E12)". **Paso E9 (la migración) escrito y probado en una rama de Neon el
-  2026-10-14, todo correcto**; falta aplicarlo en producción (ver "Avance del
-  paso E9").
+  E12)". **Paso E9 (la migración) terminado el 2026-10-14**: probado en una
+  rama de Neon y aplicado en producción por el usuario (ver "Avance del paso
+  E9"). Sigue el E10.
   Pantallas en `frontend-react/docs/funcionalidades/ENTREVISTA_ADMISION.md`.
   Decisiones del usuario del 2026-10-13: reparto de campos y decisiones 7 a
   9, quien entrevista a mano (10) y el exalumno que vuelve usa su mismo
@@ -567,7 +567,7 @@ y se cierran, casillas para chulear, ayuda ampliada de "No aprobado"
 | E6 | frontend | Formulario del estudiante sin lo que pasó a la entrevista; "Datos de admisión" de solo lectura en la ficha. **Hecho el 2026-10-13** (frontend `f50ef7b`; se piden con un botón, solo si se usan); en producción el 2026-10-14 |
 | E7 | backend | Bloquear el alta directa en el año en preparación. **Hecho el 2026-10-14** (`24a9a3c`, en GitHub) |
 | E8 | ambos | Diseño de las preguntas del anexo (solo documentos). **Hecho el 2026-10-14** |
-| E9 | backend | Migración: columna `cuestionario` en `admisiones` y esquema base (rama de Neon; la aplica el usuario). **Escrita y probada en una rama de Neon el 2026-10-14** (`migrations/20261014_admisiones_cuestionario.sql`, esquema base regenerado); falta aplicarla en producción |
+| E9 | backend | Migración: columna `cuestionario` en `admisiones` y esquema base (rama de Neon; la aplica el usuario). **Hecho el 2026-10-14** (`9547721` y `3728dcb`); probada en una rama de Neon y aplicada en producción por el usuario |
 | E10 | backend | La lista de preguntas, la revisión de respuestas y las rutas (`GET /admisiones/cuestionario`, `cuestionario` en ver y editar, lectura desde la ficha) |
 | E11 | frontend | Formulario con secciones y casillas, ayuda ampliada de "No aprobado" y respuestas en "Datos de admisión" de la ficha |
 | E12 | frontend | **Opcional, solo si el usuario lo pide:** imprimir la entrevista con las firmas (`DocumentoImprimible`) |
@@ -1263,15 +1263,28 @@ producción):
   el mismo push: así lo que llega a GitHub y a Render tiene migración y base
   a la vez, aunque el commit `9547721` solo, sin el siguiente, fallaría
   `test_esquema_base.py`.
-- **Prueba en la rama terminada, todo correcto.** Falta producción.
+- **Prueba en la rama terminada, todo correcto.**
 
-Después de la rama, en este orden (como el E1, por lo explicado en la
-entrega): el usuario confirma la migración, el esquema base regenerado, las
-pruebas y los documentos en un solo commit, lo sube, espera a que Render
-quede **Live** y la aplica en producción con el endpoint directo
-(`--dry-run`, aplicar y `--dry-run` otra vez). Ningún código la usa todavía,
-así que el orden no rompe nada visible; el motivo es el de los colegios
-nuevos.
+**En producción, 2026-10-14** (lo hizo el usuario; el asistente no se conectó
+a ninguna base):
+
+- El usuario hizo el commit aparte con el esquema base y los documentos
+  (`3728dcb`) y subió los dos del E9 en el mismo push, junto con el del E8
+  (`ff92f93`): `origin/main` en `3728dcb`, visto con `git fetch`. En el
+  frontend, `origin/main` en `df2e494` (el E8).
+- Después informó que aplicó la migración en producción. No pegó la salida de
+  los comandos (`PENDIENTE` → `OK` → `OMITIDA`) ni dijo si esperó a Render
+  **Live**; ninguna de las dos cosas se ve desde el repo. Ningún código usa
+  la columna todavía, así que no cambia nada visible.
+- Visto al cerrar (solo el servidor, sin la contraseña): el `DATABASE_URL`
+  del `.env` del backend quedó en el endpoint **directo** de producción
+  (`ep-late-smoke-aip41j6x`, sin `-pooler`). Así el runner ya no se niega a
+  correr sin `$env:DATABASE_URL`, que es la protección acordada. Se le pidió
+  devolverlo al endpoint `-pooler`.
+- A partir de aquí el archivo `20261014_admisiones_cuestionario.sql` **no se
+  puede editar**: el runner guarda su checksum. Cualquier cambio posterior va
+  en una migración nueva.
+- **Paso E9 terminado.**
 
 ## Entrega para el siguiente chat
 
@@ -1279,25 +1292,24 @@ nuevos.
   GitHub** (`24a9a3c`; que Render lo tenga **Live** no se ve desde el repo).
   Con el E7 se completó el plan original. **E8 terminado**: el diseño de las
   preguntas del anexo (ver "Preguntas del anexo (pasos E8 a E12)"), sin
-  código. **E9 escrito, sin aplicar**: la migración
-  `20261014_admisiones_cuestionario.sql` y sus 6 pruebas (ver "Avance del paso
-  E9"). Hasta donde consta en estos documentos, el SQL del E2 y el E3 no se
-  probó en una rama de Neon antes de publicar.
-- Verificación del E9, con una `DATABASE_URL` ficticia y el esquema base ya
-  regenerado desde la rama: `scripts/verify.py` → **2435 pasan, 0 fallan**,
-  Ruff y `pip check` limpios; `git diff --check` limpio. El frontend no
-  cambió en este paso.
-- E9 probado en la rama de Neon `prueba-cuestionario`, todo correcto (ver
-  "Prueba en la rama de Neon, 2026-10-14" en el avance del E9).
-- Siguiente acción exacta: el usuario hace un commit aparte con el esquema
-  base y los documentos, sube ese commit y el del E9 en el mismo push,
-  espera a que Render quede **Live** y aplica la migración en producción con el
-  endpoint directo (`--dry-run` → `PENDIENTE`, aplicar → `OK`, `--dry-run` →
-  `OMITIDA`). Después puede borrar la rama `prueba-cuestionario`. Antes del
-  **E10**
-  sigue pendiente que el usuario revise la lista de las 55 preguntas
-  (pregunta abierta "Antes del E10"). Sigue recomendada la prueba de humo
-  del E7 en producción con el Colegio Demo (`tenant_colegio_1`, nunca `tenant_2005`): tarjeta →
+  código. **E9 terminado y en producción** según el usuario: la columna
+  `admisiones.cuestionario` (migración `20261014_admisiones_cuestionario.sql`,
+  commits `9547721` y `3728dcb`, en GitHub). Ver "Avance del paso E9". Hasta
+  donde consta en estos documentos, el SQL del E2 y el E3 no se probó en una
+  rama de Neon antes de publicar.
+- Verificación del E9, con una `DATABASE_URL` ficticia: `scripts/verify.py`
+  → **2435 pasan, 0 fallan**, Ruff y `pip check` limpios; `git diff
+  --check` limpio. El frontend no cambió en este paso.
+- Pendiente del usuario: devolver el `DATABASE_URL` del `.env` del backend al
+  endpoint `-pooler` (quedó en el directo de producción) y borrar las ramas
+  `prueba-cuestionario` y `prueba-entrevista` de Neon, si no se borraron.
+- Siguiente acción exacta: el usuario revisa la lista de las 55 preguntas
+  (pregunta abierta "Antes del E10") y autoriza el **E10**: la lista de
+  preguntas en el código, la revisión de respuestas y las rutas (`GET
+  /admisiones/cuestionario`, `cuestionario` en ver y editar, lectura desde
+  la ficha), con pruebas primero. Sigue recomendada la prueba de humo del E7
+  en producción con el Colegio Demo (`tenant_colegio_1`, nunca
+  `tenant_2005`): tarjeta →
   Admisiones → nuevo aspirante → entrevista → aprobar → matricular → ficha
   con "Datos de admisión". Pendiente: si se borra
   `crearEstudianteEnPreparacion` del frontend. Abiertas para más adelante:

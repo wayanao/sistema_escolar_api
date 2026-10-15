@@ -912,5 +912,8 @@ Estado al 2026-10-14:
   cada colegio) quedaron con el bloque vacío.
 - La migración quedó en el commit `9547721` y el esquema base regenerado en
   un commit aparte, a pedido del usuario; se suben juntos en el mismo push.
-- **No aplicada en producción.** Pendiente: el push con Render **Live** y la
-  aplicación en los tenants.
+- Los dos commits se subieron juntos (`origin/main` en `3728dcb`).
+- **Aplicada en producción el 2026-10-14** por el usuario (informado por él,
+  sin pegar la salida del runner). No rellenó ni cambió datos existentes.
+- A partir de aquí el archivo no se puede editar: el runner guarda su
+  checksum. Cualquier cambio posterior debe ir en una migración nueva.

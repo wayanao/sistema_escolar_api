@@ -2859,7 +2859,13 @@ estaban en los documentos; el usuario los pidió y autorizó uno por uno):
   marca y matrícula se excluyen. Se le propuso agregar "Quitar o cambiar la
   matrícula de 2027" antes de noviembre (backend y frontend; decidir qué pasa
   con pagos de matrícula 2027 y valores copiados), y no hacer un "deshacer
-  todo". Espera su decisión.
+  todo". **Decidido el 2026-10-19: nada por ahora.** Se le explicó que,
+  mientras tanto, un error de curso al matricular en 2027 no se corrige desde
+  la app, así que hay que revisar el curso antes de matricular. Si se hace más
+  adelante, ya eligió dos reglas: no se puede quitar una matrícula con pagos
+  de 2027 sin anularlos primero, y quitar la de un estudiante que vino por
+  Admisiones deja su admisión como aprobada sin matricular, sin borrar la
+  ficha.
 
 ### Fase 6 — Activar el año nuevo, cerrar y reabrir (antes de iniciar clases 2027)
 
@@ -3925,9 +3931,12 @@ cosa, gana lo que se pueda verificar.
   `docs/funcionalidades/ENTREVISTA_ADMISION.md`.
 - **Siguiente acción exacta:** la ruta `valores-pago` quedó en `1a732cc`; en
   el frontend, los ajustes en `bf8289e`, `6853db0`, `93c0c22` y los avisos de
-  "qué está pasando" en `885691e` y `a252f6e`. Pendiente de la decisión del
-  usuario: "Quitar o cambiar la matrícula de 2027" (ver el final de la fase
-  5). Después, cada cosa con su autorización:
+  "qué está pasando" en `885691e` y `a252f6e`. "Quitar o cambiar la matrícula
+  de 2027": decidido el 2026-10-19, nada por ahora (ver el final de la fase
+  5). Al 2026-10-19 los dos repos están limpios y al día con `origin/main`
+  (backend `c23a1e8`, frontend `9e4ea40`): la fase 7, `valores-pago` y los
+  ajustes de la fase 5 ya están en GitHub (que Render esté **Live** no se ve
+  desde el repo). Lo que queda, cada cosa con su autorización:
   1. Subir la fase 7 y la ruta `valores-pago`: primero el backend, esperando
      a que Render quede **Live**, y después el frontend, que usa las rutas
      nuevas. Sin un año 2027 activo, la fase 7 no se ve en producción.

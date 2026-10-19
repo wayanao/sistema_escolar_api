@@ -47,6 +47,10 @@ continuacion para retomarla en otro chat u otro LLM.
   resultado (aprobado o no aprobado); solo un aprobado se matricula. Vive en la
   preparación del año lectivo. **Diseñado (E0, 2026-10-12), nada
   implementado. Fecha limite: noviembre de 2026.**
+- `funcionalidades/SISBEN_RESIDENCIA.md`: SISBÉN (grupo, subgrupo y nivel) y
+  lugar de residencia por partes (barrio, municipio, zona, punto de
+  referencia) en la ficha del estudiante. Migración en `estudiantes`.
+  **Diseñado (S0, 2026-10-19), nada implementado.**
 
 ## Estado actual resumido
 

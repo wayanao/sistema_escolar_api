@@ -948,6 +948,15 @@ Estado al 2026-10-19:
 - SQL y 19 pruebas de texto
   (`tests/test_migracion_estudiantes_sisben_residencia.py`); fallaron antes de
   crear el archivo.
-- **Sin aplicar en ninguna base.** Falta probarla en una rama de Neon y
-  regenerar desde allí el esquema base (paso S2, lo hace el usuario). Hasta
-  entonces `tests/test_esquema_base.py` falla a propósito.
+- Código y migración en el commit `9a18945`.
+- El 2026-10-20 el usuario la aplicó en una rama de Neon (la última
+  simulación sale `OMITIDA`) y regeneró desde allí el esquema base: 36
+  tablas, 1 función y 1 disparador. El diff agregó solo la migración a la
+  cabecera (45), las ocho columnas y sus cinco reglas.
+- `scripts/verify.py`: **2604 pasan, 0 fallan**; Ruff y `pip check` limpios.
+- En la rama, una consulta intentó 11 cambios buenos y malos sobre un
+  estudiante de `tenant_colegio_1`, deshechos al instante: los 11 dieron lo
+  esperado. El conteo posterior de estudiantes con datos nuevos dio 0 en los
+  dos colegios.
+- **Sin aplicar en producción.** Orden: push del backend, Render **Live**,
+  aplicar en producción y, al final, el frontend.

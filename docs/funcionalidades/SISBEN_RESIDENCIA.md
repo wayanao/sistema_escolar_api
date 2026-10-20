@@ -2,9 +2,10 @@
 
 ## Control
 
-- Estado: **S0 (diseño) en el commit `2d01025`. S1 (backend) escrito y
-  verificado el 2026-10-19, sin commit; la migración no está aplicada en
-  ninguna base.** Siguiente: S2, lo hace el usuario.
+- Estado: **S0 (diseño) en el commit `2d01025` y S1 (backend) en `9a18945`.
+  S2 completo el 2026-10-20 en una rama de Neon: migración aplicada, esquema
+  base regenerado (sin commit) y las reglas probadas en PostgreSQL. En
+  producción no se ha aplicado nada.**
 - Tipo: Función nueva de producto. No es una capa del programa de
   modularización de `docs/modularizacion/` y no debe confundirse con una.
 - Repos afectados: este repo (`sistema_escolar_api`) y `frontend-react`. Ver
@@ -338,6 +339,36 @@ Render **Live**, aplicar en producción (los mismos tres comandos del punto 3,
 con el `DATABASE_URL` **directo de producción** en esa terminal) y, al final,
 el frontend (S3).
 
+## Avance del paso S2, 2026-10-20
+
+Lo hizo el usuario; el asistente no se conectó a Neon ni a producción.
+
+- El S1 quedó en el commit `9a18945` (sin el esquema base, que todavía no se
+  había regenerado; no se ha subido).
+- Puntos 1 a 3: el usuario creó la rama, simuló, aplicó y volvió a simular:
+  la última simulación sale `OMITIDA` (informado por el usuario, sin pegar
+  la salida).
+- Punto 4: esquema base regenerado desde `tenant_colegio_1` en la rama: **36
+  tablas, 1 función y 1 disparador** (las mismas de antes). El diff, revisado
+  por el asistente, trae solo la fecha y la migración 45 en la cabecera, las
+  ocho columnas de `estudiantes` y sus cinco reglas, como las escribió
+  PostgreSQL.
+- Con el esquema base regenerado, `scripts/verify.py` → **2604 pasan, 0
+  fallan**; Ruff y `pip check` limpios; `git diff --check` limpio. La falla
+  esperada de `test_esquema_base.py` se apagó.
+- Punto 5: la consulta del SQL Editor, en la rama y en `tenant_colegio_1`,
+  dio **`bien = true` en los 11 casos** (salida pegada por el usuario). Se
+  aceptaron la ficha completa y "no tiene SISBÉN"; cada regla rechazó su caso
+  con su propio nombre (`chk_estudiantes_sisben_grupo`, `_subgrupo` en sus
+  tres casos, `_nivel`, `_clasificacion` en sus dos casos y
+  `chk_estudiantes_zona_residencia`), y el barrio de 151 letras dio "value
+  too long for type character varying(150)".
+- Punto 6: el conteo de estudiantes con algún dato nuevo dio **0 en
+  `tenant_colegio_1` y 0 en `tenant_2005`** (salida pegada por el usuario):
+  la prueba no dejó nada guardado y ningún estudiante cambió.
+- **Con esto, el S2 queda completo** en la rama. Ya se puede borrar la rama
+  `prueba-sisben`.
+
 ## Fuera de alcance
 
 - Departamento de residencia (decidido el 2026-10-19: solo el municipio).
@@ -357,13 +388,25 @@ el frontend (S3).
 
 ## Entrega para el siguiente chat
 
-- Hecho: S0, el diseño (commit `2d01025`), y S1, el backend, escrito y
-  verificado el 2026-10-19 **sin commit** (ver "Avance del paso S1"). La
-  migración no está aplicada en ninguna base.
-- Siguiente acción exacta: el **S2**, que hace el usuario con la "lista de
-  comprobación en una rama de Neon". Cuando cuente el resultado, se cierra el
-  S2 aquí y se le da el mensaje de commit. Después, el push del backend, la
-  migración en producción y el S3 (frontend), cada uno con su autorización.
+- Hecho: S0, el diseño (commit `2d01025`); S1, el backend (commit
+  `9a18945`); y el S2 completo en una rama de Neon, con el esquema base
+  regenerado y este registro sin commit. Ver "Avance del paso S2". Nada subido
+  a GitHub ni aplicado en producción.
+- Siguiente acción exacta, la hace el usuario y en este orden:
+  1. Commit del esquema base y de los documentos.
+  2. Push de los dos commits juntos (`9a18945` y el nuevo) y esperar a que
+     Render quede **Live**. Mientras el frontend viejo siga publicado, ninguna
+     petición toca las columnas nuevas, así que no falla nada aunque la
+     migración todavía no esté en producción.
+  3. Aplicar en producción los mismos tres comandos del punto 3 (`--dry-run`,
+     aplicar y `--dry-run`), en una terminal con el `DATABASE_URL`
+     **directo de producción**. Esperado: `PENDIENTE` → `OK` → `OMITIDA (ya
+     aplicada)` en `tenant_colegio_1` y `tenant_2005`.
+  4. Borrar la rama `prueba-sisben` en Neon.
+- Después, el S3 (frontend) con su autorización. Se puede escribir y probar
+  en local cuando la migración esté en producción (el backend local escribe
+  en la base real), probando con el Colegio Demo y nunca con estudiantes de
+  `tenant_2005`.
 - El S3 se puede escribir antes de terminar el S2, pero no probar en local
   con la pantalla: el backend local escribe en la base real (`production`) y
   allí todavía no existen las columnas.

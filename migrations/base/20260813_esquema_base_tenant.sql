@@ -1,6 +1,6 @@
 -- Esquema base de un tenant. ARCHIVO GENERADO, no editar a mano.
 --
--- Extraido de tenant_colegio_1 el 2026-10-14 con
+-- Extraido de tenant_colegio_1 el 2026-10-20 con
 -- scripts/generar_esquema_base.py. Para rehacerlo, aplica antes la
 -- migracion nueva a ese schema y vuelve a ejecutar el script.
 --
@@ -11,7 +11,7 @@
 -- No usar apply_migration.py con este archivo: es para dar de alta un
 -- tenant nuevo, no para los existentes, que ya tienen estas tablas.
 --
--- MIGRACIONES INCORPORADAS (44):
+-- MIGRACIONES INCORPORADAS (45):
 --   20260429_pagos_tipo_pago_largo.sql
 --   20260429_plan_de_clases_reportes.sql
 --   20260509_branding_plantillas_impresion.sql
@@ -56,6 +56,7 @@
 --   20261008_anios_lectivos_activacion.sql
 --   20261013_admisiones.sql
 --   20261014_admisiones_cuestionario.sql
+--   20261019_estudiantes_sisben_residencia.sql
 -- FIN MIGRACIONES INCORPORADAS
 
 CREATE TABLE IF NOT EXISTS admisiones (
@@ -230,6 +231,19 @@ CREATE TABLE IF NOT EXISTS estudiantes (
     tipo_documento_madre character varying(50),
     documento_madre character varying(50),
     condicion_diagnostico character varying(255),
+    sisben boolean,
+    sisben_grupo character varying(1),
+    sisben_subgrupo character varying(3),
+    sisben_nivel smallint,
+    barrio character varying(150),
+    municipio character varying(100),
+    zona_residencia character varying(10),
+    punto_referencia character varying(255),
+    CONSTRAINT chk_estudiantes_sisben_clasificacion CHECK (((sisben IS TRUE) OR ((sisben_grupo IS NULL) AND (sisben_subgrupo IS NULL) AND (sisben_nivel IS NULL)))),
+    CONSTRAINT chk_estudiantes_sisben_grupo CHECK (((sisben_grupo)::text = ANY ((ARRAY['A'::character varying, 'B'::character varying, 'C'::character varying, 'D'::character varying])::text[]))),
+    CONSTRAINT chk_estudiantes_sisben_nivel CHECK (((sisben_nivel >= 1) AND (sisben_nivel <= 3))),
+    CONSTRAINT chk_estudiantes_sisben_subgrupo CHECK (((sisben_subgrupo IS NULL) OR ((sisben_grupo IS NOT NULL) AND ("left"((sisben_subgrupo)::text, 1) = (sisben_grupo)::text) AND ((sisben_subgrupo)::text ~ '^[A-D][1-9][0-9]?$'::text)))),
+    CONSTRAINT chk_estudiantes_zona_residencia CHECK (((zona_residencia)::text = ANY ((ARRAY['urbana'::character varying, 'rural'::character varying])::text[]))),
     CONSTRAINT estudiantes_pkey PRIMARY KEY (id),
     CONSTRAINT estudiantes_documento_identidad_key UNIQUE (documento_identidad)
 );

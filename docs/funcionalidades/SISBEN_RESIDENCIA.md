@@ -5,7 +5,8 @@
 - Estado: **Backend completo y en producción el 2026-10-20.** S0 (diseño) en
   `2d01025`, S1 (backend) en `9a18945` y S2 (rama de Neon y esquema base) en
   `d256a93`, los tres en GitHub; migración aplicada en producción por el
-  usuario. Siguiente: S3 (frontend), con su autorización.
+  usuario. **S3 (frontend) escrito y verificado el mismo día, sin commit**
+  (ver el documento del frontend).
 - Tipo: Función nueva de producto. No es una capa del programa de
   modularización de `docs/modularizacion/` y no debe confundirse con una.
 - Repos afectados: este repo (`sistema_escolar_api`) y `frontend-react`. Ver
@@ -402,10 +403,13 @@ Lo hizo el usuario; el asistente no se conectó a Neon ni a producción.
   funcionalidad está completo.** Ver "Avance del paso S2".
 - Pendiente del usuario: devolver el `DATABASE_URL` del `.env` al endpoint
   `-pooler` y borrar la rama `prueba-sisben` en Neon, si no se borró.
-- Siguiente acción exacta: el **S3 (frontend)**, con autorización explícita.
-  Se puede probar en local porque la migración ya está en producción (el
-  backend local escribe en la base real): con el Colegio Demo, nunca con
-  estudiantes de `tenant_2005`.
+- **S3 (frontend) escrito el 2026-10-20, sin commit:** `pnpm run
+  check:deploy` pasa 2652 pruebas, lint y build. Detalle en "Avance del paso
+  S3" de `frontend-react/docs/funcionalidades/SISBEN_RESIDENCIA.md`.
+- Siguiente acción exacta: que el usuario pruebe el formulario en local con
+  el Colegio Demo, nunca con estudiantes de `tenant_2005` (el backend local
+  escribe en la base real). Después, commit y push del frontend. Con eso la
+  funcionalidad queda completa.
 - El S3 se puede escribir antes de terminar el S2, pero no probar en local
   con la pantalla: el backend local escribe en la base real (`production`) y
   allí todavía no existen las columnas.

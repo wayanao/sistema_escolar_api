@@ -1391,6 +1391,13 @@ a ninguna base):
 - Pendiente del usuario: borrar las ramas `prueba-cuestionario` y
   `prueba-entrevista` de Neon, si no se borraron. (El `.env` ya volvió al
   endpoint `-pooler`.)
+- 2026-10-20, ajuste pedido por el usuario, **solo en el frontend y sin
+  commit**: en la ficha del aspirante, "Estudios anteriores" y lo de la
+  familia de la entrevista pasan a las secciones que se abren y se cierran
+  (lo de la familia, dentro de la sección "Familia" del anexo), y se quita el
+  título "Preguntas del anexo". No cambian el cuerpo de `PUT /admisiones/{id}`,
+  las rutas ni el impreso. Detalle en "Ajuste del 2026-10-20" del documento
+  del frontend.
 - Siguiente acción exacta: el usuario prueba en local el E11a, el E11b y el
   E12 juntos, con este backend (E10) y el frontend, con el Colegio Demo o
   una rama de Neon, nunca con `tenant_2005` (el backend local escribe en la

@@ -958,5 +958,8 @@ Estado al 2026-10-19:
   estudiante de `tenant_colegio_1`, deshechos al instante: los 11 dieron lo
   esperado. El conteo posterior de estudiantes con datos nuevos dio 0 en los
   dos colegios.
-- **Sin aplicar en producción.** Orden: push del backend, Render **Live**,
-  aplicar en producción y, al final, el frontend.
+- Migración, esquema base y código en GitHub (`origin/main` en `d256a93`).
+- **Aplicada en producción el 2026-10-20** por el usuario (informado por él,
+  sin pegar la salida del runner). No rellenó ni cambió datos existentes.
+- A partir de aquí el archivo no se puede editar: el runner guarda su
+  checksum. Cualquier cambio posterior debe ir en una migración nueva.

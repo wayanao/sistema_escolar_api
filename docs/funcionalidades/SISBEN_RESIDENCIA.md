@@ -2,10 +2,10 @@
 
 ## Control
 
-- Estado: **S0 (diseño) en el commit `2d01025` y S1 (backend) en `9a18945`.
-  S2 completo el 2026-10-20 en una rama de Neon: migración aplicada, esquema
-  base regenerado (sin commit) y las reglas probadas en PostgreSQL. En
-  producción no se ha aplicado nada.**
+- Estado: **Backend completo y en producción el 2026-10-20.** S0 (diseño) en
+  `2d01025`, S1 (backend) en `9a18945` y S2 (rama de Neon y esquema base) en
+  `d256a93`, los tres en GitHub; migración aplicada en producción por el
+  usuario. Siguiente: S3 (frontend), con su autorización.
 - Tipo: Función nueva de producto. No es una capa del programa de
   modularización de `docs/modularizacion/` y no debe confundirse con una.
 - Repos afectados: este repo (`sistema_escolar_api`) y `frontend-react`. Ver
@@ -368,6 +368,15 @@ Lo hizo el usuario; el asistente no se conectó a Neon ni a producción.
   la prueba no dejó nada guardado y ningún estudiante cambió.
 - **Con esto, el S2 queda completo** en la rama. Ya se puede borrar la rama
   `prueba-sisben`.
+- El esquema base y este registro quedaron en el commit `d256a93`. El
+  usuario subió los dos commits juntos (`origin/main` en `d256a93`, visto con
+  `git fetch`).
+- **Migración aplicada en producción el 2026-10-20** por el usuario
+  (informado por él, sin pegar la salida del runner). Que Render haya quedado
+  **Live** antes no se ve desde el repo.
+- Después de aplicarla, el `DATABASE_URL` del `.env` quedó en el endpoint
+  directo de producción (sin `-pooler`; comprobado leyendo solo el servidor).
+  Se le pidió al usuario devolverlo al `-pooler`.
 
 ## Fuera de alcance
 
@@ -388,25 +397,15 @@ Lo hizo el usuario; el asistente no se conectó a Neon ni a producción.
 
 ## Entrega para el siguiente chat
 
-- Hecho: S0, el diseño (commit `2d01025`); S1, el backend (commit
-  `9a18945`); y el S2 completo en una rama de Neon, con el esquema base
-  regenerado y este registro sin commit. Ver "Avance del paso S2". Nada subido
-  a GitHub ni aplicado en producción.
-- Siguiente acción exacta, la hace el usuario y en este orden:
-  1. Commit del esquema base y de los documentos.
-  2. Push de los dos commits juntos (`9a18945` y el nuevo) y esperar a que
-     Render quede **Live**. Mientras el frontend viejo siga publicado, ninguna
-     petición toca las columnas nuevas, así que no falla nada aunque la
-     migración todavía no esté en producción.
-  3. Aplicar en producción los mismos tres comandos del punto 3 (`--dry-run`,
-     aplicar y `--dry-run`), en una terminal con el `DATABASE_URL`
-     **directo de producción**. Esperado: `PENDIENTE` → `OK` → `OMITIDA (ya
-     aplicada)` en `tenant_colegio_1` y `tenant_2005`.
-  4. Borrar la rama `prueba-sisben` en Neon.
-- Después, el S3 (frontend) con su autorización. Se puede escribir y probar
-  en local cuando la migración esté en producción (el backend local escribe
-  en la base real), probando con el Colegio Demo y nunca con estudiantes de
-  `tenant_2005`.
+- Hecho: S0, S1 y S2 (commits `2d01025`, `9a18945` y `d256a93`, en GitHub)
+  y la migración en producción el 2026-10-20. **El backend de esta
+  funcionalidad está completo.** Ver "Avance del paso S2".
+- Pendiente del usuario: devolver el `DATABASE_URL` del `.env` al endpoint
+  `-pooler` y borrar la rama `prueba-sisben` en Neon, si no se borró.
+- Siguiente acción exacta: el **S3 (frontend)**, con autorización explícita.
+  Se puede probar en local porque la migración ya está en producción (el
+  backend local escribe en la base real): con el Colegio Demo, nunca con
+  estudiantes de `tenant_2005`.
 - El S3 se puede escribir antes de terminar el S2, pero no probar en local
   con la pantalla: el backend local escribe en la base real (`production`) y
   allí todavía no existen las columnas.

@@ -2867,6 +2867,15 @@ estaban en los documentos; el usuario los pidió y autorizó uno por uno):
   Admisiones deja su admisión como aprobada sin matricular, sin borrar la
   ficha.
 
+**Ajuste del 2026-10-20, solo en el frontend y sin commit, pedido por el
+usuario:** al matricular, nadie viene marcado (antes venían todos los que se
+podían matricular) y hay un botón "Marcar todos". Motivo: la matrícula es de
+uno en uno, como llegan las familias, y una matrícula de 2027 no se puede
+quitar desde la app. Cambia el paso 3 del diseño ("ve la lista y desmarca a
+quien no pasa"): ahora el admin marca a quien llega. Sin cambios en este repo
+ni en `POST /anios-lectivos/{id}/matriculas/promocion`. Detalle en el "Ajuste del
+2026-10-20" del documento del frontend.
+
 ### Fase 6 — Activar el año nuevo, cerrar y reabrir (antes de iniciar clases 2027)
 
 1. Migración: marca "no continúa" en `matriculas` (decisión 9) y tabla

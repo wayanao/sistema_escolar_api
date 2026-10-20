@@ -35,6 +35,24 @@ def _build_estado_filter(estado):
     return "COALESCE(LOWER(estado), 'activo') = %s", [estado_normalizado]
 
 
+def guardar_sisben_y_residencia_si_llegaron(cursor, estudiante_id, est):
+    """Guarda el SISBÉN y el lugar de residencia, si llegó alguno de los ocho.
+
+    Ver docs/funcionalidades/SISBEN_RESIDENCIA.md, decisión 4. Una pestaña
+    abierta antes del cambio no manda ninguno: se quedan como estaban. Si llega
+    alguno, se reemplazan los ocho y lo que falte queda vacío, para que el
+    SISBÉN nunca quede a medias. Lo usan crear, editar y matricular desde una
+    admisión, cada uno dentro de su transacción.
+    """
+    columnas = estudiantes_repository.COLUMNAS_SISBEN_Y_RESIDENCIA
+    llegaron = getattr(est, "model_fields_set", set())
+    if not llegaron.intersection(columnas):
+        return
+    estudiantes_repository.guardar_sisben_y_residencia(
+        cursor, estudiante_id, tuple(getattr(est, columna) for columna in columnas)
+    )
+
+
 def _guardar_curso_vigente(cursor, estudiante_id, curso_id):
     """Guarda la matricula activa y actualiza su copia en el estudiante."""
     matriculado = anios_lectivos_repository.matricular_en_curso_del_anio_activo(
@@ -89,6 +107,7 @@ def crear_estudiante_controller(est):
             est.condicion_diagnostico,
             estado
         ))
+        guardar_sisben_y_residencia_si_llegaron(cursor, estudiante_id, est)
         # Fase 5.1: la matricula es la fuente; `curso_id` solo es su copia del
         # año activo. Las tres escrituras comparten esta transaccion.
         _guardar_curso_vigente(cursor, estudiante_id, est.curso_id)
@@ -240,6 +259,7 @@ def actualizar_estudiante_controller(est_id, est):
         # Fase 5.1: si cambia el curso, primero cambia la matricula activa y
         # despues se actualiza su copia. Un curso de otro año revierte todo.
         if resultado:
+            guardar_sisben_y_residencia_si_llegaron(cursor, est_id, est)
             _guardar_curso_vigente(cursor, est_id, est.curso_id)
 
     if resultado:

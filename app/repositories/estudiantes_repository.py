@@ -122,6 +122,37 @@ def actualizar_estudiante(cursor, valores):
     return cursor.fetchone()
 
 
+# SISBÉN y lugar de residencia (docs/funcionalidades/SISBEN_RESIDENCIA.md). Van
+# aparte de los 34 datos globales para no mover esa tupla. El nombre de cada
+# columna es también el del campo de `EstudianteCreate`.
+COLUMNAS_SISBEN_Y_RESIDENCIA = (
+    "sisben",
+    "sisben_grupo",
+    "sisben_subgrupo",
+    "sisben_nivel",
+    "barrio",
+    "municipio",
+    "zona_residencia",
+    "punto_referencia",
+)
+
+
+def guardar_sisben_y_residencia(cursor, estudiante_id, valores):
+    """Reemplaza los ocho datos, en el orden de `COLUMNAS_SISBEN_Y_RESIDENCIA`.
+
+    Devuelve cuántas filas cambió. Los nombres de columna salen de la tupla de
+    arriba, nunca del cliente; los valores viajan parametrizados.
+    """
+    asignaciones = ", ".join(
+        f"{columna} = %s" for columna in COLUMNAS_SISBEN_Y_RESIDENCIA
+    )
+    cursor.execute(
+        f"UPDATE estudiantes SET {asignaciones} WHERE id = %s",
+        (*valores, estudiante_id),
+    )
+    return cursor.rowcount
+
+
 # Año lectivo, fase 3 (paso 3.4): mirando un año que no es el activo, la lista
 # son los matriculados de ese año, cada uno con el curso que tuvo ese año (su
 # `%s` es el año y va antes de los del `where_sql`). Sin año, o con el activo,

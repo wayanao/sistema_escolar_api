@@ -1,6 +1,6 @@
 # Migraciones
 
-Ultima revision documental: 2026-10-14.
+Ultima revision documental: 2026-10-19.
 
 ## Carpeta de migraciones
 
@@ -54,6 +54,7 @@ Archivos actuales:
 - `20261008_anios_lectivos_activacion.sql`
 - `20261013_admisiones.sql`
 - `20261014_admisiones_cuestionario.sql`
+- `20261019_estudiantes_sisben_residencia.sql`
 - `README.md`
 
 Migraciones globales `public`:
@@ -917,3 +918,36 @@ Estado al 2026-10-14:
   sin pegar la salida del runner). No rellenó ni cambió datos existentes.
 - A partir de aquí el archivo no se puede editar: el runner guarda su
   checksum. Cualquier cambio posterior debe ir en una migración nueva.
+
+## Migracion 20261019_estudiantes_sisben_residencia.sql
+
+Objetivo:
+
+- SISBÉN y lugar de residencia, paso S1: guardar en la ficha del estudiante si
+  la familia tiene SISBÉN y su clasificación, y dónde vive por partes.
+
+Cambios (todas opcionales, sin valor por defecto, en `estudiantes`):
+
+- `sisben BOOLEAN`, `sisben_grupo VARCHAR(1)`, `sisben_subgrupo VARCHAR(3)`,
+  `sisben_nivel SMALLINT`, `barrio VARCHAR(150)`, `municipio VARCHAR(100)`,
+  `zona_residencia VARCHAR(10)` y `punto_referencia VARCHAR(255)`.
+- Reglas `chk_estudiantes_sisben_grupo`, `chk_estudiantes_sisben_subgrupo`,
+  `chk_estudiantes_sisben_nivel`, `chk_estudiantes_sisben_clasificacion` y
+  `chk_estudiantes_zona_residencia`, cada una solo si falta.
+
+No toca `direccion`. Sin índices. No rellena, actualiza ni borra datos
+existentes. Es reejecutable.
+
+Orden de publicación (detalle en `docs/funcionalidades/SISBEN_RESIDENCIA.md`):
+push del backend y Render **Live**, después aplicar en producción, y al final
+el frontend. El código no toca las columnas nuevas hasta que una petición
+traiga los campos, cosa que solo hace el frontend nuevo.
+
+Estado al 2026-10-19:
+
+- SQL y 19 pruebas de texto
+  (`tests/test_migracion_estudiantes_sisben_residencia.py`); fallaron antes de
+  crear el archivo.
+- **Sin aplicar en ninguna base.** Falta probarla en una rama de Neon y
+  regenerar desde allí el esquema base (paso S2, lo hace el usuario). Hasta
+  entonces `tests/test_esquema_base.py` falla a propósito.

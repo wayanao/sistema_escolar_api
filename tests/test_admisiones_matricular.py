@@ -494,3 +494,63 @@ def test_el_estudiante_existente_se_lee_bloqueado_con_sus_matriculas_de_los_dos_
 
 def test_sin_estudiante_con_ese_documento_devuelve_none():
     assert repositorio_anios.leer_estudiante_para_reingreso(CursorFalso(), "1", 2, 3) is None
+
+
+# ---------------------------------------------------------------------------
+# SISBÉN y lugar de residencia (docs/funcionalidades/SISBEN_RESIDENCIA.md, S1)
+# ---------------------------------------------------------------------------
+
+SISBEN_COMPLETO = {
+    "sisben": True,
+    "sisben_grupo": "A",
+    "sisben_subgrupo": "A3",
+    "sisben_nivel": 1,
+    "barrio": "Villa Olímpica",
+    "municipio": "Galapa",
+    "zona_residencia": "rural",
+    "punto_referencia": "Detrás de la cancha",
+}
+
+
+@pytest.fixture
+def sisben_guardado(entorno, monkeypatch):
+    def guardar(_cursor, estudiante_id, valores):
+        entorno.eventos.append(("sisben", estudiante_id, valores))
+        return 1
+
+    monkeypatch.setattr(
+        controlador_anios.estudiantes_repository, "guardar_sisben_y_residencia", guardar
+    )
+    return entorno
+
+
+def test_un_aspirante_nuevo_guarda_su_sisben_y_su_residencia(sisben_guardado):
+    controlador.matricular_admision_controller(7, _ficha(**SISBEN_COMPLETO))
+
+    nombres = _nombres(sisben_guardado)
+    assert nombres.index("crear_estudiante") < nombres.index("sisben")
+    assert nombres.index("sisben") < nombres.index("matricula")
+    assert _evento(sisben_guardado, "sisben") == (
+        "sisben",
+        55,
+        (True, "A", "A3", 1, "Villa Olímpica", "Galapa", "rural", "Detrás de la cancha"),
+    )
+    assert sisben_guardado.commits == 1
+
+
+def test_un_exalumno_guarda_su_sisben_y_su_residencia(sisben_guardado):
+    sisben_guardado.existente = _existente()
+
+    controlador.matricular_admision_controller(7, _ficha(**SISBEN_COMPLETO))
+
+    nombres = _nombres(sisben_guardado)
+    assert nombres.index("actualizar_estudiante") < nombres.index("sisben")
+    assert _evento(sisben_guardado, "sisben")[1] == 40
+
+
+def test_el_formulario_de_antes_no_borra_el_sisben_de_un_exalumno(sisben_guardado):
+    sisben_guardado.existente = _existente()
+
+    controlador.matricular_admision_controller(7, _ficha())
+
+    assert "sisben" not in _nombres(sisben_guardado)

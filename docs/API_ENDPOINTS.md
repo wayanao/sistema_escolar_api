@@ -669,6 +669,25 @@ Notas:
   `estudiantes.curso_id`, que es solo su copia vigente. Un curso inexistente o
   de otro año responde `409` con `El curso seleccionado debe pertenecer al año
   lectivo activo.` Ninguna de las dos escrituras queda aplicada en ese caso.
+- **SISBÉN y lugar de residencia** (desde el 2026-10-19, paso S1 de
+  `docs/funcionalidades/SISBEN_RESIDENCIA.md`). `POST /estudiantes`,
+  `PUT /estudiantes/{estudiante_id}` y `POST /admisiones/{id}/matricular`
+  aceptan ocho campos opcionales:
+  - `sisben`: `true`, `false` o `null` (sin dato).
+  - `sisben_grupo`: `A`, `B`, `C` o `D`.
+  - `sisben_subgrupo`: del grupo elegido (`A1`–`A5`, `B1`–`B7`, `C1`–`C18`,
+    `D1`–`D21`).
+  - `sisben_nivel`: `1`, `2` o `3` (SISBÉN III).
+  - `barrio` (150), `municipio` (100), `zona_residencia` (`urbana` o
+    `rural`) y `punto_referencia` (255).
+
+  Reglas (`422` con el motivo en español): sin `sisben: true` no se aceptan
+  grupo, subgrupo ni nivel; el subgrupo necesita el grupo y debe ser suyo.
+  **Si el cuerpo no trae ninguno de los ocho, se quedan como estaban** (una
+  pestaña abierta antes del cambio no los borra); si trae alguno, se
+  reemplazan los ocho y el que falte queda en `null`. `GET
+  /estudiantes/{estudiante_id}` los devuelve sin cambios en la ruta (lee la
+  fila completa). `direccion` no cambia: es la calle o carrera y el número.
 - `GET /estudiantes/{estudiante_id}/deudas` devuelve solo deuda academica
   pendiente del estudiante usando la logica central de cobros; no depende del
   resumen amplio de notas, observaciones o inventario.

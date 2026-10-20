@@ -50,7 +50,8 @@ continuacion para retomarla en otro chat u otro LLM.
 - `funcionalidades/SISBEN_RESIDENCIA.md`: SISBÉN (grupo, subgrupo y nivel) y
   lugar de residencia por partes (barrio, municipio, zona, punto de
   referencia) en la ficha del estudiante. Migración en `estudiantes`.
-  **Diseñado (S0, 2026-10-19), nada implementado.**
+  **S1 (backend) escrito el 2026-10-19; migración sin aplicar. Siguiente: S2
+  en una rama de Neon.**
 
 ## Estado actual resumido
 

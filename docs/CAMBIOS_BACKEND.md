@@ -1,10 +1,37 @@
 # Cambios Backend
 
-Ultima revision documental: 2026-10-14.
+Ultima revision documental: 2026-10-19.
 
 ## Proposito
 
 Bitacora de cambios documentales y tecnicos observables del backend.
+
+## 2026-10-19 - SISBÉN y lugar de residencia, paso S1
+
+Primer paso con código de `docs/funcionalidades/SISBEN_RESIDENCIA.md`.
+
+### Qué cambia
+
+- Migración `20261019_estudiantes_sisben_residencia.sql`: ocho columnas
+  opcionales en `estudiantes` (SISBÉN con grupo, subgrupo y nivel; barrio,
+  municipio, zona y punto de referencia) y cinco reglas `CHECK`. No rellena
+  ni cambia datos. **Sin aplicar todavía** en ninguna base.
+- `EstudianteCreate` acepta los ocho campos, con un validador que explica en
+  español por qué rechaza un subgrupo o una clasificación sin SISBÉN.
+- `estudiantes_repository.guardar_sisben_y_residencia` y
+  `estudiante_controller.guardar_sisben_y_residencia_si_llegaron`: los ocho
+  datos se guardan aparte, en la misma transacción, solo si el cuerpo trae
+  alguno. La tupla de 34 datos de `insertar_estudiante` y
+  `actualizar_estudiante` no cambia. Se usa al crear, al editar y al
+  matricular desde una admisión (aspirante nuevo y exalumno).
+- Contrato en `docs/API_ENDPOINTS.md`, sección "Estudiantes".
+
+### Por qué así
+
+- Mientras el frontend viejo siga publicado, ninguna petición manda los campos
+  nuevos y ninguna toca las columnas nuevas: se puede subir este código antes
+  de aplicar la migración en producción.
+- Una pestaña abierta antes del cambio no borra los datos nuevos.
 
 ## 2026-10-14 - Entrevista de admisión E10: las preguntas del anexo en la API
 

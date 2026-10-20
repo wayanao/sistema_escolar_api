@@ -4,6 +4,9 @@ Ver docs/funcionalidades/ANIO_LECTIVO.md (fase 3, paso 3.1; fase 5, pasos
 5.3 a 5.5, y fase 6, pasos 6.2a, 6.2b y 6.3a). Qué años ve cada usuario lo
 decide `app/services/anio_lectivo.py`.
 """
+from app.controllers.estudiante_controller import (
+    guardar_sisben_y_residencia_si_llegaron,
+)
 from app.database import get_cursor
 from app.repositories import anios_lectivos_repository, estudiantes_repository
 from app.services.anio_lectivo import (
@@ -841,6 +844,7 @@ def _crear_estudiante_en_preparacion(cursor, destino, est):
     estudiante_id = estudiantes_repository.insertar_estudiante(
         cursor, _valores_globales_estudiante(est)
     )
+    guardar_sisben_y_residencia_si_llegaron(cursor, estudiante_id, est)
     matricula_id = anios_lectivos_repository.insertar_matricula_en_anio(
         cursor, estudiante_id, est.curso_id, destino[0]
     )
@@ -938,6 +942,7 @@ def matricular_aspirante_en_preparacion(cursor, anio_destino_id, est):
         estudiantes_repository.actualizar_estudiante(
             cursor, (*_valores_globales_estudiante(est), estudiante_id)
         )
+        guardar_sisben_y_residencia_si_llegaron(cursor, estudiante_id, est)
         matricula_id = anios_lectivos_repository.insertar_matricula_en_anio(
             cursor, estudiante_id, est.curso_id, destino[0]
         )

@@ -144,6 +144,21 @@ Nota sobre `asignaciones`:
 - Si una materia tiene varios horarios activos en el mismo curso, todos esos
   horarios deben compartir el mismo `orden_boletin`.
 
+Nota sobre SISBÉN y lugar de residencia en `estudiantes` (migración
+`20261019_estudiantes_sisben_residencia.sql`, ver
+`docs/funcionalidades/SISBEN_RESIDENCIA.md`):
+
+- Ocho columnas opcionales: `sisben` (boolean; `NULL` es sin dato),
+  `sisben_grupo`, `sisben_subgrupo`, `sisben_nivel`, `barrio`, `municipio`,
+  `zona_residencia` y `punto_referencia`. `direccion` sigue igual.
+- Reglas: `chk_estudiantes_sisben_grupo`, `chk_estudiantes_sisben_subgrupo`
+  (exige el grupo y empieza por su letra), `chk_estudiantes_sisben_nivel` (1 a
+  3), `chk_estudiantes_sisben_clasificacion` (sin SISBÉN no hay grupo,
+  subgrupo ni nivel) y `chk_estudiantes_zona_residencia` (`urbana` o
+  `rural`). El rango exacto de cada subgrupo lo valida la API.
+- Se escriben con `estudiantes_repository.guardar_sisben_y_residencia`, aparte
+  de los 34 datos globales, y solo si el cuerpo trae alguno de los ocho.
+
 Nota sobre año lectivo y matrículas:
 
 - `matriculas` guarda el curso del estudiante en cada año lectivo y es la

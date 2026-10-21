@@ -4,8 +4,9 @@
 
 - Estado: **Backend de la parte A en producción desde el 2026-10-21.** A0 en
   `185d5b6`, A1 y A2 en `e36f976`. Migración aplicada en producción y Render
-  **Live**. En el frontend, A3 (contratos) está escrito el 2026-10-21, sin
-  commit; faltan A4 (la pantalla) y A5. Hasta entonces nadie ve las subnotas.
+  **Live**. En el frontend, A3 en `12c2067` y A4 (la pantalla) escrito el
+  2026-10-21, sin commit; falta A5 (la prueba en local) antes de publicar.
+  Hasta entonces nadie ve las subnotas.
 - Tipo: Función nueva de producto. No es una capa del programa de
   modularización de `docs/modularizacion/` y no debe confundirse con una.
 - Repos afectados: este repo (`sistema_escolar_api`) y `frontend-react`. Ver
@@ -301,7 +302,8 @@ calculan con datos viejos.
   documento del frontend). El servicio, las utilidades (vista previa del
   cálculo, cuándo una celda es calculada) y los ganchos, con pruebas. Detalle
   en el documento del frontend.
-- **A4 — Frontend: pantalla.** El botón en la celda, el modal con
+- **A4 — Frontend: pantalla.** **Hecho el 2026-10-21, sin commit** (ver el
+  documento del frontend). El botón en la celda, el modal con
   Anterior/Siguiente, la celda calculada y la vista de celular.
 - **A5 — Prueba en local** con el Colegio Demo (`tenant_colegio_1`), nunca con
   estudiantes de `tenant_2005`. El backend local escribe en la base real, así
@@ -780,9 +782,10 @@ sigue el mismo orden que la parte A.
 - Pendiente del usuario: borrar la rama `prueba-subnotas` en Neon, si no lo
   hizo, y devolver el `DATABASE_URL` del `.env` al endpoint `-pooler`, si lo
   cambió.
-- **A3 (frontend: contratos) escrito el 2026-10-21, sin commit.** Detalle en
-  "Avance del paso A3" del documento del frontend.
-- Siguiente acción exacta: **A4 (frontend: la pantalla)**, solo con
-  autorización explícita.
+- En el frontend: A3 en `12c2067`; **A4 (la pantalla) escrito el 2026-10-21,
+  sin commit.** Detalle en "Avance del paso A4" del documento del frontend.
+- Siguiente acción exacta: **A5, la prueba en local** con el Colegio Demo (lo
+  hace el usuario; lista en "Paso A5" del documento del frontend). Si sale
+  bien, push del frontend y la parte A queda publicada.
 - Prompt para retomar:
   `docs/funcionalidades/PROMPT_CONTINUACION_SUBNOTAS_PLANILLA.md`.

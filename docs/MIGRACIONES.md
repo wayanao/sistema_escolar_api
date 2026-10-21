@@ -1011,5 +1011,11 @@ Estado al 2026-10-21:
   dieron lo esperado, y la planilla de siempre funcionó con el backend nuevo.
   Detalle en "Avance del paso A2" de `docs/funcionalidades/SUBNOTAS_PLANILLA.md`.
 - `scripts/verify.py`: **2733 pasan, 0 fallan**; Ruff y `pip check` limpios.
-- **Sin aplicar en producción.** Va antes del push del backend, y los dos
-  seguidos (ver arriba).
+- Migración, esquema base y código en el commit `e36f976`.
+- **Aplicada en producción el 2026-10-21** por el usuario, en `tenant_colegio_1`
+  y `tenant_2005`: con el host de producción, la simulación posterior dio
+  `OMITIDA (ya aplicada)` en los dos. En seguida hizo el push (`origin/main` en
+  `e36f976`), y Render quedó Live: `POST /planilla/subnotas` pasó de `405` a
+  `401`, con `/health` en `200`. No rellenó ni cambió datos existentes.
+- A partir de aquí el archivo no se puede editar: el runner guarda su
+  checksum. Cualquier cambio posterior debe ir en una migración nueva.

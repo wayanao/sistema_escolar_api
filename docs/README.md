@@ -55,9 +55,9 @@ continuacion para retomarla en otro chat u otro LLM.
 - `funcionalidades/SUBNOTAS_PLANILLA.md`: subnotas por tipo de nota en la
   planilla del profesor (su promedio va a la celda) y, después, porcentajes
   por tipo de nota. Dos tablas nuevas; la parte B cambia la nota del periodo.
-  **A0 en `185d5b6`; backend de la parte A (A1 y A2) terminado el
-  2026-10-21, sin commit. Migración probada en una rama de Neon, sin aplicar
-  en producción.**
+  **Backend de la parte A en producción desde el 2026-10-21 (`e36f976`,
+  migración aplicada y Render Live). En el frontend, A3 escrito; faltan A4 y
+  A5.**
 
 ## Estado actual resumido
 

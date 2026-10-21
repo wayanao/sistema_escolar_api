@@ -2,9 +2,10 @@
 
 ## Control
 
-- Estado: **A0 (diseño) en `185d5b6`. A1 (backend) y A2 (rama de Neon y
-  esquema base) terminados el 2026-10-21, sin commit.** La migración se probó
-  en una rama de Neon; **en producción todavía no se ha aplicado.**
+- Estado: **Backend de la parte A en producción desde el 2026-10-21.** A0 en
+  `185d5b6`, A1 y A2 en `e36f976`. Migración aplicada en producción y Render
+  **Live**. En el frontend, A3 (contratos) está escrito el 2026-10-21, sin
+  commit; faltan A4 (la pantalla) y A5. Hasta entonces nadie ve las subnotas.
 - Tipo: Función nueva de producto. No es una capa del programa de
   modularización de `docs/modularizacion/` y no debe confundirse con una.
 - Repos afectados: este repo (`sistema_escolar_api`) y `frontend-react`. Ver
@@ -296,7 +297,8 @@ calculan con datos viejos.
   el esquema base desde esa rama y hacer un commit con la migración, el
   esquema base y el código juntos. Lista completa en "Paso A2". **Todavía sin
   push** (ver "Orden de publicación").
-- **A3 — Frontend: contratos.** El servicio, las utilidades (vista previa del
+- **A3 — Frontend: contratos.** **Hecho el 2026-10-21, sin commit** (ver el
+  documento del frontend). El servicio, las utilidades (vista previa del
   cálculo, cuándo una celda es calculada) y los ganchos, con pruebas. Detalle
   en el documento del frontend.
 - **A4 — Frontend: pantalla.** El botón en la celda, el modal con
@@ -672,7 +674,28 @@ Lo hizo el usuario en la rama `prueba-subnotas` de Neon, creada desde
     atrás.
 - **Punto 8.** `scripts/verify.py`: **2733 pasan, 0 fallan**, con
   `test_esquema_base.py` ya en verde. Ruff y `pip check` limpios.
-- Producción **no se tocó**: ni migración, ni push.
+- Producción **no se tocó** durante el A2: ni migración, ni push.
+
+## Publicación del backend, 2026-10-21
+
+Pasos 2 y 3 del orden de publicación. Los hizo el usuario; el asistente no se
+conectó a la base de producción.
+
+- **Migración en producción.** En la terminal del usuario, el host que usa el
+  runner (el de la terminal o, si no hay, el del `.env`) empieza por
+  `ep-late-smoke-aip41j6x`, que es producción. La simulación posterior dio
+  `OMITIDA (ya aplicada)` en `tenant_colegio_1` y `tenant_2005`. La salida del
+  comando que aplicó no se pegó en el chat. Aun así, el runner, en cada
+  colegio, ejecuta la migración y guarda su registro en la misma transacción
+  (`apply_migration.py`), así que el registro con el mismo checksum prueba que
+  las tablas se crearon.
+- **Push del backend** por el usuario: `origin/main` en `e36f976` (subió
+  también `185d5b6`).
+- **Render Live**, comprobado por el asistente desde fuera y sin sesión: antes
+  del push, `POST /planilla/subnotas` respondía `405` (ese camino solo
+  coincidía con `GET /planilla/{asignacion_id}`). Después respondió `401`: la
+  ruta nueva existe y pide sesión. `/health` siguió en `200`.
+- Con eso se cerró el rato sin poder crear colegios.
 
 ## Parte B — Porcentajes por tipo de nota (esbozo; se diseña en B0)
 
@@ -748,21 +771,18 @@ sigue el mismo orden que la parte A.
 
 ## Entrega para el siguiente chat
 
-- Hecho: **A0 (diseño)** en `185d5b6` (frontend `1553574`). **A1 (backend) y
-  A2 (rama de Neon y esquema base) terminados el 2026-10-21, sin commit.** Ver
-  "Avance del paso A1" y "Avance del paso A2".
+- Hecho: **A0** en `185d5b6` (frontend `1553574`). **A1 y A2** en `e36f976`.
+  **Backend en producción el 2026-10-21**: migración aplicada en los dos
+  colegios, push y Render **Live**. Ver "Publicación del backend".
 - `scripts/verify.py`: 2733 pasan, 0 fallan. Ruff y `pip check` limpios.
-- La migración está probada en la rama `prueba-subnotas`. **En producción no
-  se ha aplicado ni se ha hecho push.** El frontend no tiene código de esta
-  funcionalidad.
-- Siguiente acción exacta:
-  1. El usuario hace **un solo commit** del backend con A1 y A2: migración,
-     esquema base, código, pruebas y documentos. **Sin push todavía.**
-  2. Orden de publicación, pasos 2 y 3, **seguidos**: aplicar la migración en
-     producción (`--dry-run`, aplicar y `--dry-run`, con el `DATABASE_URL`
-     directo de producción) y, en seguida, push del backend esperando a que
-     Render quede **Live**. Entre uno y otro no se crean colegios.
-  3. Después, **A3 (frontend)**, solo con autorización explícita.
-- La rama `prueba-subnotas` ya se puede borrar en Neon.
+- El frontend no tiene código de esta funcionalidad. Hasta que lo tenga, nadie
+  ve ni usa las subnotas, y la planilla funciona igual que siempre.
+- Pendiente del usuario: borrar la rama `prueba-subnotas` en Neon, si no lo
+  hizo, y devolver el `DATABASE_URL` del `.env` al endpoint `-pooler`, si lo
+  cambió.
+- **A3 (frontend: contratos) escrito el 2026-10-21, sin commit.** Detalle en
+  "Avance del paso A3" del documento del frontend.
+- Siguiente acción exacta: **A4 (frontend: la pantalla)**, solo con
+  autorización explícita.
 - Prompt para retomar:
   `docs/funcionalidades/PROMPT_CONTINUACION_SUBNOTAS_PLANILLA.md`.

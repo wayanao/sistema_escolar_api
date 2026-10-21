@@ -15,8 +15,8 @@ A (subnotas). La parte B (porcentajes por tipo de nota) no ha empezado.
 
 - Migración `20261021_planilla_subnotas.sql`: dos tablas nuevas,
   `planilla_subnotas` y `planilla_subnotas_valores`. Probada en una rama de
-  Neon y con el esquema base regenerado (paso A2). **Sin aplicar todavía en
-  producción.**
+  Neon y con el esquema base regenerado (paso A2). **Aplicada en producción
+  y publicada el 2026-10-21** (commit `e36f976`, Render Live).
 - Cuatro rutas nuevas en `app/routes/subnotas_planilla.py`: crear, renombrar
   y borrar una subnota, y guardar las calificaciones de un estudiante en un
   tipo de nota. El servidor calcula la celda (promedio, dos decimales mitad

@@ -57,6 +57,7 @@ from app.routes import (
     prestamos,
     profesores,
     reportes,
+    subnotas_planilla,
     super_admin,
     tenant,
     tipos_pagos,
@@ -214,6 +215,7 @@ app.include_router(profesores.router)
 app.include_router(asignaciones.router)
 app.include_router(notas.router)
 app.include_router(planilla.router)
+app.include_router(subnotas_planilla.router)
 app.include_router(asistencia.router)
 app.include_router(auth.router)
 app.include_router(materias.router)

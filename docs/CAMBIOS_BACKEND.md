@@ -1,10 +1,56 @@
 # Cambios Backend
 
-Ultima revision documental: 2026-10-19.
+Ultima revision documental: 2026-10-21.
 
 ## Proposito
 
 Bitacora de cambios documentales y tecnicos observables del backend.
+
+## 2026-10-21 - Subnotas de la planilla, paso A1
+
+Primer paso con código de `docs/funcionalidades/SUBNOTAS_PLANILLA.md`, parte
+A (subnotas). La parte B (porcentajes por tipo de nota) no ha empezado.
+
+### Qué cambia
+
+- Migración `20261021_planilla_subnotas.sql`: dos tablas nuevas,
+  `planilla_subnotas` y `planilla_subnotas_valores`. Probada en una rama de
+  Neon y con el esquema base regenerado (paso A2). **Sin aplicar todavía en
+  producción.**
+- Cuatro rutas nuevas en `app/routes/subnotas_planilla.py`: crear, renombrar
+  y borrar una subnota, y guardar las calificaciones de un estudiante en un
+  tipo de nota. El servidor calcula la celda (promedio, dos decimales mitad
+  hacia arriba; en preescolar, la carita más cercana) y la guarda en
+  `notas_detalle` en la misma transacción.
+- `GET /planilla-excel/...?con_subnotas=true` agrega las subnotas. Sin el
+  parámetro, la respuesta y las consultas son las de siempre.
+- `POST /planilla/nota` responde `409` si la celda tiene subnotas calificadas,
+  y `DELETE /planilla/tipo` borra también las subnotas del tipo.
+- `app/core/valoraciones_desarrollo.py`: la escala de caritas, copia de la del
+  frontend con prueba gemela. `app/core/subnotas_planilla.py`: el cálculo.
+- Contrato en `docs/API_ENDPOINTS.md`, sección "Planilla".
+
+### Lo que cuesta (medido con pruebas)
+
+| Ruta | Antes (admin / profesor) | Después |
+|---|---|---|
+| `GET /planilla-excel` sin parámetro | 2 / 3 consultas | igual |
+| `GET /planilla-excel?con_subnotas=true` | — | 3 / 4 |
+| `POST /planilla/nota` | 6 / 7 | 7 / 8 |
+| `DELETE /planilla/tipo` | 3 / 4 | 4 / 5 |
+
+Las conexiones no cambian en ninguna (1 el admin, 2 el profesor). Las rutas
+nuevas usan **una sola conexión**, también para el profesor, porque su
+permiso se comprueba con el cursor ya abierto. Su número de consultas no
+crece con los estudiantes del curso.
+
+### Por qué así
+
+- Las subnotas no van en `notas_detalle`: el boletín, el reporte parcial, los
+  tableros y la ficha promedian todas sus filas y cambiarían sin aviso.
+- El servidor calcula la celda: si la calculara la pantalla, un navegador
+  cerrado a mitad podría dejar la celda distinta de sus subnotas.
+- La migración se aplica antes del push (ver `docs/MIGRACIONES.md`).
 
 ## 2026-10-19 - SISBÉN y lugar de residencia, paso S1
 

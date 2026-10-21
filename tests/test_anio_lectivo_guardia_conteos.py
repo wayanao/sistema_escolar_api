@@ -231,7 +231,8 @@ RUTAS = {
     "POST /planilla/nota": (
         "POST", "/planilla/nota",
         {"estudiante_id": 3, "asignacion_id": 9, "nota": 4.0, "descripcion": "Taller", "periodo": 1},
-        None, [],
+        # Subnotas, paso A1: la celda no tiene subnotas calificadas.
+        None, [("FROM planilla_subnotas s", None, [])],
     ),
     "DELETE /planilla/tipo": (
         "DELETE", "/planilla/tipo?asignacion_id=9&descripcion=Taller&periodo=1", None, None, [],
@@ -420,6 +421,12 @@ CON_GUARDIA = {
     "DELETE /estudiantes/{id}/valores-pago-personalizados/{concepto}",
 }
 
+# Subnotas de la planilla, paso A1 (docs/funcionalidades/SUBNOTAS_PLANILLA.md),
+# aceptado por el usuario el 2026-10-21: una consulta mas en la misma conexion
+# y ninguna conexion nueva. Guardar a mano comprueba si la celda tiene subnotas
+# calificadas (el 409), y borrar un tipo borra tambien sus subnotas.
+SUBNOTAS = {"POST /planilla/nota": 1, "DELETE /planilla/tipo": 1}
+
 USUARIOS = {"profesor": PROFESOR, "admin": ADMIN}
 
 
@@ -434,5 +441,5 @@ def test_la_guardia_suma_una_consulta_y_ninguna_conexion(con_base, ruta, rol):
     extra = 1 if ruta in CON_GUARDIA else 0
     assert status in (200, 201)
     assert base.conexiones == conexiones
-    assert len(base.consultas) == consultas + extra
+    assert len(base.consultas) == consultas + extra + SUBNOTAS.get(ruta, 0)
     assert sum(SQL_GUARDIA in c for c in base.consultas) == extra

@@ -399,6 +399,9 @@ def peticion(usuario, metodo, ruta, cuerpo=None, formulario=None):
 
 
 IMAGEN = [("SELECT imagen1, estado_revision", ("planes/x.png", "pendiente"), [])]
+# Subnotas, paso A1: la comprobacion del 409 de `POST /planilla/nota` no
+# encuentra subnotas calificadas (sin esto, el comodin diria que si).
+SIN_SUBNOTAS_CALIFICADAS = ("FROM planilla_subnotas s", None, [])
 
 # Respuestas puntuales para las rutas de solo admin (paso 3.7b).
 ASIGNACION = {
@@ -441,11 +444,32 @@ RUTAS = {
     "POST /planilla/nota": (
         [PROFESOR, ADMIN], "POST", "/planilla/nota",
         {"estudiante_id": 3, "asignacion_id": 9, "nota": 4.0, "descripcion": "Taller", "periodo": 1},
-        None, [],
+        # Subnotas, paso A1: la celda no tiene subnotas, se escribe a mano.
+        None, [SIN_SUBNOTAS_CALIFICADAS],
     ),
     "DELETE /planilla/tipo": (
         [PROFESOR, ADMIN], "DELETE", "/planilla/tipo?asignacion_id=9&descripcion=Taller&periodo=1",
         None, None, [],
+    ),
+    # --- Subnotas de la planilla, paso A1: las cuatro escrituras nuevas ---
+    "POST /planilla/subnotas": (
+        [PROFESOR, ADMIN], "POST", "/planilla/subnotas",
+        {"asignacion_id": 9, "periodo": 1, "tipo_nota": "Taller", "nombre": "Quiz"},
+        None, [("COUNT(*) FILTER", (0, 0), [])],
+    ),
+    "PUT /planilla/subnotas/{id}": (
+        [PROFESOR, ADMIN], "PUT", "/planilla/subnotas/5",
+        {"asignacion_id": 9, "nombre": "Quiz 2"}, None, [],
+    ),
+    "DELETE /planilla/subnotas/{id}": (
+        [PROFESOR, ADMIN], "DELETE", "/planilla/subnotas/5?asignacion_id=9", None, None,
+        [("SELECT periodo, tipo_nota FROM planilla_subnotas", (1, "Taller"), [])],
+    ),
+    "POST /planilla/subnotas/valores": (
+        [PROFESOR, ADMIN], "POST", "/planilla/subnotas/valores",
+        {"asignacion_id": 9, "periodo": 1, "tipo_nota": "Taller", "estudiante_id": 3,
+         "valores": {"5": 4.0}},
+        None, [("FOR UPDATE OF s", Comodin(), [(5, None, None)])],
     ),
     "POST /asistencia": (
         [PROFESOR, ADMIN], "POST", "/asistencia",

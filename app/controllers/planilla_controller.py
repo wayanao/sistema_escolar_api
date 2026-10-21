@@ -1,12 +1,20 @@
 from app.core.nivel_academico import resolver_tipo_evaluacion
 from app.database import get_cursor
-from app.repositories import planilla_repository
+from app.repositories import planilla_repository, subnotas_planilla_repository
 from app.services.anio_lectivo import exigir_asignacion_editable
 from app.services.asignacion_academica import (
     resolver_asignacion_academica_id_cursor,
     resolver_nivel_curso_cursor,
 )
 from app.services.planilla_service import validar_estudiante_asignacion
+
+
+NOTA_CALCULADA = "Esta nota se calcula con sus subnotas. Cámbiala desde las subnotas."
+
+
+class NotaCalculadaError(Exception):
+    """La celda tiene subnotas calificadas y no se escribe a mano (P1 de
+    docs/funcionalidades/SUBNOTAS_PLANILLA.md). La ruta lo traduce a 409."""
 
 
 # 🎯 Registrar nota desde planilla
@@ -33,6 +41,18 @@ def registrar_nota_planilla_controller(data, *, usuario):
         )
         nota = data.nota if tipo_evaluacion == "numerica" else None
         valoracion = getattr(data, "valoracion", None) if tipo_evaluacion == "desarrollo" else None
+
+        # Subnotas, paso A1: una celda con subnotas calificadas es su promedio
+        # y no se escribe a mano. Una consulta mas en la misma conexion; sin
+        # subnotas, lo de abajo es exactamente lo de siempre.
+        if subnotas_planilla_repository.hay_subnotas_calificadas(
+            cursor,
+            asignacion_id,
+            data.periodo,
+            data.descripcion,
+            data.estudiante_id,
+        ):
+            raise NotaCalculadaError(NOTA_CALCULADA)
 
         # 🔥 Evitar duplicados: Primero eliminamos si ya existe la nota para ese tipo, luego insertamos
         planilla_repository.borrar_nota_existente(
@@ -69,6 +89,14 @@ def eliminar_tipo_controller(asignacion_id, descripcion, periodo: int = 1, *, us
         asignacion_id = resolver_asignacion_academica_id_cursor(cursor, asignacion_id)
 
         planilla_repository.eliminar_tipo(
+            cursor,
+            asignacion_id,
+            periodo,
+            descripcion,
+        )
+        # Subnotas, paso A1 (P6): el tipo se lleva sus subnotas en la misma
+        # transaccion. Si no, reaparecerian al crear otro con el mismo nombre.
+        subnotas_planilla_repository.eliminar_subnotas_del_tipo(
             cursor,
             asignacion_id,
             periodo,

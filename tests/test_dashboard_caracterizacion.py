@@ -256,6 +256,7 @@ def test_el_dominio_tiene_su_repositorio():
         "planilla_repository",
         "profesores_repository",
         "reportes_repository",
+        "subnotas_planilla_repository",
         "super_admin_repository",
         "ventas_repository",
     }

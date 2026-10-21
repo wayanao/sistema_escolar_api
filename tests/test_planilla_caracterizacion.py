@@ -178,7 +178,10 @@ def instrumentado(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_la_frontera_ejecutable_propia_son_seis_archivos():
+def test_la_frontera_ejecutable_propia_son_once_archivos():
+    """Eran seis. Las subnotas (paso A1, docs/funcionalidades/SUBNOTAS_PLANILLA.md)
+    suman cinco propios -cálculo, controlador, repositorio, ruta y esquema-, en
+    vez de crecer dentro de los seis de siempre."""
     archivos = {
         archivo.relative_to(RAIZ).as_posix()
         for archivo in (RAIZ / "app").rglob("*planilla*.py")
@@ -191,6 +194,11 @@ def test_la_frontera_ejecutable_propia_son_seis_archivos():
         "app/routes/planilla.py",
         "app/schemas/planilla.py",
         "app/services/planilla_service.py",
+        "app/controllers/subnotas_planilla_controller.py",
+        "app/core/subnotas_planilla.py",
+        "app/repositories/subnotas_planilla_repository.py",
+        "app/routes/subnotas_planilla.py",
+        "app/schemas/subnotas_planilla.py",
     }
 
 
@@ -266,6 +274,7 @@ def test_el_repositorio_de_planilla_es_el_duodecimo():
         "planilla_repository",
         "profesores_repository",
         "reportes_repository",
+        "subnotas_planilla_repository",
         "super_admin_repository",
         "ventas_repository",
     }
@@ -449,14 +458,19 @@ def test_post_como_admin_cuesta_cinco_consultas_y_una_conexion(
     conexion: eran dos, ahora es una. Las cinco consultas son las mismas.
 
     Año lectivo, paso 3.7: la guardia de escritura suma una sexta, la primera,
-    en la misma conexion."""
-    registro = instrumentado(filas=[(11,), (77,), (None,), (901,)])
+    en la misma conexion.
+
+    Subnotas, paso A1: la comprobacion de subnotas calificadas suma una
+    septima, antes de borrar e insertar, tambien en la misma conexion. Aqui no
+    encuentra ninguna (`None`) y el guardado sigue como siempre."""
+    registro = instrumentado(filas=[(11,), (77,), (None,), None, (901,)])
 
     respuesta = ruta_planilla.registrar_nota(DATOS, ADMIN)
 
     assert registro.cursores == [True]
     assert registro.conexiones_permiso == 0
-    assert len(registro.consultas) == 6
+    assert len(registro.consultas) == 7
+    assert "FROM planilla_subnotas s" in registro.consultas[4][0]
     assert SQL_GUARDIA in registro.consultas[0][0]
     assert len(registro.cursores) + registro.conexiones_permiso == 1
     assert respuesta == {
@@ -470,14 +484,15 @@ def test_post_como_profesor_cuesta_seis_consultas_y_dos_conexiones(
 ):
     """La segunda conexion es la del permiso de la asignacion, que sigue
     comprobandose en la ruta como en las otras dos entradas del router."""
-    registro = instrumentado(filas=[(11,), (77,), (None,), (901,)])
+    registro = instrumentado(filas=[(11,), (77,), (None,), None, (901,)])
 
     ruta_planilla.registrar_nota(DATOS, PROFESOR)
 
     assert registro.cursores == [True]
     assert registro.conexiones_permiso == 1
-    # Cinco del guardado mas la guardia del año lectivo (paso 3.7).
-    assert len(registro.consultas) == 6
+    # Cinco del guardado, la guardia del año lectivo (paso 3.7) y la
+    # comprobacion de subnotas (subnotas, paso A1).
+    assert len(registro.consultas) == 7
     assert len(registro.consultas_permiso) == 1
     assert len(registro.cursores) + registro.conexiones_permiso == 2
 
@@ -496,10 +511,11 @@ def test_post_rechazado_abre_una_conexion_y_responde_error_con_200_logico(
 
 
 # Año lectivo, paso 3.7: la guardia suma una consulta y ninguna conexion
-# (antes 2 y 3).
+# (antes 2 y 3). Subnotas, paso A1: borrar las subnotas del tipo suma otra en
+# la misma transaccion (antes 3 y 4).
 @pytest.mark.parametrize(
     "usuario,consultas,conexiones",
-    [(ADMIN, 3, 1), (PROFESOR, 4, 2)],
+    [(ADMIN, 4, 1), (PROFESOR, 5, 2)],
 )
 def test_delete_tiene_coste_constante_y_confirma_una_transaccion(
     instrumentado,

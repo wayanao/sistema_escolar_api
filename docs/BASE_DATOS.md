@@ -1,6 +1,6 @@
 # Base de Datos
 
-Ultima revision documental: 2026-09-15.
+Ultima revision documental: 2026-10-21.
 
 ## Motor
 
@@ -97,6 +97,8 @@ El codigo consulta o modifica tablas como:
 - `asignaciones`
 - `notas`
 - `notas_detalle`
+- `planilla_subnotas`
+- `planilla_subnotas_valores`
 - `boletin_cabecera`
 - `boletin_detalles`
 - `pagos`
@@ -158,6 +160,26 @@ Nota sobre SISBÉN y lugar de residencia en `estudiantes` (migración
   `rural`). El rango exacto de cada subgrupo lo valida la API.
 - Se escriben con `estudiantes_repository.guardar_sisben_y_residencia`, aparte
   de los 34 datos globales, y solo si el cuerpo trae alguno de los ocho.
+
+Nota sobre las subnotas de la planilla (migración
+`20261021_planilla_subnotas.sql`, ver
+`docs/funcionalidades/SUBNOTAS_PLANILLA.md`):
+
+- `planilla_subnotas`: una fila por subnota de un tipo de nota ("Taller 1" de
+  "Cognitivo"), la misma para todo el curso. `asignacion_id` (la académica ya
+  resuelta, `ON DELETE CASCADE`), `periodo`, `tipo_nota` (el mismo texto de
+  `notas_detalle.descripcion`, sin clave foránea porque los tipos no tienen
+  tabla), `nombre` (60) y `creada_en`, que da el orden. Índice único
+  `idx_planilla_subnotas_nombre_unico` por asignación, periodo, tipo y nombre,
+  sin distinguir mayúsculas ni espacios en los extremos.
+- `planilla_subnotas_valores`: una calificación por estudiante y subnota
+  (`UNIQUE (subnota_id, estudiante_id)`). Es una `nota` de 1 a 5 o una
+  `valoracion` (carita), nunca las dos ni ninguna
+  (`chk_planilla_subnotas_valores_un_solo_valor`). Borra en cascada con su
+  subnota, no con el estudiante, igual que `notas_detalle`.
+- **Las subnotas no van en `notas_detalle`**, a propósito: el boletín, el
+  reporte parcial, los tableros y la ficha promedian todas sus filas. La celda
+  (el promedio) sí se sigue guardando allí, y solo la escribe el servidor.
 
 Nota sobre año lectivo y matrículas:
 

@@ -1,6 +1,6 @@
 # Migraciones
 
-Ultima revision documental: 2026-10-19.
+Ultima revision documental: 2026-10-21.
 
 ## Carpeta de migraciones
 
@@ -55,6 +55,7 @@ Archivos actuales:
 - `20261013_admisiones.sql`
 - `20261014_admisiones_cuestionario.sql`
 - `20261019_estudiantes_sisben_residencia.sql`
+- `20261021_planilla_subnotas.sql`
 - `README.md`
 
 Migraciones globales `public`:
@@ -963,3 +964,52 @@ Estado al 2026-10-19:
   sin pegar la salida del runner). No rellenó ni cambió datos existentes.
 - A partir de aquí el archivo no se puede editar: el runner guarda su
   checksum. Cualquier cambio posterior debe ir en una migración nueva.
+
+## Migracion 20261021_planilla_subnotas.sql
+
+Objetivo:
+
+- Subnotas de la planilla, paso A1: que cada tipo de nota tenga subnotas,
+  las mismas para todo el curso, y que la celda sea su promedio.
+
+Tablas creadas (ninguna existente se modifica):
+
+- `planilla_subnotas`: `asignacion_id` con `ON DELETE CASCADE`, `periodo`,
+  `tipo_nota VARCHAR(100)`, `nombre VARCHAR(60)` y `creada_en`. Dos `CHECK` de
+  texto no vacío.
+- `planilla_subnotas_valores`: `subnota_id` con `ON DELETE CASCADE`,
+  `estudiante_id` sin cascada, `nota NUMERIC(3,2)` de 1 a 5 o `valoracion
+  VARCHAR(30)`, nunca las dos ni ninguna. `UNIQUE (subnota_id,
+  estudiante_id)`.
+
+Índices: `idx_planilla_subnotas_nombre_unico` (único) y el de la `UNIQUE` de
+las calificaciones. Ninguno más: el único empieza por `(asignacion_id,
+periodo)` y sirve también para leer la planilla. `scripts/apply_tenant_indexes.py`
+no se toca.
+
+No rellena, actualiza ni borra datos existentes. Es reejecutable.
+
+**Orden de publicación (al revés que SISBÉN, igual que Listas de
+seguimiento):** aplicar en producción, después el push del backend y Render
+**Live**, y al final el frontend. El backend nuevo usa estas tablas al guardar
+una nota a mano (`POST /planilla/nota`) y al borrar un tipo (`DELETE
+/planilla/tipo`); si saliera antes, esas dos rutas fallarían para todos los
+profesores. **Entre aplicar y el push no se crean colegios nuevos**: nacerían
+del esquema base publicado, todavía sin las tablas, pero con esta migración
+marcada en su historial. Detalle en
+`docs/funcionalidades/SUBNOTAS_PLANILLA.md`.
+
+Estado al 2026-10-21:
+
+- SQL y 6 pruebas de texto (`tests/test_migracion_planilla_subnotas.py`).
+- El 2026-10-21 el usuario la aplicó en la rama `prueba-subnotas` de Neon
+  (registrada en `tenant_colegio_1` y `tenant_2005`) y regeneró desde allí el
+  esquema base: 38 tablas, 1 función y 1 disparador. El diff agregó solo la
+  migración a la cabecera (46), las dos tablas con sus reglas, el índice único
+  y las tres claves foráneas.
+- En la rama, 16 casos (reglas de las tablas y las sentencias que usa la API)
+  dieron lo esperado, y la planilla de siempre funcionó con el backend nuevo.
+  Detalle en "Avance del paso A2" de `docs/funcionalidades/SUBNOTAS_PLANILLA.md`.
+- `scripts/verify.py`: **2733 pasan, 0 fallan**; Ruff y `pip check` limpios.
+- **Sin aplicar en producción.** Va antes del push del backend, y los dos
+  seguidos (ver arriba).

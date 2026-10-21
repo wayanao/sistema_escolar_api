@@ -1,6 +1,6 @@
 # API Endpoints
 
-Ultima revision documental: 2026-10-13.
+Ultima revision documental: 2026-10-21.
 
 ## Routers
 
@@ -918,6 +918,57 @@ y actualiza todos los horarios activos de esa materia en el curso.
 - `POST /planilla/nota`
 - `GET /planilla-excel/{asignacion_id}/{periodo}`
 - `DELETE /planilla/tipo`
+- `POST /planilla/subnotas`
+- `PUT /planilla/subnotas/{subnota_id}`
+- `DELETE /planilla/subnotas/{subnota_id}?asignacion_id=`
+- `POST /planilla/subnotas/valores`
+
+**Subnotas** (desde el 2026-10-21, paso A1 de
+`docs/funcionalidades/SUBNOTAS_PLANILLA.md`). Cada tipo de nota puede tener
+subnotas, las mismas para todo el curso. La celda del estudiante es su
+promedio y la calcula el servidor. Las cuatro rutas nuevas comprueban el
+permiso de la asignación (`403`), el año lectivo (`409` o `403`) y, al
+calificar, que el estudiante sea del curso (`403`), todo en una sola conexión.
+Sus errores llegan como `{"detail": "<mensaje en español>"}`.
+
+- `GET /planilla-excel/...`: **sin parámetros nuevos, la respuesta es la de
+  siempre** (Asistencia usa esta ruta). Con `?con_subnotas=true` agrega
+  `subnotas` (`{"<tipo>": [{"id": 7, "nombre": "Taller 1"}]}`, en orden de
+  creación, con el nombre exacto de la columna) y, en cada estudiante,
+  `subnotas` (`{"<subnota_id>": 4.0}` o el código de la carita). Una consulta
+  más, en la misma conexión.
+- `POST /planilla/subnotas` con `{asignacion_id, periodo, tipo_nota, nombre}`
+  (nombre de 1 a 60, recortado): `201` con `{id, tipo_nota, nombre}`. `404` si
+  el tipo no está en la planilla, `409` si el nombre ya existe en ese tipo
+  (sin distinguir mayúsculas), `422` si el tipo ya tiene 20 subnotas o es una
+  columna interna (`mas_alto`, `Desde React`).
+- `PUT /planilla/subnotas/{subnota_id}` con `{asignacion_id, nombre}`:
+  `{id, nombre}`. No cambia ninguna nota. `404` si la subnota no es de esa
+  clase, `409` si el nombre ya existe.
+- `DELETE /planilla/subnotas/{subnota_id}?asignacion_id=`: borra la subnota y
+  sus calificaciones, y recalcula la celda de quien la tenía calificada.
+  Devuelve `{mensaje, calificaciones_borradas, celdas: {"<estudiante_id>":
+  {nota, valoracion}}}`. Una celda sin nada que promediar queda vacía.
+- `POST /planilla/subnotas/valores` con `{asignacion_id, periodo, tipo_nota,
+  estudiante_id, tipo_evaluacion, valores: {"<subnota_id>": valor | null}}`:
+  **solo toca las subnotas que llegan** (`null` la vacía). Recalcula y guarda
+  la celda con las dos sentencias del guardado a mano, y devuelve
+  `{estudiante_id, tipo_nota, tipo_evaluacion, nota, valoracion, subnotas}`.
+  El nivel del curso manda sobre `tipo_evaluacion`: preescolar caritas
+  (`destacado`, `logrado`, `proceso`, `apoyo`) y primaria números de 1 a 5.
+  `422` si una subnota no es de ese tipo o una calificación no sirve.
+- La celda es el promedio de las subnotas calificadas: las vacías no cuentan.
+  Se redondea a dos decimales, mitad hacia arriba (4.125 → 4.13). En
+  preescolar es la carita más cercana al promedio, con empate hacia la más
+  alta.
+
+Dos cambios en las rutas que ya existían:
+
+- `POST /planilla/nota` responde **`409`** con "Esta nota se calcula con sus
+  subnotas. Cámbiala desde las subnotas." si el estudiante tiene subnotas
+  calificadas en ese tipo. Sin subnotas, igual que siempre. Una consulta más.
+- `DELETE /planilla/tipo` borra también las subnotas del tipo, en la misma
+  transacción. Misma respuesta. Una consulta más.
 
 ## Asistencia
 

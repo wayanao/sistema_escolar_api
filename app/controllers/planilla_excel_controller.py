@@ -1,8 +1,16 @@
+from app.core.subnotas_planilla import armar_subnotas_de_planilla
 from app.database import get_cursor
-from app.repositories import planilla_repository
+from app.repositories import planilla_repository, subnotas_planilla_repository
 from app.services.asignacion_academica import resolver_asignacion_academica_id_cursor
 
-def planilla_excel_controller(asignacion_id, periodo=1):
+def planilla_excel_controller(asignacion_id, periodo=1, *, con_subnotas=False):
+    """Columnas y filas de la planilla.
+
+    Sin `con_subnotas` es exactamente la respuesta de siempre, con las mismas
+    dos consultas: Asistencia usa esta lectura solo para la lista de
+    estudiantes. Con `con_subnotas` agrega una consulta en la misma conexion y
+    las claves `subnotas` (ver docs/funcionalidades/SUBNOTAS_PLANILLA.md).
+    """
 
     with get_cursor() as cursor:
         asignacion_id = resolver_asignacion_academica_id_cursor(cursor, asignacion_id)
@@ -11,6 +19,13 @@ def planilla_excel_controller(asignacion_id, periodo=1):
             cursor,
             periodo,
             asignacion_id,
+        )
+        filas_subnotas = (
+            subnotas_planilla_repository.leer_subnotas_de_planilla(
+                cursor, asignacion_id, periodo
+            )
+            if con_subnotas
+            else None
         )
 
     estudiantes = {}
@@ -66,7 +81,17 @@ def planilla_excel_controller(asignacion_id, periodo=1):
         columnas, key=lambda c: primer_id_por_columna.get(c, float("inf"))
     )
 
-    return {
+    respuesta = {
         "columnas": [c.strip() for c in columnas_por_orden_de_creacion],
         "data": sorted(list(estudiantes.values()), key=lambda x: (x.get("apellido", "").lower(), x.get("nombre", "").lower()))
     }
+
+    if filas_subnotas is not None:
+        por_tipo, por_estudiante = armar_subnotas_de_planilla(
+            respuesta["columnas"], filas_subnotas
+        )
+        respuesta["subnotas"] = por_tipo
+        for est in respuesta["data"]:
+            est["subnotas"] = por_estudiante.get(est["estudiante_id"], {})
+
+    return respuesta

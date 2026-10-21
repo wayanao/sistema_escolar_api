@@ -36,6 +36,20 @@ def guardia_del_anio(monkeypatch):
     return llamadas
 
 
+@pytest.fixture(autouse=True)
+def sin_subnotas(monkeypatch):
+    """Subnotas, paso A1: la comprobacion del 409 se dobla aqui como la guardia
+    del año, y responde "sin subnotas", que es el caso de estas pruebas. Sus
+    pruebas viven en `test_subnotas_planilla.py`."""
+    llamadas = []
+    monkeypatch.setattr(
+        planilla_controller.subnotas_planilla_repository,
+        "hay_subnotas_calificadas",
+        lambda _cursor, *argumentos: llamadas.append(argumentos) or False,
+    )
+    return llamadas
+
+
 class CursorFalso:
     def __init__(self, fila=None, filas=()):
         self.fila = fila

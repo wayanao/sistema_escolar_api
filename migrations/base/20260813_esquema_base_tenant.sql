@@ -1,6 +1,6 @@
 -- Esquema base de un tenant. ARCHIVO GENERADO, no editar a mano.
 --
--- Extraido de tenant_colegio_1 el 2026-10-20 con
+-- Extraido de tenant_colegio_1 el 2026-10-21 con
 -- scripts/generar_esquema_base.py. Para rehacerlo, aplica antes la
 -- migracion nueva a ese schema y vuelve a ejecutar el script.
 --
@@ -11,7 +11,7 @@
 -- No usar apply_migration.py con este archivo: es para dar de alta un
 -- tenant nuevo, no para los existentes, que ya tienen estas tablas.
 --
--- MIGRACIONES INCORPORADAS (45):
+-- MIGRACIONES INCORPORADAS (46):
 --   20260429_pagos_tipo_pago_largo.sql
 --   20260429_plan_de_clases_reportes.sql
 --   20260509_branding_plantillas_impresion.sql
@@ -57,6 +57,7 @@
 --   20261013_admisiones.sql
 --   20261014_admisiones_cuestionario.sql
 --   20261019_estudiantes_sisben_residencia.sql
+--   20261021_planilla_subnotas.sql
 -- FIN MIGRACIONES INCORPORADAS
 
 CREATE TABLE IF NOT EXISTS admisiones (
@@ -488,6 +489,31 @@ CREATE TABLE IF NOT EXISTS planeador_anual (
     CONSTRAINT planeador_anual_asignacion_id_periodo_slot_key UNIQUE (asignacion_id, periodo, slot)
 );
 
+CREATE TABLE IF NOT EXISTS planilla_subnotas (
+    id SERIAL,
+    asignacion_id integer NOT NULL,
+    periodo integer NOT NULL,
+    tipo_nota character varying(100) NOT NULL,
+    nombre character varying(60) NOT NULL,
+    creada_en timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT chk_planilla_subnotas_nombre_no_vacio CHECK ((char_length(TRIM(BOTH FROM nombre)) > 0)),
+    CONSTRAINT chk_planilla_subnotas_tipo_nota_no_vacio CHECK ((char_length(TRIM(BOTH FROM tipo_nota)) > 0)),
+    CONSTRAINT planilla_subnotas_pkey PRIMARY KEY (id)
+);
+
+CREATE TABLE IF NOT EXISTS planilla_subnotas_valores (
+    id SERIAL,
+    subnota_id integer NOT NULL,
+    estudiante_id integer NOT NULL,
+    nota numeric(3,2),
+    valoracion character varying(30),
+    actualizada_en timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT chk_planilla_subnotas_valores_nota_rango CHECK (((nota IS NULL) OR ((nota >= (1)::numeric) AND (nota <= (5)::numeric)))),
+    CONSTRAINT chk_planilla_subnotas_valores_un_solo_valor CHECK (((nota IS NULL) <> (valoracion IS NULL))),
+    CONSTRAINT planilla_subnotas_valores_pkey PRIMARY KEY (id),
+    CONSTRAINT planilla_subnotas_valores_subnota_id_estudiante_id_key UNIQUE (subnota_id, estudiante_id)
+);
+
 CREATE TABLE IF NOT EXISTS plantilla_impresion (
     id SERIAL,
     tipo character varying(50) NOT NULL,
@@ -676,6 +702,7 @@ CREATE INDEX IF NOT EXISTS idx_plan_notificaciones_admin_pendientes ON plan_de_c
 CREATE INDEX IF NOT EXISTS idx_plan_notificaciones_admin_plan ON plan_de_clases_notificaciones_admin USING btree (plan_id, plan_version DESC);
 CREATE INDEX IF NOT EXISTS idx_plan_observaciones_plan ON plan_de_clases_observaciones USING btree (plan_id, creada_at DESC);
 CREATE INDEX IF NOT EXISTS idx_plan_observaciones_profesor_pendientes ON plan_de_clases_observaciones USING btree (plan_id, creada_at DESC) WHERE (vista_por_profesor_at IS NULL);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_planilla_subnotas_nombre_unico ON planilla_subnotas USING btree (asignacion_id, periodo, lower(TRIM(BOTH FROM tipo_nota)), lower(TRIM(BOTH FROM nombre)));
 CREATE UNIQUE INDEX IF NOT EXISTS idx_plantilla_activa_unica ON plantilla_impresion USING btree (tipo) WHERE (activa = true);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_plantilla_codigo_unico ON plantilla_impresion USING btree (codigo) WHERE (codigo IS NOT NULL);
 CREATE INDEX IF NOT EXISTS idx_plantilla_tipo ON plantilla_impresion USING btree (tipo);
@@ -742,6 +769,9 @@ ALTER TABLE plan_de_clases_notificaciones_admin ADD CONSTRAINT plan_de_clases_no
 ALTER TABLE plan_de_clases_observaciones ADD CONSTRAINT plan_de_clases_observaciones_admin_id_fkey FOREIGN KEY (admin_id) REFERENCES usuarios(id) ON DELETE SET NULL;
 ALTER TABLE plan_de_clases_observaciones ADD CONSTRAINT plan_de_clases_observaciones_plan_id_fkey FOREIGN KEY (plan_id) REFERENCES plan_de_clases(id) ON DELETE CASCADE;
 ALTER TABLE planeador_anual ADD CONSTRAINT planeador_anual_asignacion_id_fkey FOREIGN KEY (asignacion_id) REFERENCES asignaciones(id) ON DELETE CASCADE;
+ALTER TABLE planilla_subnotas ADD CONSTRAINT planilla_subnotas_asignacion_id_fkey FOREIGN KEY (asignacion_id) REFERENCES asignaciones(id) ON DELETE CASCADE;
+ALTER TABLE planilla_subnotas_valores ADD CONSTRAINT planilla_subnotas_valores_estudiante_id_fkey FOREIGN KEY (estudiante_id) REFERENCES estudiantes(id);
+ALTER TABLE planilla_subnotas_valores ADD CONSTRAINT planilla_subnotas_valores_subnota_id_fkey FOREIGN KEY (subnota_id) REFERENCES planilla_subnotas(id) ON DELETE CASCADE;
 ALTER TABLE prestamos ADD CONSTRAINT prestamos_profesor_id_fkey FOREIGN KEY (profesor_id) REFERENCES profesor(id) ON DELETE CASCADE;
 ALTER TABLE tipos_de_pagos ADD CONSTRAINT tipos_de_pagos_anio_lectivo_id_fkey FOREIGN KEY (anio_lectivo_id) REFERENCES anios_lectivos(id);
 ALTER TABLE tipos_de_pagos ADD CONSTRAINT tipos_de_pagos_tipo_pago_origen_id_fkey FOREIGN KEY (tipo_pago_origen_id) REFERENCES tipos_de_pagos(id);

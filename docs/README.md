@@ -52,6 +52,10 @@ continuacion para retomarla en otro chat u otro LLM.
   referencia) en la ficha del estudiante. Migración en `estudiantes`.
   **Backend completo y migración en producción (2026-10-20); falta el
   frontend (S3).**
+- `funcionalidades/SUBNOTAS_PLANILLA.md`: subnotas por tipo de nota en la
+  planilla del profesor (su promedio va a la celda) y, después, porcentajes
+  por tipo de nota. Dos tablas nuevas; la parte B cambia la nota del periodo.
+  **Diseñado (A0, 2026-10-21), nada implementado.**
 
 ## Estado actual resumido
 

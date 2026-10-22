@@ -6,7 +6,8 @@
   `e36f976`, con la migración aplicada en producción y Render **Live**. En el
   frontend, A3 en `12c2067`, A4 (la pantalla) en `d58fb0e` y `5f9f1b1`, A5
   (la prueba en local) bien, y push con `3fb9831` publicado en Vercel. Ver
-  "Publicación del frontend". La parte B no ha empezado.
+  "Publicación del frontend". **Parte B: diseño (B0) escrito el 2026-10-21,
+  pendiente del visto bueno del usuario**; sin código.
 - Tipo: Función nueva de producto. No es una capa del programa de
   modularización de `docs/modularizacion/` y no debe confundirse con una.
 - Repos afectados: este repo (`sistema_escolar_api`) y `frontend-react`. Ver
@@ -719,6 +720,9 @@ entró a Vercel ni a la página publicada.
 
 ## Parte B — Porcentajes por tipo de nota (esbozo; se diseña en B0)
 
+El diseño detallado está en "Avance del paso B0" (inventario, preguntas QB1 a
+QB4 y propuestas PB1 a PB10). Este esbozo se conserva como punto de partida.
+
 Lo que ya se sabe:
 
 - El porcentaje se pone al crear el tipo (decisión 2) y debe poder editarse
@@ -757,6 +761,198 @@ de cada lugar de la tabla, **B2** backend y migración, **B3** base de datos (lo
 hace el usuario), **B4** frontend y **B5** prueba en local. La publicación
 sigue el mismo orden que la parte A.
 
+## Avance del paso B0, 2026-10-21 (diseño escrito, falta el visto bueno)
+
+Autorizado por el usuario el 2026-10-21 ("autorizas empezar B0" → "si"), con
+la parte A ya publicada. Al empezar, los dos repos estaban en `main` y
+limpios: backend `4dd0274`, frontend `05d6e10`. B0 es solo diseño: sin
+código, sin base de datos y sin publicar.
+
+### Inventario confirmado (`grep` en los dos repos)
+
+Dónde se calcula hoy la nota de una materia en un periodo a partir de las
+celdas de la planilla:
+
+1. **Promedio de la planilla.** El servidor lo calcula en
+   `planilla_excel_controller.py` (promedio simple de las celdas numéricas,
+   `round(…, 2)`, incluye la columna interna `mas_alto`), pero **la pantalla
+   no lo usa**: lo recalcula en `utils/planilla/notas.js`
+   (`calcularPromedioEstudiante`, sin `mas_alto`, con caritas si las hay).
+2. **Definitiva del boletín del profesor: la nota oficial.** La calcula **el
+   frontend** (`utils/boletines/ingresoBoletin.js: crearDatosBoletinInicial`,
+   promedio simple sin `mas_alto`; en preescolar, el de las caritas) y la
+   envía en `construirPayloadBoletin`. El profesor no puede cambiarla: la
+   pantalla solo la muestra (`VistaIngresoBoletinProfesor.jsx`). **El
+   servidor la guarda tal como llega** (`guardar_boletin_controller` →
+   `boletin_cabecera.definitiva`), sin recalcularla. De ella salen el
+   boletín impreso, los certificados y el puesto.
+3. **Puesto del curso**: promedio de las definitivas guardadas de todas las
+   materias (`boletin_repository.leer_puesto_en_el_curso`). No promedia
+   celdas: cambia solo si cambia la definitiva guardada.
+4. **Boletín del admin sin definitiva guardada**:
+   `boletin_repository.leer_materias_del_estudiante`, `AVG` en SQL del
+   periodo, sin caritas y solo `nota > 0`.
+5. **Reporte parcial**: `boletin_controller.obtener_reporte_parcial_admin_controller`,
+   en Python, sin caritas, solo `nota > 0`, sin redondear.
+6. **Certificados (respaldo en pantalla)**: `utils/certificadosImpresion/certificados.js:
+   getDefinitiva` promedia los detalles (`nota > 0`) solo si la materia llega
+   sin definitiva.
+7. **Tableros del profesor**:
+   - `dashboard_repository.leer_estudiantes_por_promedio` (tarjetas de mejor
+     y bajo rendimiento): promedio de los promedios por clase, **de todos los
+     periodos**, truncado a dos decimales;
+   - `leer_ranking_bajo_rendimiento` y `leer_ranking_mejor_rendimiento`
+     (páginas de ranking): promedio plano de las celdas **de una clase y un
+     periodo**, truncado a dos decimales.
+8. **Ficha del estudiante (admin)**: `estudiantes_repository.leer_promedios_por_materia`,
+   promedio de todas las celdas **del año** por materia, redondeado a un
+   decimal; el promedio general lo saca el controlador promediando esos
+   promedios.
+9. **Rutas viejas de `notas_repository`**: `GET /boletin/{id}`
+   (`leer_boletin_de_estudiante`) no la usa ninguna pantalla. `GET
+   /planilla/{id}` (`leer_planilla_de_asignacion`) la usa el Observador solo
+   para la lista de estudiantes (`usePlanillaObservador`): no muestra el
+   promedio.
+
+Los promedios entre materias del boletín impreso
+(`utils/boletines/generacionBoletin.js`) y de los certificados
+(`promedioMaterias`) parten de las definitivas: los porcentajes les llegan
+solos, sin tocarlos.
+
+**Hallazgo principal para el diseño:** hoy la nota oficial (punto 2) la
+decide el frontend y el servidor no la revisa. La regla de esta
+funcionalidad es que el frontend no decide la nota. Con porcentajes, B0
+debe proponer que el servidor la calcule.
+
+### Preguntas al usuario (una por una)
+
+Se anotan aquí con su respuesta a medida que se contestan.
+
+- **QB1. ¿Preescolar también lleva porcentajes?** **Sí, igual que primaria**
+  (usuario, 2026-10-21). Las caritas se pasan a número con la escala de
+  siempre, se ponderan y el resultado vuelve a la carita más cercana (empate,
+  la más alta), como en P8.
+- **QB2. ¿Qué pasa si algunos tipos tienen porcentaje y otros no?** **Todo
+  o nada** (usuario, 2026-10-21). Los porcentajes solo cuentan cuando todos
+  los tipos de esa clase y periodo tienen el suyo y suman 100 %. Mientras
+  falte alguno, se usa el promedio simple de hoy y la planilla avisa "Faltan
+  porcentajes: se usa el promedio simple". Así un periodo ya empezado sigue
+  igual hasta que el profesor complete los porcentajes.
+- **QB3. ¿Qué pantallas usan los porcentajes?** **Solo las que muestran la
+  nota de un periodo** (usuario, 2026-10-21): planilla, boletín (definitiva y
+  respaldo del admin), reporte parcial, certificados y las páginas de ranking
+  del profesor (mejor y bajo rendimiento de una clase en un periodo). Las
+  tarjetas del tablero (`leer_estudiantes_por_promedio`) y la ficha del
+  estudiante, que mezclan todo el año, siguen como hoy.
+- **QB4. ¿Se igualan los promedios que hoy difieren entre pantallas?** **No,
+  se dejan como están** (usuario, 2026-10-21). Sin porcentajes activos, cada
+  lugar del inventario da exactamente lo de hoy, con sus diferencias
+  (redondeo, `nota > 0`, `mas_alto`). Con porcentajes activos, todos los
+  lugares de QB3 usan el mismo cálculo del servidor (PB4). Así ninguna nota
+  ya entregada cambia sola.
+
+### Propuestas de B0 (pendientes del visto bueno del usuario)
+
+Cierran lo que las respuestas no cubren. Igual que P1 a P12 en A0, **no se
+escribe código de B hasta que el usuario las apruebe.**
+
+**Definición.** En una clase y un periodo, los porcentajes están **activos**
+cuando cada tipo de nota de la planilla tiene el suyo y suman exactamente
+100 % (QB2). Las columnas internas (`mas_alto`, `Desde React`) no llevan
+porcentaje ni cuentan, igual que no admiten subnotas (P11).
+
+- **PB1. Dónde se guardan.** Tabla nueva `planilla_tipos_porcentaje`: `id`,
+  `asignacion_id` (FK a `asignaciones` `ON DELETE CASCADE`, siempre la
+  asignación académica ya resuelta), `periodo`, `tipo_nota` (`varchar(100)`,
+  el mismo texto de `notas_detalle.descripcion`), `porcentaje` y
+  `actualizado_en`. Índice único `(asignacion_id, periodo,
+  LOWER(TRIM(tipo_nota)))`. Es por clase y periodo porque los tipos de nota
+  son de un periodo. Ninguna tabla existente cambia. Un tipo sin porcentaje no
+  tiene fila.
+- **PB2. Porcentajes enteros de 1 a 100** (`smallint` con `CHECK`). Sin
+  decimales: tres tipos iguales son 33 + 33 + 34. Así el profesor no tiene
+  que escribir 33,33.
+- **PB3. La suma nunca pasa de 100.** El servidor rechaza con `422` el
+  porcentaje que la haría pasar. Mientras sume menos o falte algún tipo, se
+  usa el promedio simple de hoy (QB2).
+- **PB4. Un solo cálculo, en el servidor**: `app/core/nota_periodo.py`
+  (nuevo, puro, con pruebas propias). Promedio ponderado de las celdas con
+  valor: suma de (nota × porcentaje) dividida por la suma de los porcentajes
+  de los tipos que sí tienen nota. Un tipo sin nota para ese estudiante no
+  cuenta y su peso se reparte entre los demás (esbozo). Sin ninguna celda,
+  vacía. Redondeo a dos decimales mitad hacia arriba, como P7. Caritas como
+  QB1. Ejemplos que deben quedar probados: Cognitivo 50 % con 4.0,
+  Procedimental 30 % con 3.0 y Actitudinal 20 % con 5.0 dan **3.90**; sin la
+  nota de Actitudinal, (2.0 + 0.9) / 0.8 = 3.625 → **3.63**. El frontend
+  tiene la gemela para la vista previa, con los mismos casos.
+- **PB5. Con porcentajes activos, la definitiva la calcula el servidor.** Al
+  guardar el boletín, si los porcentajes de esa clase y periodo están
+  activos, el servidor calcula la definitiva con PB4 y guarda esa, **no la
+  que envía la pantalla**. Si no están activos, guarda la que llega, como hoy
+  (QB4). La lectura del boletín del profesor agrega la definitiva calculada
+  solo cuando están activos, para que la pantalla muestre exactamente la que
+  se va a guardar. Es la regla de esta funcionalidad: el frontend no decide
+  la nota.
+- **PB6. El puesto no cambia su fórmula.** Sale de las definitivas
+  guardadas, así que cambia cuando el profesor vuelve a guardar el boletín.
+  Cambiar los porcentajes después de guardar el boletín no cambia la
+  definitiva guardada hasta volver a guardarlo, igual que hoy al corregir una
+  nota. No se recalculan boletines ya guardados.
+- **PB7. Las lecturas de QB3 cambian solo con porcentajes activos**: el
+  boletín del admin sin definitiva (`leer_materias_del_estudiante`), el
+  reporte parcial, los dos rankings por clase y periodo y el promedio de la
+  planilla. Con porcentajes activos usan PB4; sin ellos, su fórmula de hoy
+  sin cambiar ni una letra. Los certificados reciben la definitiva del
+  boletín del admin, así que no se tocan. Cada una lee los porcentajes con
+  una consulta más por petición, nunca una por estudiante; B1 lo mide antes
+  y después.
+- **PB8. Rutas.**
+  - `PUT /planilla/tipos/porcentaje` con `{ asignacion_id, periodo,
+    tipo_nota, porcentaje }` (`null` lo quita). Responde `{ tipo_nota,
+    porcentaje, suma, activos }`. `404` si el tipo no está en la planilla;
+    `422` si no es un entero de 1 a 100, si la suma pasaría de 100 o si es
+    una columna interna. Mismas guardias que la planilla (permiso, año
+    lectivo, asignación académica).
+  - `GET /planilla-excel/...?con_porcentajes=true` agrega `porcentajes: {
+    "<tipo_nota>": 40 }` y `porcentajes_activos`. Sin el parámetro, la
+    respuesta es idéntica a la de hoy (Asistencia no cambia). Es un parámetro
+    aparte de `con_subnotas` porque son cosas distintas; la planilla del
+    profesor manda los dos.
+  - **Crear un tipo no cambia**: sigue siendo `POST /planilla/nota` con `nota:
+    null`. Si el profesor escribió un porcentaje, la pantalla llama después
+    a la ruta nueva. Si esa segunda llamada falla, el tipo queda sin
+    porcentaje y el aviso de PB9 lo muestra; no se pierde nada.
+- **PB9. Pantalla de la planilla.** Al crear un tipo, un campo opcional
+  "Porcentaje (%)". En el encabezado de cada columna, su porcentaje
+  ("Cognitivo · 40 %") y la forma de cambiarlo. Encima de la tabla, la suma
+  ("Porcentajes: 70 % de 100 %") y, mientras no estén activos, el aviso
+  "Faltan porcentajes: se usa el promedio simple". Con porcentajes activos,
+  la columna Promedio muestra el ponderado. En una clase sin ningún
+  porcentaje, la planilla se ve como hoy, sin aviso. El boletín del profesor
+  no cambia de aspecto: solo muestra la definitiva que manda el servidor
+  (PB5).
+- **PB10. Borrar un tipo borra su porcentaje** en la misma operación
+  (`DELETE /planilla/tipo`), como P6. **Consecuencia que el usuario debe
+  conocer:** con porcentajes activos, agregar un tipo nuevo o borrar uno deja
+  la suma incompleta, y la clase vuelve al promedio simple, con el aviso,
+  hasta que el profesor ajuste los porcentajes. Es lo que pide "todo o nada"
+  (QB2).
+
+**Riesgo: alto.** PB5 y PB7 tocan la nota oficial. Por eso B1 (caracterización
+de cada lugar de PB7, de guardar el boletín y de la lectura del boletín del
+profesor, sin porcentajes) va antes de cambiar nada, igual que en A1.
+
+**Orden de publicación**: el mismo de la parte A. Primero la migración en
+producción y en seguida el push del backend, porque el backend nuevo lee la
+tabla nueva en rutas que ya existen (borrar un tipo, guardar y leer el
+boletín, rankings). Entre esos dos pasos no se crean colegios nuevos. Después
+B4 y B5, y por último el push del frontend.
+
+**Fuera de alcance de B:** porcentajes en las tarjetas del tablero y en la
+ficha (QB3), igualar las diferencias de hoy (QB4), recalcular boletines ya
+guardados (PB6), copiar porcentajes de un periodo a otro y porcentajes dentro
+de las subnotas de un tipo (decisión 2).
+
 ## Fuera de alcance
 
 - Mostrar las subnotas en el boletín, el reporte parcial o cualquier impreso.
@@ -784,10 +980,11 @@ sigue el mismo orden que la parte A.
 
 - ~~Antes de A1: que el usuario revise las propuestas P1 a P12.~~
   **Aprobadas todas el 2026-10-21.**
-- **Antes de B0** (no hace falta responderlas ahora): ¿los tableros y la ficha
-  del estudiante también usan los porcentajes? ¿Preescolar también lleva
-  porcentajes? ¿Qué pasa con los tipos creados sin porcentaje en un periodo ya
-  empezado?
+- ~~Antes de B0: ¿los tableros y la ficha del estudiante también usan los
+  porcentajes? ¿Preescolar también lleva porcentajes? ¿Qué pasa con los tipos
+  creados sin porcentaje en un periodo ya empezado?~~ **Respondidas el
+  2026-10-21** (QB1 a QB4 en "Avance del paso B0").
+- **Antes de B1:** que el usuario revise y apruebe las propuestas PB1 a PB10.
 
 ## Entrega para el siguiente chat
 
@@ -803,11 +1000,15 @@ sigue el mismo orden que la parte A.
 - Pendiente del usuario: borrar la rama `prueba-subnotas` en Neon, si no lo
   hizo, y devolver el `DATABASE_URL` del `.env` al endpoint `-pooler`, si lo
   cambió.
-- Siguiente acción exacta: **B0, el diseño de los porcentajes** (parte B).
-  Solo documentos, sin código. Antes de empezarlo hacen falta la
-  autorización explícita del usuario para B0 y sus respuestas a las
-  preguntas de "Antes de B0", hechas una por una. B0 empieza por confirmar
-  con `grep` el inventario de "Parte B" y decidir con el usuario si se
-  igualan los promedios que hoy difieren.
+- **B0 (diseño de los porcentajes) escrito el 2026-10-21, sin commit.**
+  Inventario confirmado, preguntas QB1 a QB4 respondidas por el usuario y
+  propuestas PB1 a PB10 escritas. Ver "Avance del paso B0". No hay código de
+  la parte B. Verificación al cerrar B0 (solo documentos):
+  `scripts/verify.py`, 2733 pasan, 0 fallan, Ruff y `pip check` limpios; en
+  el frontend, `check:deploy` con 2902 pruebas, lint y build correctos. `git
+  diff --check` limpio en los dos.
+- Siguiente acción exacta: **que el usuario revise y apruebe PB1 a PB10.**
+  Después, **B1** (caracterización, sin cambiar comportamiento), solo con
+  autorización explícita.
 - Prompt para retomar:
   `docs/funcionalidades/PROMPT_CONTINUACION_SUBNOTAS_PLANILLA.md`.

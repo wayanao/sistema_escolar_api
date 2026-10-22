@@ -946,6 +946,19 @@ porcentaje ni cuentan, igual que no admiten subnotas (P11).
   hasta que el profesor ajuste los porcentajes. Es lo que pide "todo o nada"
   (QB2).
 
+- **PB11. Aviso al guardar el boletín con porcentajes incompletos**
+  (propuesto por el asistente y **aprobado por el usuario el 2026-10-22**,
+  durante B5). El usuario preguntó si bloquear el ingreso de notas mientras
+  falte un porcentaje. Se descartó: frenaría el trabajo diario del profesor,
+  bloquearía también crear tipos (crear un tipo guarda una nota vacía) y,
+  para ser real, exigiría cambiar `POST /planilla/nota` en producción. El
+  riesgo de verdad es guardar la nota oficial sin darse cuenta de que es el
+  promedio simple. Por eso, al guardar el boletín de una clase con
+  porcentajes incompletos, la pantalla pregunta "Los porcentajes de esta
+  clase están incompletos: la definitiva es el promedio simple. ¿Guardar
+  igual?". Las notas se siguen ingresando libres. **Solo frontend** (paso
+  B4c); no cambia el servidor.
+
 **Riesgo: alto.** PB5 y PB7 tocan la nota oficial. Por eso B1 (caracterización
 de cada lugar de PB7, de guardar el boletín y de la lectura del boletín del
 profesor, sin porcentajes) va antes de cambiar nada, igual que en A1.
@@ -1649,8 +1662,15 @@ de producción.
   commit**: franja de porcentajes encima de la tabla, porcentaje en cada
   encabezado y campo al crear un tipo. Detalle en "Avance del paso B4b" del
   documento del frontend.
-- Siguiente acción exacta: **B5, lo hace el usuario** con la lista de "Paso
-  B5" del documento del frontend (Colegio Demo). Si sale bien, push del
-  frontend y la parte B queda publicada.
+- B4b en `63f8528` (frontend).
+- **B5 en curso** (el usuario, guiado paso a paso). En el paso 2 propuso
+  bloquear las notas con porcentajes incompletos; se decidió **PB11** (aviso
+  al guardar el boletín) y se hizo como **B4c**, solo en el frontend, el
+  2026-10-22, sin commit. Detalle en "Avance del paso B4c" del documento del
+  frontend.
+- Siguiente acción exacta: **seguir B5 desde el paso 5** (lista en "Paso B5"
+  del documento del frontend, que ya incluye el aviso; los pasos 1 a 4
+  salieron bien). Si sale bien, push del frontend y la parte B queda
+  publicada.
 - Prompt para retomar:
   `docs/funcionalidades/PROMPT_CONTINUACION_SUBNOTAS_PLANILLA.md`.

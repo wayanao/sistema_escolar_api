@@ -7,7 +7,9 @@
   frontend, A3 en `12c2067`, A4 (la pantalla) en `d58fb0e` y `5f9f1b1`, A5
   (la prueba en local) bien, y push con `3fb9831` publicado en Vercel. Ver
   "Publicación del frontend". **Parte B: diseño (B0) en `822dd4e`, con las
-  propuestas PB1 a PB10 aprobadas por el usuario el 2026-10-21**; sin código.
+  propuestas PB1 a PB10 aprobadas por el usuario el 2026-10-21, y
+  caracterización (B1) hecha el mismo día, sin commit**; sin código de la
+  aplicación.
 - Tipo: Función nueva de producto. No es una capa del programa de
   modularización de `docs/modularizacion/` y no debe confundirse con una.
 - Repos afectados: este repo (`sistema_escolar_api`) y `frontend-react`. Ver
@@ -954,6 +956,79 @@ ficha (QB3), igualar las diferencias de hoy (QB4), recalcular boletines ya
 guardados (PB6), copiar porcentajes de un periodo a otro y porcentajes dentro
 de las subnotas de un tipo (decisión 2).
 
+## Avance del paso B1 (caracterización), 2026-10-21
+
+Autorizado por el usuario el 2026-10-21: a "¿Autorizas empezar B1?" respondió
+"sigue". Al empezar, los dos repos estaban en `main` y limpios: backend
+`e2bc4d0`, frontend `6044d3a`. **No se tocó el código de la aplicación** ni
+la base de datos: solo se agregaron pruebas. Todas se corrieron contra el
+programa de hoy y pasaron, que es lo que se busca: dejan fijado lo que existe
+antes de cambiarlo.
+
+**Backend: `tests/test_porcentajes_planilla_caracterizacion.py`, 15
+pruebas.**
+
+- **El SQL de siete consultas, letra por letra** (PB7: "sin cambiar ni una
+  letra"): el respaldo del boletín del admin (`AVG`, sin caritas, `nota >
+  0`), las celdas del reporte parcial, las celdas que lee el boletín del
+  profesor, el puesto (PB6), la cabecera que guarda la definitiva y los dos
+  rankings (`TRUNC`). Se sacaron del código ejecutándolo, no copiándolo a
+  mano.
+- **Guardar el boletín guarda la definitiva tal como llega**: 4.5,
+  3.6666…, 4.3333… (caritas) y `None`, con las mismas cuatro escrituras.
+- **La lectura del boletín del profesor devuelve el JSON de hoy**, sin
+  `definitiva` (PB5 solo la agrega con porcentajes activos). Incluye la
+  columna interna `mas_alto`, que la pantalla oculta.
+- **El boletín del admin** entrega la definitiva que sale del SQL sin
+  redondear, y `None` si no hay ninguna.
+- **El reporte parcial** cuenta `mas_alto` en la definitiva y deja `None` la
+  materia sin notas.
+- **El promedio que el servidor calcula para la planilla** redondea como
+  `round` de Python (al par: 3.625 → 3.62, 4.125 → 4.12) y cuenta `mas_alto`.
+- El cursor de prueba responde según el texto del SQL y, a cualquier consulta
+  que no conoce, "nada". Así la consulta nueva de B2 que lea los porcentajes,
+  sin encontrar ninguno, no rompe estas pruebas: es justo el caso "sin
+  porcentajes".
+
+**Frontend: 4 pruebas** en `utils/planilla/notas.test.js` y
+`utils/boletines/ingresoBoletin.test.js`: la pantalla sube los empates
+exactos (3.625 se ve 3.63 y 4.125 se ve 4.13), no cuenta `mas_alto`, la
+definitiva numérica sale "3.63" y viaja como 3.63, y la de caritas viaja sin
+redondear (13/3).
+
+**Lo que ya estaba fijado y no se repitió**: los conteos de consultas y
+conexiones (`test_boletin_caracterizacion.py`,
+`test_dashboard_caracterizacion.py`), que el reporte parcial no redondea y
+deja fuera caritas y ceros, la respuesta de los rankings
+(`test_dashboard_controlador.py`) y la planilla sin parámetro
+(`test_subnotas_planilla_caracterizacion.py`).
+
+**Línea base de consultas (el "antes" de B2)**, según esos archivos:
+
+| Lectura o escritura | Hoy |
+|---|---|
+| Boletín del admin | 4 consultas, 1 conexión |
+| Reporte parcial | 2 consultas, 1 conexión |
+| Lectura del boletín del profesor | 2 consultas propias más la que resuelve la asignación |
+| Guardar el boletín | 4 + 1 por detalle, más la guardia del año |
+| Ranking (admin / profesor) | 2 / 3 consultas; 1 / 2 conexiones |
+| Planilla sin parámetro (admin / profesor) | 2 / 3 consultas |
+
+**Hallazgos** (se conservan, QB4):
+
+- El promedio que el servidor calcula para la planilla (3.62) no es el que ve
+  el profesor (3.63): la pantalla no usa el del servidor y lo recalcula con
+  `toFixed`, que sube los empates exactos. **La regla de PB4 (mitad hacia
+  arriba) coincide con lo que el profesor ya ve.**
+- La definitiva de caritas viaja sin redondear, pero la columna
+  `boletin_cabecera.definitiva` es `numeric(5,2)`: PostgreSQL la guarda con
+  dos decimales (4.3333… queda 4.33).
+- `mas_alto` cuenta en el reporte parcial, en los rankings y en el promedio
+  del servidor, pero no en la planilla ni en el boletín del profesor que ve la
+  pantalla.
+
+**Verificación:** ver "Entrega para el siguiente chat".
+
 ## Fuera de alcance
 
 - Mostrar las subnotas en el boletín, el reporte parcial o cualquier impreso.
@@ -1010,10 +1085,17 @@ de las subnotas de un tipo (decisión 2).
   `scripts/verify.py`, 2733 pasan, 0 fallan, Ruff y `pip check` limpios; en
   el frontend, `check:deploy` con 2902 pruebas, lint y build correctos. `git
   diff --check` limpio en los dos.
-- Siguiente acción exacta: **B1, la caracterización**, solo con
-  autorización explícita del usuario para B1. Son pruebas que fijan lo que
-  hoy devuelve cada lugar de PB7, guardar el boletín y la lectura del
-  boletín del profesor, sin porcentajes y con conteo de consultas. No cambia
-  ningún comportamiento ni toca la base de datos.
+- **B1 (caracterización) hecho el 2026-10-21, sin commit**: 15 pruebas en
+  `tests/test_porcentajes_planilla_caracterizacion.py` y 4 en el frontend.
+  No cambió el código de la aplicación. Ver "Avance del paso B1".
+- Verificación al cerrar B1: `scripts/verify.py`, **2748 pasan** (eran
+  2733), 0 fallan; Ruff y `pip check` limpios. Frontend: `check:deploy` con
+  **2906 pruebas** (eran 2902), lint y build correctos. Corridas una tras
+  otra, sin otra carga. `git diff --check` limpio en los dos.
+- Siguiente acción exacta: **B2, backend y migración**, solo con
+  autorización explícita del usuario. Empieza por escribir las pruebas de
+  `app/core/nota_periodo.py` (PB4) con los ejemplos de B0. B2 escribe la
+  migración pero **no la aplica**: eso es B3 y lo hace el usuario en una rama
+  de Neon.
 - Prompt para retomar:
   `docs/funcionalidades/PROMPT_CONTINUACION_SUBNOTAS_PLANILLA.md`.

@@ -2,11 +2,11 @@
 
 ## Control
 
-- Estado: **Backend de la parte A en producción desde el 2026-10-21.** A0 en
-  `185d5b6`, A1 y A2 en `e36f976`. Migración aplicada en producción y Render
-  **Live**. En el frontend, A3 en `12c2067` y A4 (la pantalla) en `d58fb0e` y
-  `5f9f1b1`. **A5, la prueba en local, salió bien el 2026-10-21.** Falta el
-  push del frontend; hasta entonces nadie ve las subnotas.
+- Estado: **Parte A publicada el 2026-10-21.** A0 en `185d5b6`, A1 y A2 en
+  `e36f976`, con la migración aplicada en producción y Render **Live**. En el
+  frontend, A3 en `12c2067`, A4 (la pantalla) en `d58fb0e` y `5f9f1b1`, A5
+  (la prueba en local) bien, y push con `3fb9831` publicado en Vercel. Ver
+  "Publicación del frontend". La parte B no ha empezado.
 - Tipo: Función nueva de producto. No es una capa del programa de
   modularización de `docs/modularizacion/` y no debe confundirse con una.
 - Repos afectados: este repo (`sistema_escolar_api`) y `frontend-react`. Ver
@@ -326,7 +326,8 @@ días:
 4. A3 y A4 (frontend), y A5: prueba en local con el Colegio Demo. El backend
    local, ya con la migración en producción, sirve para probar. **Hecho el
    2026-10-21.**
-5. Push del frontend.
+5. Push del frontend. **Hecho el 2026-10-21** (ver "Publicación del
+   frontend").
 
 **Aquí la migración va antes del push**, al revés que en SISBÉN y igual que en
 Listas de seguimiento. El backend nuevo usa las tablas nuevas en rutas que ya
@@ -702,6 +703,20 @@ conectó a la base de producción.
   ruta nueva existe y pide sesión. `/health` siguió en `200`.
 - Con eso se cerró el rato sin poder crear colegios.
 
+## Publicación del frontend, 2026-10-21
+
+Paso 5 del orden de publicación. El push lo hizo el usuario; el asistente no
+entró a Vercel ni a la página publicada.
+
+- **Push del frontend**: `origin/main` en `3fb9831`. Subió A3 (`12c2067`), A4
+  (`d58fb0e` y `5f9f1b1`) y el cierre de A5 (`3fb9831`).
+- **Vercel**, comprobado por el asistente en GitHub (`gh api .../deployments`):
+  el despliegue de `Production` del commit `3fb9831` quedó en `success`. Es el
+  mismo código que pasó `check:deploy` al cerrar A5 (2902 pruebas, lint y
+  build).
+- **Con esto la parte A queda publicada**: los profesores ya ven el botón de
+  subnotas en la planilla.
+
 ## Parte B — Porcentajes por tipo de nota (esbozo; se diseña en B0)
 
 Lo que ya se sabe:
@@ -776,27 +791,23 @@ sigue el mismo orden que la parte A.
 
 ## Entrega para el siguiente chat
 
-- Hecho: **A0** en `185d5b6` (frontend `1553574`). **A1 y A2** en `e36f976`.
-  **Backend en producción el 2026-10-21**: migración aplicada en los dos
-  colegios, push y Render **Live**. Ver "Publicación del backend".
-- `scripts/verify.py`: 2733 pasan, 0 fallan. Ruff y `pip check` limpios.
-- Pendiente del usuario: borrar la rama `prueba-subnotas` en Neon, si no lo
-  hizo, y devolver el `DATABASE_URL` del `.env` al endpoint `-pooler`, si lo
-  cambió.
-- En el frontend: A3 en `12c2067`, A4 en `d58fb0e` y `5f9f1b1`, **A5 (prueba
-  en local) bien el 2026-10-21**, en primaria y preescolar. Detalle en
-  "Avance del paso A5" del documento del frontend. **Todavía sin push**: hasta
-  entonces nadie ve ni usa las subnotas, y la planilla funciona igual que
-  siempre.
-- Verificación al cerrar A5 (solo cambiaron documentos): `scripts/verify.py`,
-  2733 pasan, 0 fallan; Ruff y `pip check` limpios. `git diff --check`
-  limpio.
+- **Parte A publicada el 2026-10-21.** Backend: A0 en `185d5b6`, A1 y A2 en
+  `e36f976`, migración en los dos colegios y Render **Live** (ver
+  "Publicación del backend"). Frontend: A3, A4 y A5 subidos hasta `3fb9831`
+  y publicados en Vercel (ver "Publicación del frontend").
+- Última verificación del backend (al cerrar A5): `scripts/verify.py`, 2733
+  pasan, 0 fallan; Ruff y `pip check` limpios.
 - En este repo quedan commits **solo de documentos** sin push. Subirlos hace
   que Render publique otra vez el mismo código: no cambia nada, pero es una
   publicación.
-- Siguiente acción exacta: **push del frontend** (lo hace el usuario). Con
-  eso la parte A queda publicada; después se anota aquí la publicación.
-- Después: **B0** (diseño de los porcentajes), solo con autorización
-  explícita y con las preguntas de "Antes de B0" respondidas.
+- Pendiente del usuario: borrar la rama `prueba-subnotas` en Neon, si no lo
+  hizo, y devolver el `DATABASE_URL` del `.env` al endpoint `-pooler`, si lo
+  cambió.
+- Siguiente acción exacta: **B0, el diseño de los porcentajes** (parte B).
+  Solo documentos, sin código. Antes de empezarlo hacen falta la
+  autorización explícita del usuario para B0 y sus respuestas a las
+  preguntas de "Antes de B0", hechas una por una. B0 empieza por confirmar
+  con `grep` el inventario de "Parte B" y decidir con el usuario si se
+  igualan los promedios que hoy difieren.
 - Prompt para retomar:
   `docs/funcionalidades/PROMPT_CONTINUACION_SUBNOTAS_PLANILLA.md`.

@@ -59,8 +59,8 @@ continuacion para retomarla en otro chat u otro LLM.
   (porcentajes): diseño (B0) aprobado, caracterización (B1) hecha y B2 en
   completo el 2026-10-22 (backend: cálculo, tabla, ruta, boletín, reporte
   parcial y rankings), B3 (rama de Neon) bien y backend en producción el
-  mismo día (`dfe0336`, Render Live). En el frontend, B4a a B4c y la prueba
-  en local (B5) bien el 2026-10-22; falta el push del frontend.**
+  mismo día (`dfe0336`, Render Live) y frontend publicado también
+  (`82eecf9`). Partes A y B completas y publicadas.**
 
 ## Estado actual resumido
 

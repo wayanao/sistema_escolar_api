@@ -13,8 +13,9 @@
   porcentajes, migración escrita sin aplicar) en `dcf8443`, B2c (la
   definitiva del boletín) en `05a8bbe` y B2d (las demás lecturas) en
   `0498f80`: B2 completo. B3 (rama de Neon) bien y backend de la parte B en
-  producción el 2026-10-22 (`dfe0336`, migración aplicada, Render Live).**
-  Nadie ve nada nuevo todavía: falta la pantalla (B4 y B5).
+  producción el 2026-10-22 (`dfe0336`, migración aplicada, Render Live).
+  Frontend de la parte B (B4a, B4b, B4c y B5) publicado el mismo día
+  (`82eecf9`, Vercel `success`). La funcionalidad está completa.**
 - Tipo: Función nueva de producto. No es una capa del programa de
   modularización de `docs/modularizacion/` y no debe confundirse con una.
 - Repos afectados: este repo (`sistema_escolar_api`) y `frontend-react`. Ver
@@ -1553,6 +1554,20 @@ de producción.
   porcentajes llega en B4; hasta entonces ninguna clase puede tenerlos y
   ninguna nota cambia.
 
+## Publicación del frontend de la parte B, 2026-10-22
+
+Último paso del orden de publicación. El push lo hizo el usuario después de
+B5; el asistente no entró a Vercel ni a la página.
+
+- **Push del frontend**: `origin/main` en `82eecf9`. Subió B1 (pruebas), B4a
+  (contratos), B4b (pantalla), B4c (aviso del boletín, PB11) y los
+  documentos.
+- **Vercel**, comprobado por el asistente en GitHub (`gh api .../deployments`):
+  el despliegue de `Production` del commit `82eecf9` quedó en `success`.
+- **Con esto la parte B queda publicada**: los profesores ya pueden poner
+  porcentajes en la planilla. Una clase sin porcentajes sigue igual que
+  antes.
+
 ## Fuera de alcance
 
 - Mostrar las subnotas en el boletín, el reporte parcial o cualquier impreso.
@@ -1673,7 +1688,14 @@ de producción.
   incluido el aviso de PB11, el boletín del profesor (3.90), el boletín y el
   reporte parcial del admin (3.9) y la vista de celular. Detalle en "Avance
   del paso B5" del documento del frontend.
-- Siguiente acción exacta: **push del frontend** (lo hace el usuario). Con
-  eso la parte B queda publicada; después se anota aquí la publicación.
+- **Parte B publicada el 2026-10-22.** Push del frontend por el usuario
+  (`origin/main` en `82eecf9`); el despliegue de `Production` de ese commit
+  en Vercel quedó en `success` (comprobado por el asistente en GitHub). Ver
+  "Publicación del frontend de la parte B".
+- **La funcionalidad está completa y publicada: partes A y B.** No queda
+  ningún paso pendiente del plan.
+- Pendientes del usuario, sin prisa: borrar en Neon las ramas
+  `prueba-subnotas` y `prueba-porcentajes`, y dejar el `DATABASE_URL` del
+  `.env` en el endpoint `-pooler`, si no lo hizo.
 - Prompt para retomar:
   `docs/funcionalidades/PROMPT_CONTINUACION_SUBNOTAS_PLANILLA.md`.

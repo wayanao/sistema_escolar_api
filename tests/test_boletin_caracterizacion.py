@@ -50,18 +50,22 @@ def guardia_del_anio(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def sin_porcentajes(monkeypatch):
-    """Porcentajes por tipo de nota, paso B2c (docs/funcionalidades/SUBNOTAS_PLANILLA.md,
-    PB5): guardar el boletin y la lectura del profesor preguntan si la clase
-    tiene porcentajes. Se dobla aqui con "no tiene", que es el caso de estas
-    pruebas, igual que la guardia del año: asi no suma en los conteos de este
-    archivo. En produccion es una consulta mas; la cuentan
-    `test_porcentajes_boletin.py` y `test_anio_lectivo_guardia_conteos.py`."""
+    """Porcentajes por tipo de nota (docs/funcionalidades/SUBNOTAS_PLANILLA.md):
+    guardar el boletin y la lectura del profesor (paso B2c, PB5), y el boletin
+    del admin sin definitiva guardada y el reporte parcial (paso B2d, PB7),
+    preguntan si la clase tiene porcentajes. Se dobla aqui con "no tiene", que
+    es el caso de estas pruebas, igual que la guardia del año: asi no suma en
+    los conteos de este archivo. En produccion es una consulta mas; la cuentan
+    `test_porcentajes_boletin.py`, `test_porcentajes_lecturas.py` y
+    `test_anio_lectivo_guardia_conteos.py`."""
     llamadas = []
-    monkeypatch.setattr(
-        boletin_controller.porcentajes_planilla_repository,
-        "leer_porcentajes_de_planilla",
-        lambda _cursor, *argumentos: llamadas.append(argumentos) or [],
-    )
+    repositorio = boletin_controller.porcentajes_planilla_repository
+    for funcion in ("leer_porcentajes_de_planilla", "leer_porcentajes_de_asignaciones"):
+        monkeypatch.setattr(
+            repositorio,
+            funcion,
+            lambda _cursor, *argumentos: llamadas.append(argumentos) or [],
+        )
     return llamadas
 
 

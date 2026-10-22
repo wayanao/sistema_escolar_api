@@ -4,7 +4,6 @@ from app.core.nivel_academico import (
 )
 from app.core.nota_periodo import (
     calcular_nota_del_periodo,
-    porcentajes_activos,
     tipo_de_evaluacion_de_celdas,
 )
 from app.database import get_connection
@@ -14,31 +13,20 @@ from app.services.asignacion_academica import (
     resolver_asignacion_academica_id_cursor,
     resolver_nivel_curso_cursor,
 )
+from app.services.porcentajes_activos import (
+    porcentajes_activos_de,
+    porcentajes_activos_de_asignaciones,
+)
 from psycopg2.extras import RealDictCursor
 
 
 # --------------------------------------------------------------------------
-# Porcentajes por tipo de nota, paso B2c (PB5). Ver
+# Porcentajes por tipo de nota (PB5 en el paso B2c, PB7 en el B2d). Ver
 # docs/funcionalidades/SUBNOTAS_PLANILLA.md. Sin porcentajes activos en la
-# clase y el periodo, estas dos funciones no cambian nada: cuestan una
-# consulta (saber si hay porcentajes) o dos (si los hay pero estan
-# incompletos), y todo lo demas es lo de siempre (lo fija el paso B1).
+# clase y el periodo, estas funciones no cambian nada: cuestan una consulta
+# (saber si hay porcentajes) o dos (si los hay pero estan incompletos), y
+# todo lo demas es lo de siempre (lo fija el paso B1).
 # --------------------------------------------------------------------------
-
-def _porcentajes_activos_de(cursor, asignacion_id, periodo):
-    """Los porcentajes de la clase si estan activos (QB2); si no, None."""
-    porcentajes = dict(
-        porcentajes_planilla_repository.leer_porcentajes_de_planilla(
-            cursor, asignacion_id, periodo
-        )
-    )
-    if not porcentajes:
-        return None
-    tipos = porcentajes_planilla_repository.leer_tipos_de_planilla(
-        cursor, asignacion_id, periodo
-    )
-    return porcentajes if porcentajes_activos(tipos, porcentajes) else None
-
 
 def _nota_ponderada(nivel_curso, celdas, porcentajes):
     """La definitiva ponderada (PB4) de unas celdas, o None sin nada que ponderar.
@@ -64,7 +52,7 @@ def _definitiva_a_guardar(cursor, data, asignacion_id, nivel_curso):
     sin notas conserva su 0 (numerica) o su vacio (caritas) y su puesto no
     cambia.
     """
-    porcentajes = _porcentajes_activos_de(cursor, asignacion_id, data.periodo)
+    porcentajes = porcentajes_activos_de(cursor, asignacion_id, data.periodo)
     if porcentajes is None:
         return data.definitiva
     celdas = porcentajes_planilla_repository.leer_celdas_del_estudiante(
@@ -82,7 +70,7 @@ def _agregar_definitivas_ponderadas(cursor, asignacion_id, periodo, filas, estud
     solo consulta, ademas, el nivel del curso. Sin porcentajes activos no
     agrega nada y la respuesta es la de siempre.
     """
-    porcentajes = _porcentajes_activos_de(cursor, asignacion_id, periodo)
+    porcentajes = porcentajes_activos_de(cursor, asignacion_id, periodo)
     if porcentajes is None:
         return
     nivel_curso = resolver_nivel_curso_cursor(cursor, asignacion_id)
@@ -98,6 +86,45 @@ def _agregar_definitivas_ponderadas(cursor, asignacion_id, periodo, filas, estud
         valor = _nota_ponderada(nivel_curso, celdas_por_estudiante.get(est_id, []), porcentajes)
         if valor is not None:
             estudiante['definitiva'] = float(valor)
+
+
+def _ponderadas_numericas(porcentajes_por_clase, celdas_por_clase):
+    """PB7: `{asignacion_id: nota ponderada}` de las clases con algo que ponderar.
+
+    Solo notas numericas: el boletin del admin y el reporte parcial nunca han
+    contado las caritas (su nota de preescolar queda vacia), y con porcentajes
+    tampoco. `celdas_por_clase` va de clase a `(tipo_nota, nota, valoracion)`.
+    """
+    ponderadas = {}
+    for asignacion_id, porcentajes in porcentajes_por_clase.items():
+        valor, _ = calcular_nota_del_periodo(
+            "numerica", celdas_por_clase.get(asignacion_id, []), porcentajes
+        )
+        if valor is not None:
+            ponderadas[asignacion_id] = float(valor)
+    return ponderadas
+
+
+def _definitivas_ponderadas_sin_guardar(cursor, estudiante_id, periodo, materias):
+    """PB7: la nota ponderada de las materias sin boletin guardado.
+
+    Solo para las que no tienen boletin guardado (`boletin_id` vacio), que son
+    las que hoy usan el promedio simple de respaldo. Si todas lo tienen, no
+    consulta nada. Una materia con boletin guardado conserva su definitiva
+    aunque su clase tenga porcentajes (PB6).
+    """
+    sin_guardar = [row['asignacion_id'] for row in materias if row['boletin_id'] is None]
+    activos = porcentajes_activos_de_asignaciones(cursor, sin_guardar, periodo)
+    if not activos:
+        return {}
+    celdas_por_clase = {}
+    for asignacion_id, *celda in (
+        porcentajes_planilla_repository.leer_celdas_del_estudiante_en_asignaciones(
+            cursor, list(activos), periodo, estudiante_id
+        )
+    ):
+        celdas_por_clase.setdefault(asignacion_id, []).append(tuple(celda))
+    return _ponderadas_numericas(activos, celdas_por_clase)
 
 
 def guardar_boletin_controller(data, *, usuario):
@@ -302,6 +329,12 @@ def obtener_boletin_admin_controller(estudiante_id: int, periodo: int, anio_lect
             cur, estudiante_id, periodo, anio_lectivo_id=anio
         ) or {}
 
+        # Porcentajes, paso B2d (PB7): la materia sin boletin guardado usa la
+        # nota ponderada si su clase tiene porcentajes activos.
+        ponderadas = _definitivas_ponderadas_sin_guardar(
+            cur, estudiante_id, periodo, materias_res
+        )
+
         resultado = {
             'estudiante_id': estudiante_id,
             'estudiante_nombre': est_info['estudiante_nombre'],
@@ -343,7 +376,10 @@ def obtener_boletin_admin_controller(estudiante_id: int, periodo: int, anio_lect
                 'materia': row['materia'],
                 'profesor_nombre': row['profesor_nombre'],
                 'profesor_apellido': row['profesor_apellido'],
-                'definitiva': float(row['definitiva']) if row['definitiva'] is not None else None,
+                'definitiva': ponderadas.get(
+                    row['asignacion_id'],
+                    float(row['definitiva']) if row['definitiva'] is not None else None,
+                ),
                 'boletin_id': row['boletin_id'],
                 'orden_boletin': row['orden_boletin'],
                 'detalles': detalles
@@ -380,6 +416,7 @@ def obtener_reporte_parcial_admin_controller(estudiante_id: int, periodo: int, a
 
         materias = {}
         notas_numericas = {}
+        celdas_por_clase = {}
         for row in filas:
             asignacion_id = row['asignacion_id']
             if asignacion_id not in materias:
@@ -409,11 +446,20 @@ def obtener_reporte_parcial_admin_controller(estudiante_id: int, periodo: int, a
             })
             if tipo_evaluacion != 'desarrollo' and nota is not None and nota > 0:
                 notas_numericas[asignacion_id].append(nota)
+            celdas_por_clase.setdefault(asignacion_id, []).append(
+                (row['descripcion'], row['nota'], row['valoracion'])
+            )
 
         for asignacion_id, materia in materias.items():
             valores = notas_numericas[asignacion_id]
             if valores:
                 materia['definitiva'] = sum(valores) / len(valores)
+
+        # Porcentajes, paso B2d (PB7): la materia cuya clase tiene porcentajes
+        # activos usa la nota ponderada. Las celdas ya estan en la lectura.
+        activos = porcentajes_activos_de_asignaciones(cur, list(materias), periodo)
+        for asignacion_id, valor in _ponderadas_numericas(activos, celdas_por_clase).items():
+            materias[asignacion_id]['definitiva'] = valor
 
         return {
             'estudiante_id': estudiante_id,

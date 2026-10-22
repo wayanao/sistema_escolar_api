@@ -5,6 +5,19 @@ from app.controllers import boletin_controller
 from app.routes import boletines
 
 
+@pytest.fixture(autouse=True)
+def sin_porcentajes(monkeypatch):
+    """Porcentajes por tipo de nota, paso B2d (docs/funcionalidades/SUBNOTAS_PLANILLA.md,
+    PB7): el reporte parcial pregunta si sus clases tienen porcentajes. Se dobla
+    con "no tienen", que es el caso de estas pruebas; el caso con porcentajes
+    lo prueba `test_porcentajes_lecturas.py`."""
+    monkeypatch.setattr(
+        boletin_controller.porcentajes_planilla_repository,
+        "leer_porcentajes_de_asignaciones",
+        lambda _cursor, *argumentos: [],
+    )
+
+
 class FakeCursor:
     def __init__(self, estudiante, filas):
         self.estudiante = estudiante

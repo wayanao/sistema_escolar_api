@@ -30,7 +30,23 @@ import pytest
 
 from app.controllers import dashboard_controller
 from app.core import permissions
+from app.repositories import porcentajes_planilla_repository
 from app.routes import dashboard
+
+
+@pytest.fixture(autouse=True)
+def sin_porcentajes(monkeypatch):
+    """Porcentajes por tipo de nota, paso B2d (docs/funcionalidades/SUBNOTAS_PLANILLA.md,
+    PB7): los dos rankings preguntan si la clase tiene porcentajes. Se dobla
+    aqui con "no tiene", que es el caso de estas pruebas, para que no sume en
+    sus conteos ni mueva sus posiciones. En produccion es una consulta mas; la
+    cuenta `test_porcentajes_lecturas.py`, que prueba tambien el caso con
+    porcentajes."""
+    monkeypatch.setattr(
+        porcentajes_planilla_repository,
+        "leer_porcentajes_de_planilla",
+        lambda _cursor, *argumentos: [],
+    )
 
 RAIZ = Path(__file__).resolve().parents[1]
 CONTROLADOR = RAIZ / "app" / "controllers" / "dashboard_controller.py"

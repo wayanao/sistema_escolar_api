@@ -10,9 +10,11 @@
   propuestas PB1 a PB10 aprobadas por el usuario el 2026-10-21,
   caracterización (B1) en `a9cdc57` y, desde el 2026-10-22, B2 en cuatro
   partes: B2a (el cálculo) en `a630183`, B2b (tabla y ruta de los
-  porcentajes, migración escrita sin aplicar) en `dcf8443` y B2c (la
-  definitiva del boletín) hecho, sin commit.** En la práctica ninguna nota
-  cambia todavía. **El backend no se sube hasta B3.**
+  porcentajes, migración escrita sin aplicar) en `dcf8443`, B2c (la
+  definitiva del boletín) en `05a8bbe` y B2d (las demás lecturas) hecho, sin
+  commit: B2 completo.** En la práctica ninguna nota cambia todavía. **El
+  backend no se sube hasta aplicar la migración en producción, después de
+  B3.**
 - Tipo: Función nueva de producto. No es una capa del programa de
   modularización de `docs/modularizacion/` y no debe confundirse con una.
 - Repos afectados: este repo (`sistema_escolar_api`) y `frontend-react`. Ver
@@ -1056,7 +1058,8 @@ archivos cambian y a qué afectan. Además B2 llega a la nota oficial.
   lectura del boletín del profesor la agrega. **Hecho el 2026-10-22, sin
   commit.**
 - **B2d — Las demás lecturas.** El boletín del admin sin definitiva, el
-  reporte parcial y los dos rankings (PB7).
+  reporte parcial y los dos rankings (PB7). **Hecho el 2026-10-22, sin
+  commit. Con esto B2 está completo.**
 
 ### B2a, 2026-10-22
 
@@ -1215,6 +1218,267 @@ aprobada):
 - `test_anio_lectivo_guardia_conteos.py`: `POST /boletines/guardar` suma esa
   consulta en `PORCENTAJES`.
 
+### B2d, 2026-10-22
+
+Visto bueno del usuario el 2026-10-22 ("si esta bien continua", respuesta a
+"¿Le das el visto bueno a B2d?"). Al empezar, backend en `05a8bbe` y limpio.
+Las pruebas se escribieron antes que el código y fallaron porque faltaba.
+
+**Qué se hizo:**
+
+- `app/services/porcentajes_activos.py` (nuevo): qué clases tienen sus
+  porcentajes activos, para una clase o para varias en una sola consulta. La
+  función de B2c que respondía eso para una clase **se movió aquí** desde
+  `boletin_controller.py`: así los cinco lugares que cambian con porcentajes
+  usan la misma regla y no hay dos copias.
+- `porcentajes_planilla_repository`: cuatro lecturas más (porcentajes y tipos
+  de varias clases, celdas de un estudiante en varias clases y celdas de toda
+  una clase).
+- **Boletín del admin** (`obtener_boletin_admin_controller`): la materia
+  **sin boletín guardado** cuya clase tiene porcentajes activos usa la nota
+  ponderada en vez del promedio simple de respaldo. La que tiene boletín
+  guardado conserva su definitiva (PB6).
+- **Reporte parcial**: cada materia cuya clase tiene porcentajes activos usa
+  la nota ponderada, con las celdas que la lectura ya trae.
+- **Rankings** (`dashboard_controller`): con porcentajes activos, la nota
+  ponderada de cada estudiante, el mismo corte en 3.0 y el mismo orden; sin
+  ellos, la consulta de siempre, que ni se ejecuta cuando hay porcentajes.
+- `tests/test_porcentajes_lecturas.py`, **16 pruebas**. **Las de B1 siguen
+  pasando sin tocarlas.**
+
+**Decisiones al escribir el código** (cambio mínimo; ninguna cambia una regla
+aprobada):
+
+- **Solo notas numéricas en estos tres lugares.** Hoy ninguno cuenta las
+  caritas: el boletín del admin y el reporte parcial dejan vacía la nota de
+  preescolar, y los rankings promedian `nota`. Con porcentajes tampoco:
+  agregar caritas ahí sería una función nueva. El boletín del profesor (B2c),
+  que sí guarda hoy la definitiva de las caritas, sí las pondera (QB1).
+- **El boletín del admin solo pondera la materia sin boletín guardado**
+  (`boletin_id` vacío). Si el boletín se guardó con definitiva 0 o vacía, el
+  respaldo sigue siendo el promedio simple de hoy: la consulta de B1 no deja
+  distinguir ese caso sin cambiar su texto, y es un caso raro (un estudiante
+  sin notas al guardar que las tuvo después).
+- **Los rankings redondean mitad hacia arriba** con porcentajes, como el
+  boletín; la consulta de hoy trunca. Un 2.995 ponderado es 3.00 y ya no sale
+  en bajo rendimiento. A igual promedio, ordena por nombre.
+- **Si la nota ponderada no tiene nada que ponderar**, el reporte parcial y
+  el boletín del admin dejan la cifra de hoy, igual que B2c.
+
+**Lo que cuesta** (sin conexiones de más):
+
+| Lectura | Sin porcentajes | Con porcentajes activos |
+|---|---|---|
+| Boletín del admin, todo guardado | igual (ninguna más) | igual |
+| Boletín del admin, alguna materia sin guardar | +1 | +3 (porcentajes, tipos y celdas) |
+| Reporte parcial | +1 | +2 (porcentajes y tipos) |
+| Ranking bajo o mejor | +1 | +2, y la del ranking pasa a ser la de las celdas |
+
+**Pruebas que cambiaron a propósito:** `test_boletin_caracterizacion.py`,
+`test_boletines_reporte_parcial.py`, `test_dashboard_caracterizacion.py` y
+`test_dashboard_controlador.py` doblan la pregunta por los porcentajes con "no
+hay", igual que en B2c: sus cursores de prueba devuelven las mismas filas a
+cualquier consulta, y la pregunta nueva las recibía. Sus conteos y cifras no
+cambiaron.
+
+## Paso B3: lista de comprobación en una rama de Neon
+
+La hace el usuario; el asistente no se conecta a Neon. Es el mismo camino del
+paso A2. **Producción no se toca en este paso.**
+
+1. En console.neon.tech → Branches → **Create branch** desde `production`,
+   con los datos actuales. Nombre sugerido: `prueba-porcentajes`.
+2. En la rama nueva → **Connect**: copiar la cadena de conexión **directa**
+   (con "Connection pooling" apagado; el host no debe tener `-pooler`). No
+   pegarla en el chat.
+3. En una terminal de PowerShell, en la carpeta del backend. La variable solo
+   vive en esa ventana y gana sobre el `.env`:
+
+   ```powershell
+   $env:DATABASE_URL = "<cadena directa de la rama>"
+   ([uri]$env:DATABASE_URL).Host
+   .\venv\Scripts\python.exe apply_migration.py migrations/20261022_planilla_tipos_porcentaje.sql --dry-run
+   .\venv\Scripts\python.exe apply_migration.py migrations/20261022_planilla_tipos_porcentaje.sql
+   .\venv\Scripts\python.exe apply_migration.py migrations/20261022_planilla_tipos_porcentaje.sql --dry-run
+   ```
+
+   El host que se imprime debe ser el de la rama, **no** el de producción.
+   Esperado: `PENDIENTE` → `OK` → `OMITIDA (ya aplicada)` en
+   `tenant_colegio_1` y `tenant_2005`.
+4. En la misma terminal, regenerar el esquema base desde la rama:
+
+   ```powershell
+   .\venv\Scripts\python.exe scripts\generar_esquema_base.py --schema tenant_colegio_1
+   ```
+
+   Esperado en el diff: la fecha, la migración en la cabecera (de 46 a 47),
+   la tabla `planilla_tipos_porcentaje` con sus dos `CHECK` y su clave
+   primaria, el índice `idx_planilla_tipos_porcentaje_tipo_unico` y la clave
+   foránea de `asignacion_id` con `ON DELETE CASCADE`. Nada más.
+5. **Probar lo de siempre contra la rama**, con el backend nuevo y el
+   frontend de siempre. En esa misma terminal:
+
+   ```powershell
+   .\venv\Scripts\python.exe -m uvicorn app.main:app --reload
+   ```
+
+   Con `pnpm run dev` en el frontend, y **solo con el Colegio Demo**:
+   - como profesor: en la planilla, crear un tipo "Prueba B3", escribirle una
+     nota a un estudiante y guardar el boletín de ese estudiante;
+   - abrir los rankings de esa clase (mejor y bajo rendimiento);
+   - como admin: abrir el boletín y el reporte parcial de ese estudiante;
+   - como profesor: borrar el tipo "Prueba B3".
+
+   Todo debe funcionar como siempre: así se comprueba, contra PostgreSQL real,
+   que las consultas nuevas de esas rutas no fallan. Después, detener el
+   servidor y cerrar esa terminal.
+6. En el SQL Editor de Neon, **con la rama de prueba elegida**, pegar todo
+   esto junto y correrlo una vez. Prueba 16 casos en `tenant_colegio_1`,
+   incluidas las sentencias que usa la API; cada uno se deshace al instante.
+   La columna `bien` debe salir `true` en las 16 filas:
+
+   ```sql
+   SET search_path TO tenant_colegio_1, public;
+
+   CREATE TEMP TABLE prueba_porcentajes (orden INT, caso TEXT, debe TEXT, obtuvo TEXT);
+
+   DO $$
+   DECLARE
+       asignacion INTEGER := (SELECT MIN(id) FROM asignaciones);
+       estudiante INTEGER := (SELECT MIN(id) FROM estudiantes);
+       fila RECORD;
+   BEGIN
+       IF asignacion IS NULL OR estudiante IS NULL THEN
+           INSERT INTO prueba_porcentajes
+           VALUES (0, 'Datos para probar', 'aceptar', 'no se pudo probar: faltan asignaciones o estudiantes');
+           RETURN;
+       END IF;
+
+       FOR fila IN
+           SELECT * FROM (VALUES
+               (1, 'Porcentaje válido', 'aceptar',
+                $q$INSERT INTO planilla_tipos_porcentaje (asignacion_id, periodo, tipo_nota, porcentaje)
+                   VALUES ({asig}, 1, 'Prueba B3', 40)$q$),
+               (2, 'El mismo tipo con otras mayúsculas', 'idx_planilla_tipos_porcentaje_tipo_unico',
+                $q$INSERT INTO planilla_tipos_porcentaje (asignacion_id, periodo, tipo_nota, porcentaje)
+                   VALUES ({asig}, 1, 'Prueba B3', 40), ({asig}, 1, ' prueba b3 ', 30)$q$),
+               (3, 'Porcentaje 0', 'chk_planilla_tipos_porcentaje_rango',
+                $q$INSERT INTO planilla_tipos_porcentaje (asignacion_id, periodo, tipo_nota, porcentaje)
+                   VALUES ({asig}, 1, 'Prueba B3', 0)$q$),
+               (4, 'Porcentaje 101', 'chk_planilla_tipos_porcentaje_rango',
+                $q$INSERT INTO planilla_tipos_porcentaje (asignacion_id, periodo, tipo_nota, porcentaje)
+                   VALUES ({asig}, 1, 'Prueba B3', 101)$q$),
+               (5, 'Tipo de puros espacios', 'chk_planilla_tipos_porcentaje_tipo_nota_no_vacio',
+                $q$INSERT INTO planilla_tipos_porcentaje (asignacion_id, periodo, tipo_nota, porcentaje)
+                   VALUES ({asig}, 1, '   ', 40)$q$),
+               (6, 'Tipo de 101 caracteres', 'character varying(100)',
+                $q$INSERT INTO planilla_tipos_porcentaje (asignacion_id, periodo, tipo_nota, porcentaje)
+                   VALUES ({asig}, 1, repeat('x', 101), 40)$q$),
+               (7, 'Bloquear la clase como la API', 'aceptar',
+                $q$SELECT id FROM asignaciones WHERE id = {asig} FOR NO KEY UPDATE$q$),
+               (8, 'Leer porcentajes de una clase', 'aceptar',
+                $q$SELECT tipo_nota, porcentaje FROM planilla_tipos_porcentaje
+                   WHERE asignacion_id = {asig} AND periodo = 1 ORDER BY id$q$),
+               (9, 'Leer tipos de una clase', 'aceptar',
+                $q$SELECT DISTINCT descripcion FROM notas_detalle
+                   WHERE asignacion_id = {asig} AND periodo = 1
+                     AND descripcion IS NOT NULL ORDER BY descripcion$q$),
+               (10, 'Leer celdas de un estudiante', 'aceptar',
+                $q$SELECT descripcion, nota, valoracion,
+                          COALESCE(tipo_evaluacion, 'numerica') AS tipo_evaluacion
+                   FROM notas_detalle WHERE asignacion_id = {asig} AND periodo = 1
+                     AND estudiante_id = {est} AND descripcion IS NOT NULL ORDER BY id$q$),
+               (11, 'Leer porcentajes de varias clases', 'aceptar',
+                $q$SELECT asignacion_id, tipo_nota, porcentaje FROM planilla_tipos_porcentaje
+                   WHERE asignacion_id = ANY(ARRAY[{asig}]) AND periodo = 1 ORDER BY id$q$),
+               (12, 'Leer tipos de varias clases', 'aceptar',
+                $q$SELECT DISTINCT asignacion_id, descripcion FROM notas_detalle
+                   WHERE asignacion_id = ANY(ARRAY[{asig}]) AND periodo = 1
+                     AND descripcion IS NOT NULL ORDER BY asignacion_id, descripcion$q$),
+               (13, 'Leer celdas de un estudiante en varias clases', 'aceptar',
+                $q$SELECT asignacion_id, descripcion, nota, valoracion FROM notas_detalle
+                   WHERE asignacion_id = ANY(ARRAY[{asig}]) AND periodo = 1
+                     AND estudiante_id = {est} AND descripcion IS NOT NULL ORDER BY id$q$),
+               (14, 'Leer celdas de la clase como los rankings', 'aceptar',
+                $q$SELECT e.id, e.nombre || ' ' || e.apellido AS nombre_estudiante, n.descripcion,
+                          n.nota, n.valoracion
+                   FROM notas_detalle n JOIN estudiantes e ON n.estudiante_id = e.id
+                   WHERE n.asignacion_id = {asig} AND n.periodo = 1
+                     AND n.descripcion IS NOT NULL ORDER BY e.id, n.id$q$),
+               (15, 'Quitar un porcentaje como la API', 'aceptar',
+                $q$DELETE FROM planilla_tipos_porcentaje
+                   WHERE asignacion_id = {asig} AND periodo = 1
+                     AND LOWER(TRIM(tipo_nota)) = LOWER(TRIM('Prueba B3'))$q$)
+           ) AS c (orden, caso, debe, sentencia)
+           ORDER BY orden
+       LOOP
+           BEGIN
+               EXECUTE replace(replace(fila.sentencia, '{asig}', asignacion::text), '{est}', estudiante::text);
+               RAISE EXCEPTION 'aceptada';
+           EXCEPTION
+               WHEN raise_exception THEN
+                   INSERT INTO prueba_porcentajes VALUES (fila.orden, fila.caso, fila.debe, 'aceptada');
+               WHEN OTHERS THEN
+                   INSERT INTO prueba_porcentajes VALUES (fila.orden, fila.caso, fila.debe, SQLERRM);
+           END;
+       END LOOP;
+
+       BEGIN
+           INSERT INTO planilla_tipos_porcentaje (asignacion_id, periodo, tipo_nota, porcentaje)
+           VALUES (asignacion, 1, 'Prueba B3', 40);
+           INSERT INTO planilla_tipos_porcentaje (asignacion_id, periodo, tipo_nota, porcentaje)
+           VALUES (asignacion, 1, ' prueba b3 ', 25)
+           ON CONFLICT (asignacion_id, periodo, (LOWER(TRIM(tipo_nota))))
+           DO UPDATE SET porcentaje = EXCLUDED.porcentaje,
+                         tipo_nota = EXCLUDED.tipo_nota,
+                         actualizado_en = CURRENT_TIMESTAMP;
+           RAISE EXCEPTION 'quedo:% filas:%',
+               (SELECT porcentaje FROM planilla_tipos_porcentaje
+                 WHERE asignacion_id = asignacion AND periodo = 1
+                   AND LOWER(TRIM(tipo_nota)) = 'prueba b3'),
+               (SELECT count(*) FROM planilla_tipos_porcentaje
+                 WHERE asignacion_id = asignacion AND periodo = 1
+                   AND LOWER(TRIM(tipo_nota)) = 'prueba b3');
+       EXCEPTION
+           WHEN OTHERS THEN
+               INSERT INTO prueba_porcentajes
+               VALUES (16, 'Guardar dos veces como la API cambia el mismo', 'quedo:25 filas:1', SQLERRM);
+       END;
+   END
+   $$;
+
+   SELECT orden, caso, debe, obtuvo,
+          CASE WHEN debe = 'aceptar' THEN obtuvo = 'aceptada'
+               ELSE position(debe IN obtuvo) > 0 END AS bien
+   FROM prueba_porcentajes
+   ORDER BY orden;
+   ```
+
+   Cómo funciona: igual que en A2, cada caso corre en un bloque que se
+   deshace solo, acepte o rechace la base. Solo queda el resultado en una
+   tabla temporal, que desaparece al cerrar la sesión.
+7. En el mismo SQL Editor, comprobar que no quedó nada (debe dar 0 y 0):
+
+   ```sql
+   SELECT 'tenant_colegio_1' AS colegio,
+          (SELECT count(*) FROM tenant_colegio_1.planilla_tipos_porcentaje) AS porcentajes,
+          (SELECT count(*) FROM tenant_colegio_1.notas_detalle
+            WHERE LOWER(TRIM(descripcion)) = 'prueba b3') AS celdas_de_prueba
+   UNION ALL
+   SELECT 'tenant_2005',
+          (SELECT count(*) FROM tenant_2005.planilla_tipos_porcentaje),
+          (SELECT count(*) FROM tenant_2005.notas_detalle
+            WHERE LOWER(TRIM(descripcion)) = 'prueba b3');
+   ```
+
+8. Correr `.\venv\Scripts\python.exe scripts\verify.py`: ahora
+   `test_esquema_base.py` debe pasar, y con él todo.
+9. Contarle al asistente lo que salió en los puntos 3 a 8, sin cadenas de
+   conexión. Con eso se cierra B3 y el usuario hace un commit con el esquema
+   base. Después se puede borrar la rama. Lo siguiente es aplicar la
+   migración en producción y en seguida subir el backend (el orden de
+   publicación es el mismo de la parte A).
+
 ## Fuera de alcance
 
 - Mostrar las subnotas en el boletín, el reporte parcial o cualquier impreso.
@@ -1279,10 +1543,11 @@ aprobada):
   **2906 pruebas** (eran 2902), lint y build correctos. Corridas una tras
   otra, sin otra carga. `git diff --check` limpio en los dos.
 - B1 en `a9cdc57` (backend) y `f6b22f6` (frontend).
-- **B2 va en cuatro partes** (ver "Avance del paso B2"). **B2a (el cálculo)
-  en `a630183`. B2b (tabla, ruta para guardar porcentajes, lectura en la
-  planilla y borrado con el tipo) en `dcf8443`. B2c (la definitiva del
-  boletín, PB5) hecho el 2026-10-22, sin commit.** En la práctica ninguna
+- **B2 completo** (ver "Avance del paso B2"): **B2a (el cálculo) en
+  `a630183`, B2b (tabla, ruta para guardar porcentajes, lectura en la
+  planilla y borrado con el tipo) en `dcf8443`, B2c (la definitiva del
+  boletín, PB5) en `05a8bbe` y B2d (boletín del admin, reporte parcial y
+  rankings, PB7) hecho el 2026-10-22, sin commit.** En la práctica ninguna
   nota cambia todavía: solo cambia en clases con porcentajes completos, y
   ninguna puede tenerlos hasta B3 y B4.
 - Verificación al cerrar B2b: `scripts/verify.py`, **2835 pasan y 1 falla a
@@ -1293,14 +1558,19 @@ aprobada):
   propósito** (`test_esquema_base.py`); Ruff y `pip check` limpios. Frontend
   sin cambios de código: `check:deploy` con 2906 pruebas, lint y build
   correctos. Corridas una tras otra. `git diff --check` limpio en los dos.
+- Verificación al cerrar B2d (B2 completo): `scripts/verify.py`, **2869
+  pasan y 1 falla a propósito** (`test_esquema_base.py`); Ruff y `pip check`
+  limpios. Frontend sin cambios de código: `check:deploy` con 2906 pruebas,
+  lint y build correctos. Corridas una tras otra. `git diff --check` limpio
+  en los dos.
 - **Desde B2b, `test_esquema_base.py` falla a propósito** (reclama solo
   `20261022_planilla_tipos_porcentaje.sql`) hasta B3, y **el backend no se
   sube** hasta que la migración esté en producción: si saliera antes,
   `DELETE /planilla/tipo` fallaría para todos los profesores. Los commits se
   pueden hacer; el push no.
-- Siguiente acción exacta: **B2d**: el boletín del admin sin definitiva
-  guardada, el reporte parcial y los dos rankings usan el cálculo ponderado
-  con porcentajes activos (PB7). Solo con el visto bueno del usuario para
-  B2d. Con B2 completo, la lista de B3 para la rama de Neon.
+- Siguiente acción exacta: **B3, lo hace el usuario** con la lista de "Paso
+  B3: lista de comprobación en una rama de Neon". Después, la migración en
+  producción y en seguida el push del backend (Render Live); luego B4 y B5
+  en el frontend, y por último su push.
 - Prompt para retomar:
   `docs/funcionalidades/PROMPT_CONTINUACION_SUBNOTAS_PLANILLA.md`.

@@ -1240,6 +1240,15 @@ Notas:
 - `/dashboard/inasistencias/{profesor_id}` cuenta solo las faltas de cursos
   del año activo (año lectivo, fase 3, paso 3.2). Los demas paneles del
   profesor ya parten de un curso o del curso actual del estudiante.
+- **Porcentajes por tipo de nota** (desde el 2026-10-22, paso B2d de
+  `docs/funcionalidades/SUBNOTAS_PLANILLA.md`, PB7): si la clase tiene sus
+  porcentajes **activos** en ese periodo, los dos rankings usan la nota
+  ponderada de cada estudiante, redondeada a dos decimales mitad hacia arriba
+  (la consulta de siempre trunca), con el mismo corte en 3.0 y el mismo orden.
+  Solo notas numéricas, como siempre: un estudiante solo con caritas no
+  entra. Sin porcentajes activos, la consulta de siempre. Una consulta más
+  sin porcentajes; con porcentajes activos, tres en vez de la del ranking.
+  `notas-bajas` y `notas-altas` (que mezclan todo el año) no cambian.
 
 ## Usuarios
 
@@ -1648,6 +1657,16 @@ Notas:
   - Sin porcentajes activos las dos rutas responden y guardan lo de siempre.
     Cuestan una consulta más (saber si la clase tiene porcentajes), dos si los
     tiene incompletos, y tres con porcentajes activos.
+  - Paso B2d (PB7): `GET /boletines/admin/generar/...` usa la nota ponderada
+    en la materia **sin boletín guardado** cuya clase tiene porcentajes
+    activos (el respaldo de siempre era el promedio simple). Una materia con
+    boletín guardado conserva su definitiva. Si todas lo tienen, no consulta
+    nada más; si no, una consulta más (dos o tres con porcentajes).
+  - Paso B2d (PB7): `GET /boletines/admin/reporte-parcial/...` usa la nota
+    ponderada en cada materia cuya clase tiene porcentajes activos. Una
+    consulta más (dos si alguna tiene porcentajes). Los detalles no cambian.
+  - En el boletín del admin y en el reporte parcial **solo cuentan las notas
+    numéricas**, como siempre: su nota de preescolar sigue vacía.
 - `GET /boletines/admin/generar/{estudiante_id}/{periodo}` devuelve la
   definitiva guardada en boletin si existe.
 - Si no existe definitiva guardada, o la definitiva guardada es `0`, usa como

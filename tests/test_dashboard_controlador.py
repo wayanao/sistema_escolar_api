@@ -14,6 +14,20 @@ from contextlib import contextmanager
 import pytest
 
 from app.controllers import dashboard_controller
+from app.repositories import porcentajes_planilla_repository
+
+
+@pytest.fixture(autouse=True)
+def sin_porcentajes(monkeypatch):
+    """Porcentajes por tipo de nota, paso B2d (docs/funcionalidades/SUBNOTAS_PLANILLA.md,
+    PB7): los rankings preguntan si la clase tiene porcentajes. Se dobla con
+    "no tiene", que es el caso de estas pruebas; el caso con porcentajes lo
+    prueba `test_porcentajes_lecturas.py`."""
+    monkeypatch.setattr(
+        porcentajes_planilla_repository,
+        "leer_porcentajes_de_planilla",
+        lambda _cursor, *argumentos: [],
+    )
 
 
 class CursorFalso:

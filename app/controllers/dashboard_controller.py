@@ -1,7 +1,9 @@
 from app.database import get_connection, get_cursor
+from app.core.nota_periodo import calcular_nota_del_periodo
 from app.core.permissions import require_asignacion_access
-from app.repositories import dashboard_repository
+from app.repositories import dashboard_repository, porcentajes_planilla_repository
 from app.services.asignacion_academica import resolver_asignacion_academica_id_cursor
+from app.services.porcentajes_activos import porcentajes_activos_de
 
 
 def _formatear_cumpleanos_estudiante(row):
@@ -194,13 +196,55 @@ def obtener_notas_altas_profesor_controller(
     )
 
 
+def _promedios_ponderados_de_la_clase(cursor, asignacion_id, periodo):
+    """Porcentajes, paso B2d (PB7): `(id, nombre, promedio)` de cada estudiante.
+
+    None si la clase no tiene porcentajes activos: entonces el ranking usa su
+    consulta de siempre, sin cambiar ni una letra. Con porcentajes activos, la
+    nota ponderada de `app/core/nota_periodo.py`, redondeada mitad hacia
+    arriba como el boletin (la consulta de hoy trunca). **Solo notas
+    numericas**, como hoy: un estudiante solo con caritas no entra.
+    """
+    porcentajes = porcentajes_activos_de(cursor, asignacion_id, periodo)
+    if porcentajes is None:
+        return None
+
+    estudiantes = {}
+    for estudiante_id, nombre, tipo_nota, nota, valoracion in (
+        porcentajes_planilla_repository.leer_celdas_de_la_clase(cursor, asignacion_id, periodo)
+    ):
+        estudiantes.setdefault(estudiante_id, (nombre, []))[1].append(
+            (tipo_nota, nota, valoracion)
+        )
+
+    promedios = []
+    for estudiante_id, (nombre, celdas) in estudiantes.items():
+        valor, _ = calcular_nota_del_periodo("numerica", celdas, porcentajes)
+        if valor is not None:
+            promedios.append((estudiante_id, nombre, float(valor)))
+    return promedios
+
+
+def _en_json(promedios):
+    return [
+        {"id": estudiante_id, "nombre": nombre, "promedio": promedio}
+        for estudiante_id, nombre, promedio in promedios
+    ]
+
+
 def obtener_ranking_rendimiento_controller(asignacion_id, periodo):
     with get_cursor() as cursor:
         asignacion_id = resolver_asignacion_academica_id_cursor(cursor, asignacion_id)
 
-        resultados = dashboard_repository.leer_ranking_bajo_rendimiento(
-            cursor, asignacion_id, periodo
-        )
+        ponderados = _promedios_ponderados_de_la_clase(cursor, asignacion_id, periodo)
+        if ponderados is None:
+            resultados = dashboard_repository.leer_ranking_bajo_rendimiento(
+                cursor, asignacion_id, periodo
+            )
+
+    if ponderados is not None:
+        bajos = [fila for fila in ponderados if fila[2] < 3.0]
+        return _en_json(sorted(bajos, key=lambda fila: (fila[2], fila[1])))
 
     return [
         {"id": row[0], "nombre": row[1], "promedio": float(row[2])}
@@ -212,9 +256,15 @@ def obtener_ranking_mejor_rendimiento_controller(asignacion_id, periodo):
     with get_cursor() as cursor:
         asignacion_id = resolver_asignacion_academica_id_cursor(cursor, asignacion_id)
 
-        resultados = dashboard_repository.leer_ranking_mejor_rendimiento(
-            cursor, asignacion_id, periodo
-        )
+        ponderados = _promedios_ponderados_de_la_clase(cursor, asignacion_id, periodo)
+        if ponderados is None:
+            resultados = dashboard_repository.leer_ranking_mejor_rendimiento(
+                cursor, asignacion_id, periodo
+            )
+
+    if ponderados is not None:
+        altos = [fila for fila in ponderados if fila[2] >= 3.0]
+        return _en_json(sorted(altos, key=lambda fila: (-fila[2], fila[1])))
 
     return [
         {"id": row[0], "nombre": row[1], "promedio": float(row[2])}

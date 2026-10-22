@@ -6,14 +6,25 @@ Ultima revision documental: 2026-10-22.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
-## 2026-10-22 - Porcentajes por tipo de nota, pasos B2a, B2b y B2c
+## 2026-10-22 - Porcentajes por tipo de nota, paso B2 (B2a a B2d)
 
-Primeros pasos con código de la parte B de
-`docs/funcionalidades/SUBNOTAS_PLANILLA.md`. **Ninguna nota cambia todavía en
-la práctica**: solo cambia en clases con porcentajes completos, y ninguna los
-tiene (la tabla ni siquiera está aplicada y la pantalla para ponerlos llega
-en B4). El reporte parcial, el boletín del admin y los rankings se conectan
-en B2d. Nada de esto está publicado.
+El backend de la parte B de `docs/funcionalidades/SUBNOTAS_PLANILLA.md`.
+**Ninguna nota cambia todavía en la práctica**: solo cambia en clases con
+porcentajes completos, y ninguna los tiene (la tabla ni siquiera está
+aplicada y la pantalla para ponerlos llega en B4). Nada de esto está
+publicado.
+
+### B2d: las lecturas de la nota del periodo (PB7)
+
+- Con porcentajes activos, el boletín del admin (solo en la materia sin
+  boletín guardado), el reporte parcial y los dos rankings usan la nota
+  ponderada. Solo notas numéricas, como siempre: preescolar no cambia en
+  esos tres lugares.
+- `app/services/porcentajes_activos.py` (nuevo): la regla "todo o nada"
+  sobre la base, compartida por los cinco lugares que cambian con
+  porcentajes. Lo de B2c se movió aquí para no tener dos copias.
+- Coste: una consulta más en cada lectura sin porcentajes (ninguna en el
+  boletín del admin si todas sus materias tienen boletín guardado).
 
 ### B2c: la definitiva del boletín (PB5)
 

@@ -68,6 +68,70 @@ def leer_celdas_del_estudiante(cursor, asignacion_id, periodo, estudiante_id):
     ]
 
 
+def leer_porcentajes_de_asignaciones(cursor, asignacion_ids, periodo):
+    """`(asignacion_id, tipo_nota, porcentaje)` de varias clases, en una consulta.
+
+    La usan las lecturas de un estudiante con varias materias (boletin del
+    admin y reporte parcial): una consulta por lectura, no una por materia.
+    """
+    cursor.execute("""
+            SELECT asignacion_id, tipo_nota, porcentaje
+            FROM planilla_tipos_porcentaje
+            WHERE asignacion_id = ANY(%s) AND periodo = %s
+            ORDER BY id
+        """, (asignacion_ids, periodo))
+    return [
+        _tupla(fila, "asignacion_id", "tipo_nota", "porcentaje")
+        for fila in cursor.fetchall()
+    ]
+
+
+def leer_tipos_de_asignaciones(cursor, asignacion_ids, periodo):
+    """`(asignacion_id, descripcion)` de los tipos de nota de varias clases."""
+    cursor.execute("""
+            SELECT DISTINCT asignacion_id, descripcion FROM notas_detalle
+            WHERE asignacion_id = ANY(%s) AND periodo = %s
+              AND descripcion IS NOT NULL
+            ORDER BY asignacion_id, descripcion
+        """, (asignacion_ids, periodo))
+    return [_tupla(fila, "asignacion_id", "descripcion") for fila in cursor.fetchall()]
+
+
+def leer_celdas_del_estudiante_en_asignaciones(cursor, asignacion_ids, periodo, estudiante_id):
+    """`(asignacion_id, tipo_nota, nota, valoracion)` de un estudiante en varias clases."""
+    cursor.execute("""
+            SELECT asignacion_id, descripcion, nota, valoracion FROM notas_detalle
+            WHERE asignacion_id = ANY(%s) AND periodo = %s
+              AND estudiante_id = %s AND descripcion IS NOT NULL
+            ORDER BY id
+        """, (asignacion_ids, periodo, estudiante_id))
+    return [
+        _tupla(fila, "asignacion_id", "descripcion", "nota", "valoracion")
+        for fila in cursor.fetchall()
+    ]
+
+
+def leer_celdas_de_la_clase(cursor, asignacion_id, periodo):
+    """`(estudiante_id, nombre, tipo_nota, nota, valoracion)` de toda una clase.
+
+    Para los rankings con porcentajes activos. Como la consulta de los
+    rankings de hoy, entra todo estudiante con celdas en la clase, sin mirar
+    su estado.
+    """
+    cursor.execute("""
+            SELECT e.id, e.nombre || ' ' || e.apellido AS nombre_estudiante, n.descripcion,
+                   n.nota, n.valoracion
+            FROM notas_detalle n
+            JOIN estudiantes e ON n.estudiante_id = e.id
+            WHERE n.asignacion_id = %s AND n.periodo = %s AND n.descripcion IS NOT NULL
+            ORDER BY e.id, n.id
+        """, (asignacion_id, periodo))
+    return [
+        _tupla(fila, "id", "nombre_estudiante", "descripcion", "nota", "valoracion")
+        for fila in cursor.fetchall()
+    ]
+
+
 def bloquear_clase(cursor, asignacion_id):
     """Bloquea la fila de la asignacion hasta el fin de la transaccion.
 

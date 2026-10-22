@@ -7,9 +7,10 @@
   frontend, A3 en `12c2067`, A4 (la pantalla) en `d58fb0e` y `5f9f1b1`, A5
   (la prueba en local) bien, y push con `3fb9831` publicado en Vercel. Ver
   "Publicación del frontend". **Parte B: diseño (B0) en `822dd4e`, con las
-  propuestas PB1 a PB10 aprobadas por el usuario el 2026-10-21, y
-  caracterización (B1) hecha el mismo día, sin commit**; sin código de la
-  aplicación.
+  propuestas PB1 a PB10 aprobadas por el usuario el 2026-10-21,
+  caracterización (B1) en `a9cdc57` y, desde el 2026-10-22, B2 en cuatro
+  partes: B2a (el cálculo) hecho, sin commit.** Nada nuevo está conectado
+  todavía.
 - Tipo: Función nueva de producto. No es una capa del programa de
   modularización de `docs/modularizacion/` y no debe confundirse con una.
 - Repos afectados: este repo (`sistema_escolar_api`) y `frontend-react`. Ver
@@ -26,7 +27,7 @@
     parcial y puesto.
 - Origen: pedido de los profesores de preescolar y primaria, contado por el
   usuario el 2026-10-21.
-- Última actualización: 2026-10-21.
+- Última actualización: 2026-10-22.
 
 ## Objetivo
 
@@ -1029,6 +1030,56 @@ deja fuera caritas y ceros, la respuesta de los rankings
 
 **Verificación:** ver "Entrega para el siguiente chat".
 
+## Avance del paso B2 (backend), desde el 2026-10-22
+
+Autorizado por el usuario el 2026-10-22 ("continúa la siguiente fase"), sin
+el botón para apagar los porcentajes de una vez: el diseño queda como se
+aprobó, y para dejar de usarlos se quitan uno por uno. Al empezar, los dos
+repos estaban en `main` y limpios: backend `a9cdc57`, frontend `f6b22f6`.
+
+**B2 se hace en cuatro partes, con el visto bueno del usuario antes de cada
+una.** Es lo que el usuario pide en los pasos grandes: saber antes qué
+archivos cambian y a qué afectan. Además B2 llega a la nota oficial.
+
+- **B2a — El cálculo, solo.** `app/core/nota_periodo.py` y sus pruebas.
+  Nadie lo llama todavía. **Hecho el 2026-10-22, sin commit.**
+- **B2b — Guardar y ver los porcentajes.** La migración (escrita, sin
+  aplicar), el repositorio, `PUT /planilla/tipos/porcentaje`, `GET
+  /planilla-excel?con_porcentajes=true` y el borrado del porcentaje al borrar
+  un tipo (PB10). Cambia `DELETE /planilla/tipo` (una consulta más).
+  `test_esquema_base.py` fallará a propósito desde aquí hasta B3.
+- **B2c — El boletín del profesor (zona sensible).** Guardar el boletín
+  calcula la definitiva en el servidor con porcentajes activos (PB5), y la
+  lectura del boletín del profesor la agrega.
+- **B2d — Las demás lecturas.** El boletín del admin sin definitiva, el
+  reporte parcial y los dos rankings (PB7).
+
+### B2a, 2026-10-22
+
+- `app/core/nota_periodo.py` (nuevo, puro): los límites (PB2), cuándo están
+  activos (QB2, todo o nada; los tipos se comparan sin mayúsculas ni
+  espacios; las columnas internas no cuentan; el porcentaje de un tipo que ya
+  no existe tampoco), la suma y la nota ponderada en primaria y en preescolar
+  (PB4, QB1). Reutiliza de la parte A el redondeo y la validación de la nota
+  (`normalizar_nota`), las columnas internas (`admite_subnotas`) y la escala
+  de caritas, para que las dos partes redondeen igual.
+- `tests/test_nota_periodo.py`, **46 pruebas**, escritas antes que el módulo
+  (fallaron porque no existía y después pasaron). Fijan los ejemplos de B0
+  (3.90 y 3.63), el redondeo mitad hacia arriba (4.125 → 4.13, 1.005 →
+  1.01), 33 + 33 + 34, caritas con y sin empate, y que una nota fuera de 1 a
+  5 no cuenta.
+- **Hallazgo:** con porcentajes enteros que suman hasta 100, el promedio
+  ponderado nunca cae entre x.495 y x.5 (la fracción más cercana por debajo
+  de un medio es 49/99 = 0.4949…). Por eso redondear antes o después no
+  cambia nunca la carita. El módulo usa igual el promedio exacto, y la
+  prueba del casi empate (445/99 = 4.49, logrado) lo deja fijado.
+- Ningún archivo existente cambió. Nada lo llama todavía: lo que ven los
+  profesores no cambia.
+- **Verificación:** `scripts/verify.py`, **2794 pasan** (eran 2748), 0
+  fallan; Ruff y `pip check` limpios. Frontend sin cambios de código:
+  `check:deploy` con 2906 pruebas, lint y build correctos. Corridas una tras
+  otra. `git diff --check` limpio en los dos.
+
 ## Fuera de alcance
 
 - Mostrar las subnotas en el boletín, el reporte parcial o cualquier impreso.
@@ -1092,10 +1143,14 @@ deja fuera caritas y ceros, la respuesta de los rankings
   2733), 0 fallan; Ruff y `pip check` limpios. Frontend: `check:deploy` con
   **2906 pruebas** (eran 2902), lint y build correctos. Corridas una tras
   otra, sin otra carga. `git diff --check` limpio en los dos.
-- Siguiente acción exacta: **B2, backend y migración**, solo con
-  autorización explícita del usuario. Empieza por escribir las pruebas de
-  `app/core/nota_periodo.py` (PB4) con los ejemplos de B0. B2 escribe la
-  migración pero **no la aplica**: eso es B3 y lo hace el usuario en una rama
-  de Neon.
+- B1 en `a9cdc57` (backend) y `f6b22f6` (frontend).
+- **B2 va en cuatro partes** (ver "Avance del paso B2"). **B2a (el cálculo)
+  hecho el 2026-10-22, sin commit**: `app/core/nota_periodo.py` y 46
+  pruebas. Nada lo llama todavía.
+- Siguiente acción exacta: **B2b** (migración escrita sin aplicar,
+  repositorio, ruta para guardar porcentajes, lectura en la planilla y
+  borrado con el tipo), solo con el visto bueno del usuario para B2b. Desde
+  B2b, `test_esquema_base.py` falla a propósito hasta B3, y el backend **no
+  se sube** hasta que la migración esté en producción.
 - Prompt para retomar:
   `docs/funcionalidades/PROMPT_CONTINUACION_SUBNOTAS_PLANILLA.md`.

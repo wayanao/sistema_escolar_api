@@ -56,7 +56,7 @@ continuacion para retomarla en otro chat u otro LLM.
   planilla del profesor (su promedio va a la celda) y, después, porcentajes
   por tipo de nota. Dos tablas nuevas; la parte B cambia la nota del periodo.
   **Parte A (subnotas) publicada el 2026-10-21, backend y frontend. Parte B
-  (porcentajes): diseño (B0) escrito, pendiente de visto bueno.**
+  (porcentajes): diseño (B0) aprobado el 2026-10-21; sin código.**
 
 ## Estado actual resumido
 

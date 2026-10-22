@@ -6,8 +6,8 @@
   `e36f976`, con la migración aplicada en producción y Render **Live**. En el
   frontend, A3 en `12c2067`, A4 (la pantalla) en `d58fb0e` y `5f9f1b1`, A5
   (la prueba en local) bien, y push con `3fb9831` publicado en Vercel. Ver
-  "Publicación del frontend". **Parte B: diseño (B0) escrito el 2026-10-21,
-  pendiente del visto bueno del usuario**; sin código.
+  "Publicación del frontend". **Parte B: diseño (B0) en `822dd4e`, con las
+  propuestas PB1 a PB10 aprobadas por el usuario el 2026-10-21**; sin código.
 - Tipo: Función nueva de producto. No es una capa del programa de
   modularización de `docs/modularizacion/` y no debe confundirse con una.
 - Repos afectados: este repo (`sistema_escolar_api`) y `frontend-react`. Ver
@@ -761,7 +761,7 @@ de cada lugar de la tabla, **B2** backend y migración, **B3** base de datos (lo
 hace el usuario), **B4** frontend y **B5** prueba en local. La publicación
 sigue el mismo orden que la parte A.
 
-## Avance del paso B0, 2026-10-21 (diseño escrito, falta el visto bueno)
+## Avance del paso B0, 2026-10-21 (hecho; propuestas aprobadas)
 
 Autorizado por el usuario el 2026-10-21 ("autorizas empezar B0" → "si"), con
 la parte A ya publicada. Al empezar, los dos repos estaban en `main` y
@@ -851,10 +851,11 @@ Se anotan aquí con su respuesta a medida que se contestan.
   lugares de QB3 usan el mismo cálculo del servidor (PB4). Así ninguna nota
   ya entregada cambia sola.
 
-### Propuestas de B0 (pendientes del visto bueno del usuario)
+### Propuestas de B0 (aprobadas por el usuario el 2026-10-21)
 
-Cierran lo que las respuestas no cubren. Igual que P1 a P12 en A0, **no se
-escribe código de B hasta que el usuario las apruebe.**
+Cierran lo que las respuestas no cubren. **El usuario las aprobó todas el
+2026-10-21**, incluida la consecuencia de PB10. Aprobarlas no autoriza B1:
+cada paso necesita su propia autorización.
 
 **Definición.** En una clase y un periodo, los porcentajes están **activos**
 cuando cada tipo de nota de la planilla tiene el suyo y suman exactamente
@@ -984,7 +985,8 @@ de las subnotas de un tipo (decisión 2).
   porcentajes? ¿Preescolar también lleva porcentajes? ¿Qué pasa con los tipos
   creados sin porcentaje en un periodo ya empezado?~~ **Respondidas el
   2026-10-21** (QB1 a QB4 en "Avance del paso B0").
-- **Antes de B1:** que el usuario revise y apruebe las propuestas PB1 a PB10.
+- ~~Antes de B1: que el usuario revise y apruebe las propuestas PB1 a PB10.~~
+  **Aprobadas todas el 2026-10-21.**
 
 ## Entrega para el siguiente chat
 
@@ -1000,15 +1002,18 @@ de las subnotas de un tipo (decisión 2).
 - Pendiente del usuario: borrar la rama `prueba-subnotas` en Neon, si no lo
   hizo, y devolver el `DATABASE_URL` del `.env` al endpoint `-pooler`, si lo
   cambió.
-- **B0 (diseño de los porcentajes) escrito el 2026-10-21, sin commit.**
+- **B0 (diseño de los porcentajes) hecho el 2026-10-21, en `822dd4e`.
+  Propuestas PB1 a PB10 aprobadas por el usuario el mismo día.**
   Inventario confirmado, preguntas QB1 a QB4 respondidas por el usuario y
   propuestas PB1 a PB10 escritas. Ver "Avance del paso B0". No hay código de
   la parte B. Verificación al cerrar B0 (solo documentos):
   `scripts/verify.py`, 2733 pasan, 0 fallan, Ruff y `pip check` limpios; en
   el frontend, `check:deploy` con 2902 pruebas, lint y build correctos. `git
   diff --check` limpio en los dos.
-- Siguiente acción exacta: **que el usuario revise y apruebe PB1 a PB10.**
-  Después, **B1** (caracterización, sin cambiar comportamiento), solo con
-  autorización explícita.
+- Siguiente acción exacta: **B1, la caracterización**, solo con
+  autorización explícita del usuario para B1. Son pruebas que fijan lo que
+  hoy devuelve cada lugar de PB7, guardar el boletín y la lectura del
+  boletín del profesor, sin porcentajes y con conteo de consultas. No cambia
+  ningún comportamiento ni toca la base de datos.
 - Prompt para retomar:
   `docs/funcionalidades/PROMPT_CONTINUACION_SUBNOTAS_PLANILLA.md`.

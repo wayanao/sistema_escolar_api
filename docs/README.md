@@ -56,8 +56,8 @@ continuacion para retomarla en otro chat u otro LLM.
   planilla del profesor (su promedio va a la celda) y, después, porcentajes
   por tipo de nota. Dos tablas nuevas; la parte B cambia la nota del periodo.
   **Backend de la parte A en producción desde el 2026-10-21 (`e36f976`,
-  migración aplicada y Render Live). En el frontend, A3 y A4 escritos; falta
-  A5 (prueba en local) antes de publicar.**
+  migración aplicada y Render Live). En el frontend, A3 y A4 con commit y A5
+  (prueba en local) bien el 2026-10-21; falta el push del frontend.**
 
 ## Estado actual resumido
 

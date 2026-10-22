@@ -4,9 +4,9 @@
 
 - Estado: **Backend de la parte A en producción desde el 2026-10-21.** A0 en
   `185d5b6`, A1 y A2 en `e36f976`. Migración aplicada en producción y Render
-  **Live**. En el frontend, A3 en `12c2067` y A4 (la pantalla) escrito el
-  2026-10-21, sin commit; falta A5 (la prueba en local) antes de publicar.
-  Hasta entonces nadie ve las subnotas.
+  **Live**. En el frontend, A3 en `12c2067` y A4 (la pantalla) en `d58fb0e` y
+  `5f9f1b1`. **A5, la prueba en local, salió bien el 2026-10-21.** Falta el
+  push del frontend; hasta entonces nadie ve las subnotas.
 - Tipo: Función nueva de producto. No es una capa del programa de
   modularización de `docs/modularizacion/` y no debe confundirse con una.
 - Repos afectados: este repo (`sistema_escolar_api`) y `frontend-react`. Ver
@@ -298,17 +298,19 @@ calculan con datos viejos.
   el esquema base desde esa rama y hacer un commit con la migración, el
   esquema base y el código juntos. Lista completa en "Paso A2". **Todavía sin
   push** (ver "Orden de publicación").
-- **A3 — Frontend: contratos.** **Hecho el 2026-10-21, sin commit** (ver el
-  documento del frontend). El servicio, las utilidades (vista previa del
+- **A3 — Frontend: contratos.** **Hecho el 2026-10-21**, en `12c2067` (ver
+  el documento del frontend). El servicio, las utilidades (vista previa del
   cálculo, cuándo una celda es calculada) y los ganchos, con pruebas. Detalle
   en el documento del frontend.
-- **A4 — Frontend: pantalla.** **Hecho el 2026-10-21, sin commit** (ver el
-  documento del frontend). El botón en la celda, el modal con
-  Anterior/Siguiente, la celda calculada y la vista de celular.
+- **A4 — Frontend: pantalla.** **Hecho el 2026-10-21**, en `d58fb0e` y
+  `5f9f1b1` (ver el documento del frontend). El botón en la celda, el modal
+  con Anterior/Siguiente, la celda calculada y la vista de celular.
 - **A5 — Prueba en local** con el Colegio Demo (`tenant_colegio_1`), nunca con
   estudiantes de `tenant_2005`. El backend local escribe en la base real, así
   que la prueba necesita la migración ya aplicada (paso 2 del orden de
-  publicación) o un backend local apuntando a la rama de Neon.
+  publicación) o un backend local apuntando a la rama de Neon. **Hecho el
+  2026-10-21 por el usuario, todo bien**, en primaria y en preescolar (ver
+  "Avance del paso A5" del documento del frontend).
 
 ### Orden de publicación (parte A)
 
@@ -322,7 +324,8 @@ días:
    el `DATABASE_URL` **directo** de producción (sin `-pooler`).
 3. **En seguida**, push del backend y esperar a que Render quede **Live**.
 4. A3 y A4 (frontend), y A5: prueba en local con el Colegio Demo. El backend
-   local, ya con la migración en producción, sirve para probar.
+   local, ya con la migración en producción, sirve para probar. **Hecho el
+   2026-10-21.**
 5. Push del frontend.
 
 **Aquí la migración va antes del push**, al revés que en SISBÉN y igual que en
@@ -777,15 +780,23 @@ sigue el mismo orden que la parte A.
   **Backend en producción el 2026-10-21**: migración aplicada en los dos
   colegios, push y Render **Live**. Ver "Publicación del backend".
 - `scripts/verify.py`: 2733 pasan, 0 fallan. Ruff y `pip check` limpios.
-- El frontend no tiene código de esta funcionalidad. Hasta que lo tenga, nadie
-  ve ni usa las subnotas, y la planilla funciona igual que siempre.
 - Pendiente del usuario: borrar la rama `prueba-subnotas` en Neon, si no lo
   hizo, y devolver el `DATABASE_URL` del `.env` al endpoint `-pooler`, si lo
   cambió.
-- En el frontend: A3 en `12c2067`; **A4 (la pantalla) escrito el 2026-10-21,
-  sin commit.** Detalle en "Avance del paso A4" del documento del frontend.
-- Siguiente acción exacta: **A5, la prueba en local** con el Colegio Demo (lo
-  hace el usuario; lista en "Paso A5" del documento del frontend). Si sale
-  bien, push del frontend y la parte A queda publicada.
+- En el frontend: A3 en `12c2067`, A4 en `d58fb0e` y `5f9f1b1`, **A5 (prueba
+  en local) bien el 2026-10-21**, en primaria y preescolar. Detalle en
+  "Avance del paso A5" del documento del frontend. **Todavía sin push**: hasta
+  entonces nadie ve ni usa las subnotas, y la planilla funciona igual que
+  siempre.
+- Verificación al cerrar A5 (solo cambiaron documentos): `scripts/verify.py`,
+  2733 pasan, 0 fallan; Ruff y `pip check` limpios. `git diff --check`
+  limpio.
+- En este repo quedan commits **solo de documentos** sin push. Subirlos hace
+  que Render publique otra vez el mismo código: no cambia nada, pero es una
+  publicación.
+- Siguiente acción exacta: **push del frontend** (lo hace el usuario). Con
+  eso la parte A queda publicada; después se anota aquí la publicación.
+- Después: **B0** (diseño de los porcentajes), solo con autorización
+  explícita y con las preguntas de "Antes de B0" respondidas.
 - Prompt para retomar:
   `docs/funcionalidades/PROMPT_CONTINUACION_SUBNOTAS_PLANILLA.md`.

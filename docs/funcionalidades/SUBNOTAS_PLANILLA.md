@@ -1641,9 +1641,12 @@ de producción.
   Ver "Publicación del backend de la parte B". Nadie ve nada nuevo todavía.
 - Pendiente del usuario: devolver el `DATABASE_URL` del `.env` al endpoint
   `-pooler`, si lo cambió para aplicar la migración.
-- Siguiente acción exacta: **B4, la pantalla en el frontend**, solo con el
-  visto bueno del usuario. Detalle de lo que pide en "Parte B en este repo"
-  del documento del frontend. Después B5 (prueba en local con el Colegio
+- **B4 va en dos partes en el frontend.** **B4a (contratos: servicio,
+  cálculo gemelo, ganchos y la definitiva del servidor en el boletín) hecho
+  el 2026-10-22, sin commit.** Detalle en "Avance del paso B4a" del documento
+  del frontend. Lo que ve el profesor no cambia todavía.
+- Siguiente acción exacta: **B4b, la pantalla de los porcentajes**, solo con
+  el visto bueno del usuario. Después B5 (prueba en local con el Colegio
   Demo) y el push del frontend.
 - Prompt para retomar:
   `docs/funcionalidades/PROMPT_CONTINUACION_SUBNOTAS_PLANILLA.md`.

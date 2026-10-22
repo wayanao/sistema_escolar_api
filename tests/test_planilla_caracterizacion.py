@@ -178,10 +178,13 @@ def instrumentado(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_la_frontera_ejecutable_propia_son_once_archivos():
+def test_la_frontera_ejecutable_propia_son_quince_archivos():
     """Eran seis. Las subnotas (paso A1, docs/funcionalidades/SUBNOTAS_PLANILLA.md)
     suman cinco propios -cálculo, controlador, repositorio, ruta y esquema-, en
-    vez de crecer dentro de los seis de siempre."""
+    vez de crecer dentro de los seis de siempre. Los porcentajes (paso B2b)
+    suman cuatro mas -controlador, repositorio, ruta y esquema-; su calculo
+    vive en `app/core/nota_periodo.py`, que no lleva "planilla" en el nombre
+    porque tambien lo usan el boletin, el reporte parcial y los rankings."""
     archivos = {
         archivo.relative_to(RAIZ).as_posix()
         for archivo in (RAIZ / "app").rglob("*planilla*.py")
@@ -199,6 +202,10 @@ def test_la_frontera_ejecutable_propia_son_once_archivos():
         "app/repositories/subnotas_planilla_repository.py",
         "app/routes/subnotas_planilla.py",
         "app/schemas/subnotas_planilla.py",
+        "app/controllers/porcentajes_planilla_controller.py",
+        "app/repositories/porcentajes_planilla_repository.py",
+        "app/routes/porcentajes_planilla.py",
+        "app/schemas/porcentajes_planilla.py",
     }
 
 
@@ -272,6 +279,7 @@ def test_el_repositorio_de_planilla_es_el_duodecimo():
         "plan_de_clases_repository",
         "planeador_anual_repository",
         "planilla_repository",
+        "porcentajes_planilla_repository",
         "profesores_repository",
         "reportes_repository",
         "subnotas_planilla_repository",
@@ -512,10 +520,12 @@ def test_post_rechazado_abre_una_conexion_y_responde_error_con_200_logico(
 
 # Año lectivo, paso 3.7: la guardia suma una consulta y ninguna conexion
 # (antes 2 y 3). Subnotas, paso A1: borrar las subnotas del tipo suma otra en
-# la misma transaccion (antes 3 y 4).
+# la misma transaccion (antes 3 y 4). Porcentajes, paso B2b (PB10): quitar el
+# porcentaje del tipo suma otra mas, tambien en la misma transaccion (antes 4
+# y 5).
 @pytest.mark.parametrize(
     "usuario,consultas,conexiones",
-    [(ADMIN, 4, 1), (PROFESOR, 5, 2)],
+    [(ADMIN, 5, 1), (PROFESOR, 6, 2)],
 )
 def test_delete_tiene_coste_constante_y_confirma_una_transaccion(
     instrumentado,

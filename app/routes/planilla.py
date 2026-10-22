@@ -28,13 +28,18 @@ def planilla_excel(
     periodo: int = 1,
     current_user: dict = Depends(get_current_user),
     con_subnotas: bool = False,
+    con_porcentajes: bool = False,
 ):
     require_asignacion_access(asignacion_id, current_user)
-    # Subnotas, paso A1: sin el parametro, la misma llamada y la misma
-    # respuesta de siempre (Asistencia usa esta ruta solo para la lista).
+    # Subnotas (paso A1) y porcentajes (paso B2b): sin los parametros, la misma
+    # llamada y la misma respuesta de siempre (Asistencia usa esta ruta solo
+    # para la lista). Cada uno pide solo lo suyo.
+    opciones = {}
     if con_subnotas:
-        return planilla_excel_controller(asignacion_id, periodo, con_subnotas=True)
-    return planilla_excel_controller(asignacion_id, periodo)
+        opciones["con_subnotas"] = True
+    if con_porcentajes:
+        opciones["con_porcentajes"] = True
+    return planilla_excel_controller(asignacion_id, periodo, **opciones)
 
 # 🗑️ Eliminar tipo de nota desde planilla
 @router.delete("/planilla/tipo")

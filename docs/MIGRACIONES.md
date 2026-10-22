@@ -1019,3 +1019,40 @@ Estado al 2026-10-21:
   `401`, con `/health` en `200`. No rellenó ni cambió datos existentes.
 - A partir de aquí el archivo no se puede editar: el runner guarda su
   checksum. Cualquier cambio posterior debe ir en una migración nueva.
+
+## Migracion 20261022_planilla_tipos_porcentaje.sql
+
+Objetivo:
+
+- Porcentajes por tipo de nota, paso B2b (parte B de
+  `docs/funcionalidades/SUBNOTAS_PLANILLA.md`): que cada tipo de nota de una
+  clase y un periodo pueda tener un porcentaje.
+
+Tabla creada (ninguna existente se modifica):
+
+- `planilla_tipos_porcentaje`: `asignacion_id` con `ON DELETE CASCADE`,
+  `periodo`, `tipo_nota VARCHAR(100)` (texto no vacío), `porcentaje SMALLINT`
+  de 1 a 100 y `actualizado_en`. Un tipo sin porcentaje no tiene fila.
+
+Índice: `idx_planilla_tipos_porcentaje_tipo_unico` (único, por asignación,
+periodo y tipo sin distinguir mayúsculas ni espacios). Es el que nombra el `ON
+CONFLICT` del guardado y sirve también para leer los porcentajes de una
+planilla. `scripts/apply_tenant_indexes.py` no se toca.
+
+Que la suma de una clase no pase de 100 no es un `CHECK` (mira varias filas):
+lo cuida el controlador con la clase bloqueada.
+
+No rellena, actualiza ni borra datos existentes. Es reejecutable.
+
+**Orden de publicación (igual que las subnotas):** aplicar en producción,
+después el push del backend y Render **Live**, y al final el frontend. El
+backend nuevo usa esta tabla al borrar un tipo (`DELETE /planilla/tipo`); si
+saliera antes, esa ruta fallaría para todos los profesores. **Entre aplicar y
+el push no se crean colegios nuevos.**
+
+Estado al 2026-10-22:
+
+- SQL y 5 pruebas de texto (`tests/test_migracion_planilla_tipos_porcentaje.py`).
+- **Escrita, sin aplicar en ningún lado.** `tests/test_esquema_base.py` falla a
+  propósito hasta el paso B3, en el que el usuario la prueba en una rama de
+  Neon y regenera desde allí el esquema base.

@@ -254,6 +254,7 @@ def test_el_dominio_tiene_su_repositorio():
         "plan_de_clases_repository",
         "planeador_anual_repository",
         "planilla_repository",
+        "porcentajes_planilla_repository",
         "profesores_repository",
         "reportes_repository",
         "subnotas_planilla_repository",

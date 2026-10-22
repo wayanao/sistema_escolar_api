@@ -1,6 +1,10 @@
 from app.core.nivel_academico import resolver_tipo_evaluacion
 from app.database import get_cursor
-from app.repositories import planilla_repository, subnotas_planilla_repository
+from app.repositories import (
+    planilla_repository,
+    porcentajes_planilla_repository,
+    subnotas_planilla_repository,
+)
 from app.services.anio_lectivo import exigir_asignacion_editable
 from app.services.asignacion_academica import (
     resolver_asignacion_academica_id_cursor,
@@ -97,6 +101,13 @@ def eliminar_tipo_controller(asignacion_id, descripcion, periodo: int = 1, *, us
         # Subnotas, paso A1 (P6): el tipo se lleva sus subnotas en la misma
         # transaccion. Si no, reaparecerian al crear otro con el mismo nombre.
         subnotas_planilla_repository.eliminar_subnotas_del_tipo(
+            cursor,
+            asignacion_id,
+            periodo,
+            descripcion,
+        )
+        # Porcentajes, paso B2b (PB10): y su porcentaje, por el mismo motivo.
+        porcentajes_planilla_repository.quitar_porcentaje(
             cursor,
             asignacion_id,
             periodo,

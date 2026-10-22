@@ -1,15 +1,24 @@
+from app.core.nota_periodo import armar_porcentajes_de_planilla
 from app.core.subnotas_planilla import armar_subnotas_de_planilla
 from app.database import get_cursor
-from app.repositories import planilla_repository, subnotas_planilla_repository
+from app.repositories import (
+    planilla_repository,
+    porcentajes_planilla_repository,
+    subnotas_planilla_repository,
+)
 from app.services.asignacion_academica import resolver_asignacion_academica_id_cursor
 
-def planilla_excel_controller(asignacion_id, periodo=1, *, con_subnotas=False):
+def planilla_excel_controller(
+    asignacion_id, periodo=1, *, con_subnotas=False, con_porcentajes=False
+):
     """Columnas y filas de la planilla.
 
-    Sin `con_subnotas` es exactamente la respuesta de siempre, con las mismas
-    dos consultas: Asistencia usa esta lectura solo para la lista de
-    estudiantes. Con `con_subnotas` agrega una consulta en la misma conexion y
-    las claves `subnotas` (ver docs/funcionalidades/SUBNOTAS_PLANILLA.md).
+    Sin `con_subnotas` ni `con_porcentajes` es exactamente la respuesta de
+    siempre, con las mismas dos consultas: Asistencia usa esta lectura solo
+    para la lista de estudiantes. Cada parametro agrega una consulta en la
+    misma conexion y sus claves: `subnotas` (parte A) o `porcentajes` y
+    `porcentajes_activos` (parte B, PB8). Ver
+    docs/funcionalidades/SUBNOTAS_PLANILLA.md.
     """
 
     with get_cursor() as cursor:
@@ -25,6 +34,13 @@ def planilla_excel_controller(asignacion_id, periodo=1, *, con_subnotas=False):
                 cursor, asignacion_id, periodo
             )
             if con_subnotas
+            else None
+        )
+        filas_porcentajes = (
+            porcentajes_planilla_repository.leer_porcentajes_de_planilla(
+                cursor, asignacion_id, periodo
+            )
+            if con_porcentajes
             else None
         )
 
@@ -93,5 +109,10 @@ def planilla_excel_controller(asignacion_id, periodo=1, *, con_subnotas=False):
         respuesta["subnotas"] = por_tipo
         for est in respuesta["data"]:
             est["subnotas"] = por_estudiante.get(est["estudiante_id"], {})
+
+    if filas_porcentajes is not None:
+        respuesta["porcentajes"], respuesta["porcentajes_activos"] = (
+            armar_porcentajes_de_planilla(respuesta["columnas"], filas_porcentajes)
+        )
 
     return respuesta

@@ -57,7 +57,8 @@ continuacion para retomarla en otro chat u otro LLM.
   por tipo de nota. Dos tablas nuevas; la parte B cambia la nota del periodo.
   **Parte A (subnotas) publicada el 2026-10-21, backend y frontend. Parte B
   (porcentajes): diseño (B0) aprobado, caracterización (B1) hecha y B2 en
-  curso (B2a, el cálculo, hecho el 2026-10-22); nada conectado todavía.**
+  curso (B2a y B2b hechos el 2026-10-22: cálculo, tabla y ruta). Migración
+  escrita sin aplicar: el backend no se sube hasta B3.**
 
 ## Estado actual resumido
 

@@ -181,6 +181,20 @@ Nota sobre las subnotas de la planilla (migración
   reporte parcial, los tableros y la ficha promedian todas sus filas. La celda
   (el promedio) sí se sigue guardando allí, y solo la escribe el servidor.
 
+Nota sobre los porcentajes por tipo de nota (migración
+`20261022_planilla_tipos_porcentaje.sql`, escrita el 2026-10-22 y **todavía
+sin aplicar**; ver la parte B de `docs/funcionalidades/SUBNOTAS_PLANILLA.md`):
+
+- `planilla_tipos_porcentaje`: una fila por tipo de nota con porcentaje, por
+  clase y periodo. `asignacion_id` (la académica ya resuelta, `ON DELETE
+  CASCADE`), `periodo`, `tipo_nota` (el mismo texto de
+  `notas_detalle.descripcion`), `porcentaje` entero de 1 a 100 y
+  `actualizado_en`. Índice único `idx_planilla_tipos_porcentaje_tipo_unico`
+  por asignación, periodo y tipo, sin distinguir mayúsculas ni espacios.
+- Un tipo sin porcentaje no tiene fila. Los porcentajes cuentan solo cuando
+  todos los tipos de la clase y el periodo tienen el suyo y suman 100; la
+  suma no pasa de 100 porque lo controla la API, no un `CHECK`.
+
 Nota sobre año lectivo y matrículas:
 
 - `matriculas` guarda el curso del estudiante en cada año lectivo y es la

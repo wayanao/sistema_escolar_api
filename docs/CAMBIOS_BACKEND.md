@@ -1,10 +1,53 @@
 # Cambios Backend
 
-Ultima revision documental: 2026-10-21.
+Ultima revision documental: 2026-10-22.
 
 ## Proposito
 
 Bitacora de cambios documentales y tecnicos observables del backend.
+
+## 2026-10-22 - Porcentajes por tipo de nota, pasos B2a y B2b
+
+Primeros pasos con código de la parte B de
+`docs/funcionalidades/SUBNOTAS_PLANILLA.md`. **Ninguna nota cambia todavía**:
+el cálculo ponderado se conecta al boletín, al reporte parcial y a los
+rankings en B2c y B2d. Nada de esto está publicado.
+
+### Qué cambia
+
+- `app/core/nota_periodo.py` (B2a): cuándo están activos los porcentajes
+  (todos los tipos con el suyo y suma de 100), la suma y la nota ponderada en
+  primaria y preescolar, con redondeo mitad hacia arriba. Nadie lo usa para
+  calcular notas todavía.
+- Migración `20261022_planilla_tipos_porcentaje.sql` (B2b): tabla nueva
+  `planilla_tipos_porcentaje`. **Escrita, sin aplicar**; se prueba en una rama
+  de Neon en B3.
+- Ruta nueva `PUT /planilla/tipos/porcentaje` (`app/routes/porcentajes_planilla.py`):
+  guarda, cambia o quita (`null`) el porcentaje de un tipo, con la clase
+  bloqueada para que la suma no pase de 100.
+- `GET /planilla-excel/...?con_porcentajes=true` agrega `porcentajes` y
+  `porcentajes_activos`. Sin el parámetro, la respuesta y las consultas son
+  las de siempre.
+- `DELETE /planilla/tipo` quita también el porcentaje del tipo.
+- Contrato en `docs/API_ENDPOINTS.md`, sección "Planilla".
+
+### Lo que cuesta (medido con pruebas)
+
+| Ruta | Antes (admin / profesor) | Después |
+|---|---|---|
+| `GET /planilla-excel` sin parámetro | 2 / 3 consultas | igual |
+| `GET /planilla-excel?con_porcentajes=true` | — | 3 / 4 |
+| `DELETE /planilla/tipo` | 4 / 5 | 5 / 6 |
+| `PUT /planilla/tipos/porcentaje` | — | 6 / 7 |
+
+Ninguna crece con el número de estudiantes ni de tipos. Ninguna abre una
+conexión de más.
+
+### Publicación
+
+**El backend no se sube hasta que la migración esté en producción** (paso B3
+y el orden de publicación de la parte B): si saliera antes, `DELETE
+/planilla/tipo` fallaría para todos los profesores.
 
 ## 2026-10-21 - Subnotas de la planilla, paso A1
 

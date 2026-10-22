@@ -922,6 +922,7 @@ y actualiza todos los horarios activos de esa materia en el curso.
 - `PUT /planilla/subnotas/{subnota_id}`
 - `DELETE /planilla/subnotas/{subnota_id}?asignacion_id=`
 - `POST /planilla/subnotas/valores`
+- `PUT /planilla/tipos/porcentaje`
 
 **Subnotas** (desde el 2026-10-21, paso A1 de
 `docs/funcionalidades/SUBNOTAS_PLANILLA.md`). Cada tipo de nota puede tener
@@ -969,6 +970,30 @@ Dos cambios en las rutas que ya existían:
   calificadas en ese tipo. Sin subnotas, igual que siempre. Una consulta más.
 - `DELETE /planilla/tipo` borra también las subnotas del tipo, en la misma
   transacción. Misma respuesta. Una consulta más.
+
+**Porcentajes por tipo de nota** (desde el 2026-10-22, paso B2b de
+`docs/funcionalidades/SUBNOTAS_PLANILLA.md`, parte B). **Todavía no cambian
+ninguna nota**: el cálculo ponderado se conecta al boletín, al reporte parcial
+y a los rankings en pasos posteriores (B2c y B2d). Los porcentajes son
+opcionales y van por clase y periodo.
+
+- `PUT /planilla/tipos/porcentaje` con `{asignacion_id, periodo, tipo_nota,
+  porcentaje}`. `porcentaje` es obligatorio: un entero de 1 a 100, o `null`
+  para quitarlo. Responde `{tipo_nota, porcentaje, suma, activos}`, con el
+  nombre exacto de la columna, la suma de la clase y si los porcentajes quedaron
+  activos (todos los tipos con el suyo y suma de 100). `404` si el tipo no está
+  en la planilla; `422` si no es un entero de 1 a 100, si la suma pasaría de
+  100 o si es una columna interna. Mismas guardias que las subnotas (permiso
+  `403`, año lectivo `409` o `403`), en una conexión. La clase se bloquea
+  mientras se comprueba la suma, para que dos guardados a la vez no pasen de
+  100.
+- `GET /planilla-excel/...?con_porcentajes=true` agrega `porcentajes`
+  (`{"<tipo>": 40}`, con el nombre exacto de la columna) y
+  `porcentajes_activos`. Es aparte de `con_subnotas`; se pueden pedir los dos.
+  Sin el parámetro, la respuesta es la de siempre. Una consulta más.
+- `DELETE /planilla/tipo` quita también el porcentaje del tipo, en la misma
+  transacción. Misma respuesta. Una consulta más (ahora 5 el admin y 6 el
+  profesor, con la guardia del año).
 
 ## Asistencia
 

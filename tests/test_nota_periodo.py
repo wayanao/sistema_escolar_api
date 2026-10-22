@@ -16,6 +16,7 @@ from app.core.nota_periodo import (
     PORCENTAJE_MINIMO,
     SUMA_COMPLETA,
     admite_porcentaje,
+    armar_porcentajes_de_planilla,
     calcular_nota_del_periodo,
     es_porcentaje_valido,
     porcentajes_activos,
@@ -247,3 +248,28 @@ def test_sin_ninguna_carita_queda_vacia():
     celdas = _caritas(Cognitivo=None, Procedimental=None, Actitudinal=None)
 
     assert calcular_nota_del_periodo("desarrollo", celdas, COMPLETOS) == (None, None)
+
+
+# --------------------------------------------------------------------------
+# B2b: los porcentajes en la respuesta de la planilla (PB8)
+# --------------------------------------------------------------------------
+
+def test_la_planilla_recibe_los_porcentajes_con_el_nombre_exacto_de_su_columna():
+    """Como las subnotas: la pantalla los empareja sin normalizar nada."""
+    filas = [(" cognitivo ", 60), ("PROCEDIMENTAL", 40)]
+
+    assert armar_porcentajes_de_planilla(["Cognitivo", "Procedimental"], filas) == (
+        {"Cognitivo": 60, "Procedimental": 40},
+        True,
+    )
+
+
+def test_la_planilla_no_recibe_porcentajes_de_tipos_que_no_estan():
+    columnas = ["Cognitivo", "Procedimental", "mas_alto"]
+    filas = [("Cognitivo", 60), ("Borrado", 40)]
+
+    assert armar_porcentajes_de_planilla(columnas, filas) == ({"Cognitivo": 60}, False)
+
+
+def test_la_planilla_sin_porcentajes_los_recibe_vacios_y_no_activos():
+    assert armar_porcentajes_de_planilla(["Cognitivo"], []) == ({}, False)

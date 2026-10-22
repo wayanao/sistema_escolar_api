@@ -427,6 +427,11 @@ CON_GUARDIA = {
 # calificadas (el 409), y borrar un tipo borra tambien sus subnotas.
 SUBNOTAS = {"POST /planilla/nota": 1, "DELETE /planilla/tipo": 1}
 
+# Porcentajes por tipo de nota, paso B2b (PB10), aceptado por el usuario el
+# 2026-10-22: borrar un tipo quita tambien su porcentaje, con una consulta mas
+# en la misma conexion y ninguna conexion nueva.
+PORCENTAJES = {"DELETE /planilla/tipo": 1}
+
 USUARIOS = {"profesor": PROFESOR, "admin": ADMIN}
 
 
@@ -441,5 +446,7 @@ def test_la_guardia_suma_una_consulta_y_ninguna_conexion(con_base, ruta, rol):
     extra = 1 if ruta in CON_GUARDIA else 0
     assert status in (200, 201)
     assert base.conexiones == conexiones
-    assert len(base.consultas) == consultas + extra + SUBNOTAS.get(ruta, 0)
+    assert len(base.consultas) == (
+        consultas + extra + SUBNOTAS.get(ruta, 0) + PORCENTAJES.get(ruta, 0)
+    )
     assert sum(SQL_GUARDIA in c for c in base.consultas) == extra

@@ -471,6 +471,12 @@ RUTAS = {
          "valores": {"5": 4.0}},
         None, [("FOR UPDATE OF s", Comodin(), [(5, None, None)])],
     ),
+    # --- Porcentajes por tipo de nota, paso B2b: la escritura nueva ---
+    "PUT /planilla/tipos/porcentaje": (
+        [PROFESOR, ADMIN], "PUT", "/planilla/tipos/porcentaje",
+        {"asignacion_id": 9, "periodo": 1, "tipo_nota": "Taller", "porcentaje": 40},
+        None, [("SELECT DISTINCT descripcion FROM notas_detalle", None, [("Taller",)])],
+    ),
     "POST /asistencia": (
         [PROFESOR, ADMIN], "POST", "/asistencia",
         [{"estudiante_id": 3, "asignacion_id": 9, "fecha": "2026-09-30",

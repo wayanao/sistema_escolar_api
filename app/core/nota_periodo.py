@@ -80,6 +80,28 @@ def porcentajes_activos(tipos, porcentajes):
     return suma_de_porcentajes(tipos, porcentajes) == SUMA_COMPLETA
 
 
+def armar_porcentajes_de_planilla(columnas, filas):
+    """`(porcentajes, activos)` para la respuesta de la planilla (PB8).
+
+    `filas` son las de `leer_porcentajes_de_planilla`: `(tipo_nota,
+    porcentaje)`. Cada porcentaje sale con el **nombre exacto de su columna**,
+    como las subnotas, para que la pantalla los empareje sin normalizar nada.
+    El de un tipo que no es una columna visible no sale.
+    """
+    columna_por_clave = {}
+    for columna in columnas:
+        if admite_porcentaje(columna):
+            columna_por_clave.setdefault(clave_de_tipo(columna), columna)
+
+    porcentajes = {}
+    for tipo_nota, porcentaje in filas:
+        columna = columna_por_clave.get(clave_de_tipo(tipo_nota))
+        if columna is not None:
+            porcentajes[columna] = int(porcentaje)
+
+    return porcentajes, porcentajes_activos(columnas, porcentajes)
+
+
 def _redondear(fraccion):
     """Dos decimales, mitad hacia arriba (P7), desde la fraccion exacta."""
     exacto = Decimal(fraccion.numerator) / Decimal(fraccion.denominator)

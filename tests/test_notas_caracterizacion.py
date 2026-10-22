@@ -203,6 +203,7 @@ def test_el_repositorio_de_notas_es_el_septimo():
         "plan_de_clases_repository",
         "planeador_anual_repository",
         "planilla_repository",
+        "porcentajes_planilla_repository",
         "profesores_repository",
         "reportes_repository",
         "subnotas_planilla_repository",

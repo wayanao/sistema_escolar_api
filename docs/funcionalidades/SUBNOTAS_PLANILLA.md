@@ -9,8 +9,9 @@
   "Publicación del frontend". **Parte B: diseño (B0) en `822dd4e`, con las
   propuestas PB1 a PB10 aprobadas por el usuario el 2026-10-21,
   caracterización (B1) en `a9cdc57` y, desde el 2026-10-22, B2 en cuatro
-  partes: B2a (el cálculo) hecho, sin commit.** Nada nuevo está conectado
-  todavía.
+  partes: B2a (el cálculo) en `a630183` y B2b (tabla y ruta de los
+  porcentajes, migración escrita sin aplicar) hecho, sin commit.** Ninguna
+  nota cambia todavía. **El backend no se sube hasta B3.**
 - Tipo: Función nueva de producto. No es una capa del programa de
   modularización de `docs/modularizacion/` y no debe confundirse con una.
 - Repos afectados: este repo (`sistema_escolar_api`) y `frontend-react`. Ver
@@ -1047,7 +1048,8 @@ archivos cambian y a qué afectan. Además B2 llega a la nota oficial.
   aplicar), el repositorio, `PUT /planilla/tipos/porcentaje`, `GET
   /planilla-excel?con_porcentajes=true` y el borrado del porcentaje al borrar
   un tipo (PB10). Cambia `DELETE /planilla/tipo` (una consulta más).
-  `test_esquema_base.py` fallará a propósito desde aquí hasta B3.
+  `test_esquema_base.py` fallará a propósito desde aquí hasta B3. **Hecho el
+  2026-10-22, sin commit.**
 - **B2c — El boletín del profesor (zona sensible).** Guardar el boletín
   calcula la definitiva en el servidor con porcentajes activos (PB5), y la
   lectura del boletín del profesor la agrega.
@@ -1079,6 +1081,77 @@ archivos cambian y a qué afectan. Además B2 llega a la nota oficial.
   fallan; Ruff y `pip check` limpios. Frontend sin cambios de código:
   `check:deploy` con 2906 pruebas, lint y build correctos. Corridas una tras
   otra. `git diff --check` limpio en los dos.
+- En el commit `a630183`.
+
+### B2b, 2026-10-22
+
+Visto bueno del usuario el 2026-10-22 ("continua", respuesta a "¿Le das el
+visto bueno a B2b?"). Al empezar, backend en `a630183` y limpio. Las pruebas
+se escribieron antes que el código y fallaron porque faltaba; después
+pasaron.
+
+**Qué se hizo:**
+
+- Migración `migrations/20261022_planilla_tipos_porcentaje.sql` (**escrita,
+  sin aplicar**), con 5 pruebas de texto en
+  `tests/test_migracion_planilla_tipos_porcentaje.py`. Es PB1 tal cual, y el
+  `ON CONFLICT` del repositorio nombra las mismas columnas que el índice único.
+- `app/repositories/porcentajes_planilla_repository.py`: leer los
+  porcentajes, leer los tipos de la planilla, bloquear la clase, guardar
+  (`INSERT … ON CONFLICT`) y quitar. Una sentencia cada una.
+- `app/schemas/porcentajes_planilla.py`, `app/controllers/porcentajes_planilla_controller.py`
+  y `app/routes/porcentajes_planilla.py` (registrado en `app/main.py`):
+  `PUT /planilla/tipos/porcentaje`, con los errores en español y las mismas
+  guardias de las subnotas, en una sola conexión.
+- `app/core/nota_periodo.py` suma `armar_porcentajes_de_planilla` (3 pruebas
+  más en `test_nota_periodo.py`).
+- En lo existente: `planilla_excel_controller` y `routes/planilla.py`
+  (parámetro `con_porcentajes`; sin él, la misma llamada de siempre) y
+  `planilla_controller.eliminar_tipo_controller` (quita el porcentaje, PB10).
+- `tests/test_porcentajes_planilla.py`, **24 pruebas por la aplicación
+  real**: guardar, cambiar, quitar con `null`, la suma que pasa de 100, el
+  porcentaje de un tipo que ya no existe, 404, 422 sin abrir la base (columna
+  interna, 0, 101, 33.5, texto, booleano, sin el campo), 403 de un profesor
+  ajeno, la planilla con y sin el parámetro, y borrar el tipo.
+- La ruta nueva se sumó a `tests/test_anio_lectivo_guardia.py`: en un año
+  cerrado nadie guarda porcentajes.
+
+**Decisiones al escribir el código** (no cambian ninguna regla aprobada):
+
+- **La suma se cuida con la clase bloqueada.** Antes de leer los porcentajes,
+  la ruta bloquea la fila de la asignación (`FOR NO KEY UPDATE`). Si dos
+  pestañas guardan a la vez, la segunda espera y ve la suma que dejó la
+  primera. Ese tipo de bloqueo no detiene el guardado de notas de esa clase.
+- **`porcentaje` es obligatorio aunque sea `null`**, para que quitar uno sea
+  siempre a propósito. Un `true` o un "40" no son porcentaje; 33.5, 0 y 101
+  reciben el mensaje en español "El porcentaje debe ser un número entero de 1
+  a 100."
+- **El tipo se guarda con el nombre de su columna** en la planilla, aunque
+  llegue con otras mayúsculas o espacios, igual que en la respuesta.
+
+**Lo que cuesta** (admin / profesor; ninguna conexión de más):
+
+| Ruta | Antes | Después |
+|---|---|---|
+| `GET /planilla-excel` sin parámetro | 2 / 3 | igual |
+| `GET /planilla-excel?con_porcentajes=true` | — | 3 / 4 |
+| `DELETE /planilla/tipo` | 4 / 5 | 5 / 6 |
+| `PUT /planilla/tipos/porcentaje` | — | 6 / 7 |
+
+**Pruebas que cambiaron a propósito**, cada una con su motivo:
+
+- `test_planilla_caracterizacion.py`: la frontera de la planilla pasa de once
+  a quince archivos, y el coste de `DELETE /planilla/tipo` sube una consulta.
+- `test_anio_lectivo_guardia_conteos.py`: la misma consulta, en
+  `PORCENTAJES`, aparte de las cifras de la guardia.
+- Las cinco listas exactas de repositorios (asistencia, dashboard, notas,
+  planilla y ventas) suman `porcentajes_planilla_repository`; la de asistencia
+  también su total (de 21 a 22).
+
+**Documentos:** `docs/API_ENDPOINTS.md`, `docs/BASE_DATOS.md`,
+`docs/MIGRACIONES.md` y `docs/CAMBIOS_BACKEND.md`.
+
+**Verificación:** ver "Entrega para el siguiente chat".
 
 ## Fuera de alcance
 
@@ -1145,12 +1218,22 @@ archivos cambian y a qué afectan. Además B2 llega a la nota oficial.
   otra, sin otra carga. `git diff --check` limpio en los dos.
 - B1 en `a9cdc57` (backend) y `f6b22f6` (frontend).
 - **B2 va en cuatro partes** (ver "Avance del paso B2"). **B2a (el cálculo)
-  hecho el 2026-10-22, sin commit**: `app/core/nota_periodo.py` y 46
-  pruebas. Nada lo llama todavía.
-- Siguiente acción exacta: **B2b** (migración escrita sin aplicar,
-  repositorio, ruta para guardar porcentajes, lectura en la planilla y
-  borrado con el tipo), solo con el visto bueno del usuario para B2b. Desde
-  B2b, `test_esquema_base.py` falla a propósito hasta B3, y el backend **no
-  se sube** hasta que la migración esté en producción.
+  en `a630183`.** **B2b (tabla, ruta para guardar porcentajes, lectura en la
+  planilla y borrado con el tipo) hecho el 2026-10-22, sin commit.** Ninguna
+  nota cambia todavía.
+- Verificación al cerrar B2b: `scripts/verify.py`, **2835 pasan y 1 falla a
+  propósito** (`test_esquema_base.py`); Ruff y `pip check` limpios. Frontend
+  sin cambios de código: `check:deploy` con 2906 pruebas, lint y build
+  correctos. Corridas una tras otra. `git diff --check` limpio en los dos.
+- **Desde B2b, `test_esquema_base.py` falla a propósito** (reclama solo
+  `20261022_planilla_tipos_porcentaje.sql`) hasta B3, y **el backend no se
+  sube** hasta que la migración esté en producción: si saliera antes,
+  `DELETE /planilla/tipo` fallaría para todos los profesores. Los commits se
+  pueden hacer; el push no.
+- Siguiente acción exacta: **B2c** (zona sensible): guardar el boletín
+  calcula la definitiva en el servidor con porcentajes activos (PB5) y la
+  lectura del boletín del profesor la agrega. Solo con el visto bueno del
+  usuario para B2c. Después B2d y, con B2 completo, la lista de B3 para la
+  rama de Neon.
 - Prompt para retomar:
   `docs/funcionalidades/PROMPT_CONTINUACION_SUBNOTAS_PLANILLA.md`.

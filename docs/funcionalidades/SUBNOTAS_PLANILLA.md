@@ -9,9 +9,10 @@
   "Publicación del frontend". **Parte B: diseño (B0) en `822dd4e`, con las
   propuestas PB1 a PB10 aprobadas por el usuario el 2026-10-21,
   caracterización (B1) en `a9cdc57` y, desde el 2026-10-22, B2 en cuatro
-  partes: B2a (el cálculo) en `a630183` y B2b (tabla y ruta de los
-  porcentajes, migración escrita sin aplicar) hecho, sin commit.** Ninguna
-  nota cambia todavía. **El backend no se sube hasta B3.**
+  partes: B2a (el cálculo) en `a630183`, B2b (tabla y ruta de los
+  porcentajes, migración escrita sin aplicar) en `dcf8443` y B2c (la
+  definitiva del boletín) hecho, sin commit.** En la práctica ninguna nota
+  cambia todavía. **El backend no se sube hasta B3.**
 - Tipo: Función nueva de producto. No es una capa del programa de
   modularización de `docs/modularizacion/` y no debe confundirse con una.
 - Repos afectados: este repo (`sistema_escolar_api`) y `frontend-react`. Ver
@@ -1052,7 +1053,8 @@ archivos cambian y a qué afectan. Además B2 llega a la nota oficial.
   2026-10-22, sin commit.**
 - **B2c — El boletín del profesor (zona sensible).** Guardar el boletín
   calcula la definitiva en el servidor con porcentajes activos (PB5), y la
-  lectura del boletín del profesor la agrega.
+  lectura del boletín del profesor la agrega. **Hecho el 2026-10-22, sin
+  commit.**
 - **B2d — Las demás lecturas.** El boletín del admin sin definitiva, el
   reporte parcial y los dos rankings (PB7).
 
@@ -1153,6 +1155,66 @@ pasaron.
 
 **Verificación:** ver "Entrega para el siguiente chat".
 
+### B2c, 2026-10-22
+
+Visto bueno del usuario el 2026-10-22 ("si continua", respuesta a "¿Le das
+el visto bueno a B2c?"). Al empezar, backend en `dcf8443` y limpio. Las
+pruebas se escribieron antes que el código y fallaron porque faltaba.
+
+**Qué se hizo** (solo `app/controllers/boletin_controller.py` en lo que ya
+existía):
+
+- **Guardar el boletín** (`POST /boletines/guardar`): antes de escribir la
+  cabecera pregunta si la clase tiene porcentajes. Con porcentajes activos,
+  lee las celdas del estudiante, calcula la definitiva con
+  `app/core/nota_periodo.py` y guarda esa. Sin porcentajes activos guarda la
+  que llega, como hoy.
+- **Lectura del boletín del profesor** (`GET /boletines/referencia/...`): al
+  final pregunta lo mismo. Con porcentajes activos agrega `definitiva` a cada
+  estudiante con notas, calculada con las celdas que ya leyó (solo consulta,
+  además, el nivel del curso). Es exactamente la que se guardará.
+- `porcentajes_planilla_repository`: `leer_celdas_del_estudiante`, y las tres
+  lecturas devuelven tuplas también con un cursor de diccionarios (la lectura
+  del profesor usa `RealDictCursor`).
+- `nota_periodo.tipo_de_evaluacion_de_celdas` (4 pruebas más).
+- `tests/test_porcentajes_boletin.py`, **15 pruebas**: sin porcentajes,
+  incompletos y activos al guardar y al leer; celda vacía y columna interna;
+  caritas con nivel y sin nivel; el nivel de primaria que manda sobre una
+  carita vieja; estudiante sin notas; y el repositorio con cursor de
+  diccionarios. **Las 15 pruebas de B1 siguen pasando sin tocarlas**: sin
+  porcentajes, el boletín guarda y devuelve lo mismo de antes.
+
+**Decisiones al escribir el código** (cambio mínimo; ninguna cambia una regla
+aprobada):
+
+- **De qué tipo es la materia.** La pantalla no manda el tipo de evaluación de
+  la materia (el servidor asumía "numerica"). Manda el nivel del curso; sin
+  nivel, las celdas, con la misma regla de la pantalla
+  (`esEvaluacionDesarrollo`: es de caritas si alguna celda lo es).
+- **Estudiante sin notas con porcentajes activos:** se guarda lo que manda la
+  pantalla, como hoy (0 en numérica, vacío en caritas). El cálculo ponderado
+  no tiene nada que decir, y así el puesto de ese estudiante no cambia. La
+  lectura no le agrega `definitiva`, y la pantalla usa la suya.
+- **No se bloquea nada al guardar el boletín.** Si alguien cambia los
+  porcentajes justo mientras otro guarda, ese boletín queda con los de un
+  instante antes; el siguiente guardado usa los nuevos. Es lo mismo que pasa
+  hoy al corregir una nota después de guardar (PB6).
+
+**Lo que cuesta** (sin conexiones de más):
+
+| Ruta | Sin porcentajes | Incompletos | Activos |
+|---|---|---|---|
+| `POST /boletines/guardar` | +1 consulta | +2 | +3 (porcentajes, tipos y celdas) |
+| `GET /boletines/referencia/...` | +1 | +2 | +3 (porcentajes, tipos y nivel) |
+
+**Pruebas que cambiaron a propósito:**
+
+- `test_boletin_caracterizacion.py`: la pregunta por los porcentajes se dobla
+  con "no hay", igual que ya se doblaba la guardia del año, para que no sume
+  en sus conteos. Sus conteos y posiciones no cambiaron.
+- `test_anio_lectivo_guardia_conteos.py`: `POST /boletines/guardar` suma esa
+  consulta en `PORCENTAJES`.
+
 ## Fuera de alcance
 
 - Mostrar las subnotas en el boletín, el reporte parcial o cualquier impreso.
@@ -1218,10 +1280,16 @@ pasaron.
   otra, sin otra carga. `git diff --check` limpio en los dos.
 - B1 en `a9cdc57` (backend) y `f6b22f6` (frontend).
 - **B2 va en cuatro partes** (ver "Avance del paso B2"). **B2a (el cálculo)
-  en `a630183`.** **B2b (tabla, ruta para guardar porcentajes, lectura en la
-  planilla y borrado con el tipo) hecho el 2026-10-22, sin commit.** Ninguna
-  nota cambia todavía.
+  en `a630183`. B2b (tabla, ruta para guardar porcentajes, lectura en la
+  planilla y borrado con el tipo) en `dcf8443`. B2c (la definitiva del
+  boletín, PB5) hecho el 2026-10-22, sin commit.** En la práctica ninguna
+  nota cambia todavía: solo cambia en clases con porcentajes completos, y
+  ninguna puede tenerlos hasta B3 y B4.
 - Verificación al cerrar B2b: `scripts/verify.py`, **2835 pasan y 1 falla a
+  propósito** (`test_esquema_base.py`); Ruff y `pip check` limpios. Frontend
+  sin cambios de código: `check:deploy` con 2906 pruebas, lint y build
+  correctos. Corridas una tras otra. `git diff --check` limpio en los dos.
+- Verificación al cerrar B2c: `scripts/verify.py`, **2853 pasan y 1 falla a
   propósito** (`test_esquema_base.py`); Ruff y `pip check` limpios. Frontend
   sin cambios de código: `check:deploy` con 2906 pruebas, lint y build
   correctos. Corridas una tras otra. `git diff --check` limpio en los dos.
@@ -1230,10 +1298,9 @@ pasaron.
   sube** hasta que la migración esté en producción: si saliera antes,
   `DELETE /planilla/tipo` fallaría para todos los profesores. Los commits se
   pueden hacer; el push no.
-- Siguiente acción exacta: **B2c** (zona sensible): guardar el boletín
-  calcula la definitiva en el servidor con porcentajes activos (PB5) y la
-  lectura del boletín del profesor la agrega. Solo con el visto bueno del
-  usuario para B2c. Después B2d y, con B2 completo, la lista de B3 para la
-  rama de Neon.
+- Siguiente acción exacta: **B2d**: el boletín del admin sin definitiva
+  guardada, el reporte parcial y los dos rankings usan el cálculo ponderado
+  con porcentajes activos (PB7). Solo con el visto bueno del usuario para
+  B2d. Con B2 completo, la lista de B3 para la rama de Neon.
 - Prompt para retomar:
   `docs/funcionalidades/PROMPT_CONTINUACION_SUBNOTAS_PLANILLA.md`.

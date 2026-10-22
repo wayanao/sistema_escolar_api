@@ -102,6 +102,17 @@ def armar_porcentajes_de_planilla(columnas, filas):
     return porcentajes, porcentajes_activos(columnas, porcentajes)
 
 
+def tipo_de_evaluacion_de_celdas(tipos_de_las_celdas):
+    """"desarrollo" si alguna celda es de caritas; si no, "numerica".
+
+    Es la regla con la que la pantalla calcula hoy la definitiva
+    (`esEvaluacionDesarrollo` del frontend). Solo decide en un curso sin
+    nivel: quien llama la pasa por `resolver_tipo_evaluacion`, y un nivel
+    definido manda (preescolar caritas, primaria numeros).
+    """
+    return "desarrollo" if "desarrollo" in set(tipos_de_las_celdas) else "numerica"
+
+
 def _redondear(fraccion):
     """Dos decimales, mitad hacia arriba (P7), desde la fraccion exacta."""
     exacto = Decimal(fraccion.numerator) / Decimal(fraccion.denominator)

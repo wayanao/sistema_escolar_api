@@ -18,6 +18,7 @@ from app.core.nota_periodo import (
     admite_porcentaje,
     armar_porcentajes_de_planilla,
     calcular_nota_del_periodo,
+    tipo_de_evaluacion_de_celdas,
     es_porcentaje_valido,
     porcentajes_activos,
     suma_de_porcentajes,
@@ -273,3 +274,23 @@ def test_la_planilla_no_recibe_porcentajes_de_tipos_que_no_estan():
 
 def test_la_planilla_sin_porcentajes_los_recibe_vacios_y_no_activos():
     assert armar_porcentajes_de_planilla(["Cognitivo"], []) == ({}, False)
+
+
+# --------------------------------------------------------------------------
+# B2c: de que tipo es la materia, cuando el curso no tiene nivel
+# --------------------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    "tipos,esperado",
+    [
+        (["desarrollo", "desarrollo"], "desarrollo"),
+        (["numerica", "desarrollo"], "desarrollo"),
+        (["numerica", None], "numerica"),
+        ([], "numerica"),
+    ],
+    ids=["solo-caritas", "alguna-carita", "numerica-o-vacia", "sin-celdas"],
+)
+def test_la_materia_es_de_caritas_si_alguna_celda_lo_es(tipos, esperado):
+    """La misma regla que `esEvaluacionDesarrollo` del frontend, con la que
+    la pantalla calcula hoy la definitiva."""
+    assert tipo_de_evaluacion_de_celdas(tipos) == esperado

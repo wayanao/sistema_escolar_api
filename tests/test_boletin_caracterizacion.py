@@ -48,6 +48,23 @@ def guardia_del_anio(monkeypatch):
     return llamadas
 
 
+@pytest.fixture(autouse=True)
+def sin_porcentajes(monkeypatch):
+    """Porcentajes por tipo de nota, paso B2c (docs/funcionalidades/SUBNOTAS_PLANILLA.md,
+    PB5): guardar el boletin y la lectura del profesor preguntan si la clase
+    tiene porcentajes. Se dobla aqui con "no tiene", que es el caso de estas
+    pruebas, igual que la guardia del año: asi no suma en los conteos de este
+    archivo. En produccion es una consulta mas; la cuentan
+    `test_porcentajes_boletin.py` y `test_anio_lectivo_guardia_conteos.py`."""
+    llamadas = []
+    monkeypatch.setattr(
+        boletin_controller.porcentajes_planilla_repository,
+        "leer_porcentajes_de_planilla",
+        lambda _cursor, *argumentos: llamadas.append(argumentos) or [],
+    )
+    return llamadas
+
+
 class CursorFalso:
     """Cursor que registra cada `execute` y sirve filas preprogramadas."""
 

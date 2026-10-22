@@ -9,7 +9,17 @@ controlador.
 Los tipos de nota se comparan siempre con `LOWER(TRIM(...))`, la misma
 expresion de la planilla, de las subnotas y del indice unico de la migracion
 `20261022_planilla_tipos_porcentaje.sql`.
+
+Las lecturas devuelven tuplas tambien con un cursor de diccionarios: el
+boletin del profesor lee con `RealDictCursor`, y la planilla y el guardado del
+boletin con el cursor de siempre.
 """
+
+
+def _tupla(fila, *columnas):
+    if isinstance(fila, dict):
+        return tuple(fila[columna] for columna in columnas)
+    return tuple(fila)
 
 
 def leer_porcentajes_de_planilla(cursor, asignacion_id, periodo):
@@ -20,7 +30,7 @@ def leer_porcentajes_de_planilla(cursor, asignacion_id, periodo):
             WHERE asignacion_id = %s AND periodo = %s
             ORDER BY id
         """, (asignacion_id, periodo))
-    return cursor.fetchall()
+    return [_tupla(fila, "tipo_nota", "porcentaje") for fila in cursor.fetchall()]
 
 
 def leer_tipos_de_planilla(cursor, asignacion_id, periodo):
@@ -35,7 +45,27 @@ def leer_tipos_de_planilla(cursor, asignacion_id, periodo):
               AND descripcion IS NOT NULL
             ORDER BY descripcion
         """, (asignacion_id, periodo))
-    return [fila[0] for fila in cursor.fetchall()]
+    return [_tupla(fila, "descripcion")[0] for fila in cursor.fetchall()]
+
+
+def leer_celdas_del_estudiante(cursor, asignacion_id, periodo, estudiante_id):
+    """Las celdas de un estudiante en esa clase y periodo, para ponderarlas.
+
+    `(tipo_nota, nota, valoracion, tipo_evaluacion)`, con el tipo de
+    evaluacion `numerica` cuando falta, igual que la lectura del boletin del
+    profesor (`boletin_repository.leer_notas_de_planilla`).
+    """
+    cursor.execute("""
+            SELECT descripcion, nota, valoracion,
+                   COALESCE(tipo_evaluacion, 'numerica') AS tipo_evaluacion
+            FROM notas_detalle WHERE asignacion_id = %s AND periodo = %s
+              AND estudiante_id = %s AND descripcion IS NOT NULL
+            ORDER BY id
+        """, (asignacion_id, periodo, estudiante_id))
+    return [
+        _tupla(fila, "descripcion", "nota", "valoracion", "tipo_evaluacion")
+        for fila in cursor.fetchall()
+    ]
 
 
 def bloquear_clase(cursor, asignacion_id):

@@ -6,12 +6,23 @@ Ultima revision documental: 2026-10-22.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
-## 2026-10-22 - Porcentajes por tipo de nota, pasos B2a y B2b
+## 2026-10-22 - Porcentajes por tipo de nota, pasos B2a, B2b y B2c
 
 Primeros pasos con código de la parte B de
-`docs/funcionalidades/SUBNOTAS_PLANILLA.md`. **Ninguna nota cambia todavía**:
-el cálculo ponderado se conecta al boletín, al reporte parcial y a los
-rankings en B2c y B2d. Nada de esto está publicado.
+`docs/funcionalidades/SUBNOTAS_PLANILLA.md`. **Ninguna nota cambia todavía en
+la práctica**: solo cambia en clases con porcentajes completos, y ninguna los
+tiene (la tabla ni siquiera está aplicada y la pantalla para ponerlos llega
+en B4). El reporte parcial, el boletín del admin y los rankings se conectan
+en B2d. Nada de esto está publicado.
+
+### B2c: la definitiva del boletín (PB5)
+
+- Con porcentajes activos, `POST /boletines/guardar` guarda la definitiva que
+  calcula el servidor, no la que manda la pantalla, y `GET
+  /boletines/referencia/...` la agrega a cada estudiante con notas. Sin
+  porcentajes activos, todo igual (lo fija el paso B1).
+- Coste: una consulta más en cada una sin porcentajes; dos con porcentajes
+  incompletos; tres con porcentajes activos. Ninguna conexión de más.
 
 ### Qué cambia
 

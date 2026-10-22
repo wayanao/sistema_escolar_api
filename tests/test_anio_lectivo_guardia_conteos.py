@@ -427,10 +427,11 @@ CON_GUARDIA = {
 # calificadas (el 409), y borrar un tipo borra tambien sus subnotas.
 SUBNOTAS = {"POST /planilla/nota": 1, "DELETE /planilla/tipo": 1}
 
-# Porcentajes por tipo de nota, paso B2b (PB10), aceptado por el usuario el
-# 2026-10-22: borrar un tipo quita tambien su porcentaje, con una consulta mas
-# en la misma conexion y ninguna conexion nueva.
-PORCENTAJES = {"DELETE /planilla/tipo": 1}
+# Porcentajes por tipo de nota, aceptado por el usuario el 2026-10-22: una
+# consulta mas en la misma conexion y ninguna conexion nueva. Paso B2b (PB10):
+# borrar un tipo quita tambien su porcentaje. Paso B2c (PB5): guardar el
+# boletin pregunta si la clase tiene porcentajes; sin ellos, es la unica.
+PORCENTAJES = {"DELETE /planilla/tipo": 1, "POST /boletines/guardar": 1}
 
 USUARIOS = {"profesor": PROFESOR, "admin": ADMIN}
 

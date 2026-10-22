@@ -2,14 +2,103 @@ from app.core.nivel_academico import (
     NOMBRE_MATERIA_ASISTENCIA_JORNADA,
     resolver_tipo_evaluacion,
 )
+from app.core.nota_periodo import (
+    calcular_nota_del_periodo,
+    porcentajes_activos,
+    tipo_de_evaluacion_de_celdas,
+)
 from app.database import get_connection
-from app.repositories import boletin_repository
+from app.repositories import boletin_repository, porcentajes_planilla_repository
 from app.services.anio_lectivo import anio_distinto_del_activo, exigir_asignacion_editable
 from app.services.asignacion_academica import (
     resolver_asignacion_academica_id_cursor,
     resolver_nivel_curso_cursor,
 )
 from psycopg2.extras import RealDictCursor
+
+
+# --------------------------------------------------------------------------
+# Porcentajes por tipo de nota, paso B2c (PB5). Ver
+# docs/funcionalidades/SUBNOTAS_PLANILLA.md. Sin porcentajes activos en la
+# clase y el periodo, estas dos funciones no cambian nada: cuestan una
+# consulta (saber si hay porcentajes) o dos (si los hay pero estan
+# incompletos), y todo lo demas es lo de siempre (lo fija el paso B1).
+# --------------------------------------------------------------------------
+
+def _porcentajes_activos_de(cursor, asignacion_id, periodo):
+    """Los porcentajes de la clase si estan activos (QB2); si no, None."""
+    porcentajes = dict(
+        porcentajes_planilla_repository.leer_porcentajes_de_planilla(
+            cursor, asignacion_id, periodo
+        )
+    )
+    if not porcentajes:
+        return None
+    tipos = porcentajes_planilla_repository.leer_tipos_de_planilla(
+        cursor, asignacion_id, periodo
+    )
+    return porcentajes if porcentajes_activos(tipos, porcentajes) else None
+
+
+def _nota_ponderada(nivel_curso, celdas, porcentajes):
+    """La definitiva ponderada (PB4) de unas celdas, o None sin nada que ponderar.
+
+    `celdas` son `(tipo_nota, nota, valoracion, tipo_evaluacion)`. El nivel
+    del curso decide si la materia es de caritas; sin nivel, las celdas, con
+    la misma regla que usa hoy la pantalla.
+    """
+    tipo_evaluacion = resolver_tipo_evaluacion(
+        nivel_curso, tipo_de_evaluacion_de_celdas(celda[3] for celda in celdas)
+    )
+    valor, _ = calcular_nota_del_periodo(
+        tipo_evaluacion, [celda[:3] for celda in celdas], porcentajes
+    )
+    return valor
+
+
+def _definitiva_a_guardar(cursor, data, asignacion_id, nivel_curso):
+    """PB5: con porcentajes activos la definitiva la calcula el servidor.
+
+    Sin porcentajes activos, o si el estudiante no tiene ninguna nota que
+    ponderar, se guarda la que manda la pantalla, como hoy: asi un estudiante
+    sin notas conserva su 0 (numerica) o su vacio (caritas) y su puesto no
+    cambia.
+    """
+    porcentajes = _porcentajes_activos_de(cursor, asignacion_id, data.periodo)
+    if porcentajes is None:
+        return data.definitiva
+    celdas = porcentajes_planilla_repository.leer_celdas_del_estudiante(
+        cursor, asignacion_id, data.periodo, data.estudiante_id
+    )
+    valor = _nota_ponderada(nivel_curso, celdas, porcentajes)
+    return data.definitiva if valor is None else valor
+
+
+def _agregar_definitivas_ponderadas(cursor, asignacion_id, periodo, filas, estudiantes):
+    """PB5: con porcentajes activos, cada estudiante con notas trae `definitiva`.
+
+    Es la misma que se guardara (`_definitiva_a_guardar`), para que la
+    pantalla muestre exactamente esa. Usa las celdas que la lectura ya trajo;
+    solo consulta, ademas, el nivel del curso. Sin porcentajes activos no
+    agrega nada y la respuesta es la de siempre.
+    """
+    porcentajes = _porcentajes_activos_de(cursor, asignacion_id, periodo)
+    if porcentajes is None:
+        return
+    nivel_curso = resolver_nivel_curso_cursor(cursor, asignacion_id)
+
+    celdas_por_estudiante = {}
+    for row in filas:
+        if row['tipo_nota'] is not None:
+            celdas_por_estudiante.setdefault(row['estudiante_id'], []).append(
+                (row['tipo_nota'], row['nota'], row['valoracion'], row['tipo_evaluacion'])
+            )
+
+    for est_id, estudiante in estudiantes.items():
+        valor = _nota_ponderada(nivel_curso, celdas_por_estudiante.get(est_id, []), porcentajes)
+        if valor is not None:
+            estudiante['definitiva'] = float(valor)
+
 
 def guardar_boletin_controller(data, *, usuario):
     conn = get_connection()
@@ -22,8 +111,9 @@ def guardar_boletin_controller(data, *, usuario):
         tipo_evaluacion = resolver_tipo_evaluacion(
             nivel_curso, getattr(data, "tipo_evaluacion", None)
         )
+        definitiva = _definitiva_a_guardar(cursor, data, asignacion_id, nivel_curso)
         boletin_id = boletin_repository.guardar_cabecera(
-            cursor, data.estudiante_id, asignacion_id, data.periodo, data.definitiva
+            cursor, data.estudiante_id, asignacion_id, data.periodo, definitiva
         )
 
         boletin_repository.borrar_detalles_de_boletin(cursor, boletin_id)
@@ -144,6 +234,8 @@ def obtener_boletin_para_profesor_controller(asignacion_id: int, periodo: int):
                         if i < len(saved['observaciones']):
                             saved_det = saved['observaciones'][i]
                             nota['observacion_guardada'] = saved_det['observacion']
+
+        _agregar_definitivas_ponderadas(cursor, asignacion_id, periodo, filas, estudiantes_dict)
 
         return list(estudiantes_dict.values())
     finally:

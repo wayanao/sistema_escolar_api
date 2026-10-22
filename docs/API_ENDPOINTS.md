@@ -1633,6 +1633,21 @@ Router prefix: `/boletines`
 
 Notas:
 
+- **Porcentajes por tipo de nota** (desde el 2026-10-22, paso B2c de
+  `docs/funcionalidades/SUBNOTAS_PLANILLA.md`, PB5). Solo cambian algo en una
+  clase cuyos porcentajes están **activos** en ese periodo (todos los tipos
+  con el suyo y suma de 100):
+  - `POST /boletines/guardar` guarda la definitiva que **calcula el
+    servidor** (promedio ponderado, dos decimales mitad hacia arriba; en
+    preescolar, el valor ponderado de las caritas), no la que llega en
+    `definitiva`. Si el estudiante no tiene ninguna nota que ponderar, guarda
+    la que llega, como siempre.
+  - `GET /boletines/referencia/{asignacion_id}/{periodo}` agrega `definitiva`
+    (número) a cada estudiante que tenga notas: es exactamente la que se
+    guardará.
+  - Sin porcentajes activos las dos rutas responden y guardan lo de siempre.
+    Cuestan una consulta más (saber si la clase tiene porcentajes), dos si los
+    tiene incompletos, y tres con porcentajes activos.
 - `GET /boletines/admin/generar/{estudiante_id}/{periodo}` devuelve la
   definitiva guardada en boletin si existe.
 - Si no existe definitiva guardada, o la definitiva guardada es `0`, usa como

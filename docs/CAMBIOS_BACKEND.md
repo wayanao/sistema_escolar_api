@@ -10,9 +10,9 @@ Bitacora de cambios documentales y tecnicos observables del backend.
 
 El backend de la parte B de `docs/funcionalidades/SUBNOTAS_PLANILLA.md`.
 **Ninguna nota cambia todavía en la práctica**: solo cambia en clases con
-porcentajes completos, y ninguna los tiene (la tabla ni siquiera está
-aplicada y la pantalla para ponerlos llega en B4). Nada de esto está
-publicado.
+porcentajes completos, y ninguna puede tenerlos hasta que se publique la
+pantalla para ponerlos (B4). **En producción desde el 2026-10-22**: migración
+aplicada en los dos colegios, push (`dfe0336`) y Render Live.
 
 ### B2d: las lecturas de la nota del periodo (PB7)
 

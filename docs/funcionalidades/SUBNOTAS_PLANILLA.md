@@ -12,9 +12,9 @@
   partes: B2a (el cálculo) en `a630183`, B2b (tabla y ruta de los
   porcentajes, migración escrita sin aplicar) en `dcf8443`, B2c (la
   definitiva del boletín) en `05a8bbe` y B2d (las demás lecturas) en
-  `0498f80`: B2 completo. B3 (rama de Neon) bien el 2026-10-22.** En la
-  práctica ninguna nota cambia todavía. **El backend no se sube hasta
-  aplicar la migración en producción.**
+  `0498f80`: B2 completo. B3 (rama de Neon) bien y backend de la parte B en
+  producción el 2026-10-22 (`dfe0336`, migración aplicada, Render Live).**
+  Nadie ve nada nuevo todavía: falta la pantalla (B4 y B5).
 - Tipo: Función nueva de producto. No es una capa del programa de
   modularización de `docs/modularizacion/` y no debe confundirse con una.
 - Repos afectados: este repo (`sistema_escolar_api`) y `frontend-react`. Ver
@@ -1518,6 +1518,28 @@ a Neon ni a producción.
   `test_esquema_base.py` ya en verde. Ruff y `pip check` limpios.
 - Producción **no se tocó** durante B3: ni migración ni push.
 
+## Publicación del backend de la parte B, 2026-10-22
+
+La hizo el usuario, guiado paso a paso; el asistente no se conectó a la base
+de producción.
+
+- **Commit del esquema base** (`dfe0336`), con B0 a B3 ya en commits
+  anteriores.
+- **Migración en producción** en una ventana nueva, con la cadena directa de
+  producción. La simulación previa dio `PENDIENTE` en `tenant_colegio_1` y
+  `tenant_2005`: **segunda prueba de que B3 no tocó producción**. Después el
+  usuario aplicó la migración y la simulación siguiente dio `OMITIDA (ya
+  aplicada)` en los dos ("todo ok"; la salida no se pegó).
+- **Push del backend** en seguida: `origin/main` en `dfe0336`.
+- **Render Live**, comprobado por el asistente desde fuera y sin sesión, con
+  una lectura que no cambia nada: `GET /planilla/tipos/porcentaje` respondía
+  `404` (la ruta no existía) y pasó a `405` (existe y solo acepta `PUT`).
+  `/health` siguió en `200`. Con eso se cerró el rato sin poder crear
+  colegios.
+- **Qué ven los profesores:** nada nuevo todavía. La pantalla para poner
+  porcentajes llega en B4; hasta entonces ninguna clase puede tenerlos y
+  ninguna nota cambia.
+
 ## Fuera de alcance
 
 - Mostrar las subnotas en el boletín, el reporte parcial o cualquier impreso.
@@ -1614,15 +1636,14 @@ a Neon ni a producción.
   `test_esquema_base.py` ya pasa.
 - Pendiente del usuario: borrar la rama `prueba-porcentajes` en Neon (y la
   vieja `prueba-subnotas`, si sigue).
-- Siguiente acción exacta: **publicar el backend**, lo hace el usuario, en
-  este orden y sin pausa entre 2 y 3:
-  1. commit del esquema base;
-  2. migración en producción con `apply_migration.py`: `--dry-run`
-     (debe dar `PENDIENTE` en los dos colegios), aplicar y `--dry-run` otra
-     vez (`OMITIDA`), con la cadena **directa** de producción;
-  3. **en seguida**, push del backend y esperar a Render **Live**.
-
-  Entre 2 y 3 no se crean colegios nuevos. Después, B4 y B5 en el frontend,
-  y por último su push.
+- **Backend de la parte B en producción el 2026-10-22**: esquema base en
+  `dfe0336`, migración aplicada en los dos colegios, push y Render **Live**.
+  Ver "Publicación del backend de la parte B". Nadie ve nada nuevo todavía.
+- Pendiente del usuario: devolver el `DATABASE_URL` del `.env` al endpoint
+  `-pooler`, si lo cambió para aplicar la migración.
+- Siguiente acción exacta: **B4, la pantalla en el frontend**, solo con el
+  visto bueno del usuario. Detalle de lo que pide en "Parte B en este repo"
+  del documento del frontend. Después B5 (prueba en local con el Colegio
+  Demo) y el push del frontend.
 - Prompt para retomar:
   `docs/funcionalidades/PROMPT_CONTINUACION_SUBNOTAS_PLANILLA.md`.

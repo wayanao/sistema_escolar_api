@@ -1063,4 +1063,12 @@ Estado al 2026-10-22:
   rankings funcionaron con el backend nuevo. Detalle en "Avance del paso B3"
   de `docs/funcionalidades/SUBNOTAS_PLANILLA.md`.
 - `scripts/verify.py`: **2870 pasan, 0 fallan**; Ruff y `pip check` limpios.
-- **Todavía sin aplicar en producción.**
+- Esquema base y código en el commit `dfe0336`.
+- **Aplicada en producción el 2026-10-22** por el usuario, en
+  `tenant_colegio_1` y `tenant_2005`, con la cadena directa de producción: la
+  simulación previa dio `PENDIENTE` y la posterior `OMITIDA (ya aplicada)` en
+  los dos. En seguida hizo el push (`origin/main` en `dfe0336`) y Render quedó
+  Live: `GET /planilla/tipos/porcentaje` pasó de `404` a `405`, con `/health`
+  en `200`. No rellenó ni cambió datos existentes.
+- A partir de aquí el archivo no se puede editar: el runner guarda su
+  checksum. Cualquier cambio posterior debe ir en una migración nueva.

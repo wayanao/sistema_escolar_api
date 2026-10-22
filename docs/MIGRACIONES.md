@@ -1053,6 +1053,14 @@ el push no se crean colegios nuevos.**
 Estado al 2026-10-22:
 
 - SQL y 5 pruebas de texto (`tests/test_migracion_planilla_tipos_porcentaje.py`).
-- **Escrita, sin aplicar en ningún lado.** `tests/test_esquema_base.py` falla a
-  propósito hasta el paso B3, en el que el usuario la prueba en una rama de
-  Neon y regenera desde allí el esquema base.
+- El 2026-10-22 el usuario la aplicó en la rama `prueba-porcentajes` de Neon
+  (registrada en `tenant_colegio_1` y `tenant_2005`) y regeneró desde allí el
+  esquema base: 39 tablas, 1 función y 1 disparador. El diff agregó solo la
+  migración a la cabecera (47), la tabla con sus reglas, el índice único y la
+  clave foránea.
+- En la rama, 16 casos (reglas de la tabla y las sentencias que usa la API)
+  dieron lo esperado, y la planilla, el boletín, el reporte parcial y los
+  rankings funcionaron con el backend nuevo. Detalle en "Avance del paso B3"
+  de `docs/funcionalidades/SUBNOTAS_PLANILLA.md`.
+- `scripts/verify.py`: **2870 pasan, 0 fallan**; Ruff y `pip check` limpios.
+- **Todavía sin aplicar en producción.**

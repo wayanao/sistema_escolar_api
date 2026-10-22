@@ -11,10 +11,10 @@
   caracterización (B1) en `a9cdc57` y, desde el 2026-10-22, B2 en cuatro
   partes: B2a (el cálculo) en `a630183`, B2b (tabla y ruta de los
   porcentajes, migración escrita sin aplicar) en `dcf8443`, B2c (la
-  definitiva del boletín) en `05a8bbe` y B2d (las demás lecturas) hecho, sin
-  commit: B2 completo.** En la práctica ninguna nota cambia todavía. **El
-  backend no se sube hasta aplicar la migración en producción, después de
-  B3.**
+  definitiva del boletín) en `05a8bbe` y B2d (las demás lecturas) en
+  `0498f80`: B2 completo. B3 (rama de Neon) bien el 2026-10-22.** En la
+  práctica ninguna nota cambia todavía. **El backend no se sube hasta
+  aplicar la migración en producción.**
 - Tipo: Función nueva de producto. No es una capa del programa de
   modularización de `docs/modularizacion/` y no debe confundirse con una.
 - Repos afectados: este repo (`sistema_escolar_api`) y `frontend-react`. Ver
@@ -1479,6 +1479,45 @@ paso A2. **Producción no se toca en este paso.**
    migración en producción y en seguida subir el backend (el orden de
    publicación es el mismo de la parte A).
 
+## Avance del paso B3, 2026-10-22
+
+Lo hizo el usuario en la rama `prueba-porcentajes` de Neon, creada desde
+`production`, guiado paso a paso por el asistente. El asistente no se conectó
+a Neon ni a producción.
+
+- **Punto 3, migración en la rama.** Simulación: `PENDIENTE` en
+  `tenant_colegio_1` y `tenant_2005`. Después de aplicarla, la simulación dio
+  `OMITIDA (ya aplicada)` en los dos. La salida del comando que la aplicó no
+  se pegó, pero el runner guarda el registro en la misma transacción que crea
+  la tabla, así que ese `OMITIDA` prueba que la tabla existe.
+- **Dónde se aplicó.** El usuario no confirmó el host con palabras, pero el
+  script del punto 6 corrió **en la misma ventana** y se negó a seguir si era
+  producción: imprimió la rama `ep-cool-sunset-aiox0ly8`, no
+  `ep-late-smoke-aip41j6x`. La migración fue a la rama. Al aplicarla en
+  producción, su simulación debe dar `PENDIENTE`: será la segunda
+  comprobación.
+- **Punto 4, esquema base** regenerado desde `tenant_colegio_1` de la rama: 39
+  tablas (eran 38), 1 función y 1 disparador. El asistente revisó el diff
+  línea por línea: solo la fecha, la cabecera (de 46 a 47 migraciones), la
+  tabla `planilla_tipos_porcentaje` con sus dos `CHECK` y su `PRIMARY KEY`, el
+  índice `idx_planilla_tipos_porcentaje_tipo_unico` y la clave foránea de
+  `asignacion_id` con `ON DELETE CASCADE`. Nada más.
+- **Punto 5, lo de siempre contra la rama**, con el backend nuevo y el
+  frontend de siempre, como profesor y admin del Colegio Demo: crear el tipo
+  "Prueba B3" con una nota, guardar el boletín de ese estudiante, abrir los
+  dos rankings, el boletín y el reporte parcial del admin, y borrar el tipo.
+  Todo funcionó igual que siempre.
+- **Puntos 6 y 7.** En vez de pegar el SQL en el editor de Neon, el asistente
+  lo puso en un script fuera del repo (carpeta temporal del asistente) que el
+  usuario corrió en la ventana de la rama. Se niega a correr sin
+  `DATABASE_URL`, contra producción o contra el pooler; nunca imprime la
+  cadena; usa los dos bloques SQL de "Paso B3" tal cual y deshace todo al
+  final. Resultado: **TODO BIEN, 16 de 16 casos**, y 0 porcentajes y 0
+  celdas de prueba en los dos colegios.
+- **Punto 8.** `scripts/verify.py`: **2870 pasan, 0 fallan**, con
+  `test_esquema_base.py` ya en verde. Ruff y `pip check` limpios.
+- Producción **no se tocó** durante B3: ni migración ni push.
+
 ## Fuera de alcance
 
 - Mostrar las subnotas en el boletín, el reporte parcial o cualquier impreso.
@@ -1568,9 +1607,22 @@ paso A2. **Producción no se toca en este paso.**
   sube** hasta que la migración esté en producción: si saliera antes,
   `DELETE /planilla/tipo` fallaría para todos los profesores. Los commits se
   pueden hacer; el push no.
-- Siguiente acción exacta: **B3, lo hace el usuario** con la lista de "Paso
-  B3: lista de comprobación en una rama de Neon". Después, la migración en
-  producción y en seguida el push del backend (Render Live); luego B4 y B5
-  en el frontend, y por último su push.
+- B2d en `0498f80`.
+- **B3 hecho el 2026-10-22** (ver "Avance del paso B3"): migración probada en
+  la rama `prueba-porcentajes`, esquema base regenerado (sin commit), 16 de
+  16 casos y `scripts/verify.py` con **2870 pasan, 0 fallan**.
+  `test_esquema_base.py` ya pasa.
+- Pendiente del usuario: borrar la rama `prueba-porcentajes` en Neon (y la
+  vieja `prueba-subnotas`, si sigue).
+- Siguiente acción exacta: **publicar el backend**, lo hace el usuario, en
+  este orden y sin pausa entre 2 y 3:
+  1. commit del esquema base;
+  2. migración en producción con `apply_migration.py`: `--dry-run`
+     (debe dar `PENDIENTE` en los dos colegios), aplicar y `--dry-run` otra
+     vez (`OMITIDA`), con la cadena **directa** de producción;
+  3. **en seguida**, push del backend y esperar a Render **Live**.
+
+  Entre 2 y 3 no se crean colegios nuevos. Después, B4 y B5 en el frontend,
+  y por último su push.
 - Prompt para retomar:
   `docs/funcionalidades/PROMPT_CONTINUACION_SUBNOTAS_PLANILLA.md`.

@@ -58,8 +58,8 @@ continuacion para retomarla en otro chat u otro LLM.
   **Parte A (subnotas) publicada el 2026-10-21, backend y frontend. Parte B
   (porcentajes): diseño (B0) aprobado, caracterización (B1) hecha y B2 en
   completo el 2026-10-22 (backend: cálculo, tabla, ruta, boletín, reporte
-  parcial y rankings). Migración escrita sin aplicar: el backend no se sube
-  hasta B3 y la migración en producción.**
+  parcial y rankings) y B3 (rama de Neon) bien el mismo día. Falta aplicar
+  la migración en producción y, en seguida, subir el backend.**
 
 ## Estado actual resumido
 

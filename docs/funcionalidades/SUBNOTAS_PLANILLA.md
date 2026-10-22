@@ -1645,8 +1645,12 @@ de producción.
   cálculo gemelo, ganchos y la definitiva del servidor en el boletín) hecho
   el 2026-10-22, sin commit.** Detalle en "Avance del paso B4a" del documento
   del frontend. Lo que ve el profesor no cambia todavía.
-- Siguiente acción exacta: **B4b, la pantalla de los porcentajes**, solo con
-  el visto bueno del usuario. Después B5 (prueba en local con el Colegio
-  Demo) y el push del frontend.
+- B4a en `7ddd42c` (frontend). **B4b (la pantalla) hecho el 2026-10-22, sin
+  commit**: franja de porcentajes encima de la tabla, porcentaje en cada
+  encabezado y campo al crear un tipo. Detalle en "Avance del paso B4b" del
+  documento del frontend.
+- Siguiente acción exacta: **B5, lo hace el usuario** con la lista de "Paso
+  B5" del documento del frontend (Colegio Demo). Si sale bien, push del
+  frontend y la parte B queda publicada.
 - Prompt para retomar:
   `docs/funcionalidades/PROMPT_CONTINUACION_SUBNOTAS_PLANILLA.md`.

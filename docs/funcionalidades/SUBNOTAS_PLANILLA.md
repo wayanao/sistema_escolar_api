@@ -1668,9 +1668,12 @@ de producción.
   al guardar el boletín) y se hizo como **B4c**, solo en el frontend, el
   2026-10-22, sin commit. Detalle en "Avance del paso B4c" del documento del
   frontend.
-- Siguiente acción exacta: **seguir B5 desde el paso 5** (lista en "Paso B5"
-  del documento del frontend, que ya incluye el aviso; los pasos 1 a 4
-  salieron bien). Si sale bien, push del frontend y la parte B queda
-  publicada.
+- B4c en `3b06848` (frontend).
+- **B5 (prueba en local) bien el 2026-10-22**, en primaria y preescolar,
+  incluido el aviso de PB11, el boletín del profesor (3.90), el boletín y el
+  reporte parcial del admin (3.9) y la vista de celular. Detalle en "Avance
+  del paso B5" del documento del frontend.
+- Siguiente acción exacta: **push del frontend** (lo hace el usuario). Con
+  eso la parte B queda publicada; después se anota aquí la publicación.
 - Prompt para retomar:
   `docs/funcionalidades/PROMPT_CONTINUACION_SUBNOTAS_PLANILLA.md`.

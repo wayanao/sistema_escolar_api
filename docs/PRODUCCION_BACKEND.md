@@ -1,6 +1,6 @@
 # Produccion Backend
 
-Ultima revision documental: 2026-07-21.
+Ultima revision documental: 2026-10-25.
 
 ## Variables de entorno actuales
 
@@ -114,8 +114,13 @@ Archivo central:
 
 Variables:
 
-- `DB_POOL_MIN_CONNECTIONS`
-- `DB_POOL_MAX_CONNECTIONS`
+- `DB_POOL_MIN_CONNECTIONS`: 5 por defecto desde el 2026-10-25. Con 1, cada
+  rafaga de peticiones abria conexiones nuevas en fila y el panel del profesor
+  tardaba 5,9 s en mostrar las clases. Ver `docs/ESCALABILIDAD.md`.
+- `DB_POOL_MAX_CONNECTIONS`: 10 por defecto.
+
+Si alguna de las dos esta definida en el Environment de Render, gana sobre el
+valor por defecto del codigo.
 
 Reglas:
 

@@ -25,9 +25,10 @@ import pytest
 from psycopg2 import extensions
 from psycopg2.pool import PoolError, ThreadedConnectionPool
 
-from app.config import settings
+from app.config import Settings, settings
 from app.db import session
 from app.globals import tenant_schema_var
+from app.main import MAX_DB_CONNECTIONS_PER_THREADPOOL_WORKER
 
 # Los cinco parametros de arranque que PgBouncer sabe rastrear, mas los que
 # psycopg2 resuelve del lado cliente y nunca envia al servidor.
@@ -373,6 +374,49 @@ def test_cerrar_el_pool_cierra_todas_las_conexiones(pool_real):
     pool.closeall()
 
     assert all(conexion.closed for conexion in creadas)
+
+
+def test_el_pool_cierra_lo_que_pasa_del_minimo_en_cada_rafaga(pool_real):
+    """Por que `DB_POOL_MIN_CONNECTIONS` no puede valer 1.
+
+    psycopg2 solo guarda `minconn` conexiones libres y cierra las demas al
+    devolverlas. Por eso no es solo la primera rafaga tras arrancar la que abre
+    conexiones nuevas: es cada una. Medido el 2026-10-25, el panel del
+    profesor abria 16 en cada apertura, a ~0,5 s cada una y en fila.
+    """
+    pool, creadas = pool_real(minconn=1, maxconn=10)
+
+    for _ in range(3):
+        rafaga = [pool.getconn() for _ in range(5)]
+        for conexion in rafaga:
+            pool.putconn(conexion)
+
+    # La del arranque, mas cuatro nuevas en cada una de las tres rafagas.
+    assert len(creadas) == 1 + 3 * 4
+    assert sum(1 for conexion in creadas if conexion.closed) == 3 * 4
+
+
+def test_el_minimo_por_defecto_cubre_una_rafaga_de_todos_los_hilos(pool_real):
+    """Con el valor por defecto, una rafaga no abre ninguna conexion nueva.
+
+    La rafaga habitual mas grande es una conexion por hilo con todos los hilos
+    del servidor ocupados: `app/main.py` los limita a
+    `DB_POOL_MAX_CONNECTIONS // 2`. Se mira el valor por defecto del codigo y
+    no `settings`, que un `.env` local puede cambiar.
+    """
+    minimo = Settings.model_fields["DB_POOL_MIN_CONNECTIONS"].default
+    maximo = Settings.model_fields["DB_POOL_MAX_CONNECTIONS"].default
+    hilos = maximo // MAX_DB_CONNECTIONS_PER_THREADPOOL_WORKER
+    pool, creadas = pool_real(minconn=minimo, maxconn=maximo)
+
+    for _ in range(3):
+        rafaga = [pool.getconn() for _ in range(hilos)]
+        for conexion in rafaga:
+            pool.putconn(conexion)
+
+    # Solo las que el pool abre al crearse.
+    assert len(creadas) == minimo
+    assert not any(conexion.closed for conexion in creadas)
 
 
 def test_get_pool_reutiliza_la_misma_instancia(monkeypatch):

@@ -17,7 +17,16 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 240
 
     DATABASE_URL: str
-    DB_POOL_MIN_CONNECTIONS: int = 1
+    # Conexiones que el pool guarda abiertas para reutilizarlas. psycopg2 cierra
+    # cada conexion devuelta por encima de este numero, y abre las nuevas de una
+    # en una, bajo su candado. Con 1, cada rafaga de peticiones simultaneas
+    # -no solo la primera tras arrancar- abria conexiones nuevas hasta Neon, en
+    # fila. Medido el 2026-10-25: abrir una cuesta ~0,4-0,6 s; el panel del
+    # profesor abria 16 y sus clases tardaban 5,9 s; con 5, ninguna y 0,84 s.
+    # Vale 5 porque el servidor atiende como maximo DB_POOL_MAX_CONNECTIONS // 2
+    # hilos a la vez (ver app/main.py) y cada uno usa normalmente una conexion.
+    # El coste: el pool abre las 5 al crearse (~2,7 s en la primera peticion).
+    DB_POOL_MIN_CONNECTIONS: int = 5
     DB_POOL_MAX_CONNECTIONS: int = 10
 
     # Timeouts de base de datos. En todos, 0 significa "no fijar nada" y deja el

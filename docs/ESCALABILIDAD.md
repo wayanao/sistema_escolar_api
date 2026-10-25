@@ -1,6 +1,6 @@
 # Base profesional para escalar el Sistema Escolar API
 
-Ultima revision documental: 2026-09-03.
+Ultima revision documental: 2026-10-25.
 
 Este proyecto es una API web escolar multi-tenant construida con FastAPI y PostgreSQL. La prioridad de esta base es crecer sin romper las funcionalidades actuales: estudiantes, pagos, notas, asistencia, boletines, inventario, reportes, nomina y administracion por colegio.
 
@@ -47,9 +47,12 @@ Beneficios:
 Variables sugeridas:
 
 ```env
-DB_POOL_MIN_CONNECTIONS=1
+DB_POOL_MIN_CONNECTIONS=5
 DB_POOL_MAX_CONNECTIONS=10
 ```
+
+El minimo vale 5 desde el 2026-10-25; con 1, cada rafaga de peticiones abria
+conexiones nuevas en fila. Ver «Vuelto a medir el 2026-10-25», mas abajo.
 
 Para produccion, ajusta `DB_POOL_MAX_CONNECTIONS` segun el limite real de PostgreSQL y la cantidad de workers.
 
@@ -81,7 +84,8 @@ Tres consecuencias practicas:
   cada conexion que el pool tenga que crear.** Con varias peticiones simultaneas
   tras un arranque en frio, ese peaje se acumula. Subirlo pre-calienta el pool,
   pero cambia el consumo de conexiones contra Neon y conviene decidirlo mirando
-  el limite real del plan.
+  el limite real del plan. *(Se quedaba corto: no era solo la primera rafaga,
+  sino cada una. Ver la medicion del 2026-10-25, mas abajo.)*
 - **Cada `get_connection()` cuesta dos consultas antes de la util.** Una ruta que
   pida tres conexiones para atender una peticion gasta seis idas y vueltas
   —mas de un segundo— solo en preparar sesiones. Prestar el cursor entre capas,
@@ -96,6 +100,38 @@ La regla que se deriva: **el numero de idas y vueltas por peticion es la metrica
 que importa**, no la complejidad del SQL. Un caso trabajado de punta a punta,
 con el reparto exacto de las 17 idas y vueltas que costaba leer una observacion,
 esta en `modularizacion/07_OBSERVACIONES.md`, entrada del 2026-09-03.
+
+#### Vuelto a medir el 2026-10-25: el minimo del pool pasa a 5
+
+psycopg2 solo guarda `DB_POOL_MIN_CONNECTIONS` conexiones libres y **cierra**
+cada conexion devuelta por encima de ese numero. Con 1, no era solo la primera
+rafaga tras arrancar la que abria conexiones: era **cada** rafaga de peticiones
+simultaneas. Ademas `ThreadedConnectionPool` conecta dentro de su candado, asi
+que las abre **de una en una**: mientras abre una, nadie puede tomar ni
+devolver conexiones.
+
+Medido con las 8 peticiones que lanza el panel del profesor al abrirse (backend
+local contra la base real, Colegio Demo, solo lectura, mediana de tres
+aperturas):
+
+| Pool | Conexiones nuevas por apertura | Clases del profesor | Panel completo |
+|---|---|---|---|
+| minimo 1 | 16 | 5,9 s | 9,3 s |
+| minimo 5 | 0 | 0,84 s | 2,3 s |
+
+- Abrir una conexion nueva cuesta hoy **~0,4-0,6 s**, no los 1329 ms de la
+  tabla de arriba. La ida y vuelta y el arranque de cada conexion tambien
+  bajaron: ver `apply_session_setup` en `app/db/session.py`.
+- Vale 5 porque el servidor atiende como maximo `DB_POOL_MAX_CONNECTIONS // 2`
+  hilos a la vez (`app/main.py`) y cada uno usa normalmente una conexion.
+- Coste: el pool abre las 5 al crearse, ~2,7 s en la primera peticion tras
+  cada arranque, y Neon ve 5 conexiones quietas en vez de 1. El endpoint
+  `-pooler` acepta miles.
+- Probado y descartado: cargar primero las clases y despues lo demas. Con
+  minimo 5 no acelera las clases (1,1 s) y retrasa el resto (3,7 s).
+- Guardias en `tests/test_db_pool_timeouts.py`:
+  `test_el_pool_cierra_lo_que_pasa_del_minimo_en_cada_rafaga` y
+  `test_el_minimo_por_defecto_cubre_una_rafaga_de_todos_los_hilos`.
 
 Aviso sobre entornos: correr el backend en local **no** acerca la base. El
 frontend apunta a `localhost:8000`, pero `DATABASE_URL` sigue siendo Neon en otro

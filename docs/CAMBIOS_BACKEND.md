@@ -1,10 +1,63 @@
 # Cambios Backend
 
-Ultima revision documental: 2026-10-22.
+Ultima revision documental: 2026-10-25.
 
 ## Proposito
 
 Bitacora de cambios documentales y tecnicos observables del backend.
+
+## 2026-10-25 - El pool guarda 5 conexiones en vez de 1
+
+El panel del profesor tardaba en mostrar sus clases. **Causa**: con
+`DB_POOL_MIN_CONNECTIONS=1`, psycopg2 cierra cada conexion devuelta por encima
+de una, asi que cada rafaga de peticiones simultaneas -no solo la primera tras
+arrancar, como decia `docs/ESCALABILIDAD.md`- abria conexiones nuevas hasta
+Neon, y de una en una, bajo el candado del pool. **Sin publicar todavia.**
+
+### Medido (solo lectura, backend local contra la base real, Colegio Demo)
+
+Las 8 peticiones que lanza el panel del profesor al abrirse, mediana de tres
+aperturas:
+
+| Pool | Conexiones nuevas | Clases | Panel completo |
+|---|---|---|---|
+| minimo 1 (antes) | 16 | 5,9 s | 9,3 s |
+| minimo 5 (ahora) | 0 | 0,84 s | 2,3 s |
+
+- Abrir una conexion cuesta ~0,4-0,6 s; la cifra de 1329 ms del 2026-09-03 ya
+  no vale.
+- Probado y descartado: cargar primero las clases y despues lo demas. Con
+  minimo 5 no acelera las clases (1,1 s) y retrasa el resto (3,7 s). Una
+  variante que guarda las conexiones sin abrirlas al arrancar dio lo mismo
+  (1,0 s), pero exigia cambiar `app/db/session.py`.
+
+### Que cambia
+
+- `app/config.py`: `DB_POOL_MIN_CONNECTIONS` vale 5 por defecto, con el porque
+  en un comentario. `.env.example`, igual.
+- Dos pruebas en `tests/test_db_pool_timeouts.py`: una fija el comportamiento
+  de psycopg2 (cierra lo que pasa del minimo en cada rafaga) y otra exige que
+  el minimo por defecto cubra una rafaga de todos los hilos del servidor. Con
+  el valor viejo, la segunda falla.
+- Afecta a todas las rutas: cualquier pantalla que pida varias cosas a la vez
+  carga antes. Ninguna respuesta cambia.
+- `docs/ESCALABILIDAD.md` y `docs/PRODUCCION_BACKEND.md`, actualizados.
+
+### Coste y riesgos
+
+- El pool abre las 5 al crearse: ~2,7 s en la primera peticion tras cada
+  arranque o despliegue. Antes esa primera rafaga ya tardaba mas.
+- Neon ve 5 conexiones quietas en vez de 1; el `-pooler` acepta miles. Render
+  arranca un solo proceso (`uvicorn` sin workers, segun
+  `docs/PRODUCCION_BACKEND.md`).
+- Si Neon cortara conexiones quietas, podria fallar una peticion por cada
+  conexion cortada (hasta 5, una vez cada una) en vez de una. No hay ningun
+  caso registrado; si aparece, el arreglo es comprobar la conexion antes de
+  usarla.
+- Si `DB_POOL_MIN_CONNECTIONS` esta definida en el Environment de Render, gana
+  sobre este valor: hay que revisarla antes de publicar.
+- `scripts/check_db_timeouts.py` usa el pool de la app: tambien abre 5 al
+  empezar.
 
 ## 2026-10-22 - Porcentajes por tipo de nota, paso B2 (B2a a B2d)
 

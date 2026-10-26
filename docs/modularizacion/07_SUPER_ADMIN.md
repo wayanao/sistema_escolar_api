@@ -1,6 +1,6 @@
 # Capa 7: super_admin
 
-Última revisión: 2026-08-24.
+Última revisión: 2026-10-26.
 
 ## Control
 
@@ -905,3 +905,16 @@ autorizada ni se creó ningún tenant real.
 - Bloqueos: ninguno.
 - Siguiente acción exacta: informar que no hay capa activa y esperar una orden
   explícita antes de activar cualquier trabajo posterior.
+
+## Después del cierre: registrar el pago de un colegio (2026-10-26)
+
+Cambio de producto pedido por el usuario, fuera del programa de capas. La
+frontera gana una quinta ruta, `POST /super-admin/tenants/{tenant_id}/pagos`,
+que mueve `fecha_proximo_pago`: es lo único que reactiva a un colegio que pagó,
+porque un estado manual `activo` no le gana a una fecha vencida.
+
+- Caracterización actualizada a propósito: cinco rutas, 21 sitios SQL en el
+  repositorio (`actualizar_proximo_pago` es el nuevo) y las líneas por archivo.
+- El evento se registra con `registrar_evento_tenant_creado`, cuya inserción ya
+  era genérica: el nombre del evento viaja como parámetro.
+- Detalle y pruebas: `docs/CAMBIOS_BACKEND.md`, entrada del 2026-10-26.

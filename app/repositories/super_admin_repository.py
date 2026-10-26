@@ -121,6 +121,18 @@ def registrar_auditoria_estado(
     )
 
 
+def actualizar_proximo_pago(cursor, tenant_id, fecha_proximo_pago):
+    cursor.execute(
+        """
+            UPDATE public.tenant_suscripciones
+            SET fecha_proximo_pago = %s,
+                actualizado_en = NOW()
+            WHERE tenant_id = %s
+            """,
+        (fecha_proximo_pago, tenant_id),
+    )
+
+
 def crear_colegio(cursor, nombre, codigo, esquema_nuevo):
     cursor.execute(
         """

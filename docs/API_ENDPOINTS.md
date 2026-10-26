@@ -67,6 +67,7 @@ Notas:
 - `POST /super-admin/tenants`
 - `PATCH /super-admin/tenants/{tenant_id}/estado`
 - `GET /super-admin/tenants/{tenant_id}/estado-auditoria`
+- `POST /super-admin/tenants/{tenant_id}/pagos`
 
 ## Uploads
 
@@ -1622,6 +1623,25 @@ Uso:
   registra motivo/auditoria.
 - `GET /super-admin/tenants/{tenant_id}/estado-auditoria` lista los ultimos
   cambios de estado del tenant.
+- `POST /super-admin/tenants/{tenant_id}/pagos` registra el pago de un colegio
+  moviendo su fecha de proximo pago (desde el 2026-10-26). Es lo que reactiva a
+  un colegio que pago: el estado efectivo sale de esa fecha, y un estado manual
+  `activo` no le gana a una fecha vencida.
+
+  ```json
+  { "fecha_proximo_pago": "2026-12-01", "nota": "Transferencia" }
+  ```
+
+  - `fecha_proximo_pago` es obligatoria y debe ser posterior a hoy (fecha de
+    Colombia) y no anterior al inicio de la suscripcion; `nota` es opcional.
+  - Responde el tenant con la misma forma que el listado, ya con su `estado`
+    recalculado.
+  - Registra el evento `pago_registrado` en `public.tenant_eventos_auditoria`,
+    con las dos fechas y la nota. La misma fecha que ya tenia no cambia nada ni
+    deja registro.
+  - Errores: 404 si el colegio no existe; 422 si la fecha es invalida, de hoy o
+    anterior, anterior al inicio, o si el colegio no tiene suscripcion.
+  - No guarda el monto pagado.
 
 ## Nomina
 

@@ -6,6 +6,7 @@ from app.controllers.super_admin_controller import (
     crear_tenant_controller,
     listar_auditoria_tenant_controller,
     listar_tenants_controller,
+    registrar_pago_tenant_controller,
 )
 from app.core.super_admin import get_current_super_admin
 
@@ -27,6 +28,11 @@ class TenantCreate(BaseModel):
     fecha_proximo_pago: str
     dias_gracia: int = 0
     notas: str | None = None
+
+
+class TenantPagoRegistro(BaseModel):
+    fecha_proximo_pago: str
+    nota: str | None = None
 
 
 @router.get("/tenants")
@@ -62,3 +68,19 @@ def listar_auditoria_tenant(
     _super_admin: dict = Depends(get_current_super_admin),
 ):
     return listar_auditoria_tenant_controller(tenant_id)
+
+
+# Mueve la fecha de proximo pago: es lo que reactiva a un colegio que pago,
+# porque el estado efectivo sale de esa fecha (ver el controlador).
+@router.post("/tenants/{tenant_id}/pagos")
+def registrar_pago_tenant(
+    tenant_id: int,
+    data: TenantPagoRegistro,
+    super_admin: dict = Depends(get_current_super_admin),
+):
+    return registrar_pago_tenant_controller(
+        tenant_id,
+        data.fecha_proximo_pago,
+        super_admin["id"],
+        data.nota,
+    )

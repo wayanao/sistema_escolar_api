@@ -134,6 +134,7 @@ Usan `get_current_super_admin`:
 - `POST /super-admin/tenants`
 - `PATCH /super-admin/tenants/{tenant_id}/estado`
 - `GET /super-admin/tenants/{tenant_id}/estado-auditoria`
+- `POST /super-admin/tenants/{tenant_id}/pagos`
 
 ## Routers con usuario autenticado y permisos de ownership
 

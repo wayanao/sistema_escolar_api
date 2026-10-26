@@ -425,6 +425,10 @@ Calculo efectivo por suscripcion:
   `suspendido`.
 - Estados manuales `suspendido` y `cancelado` siguen bloqueando sin importar la
   fecha.
+- Al reves no funciona: un estado manual `activo` no reactiva a un colegio con
+  la fecha vencida. Para reactivar a un colegio que pago hay que mover su
+  `fecha_proximo_pago`, con `POST /super-admin/tenants/{tenant_id}/pagos`
+  (desde el 2026-10-26; antes solo editando la base a mano).
 
 Auditoria de estado:
 

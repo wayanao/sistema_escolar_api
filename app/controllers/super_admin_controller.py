@@ -163,6 +163,96 @@ def actualizar_estado_tenant_controller(
         tenant_schema_var.reset(token)
 
 
+def registrar_pago_tenant_controller(
+    tenant_id: int,
+    fecha_proximo_pago: str,
+    super_admin_id: int,
+    nota: str | None = None,
+) -> dict:
+    """Corre la fecha de proximo pago de un colegio que pago.
+
+    El estado efectivo sale de esa fecha: pasada la fecha y los dias de gracia,
+    el colegio queda suspendido aunque su estado manual sea `activo`. Por eso
+    reactivar a un colegio que pago exige mover la fecha, no el estado. Antes de
+    esta ruta solo se podia hacer editando la base a mano.
+    """
+    try:
+        fecha_nueva = date.fromisoformat(str(fecha_proximo_pago))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail="Fecha de proximo pago invalida") from exc
+
+    if fecha_nueva <= hoy_en_colombia():
+        raise HTTPException(
+            status_code=422,
+            detail="La proxima fecha de pago debe ser posterior a hoy",
+        )
+
+    nota_limpia = str(nota or "").strip() or None
+
+    token, conn = _public_connection()
+    cursor = conn.cursor()
+    try:
+        current = super_admin_repository.obtener_tenant_para_estado(
+            cursor,
+            tenant_id,
+        )
+        if not current:
+            conn.rollback()
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant no encontrado")
+        if current[6] is None:
+            conn.rollback()
+            raise HTTPException(status_code=422, detail="El colegio no tiene suscripcion registrada")
+        if fecha_nueva < current[5]:
+            conn.rollback()
+            raise HTTPException(status_code=422, detail="La proxima fecha de pago no puede ser anterior al inicio")
+
+        fecha_anterior = current[6]
+        if fecha_nueva == fecha_anterior:
+            # Igual que el cambio de estado: sin cambio no hay auditoria. Un doble
+            # clic no deja dos registros.
+            conn.rollback()
+        else:
+            super_admin_repository.actualizar_proximo_pago(
+                cursor,
+                tenant_id,
+                fecha_nueva,
+            )
+            anterior = fecha_anterior.isoformat() if hasattr(fecha_anterior, "isoformat") else fecha_anterior
+            detalle = f"Proximo pago: {anterior} -> {fecha_nueva.isoformat()}"
+            if nota_limpia:
+                detalle = f"{detalle}. Nota: {nota_limpia}"
+            # La insercion del evento es generica: el nombre viaja como parametro.
+            super_admin_repository.registrar_evento_tenant_creado(
+                cursor,
+                tenant_id,
+                "pago_registrado",
+                detalle,
+                super_admin_id,
+            )
+            conn.commit()
+
+        return {
+            "id": current[0],
+            "nombre": current[1],
+            "subdominio": current[2],
+            "esquema_db": current[3],
+            "estado": calculate_effective_tenant_status(current[4], fecha_nueva, current[7]),
+            "estado_manual": normalize_tenant_status(current[4]),
+            "fecha_inicio": current[5].isoformat() if hasattr(current[5], "isoformat") else current[5],
+            "fecha_proximo_pago": fecha_nueva.isoformat(),
+            "dias_gracia": current[7],
+        }
+    except HTTPException:
+        raise
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+        conn.close()
+        tenant_schema_var.reset(token)
+
+
 def _validar_password_fuerte(password: str) -> None:
     errors = password_policy_errors(password)
     if errors:

@@ -1,10 +1,45 @@
 # Cambios Backend
 
-Ultima revision documental: 2026-10-25.
+Ultima revision documental: 2026-10-26.
 
 ## Proposito
 
 Bitacora de cambios documentales y tecnicos observables del backend.
+
+## 2026-10-26 - Super admin: registrar el pago de un colegio
+
+El estado efectivo de un colegio sale de `fecha_proximo_pago`: vencida la fecha
+y los dias de gracia, queda suspendido aunque su estado manual sea `activo`. Y
+esa fecha solo se fijaba al crear el colegio, asi que reactivar a uno que pago
+exigia editar la base a mano; el usuario ya tuvo que hacerlo. **Sin publicar
+todavia.**
+
+### Que cambia
+
+- Ruta nueva `POST /super-admin/tenants/{tenant_id}/pagos`
+  (`app/routes/super_admin.py`), protegida por `get_current_super_admin`.
+  Recibe `fecha_proximo_pago`, posterior a hoy y no anterior al inicio, y una
+  `nota` opcional. Contrato en `docs/API_ENDPOINTS.md`.
+- `registrar_pago_tenant_controller` y `actualizar_proximo_pago` (repositorio):
+  una conexion publica, tres consultas (leer, actualizar y auditar) y commit.
+  Con la misma fecha que ya tenia: una consulta, rollback y ningun registro.
+- El evento `pago_registrado` va a `public.tenant_eventos_auditoria`, con las
+  dos fechas y la nota. Tabla existente: sin migracion. Todavia no se ve en
+  ninguna pantalla.
+- No cambia como se calcula el estado ni el cambio de estado manual.
+
+### Pruebas
+
+- `tests/test_super_admin_pagos.py` (nuevo, 12 casos).
+- `tests/test_super_admin_caracterizacion.py`, actualizada a proposito: cinco
+  rutas en vez de cuatro, 21 sitios SQL en el repositorio en vez de 20, la
+  funcion nueva en su superficie, las lineas por archivo y la ruta nueva en las
+  pruebas de 200, 401 y 422.
+
+### Pendiente
+
+- Frontend: el boton "Registrar pago" en el panel del super admin.
+- No se guarda el monto pagado.
 
 ## 2026-10-25 - El pool guarda 5 conexiones en vez de 1
 
@@ -12,7 +47,9 @@ El panel del profesor tardaba en mostrar sus clases. **Causa**: con
 `DB_POOL_MIN_CONNECTIONS=1`, psycopg2 cierra cada conexion devuelta por encima
 de una, asi que cada rafaga de peticiones simultaneas -no solo la primera tras
 arrancar, como decia `docs/ESCALABILIDAD.md`- abria conexiones nuevas hasta
-Neon, y de una en una, bajo el candado del pool. **Sin publicar todavia.**
+Neon, y de una en una, bajo el candado del pool. **Subido a `main` el
+2026-10-25 (`b3fda81`)**; Render no define `DB_POOL_MIN_CONNECTIONS` ni
+`DB_POOL_MAX_CONNECTIONS`, asi que manda el valor del codigo.
 
 ### Medido (solo lectura, backend local contra la base real, Colegio Demo)
 

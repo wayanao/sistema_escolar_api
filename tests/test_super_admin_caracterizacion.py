@@ -27,10 +27,10 @@ from app.routes import super_admin as super_admin_routes
 
 ROOT = Path(__file__).resolve().parents[1]
 OWN_PRODUCT_FILES = {
-    "app/routes/super_admin.py": 64,
-    "app/controllers/super_admin_controller.py": 337,
+    "app/routes/super_admin.py": 86,
+    "app/controllers/super_admin_controller.py": 427,
     "app/core/super_admin.py": 100,
-    "app/repositories/super_admin_repository.py": 232,
+    "app/repositories/super_admin_repository.py": 244,
 }
 PUBLIC_TABLE_PATTERN = re.compile(
     r"\b(?:FROM|JOIN|INTO|UPDATE)\s+(?:public\.)?"
@@ -252,7 +252,7 @@ def test_frontera_archivos_y_sql_extraido_queda_fijada():
     assert _execute_count("app/routes/super_admin.py") == 0
     assert _execute_count("app/controllers/super_admin_controller.py") == 0
     assert _execute_count("app/core/super_admin.py") == 0
-    assert _execute_count("app/repositories/super_admin_repository.py") == 20
+    assert _execute_count("app/repositories/super_admin_repository.py") == 21
     assert (ROOT / "app/repositories/super_admin_repository.py").exists()
     assert not (ROOT / "app/repositories/super_admins_repository.py").exists()
 
@@ -274,6 +274,7 @@ def test_repositorio_fija_superficie_y_no_administra_recursos():
         "obtener_tenant_para_estado",
         "actualizar_estado_tenant",
         "registrar_auditoria_estado",
+        "actualizar_proximo_pago",
         "crear_colegio",
         "crear_schema",
         "fijar_search_path_base",
@@ -304,14 +305,16 @@ def test_repositorio_fija_superficie_y_no_administra_recursos():
         assert forbidden not in source
 
 
-def test_cuatro_rutas_privilegiadas_y_login_compartido_quedan_montados():
+def test_cinco_rutas_privilegiadas_y_login_compartido_quedan_montados():
     routes = _super_admin_routes()
 
+    # La quinta, registrar el pago de un colegio, se agrego el 2026-10-26.
     assert set(routes) == {
         ("GET", "/super-admin/tenants"),
         ("POST", "/super-admin/tenants"),
         ("PATCH", "/super-admin/tenants/{tenant_id}/estado"),
         ("GET", "/super-admin/tenants/{tenant_id}/estado-auditoria"),
+        ("POST", "/super-admin/tenants/{tenant_id}/pagos"),
     }
     assert all(route.response_model is None for route in routes.values())
     assert all(not inspect.iscoroutinefunction(route.endpoint) for route in routes.values())
@@ -334,6 +337,7 @@ def test_cuatro_rutas_privilegiadas_y_login_compartido_quedan_montados():
 def test_schemas_inline_conservan_campos_requeridos_y_defaults():
     create_fields = super_admin_routes.TenantCreate.model_fields
     state_fields = super_admin_routes.TenantEstadoUpdate.model_fields
+    payment_fields = super_admin_routes.TenantPagoRegistro.model_fields
 
     assert set(create_fields) == {
         "nombre",
@@ -363,6 +367,9 @@ def test_schemas_inline_conservan_campos_requeridos_y_defaults():
     assert set(state_fields) == {"estado", "motivo"}
     assert state_fields["estado"].is_required()
     assert state_fields["motivo"].default is None
+    assert set(payment_fields) == {"fecha_proximo_pago", "nota"}
+    assert payment_fields["fecha_proximo_pago"].is_required()
+    assert payment_fields["nota"].default is None
 
 
 @pytest.mark.anyio
@@ -397,6 +404,15 @@ async def test_http_rutas_conservan_status_200_payloads_y_super_admin_id(monkeyp
         "listar_auditoria_tenant_controller",
         lambda tenant_id: calls.append(("audit", tenant_id)) or audit,
     )
+    paid = {"id": 9, "estado": "activo"}
+    monkeypatch.setattr(
+        super_admin_routes,
+        "registrar_pago_tenant_controller",
+        lambda tenant_id, fecha, super_admin_id, nota: calls.append(
+            ("pay", tenant_id, fecha, super_admin_id, nota)
+        )
+        or paid,
+    )
     app = _probe_app()
 
     responses = [
@@ -418,6 +434,12 @@ async def test_http_rutas_conservan_status_200_payloads_y_super_admin_id(monkeyp
             "GET",
             "/super-admin/tenants/9/estado-auditoria",
         ),
+        await _asgi_request(
+            app,
+            "POST",
+            "/super-admin/tenants/9/pagos",
+            json_body={"fecha_proximo_pago": "2026-12-01", "nota": " Transferencia "},
+        ),
     ]
 
     assert responses == [
@@ -425,11 +447,13 @@ async def test_http_rutas_conservan_status_200_payloads_y_super_admin_id(monkeyp
         (200, created),
         (200, updated),
         (200, audit),
+        (200, paid),
     ]
     assert calls[0] == ("list",)
     assert calls[1] == ("create", TENANT_CREATE_PAYLOAD, 7)
     assert calls[2] == ("update", 9, " suspendido ", 7, " Mora ")
     assert calls[3] == ("audit", 9)
+    assert calls[4] == ("pay", 9, "2026-12-01", 7, " Transferencia ")
 
 
 @pytest.mark.anyio
@@ -444,6 +468,11 @@ async def test_http_rutas_conservan_status_200_payloads_y_super_admin_id(monkeyp
             {"estado": "suspendido"},
         ),
         ("GET", "/super-admin/tenants/1/estado-auditoria", None),
+        (
+            "POST",
+            "/super-admin/tenants/1/pagos",
+            {"fecha_proximo_pago": "2026-12-01"},
+        ),
     ],
 )
 async def test_http_todas_las_rutas_conservan_401_del_guard(
@@ -477,6 +506,7 @@ async def test_http_validacion_pydantic_ocurre_antes_del_controlador(monkeypatch
 
     monkeypatch.setattr(super_admin_routes, "crear_tenant_controller", fail)
     monkeypatch.setattr(super_admin_routes, "actualizar_estado_tenant_controller", fail)
+    monkeypatch.setattr(super_admin_routes, "registrar_pago_tenant_controller", fail)
     app = _probe_app()
 
     create_status, create_body = await _asgi_request(
@@ -491,6 +521,12 @@ async def test_http_validacion_pydantic_ocurre_antes_del_controlador(monkeypatch
         "/super-admin/tenants/1/estado",
         json_body={},
     )
+    payment_status, payment_body = await _asgi_request(
+        app,
+        "POST",
+        "/super-admin/tenants/1/pagos",
+        json_body={"nota": "Sin fecha"},
+    )
 
     assert create_status == 422
     assert {error["loc"][-1] for error in create_body["detail"]} == {
@@ -503,6 +539,8 @@ async def test_http_validacion_pydantic_ocurre_antes_del_controlador(monkeypatch
     }
     assert state_status == 422
     assert state_body["detail"][0]["loc"] == ["body", "estado"]
+    assert payment_status == 422
+    assert payment_body["detail"][0]["loc"] == ["body", "fecha_proximo_pago"]
 
 
 def test_codigos_de_login_privilegiado_y_dispatch_compartido_quedan_fijados(

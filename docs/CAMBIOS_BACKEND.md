@@ -11,8 +11,17 @@ Bitacora de cambios documentales y tecnicos observables del backend.
 El estado efectivo de un colegio sale de `fecha_proximo_pago`: vencida la fecha
 y los dias de gracia, queda suspendido aunque su estado manual sea `activo`. Y
 esa fecha solo se fijaba al crear el colegio, asi que reactivar a uno que pago
-exigia editar la base a mano; el usuario ya tuvo que hacerlo. **Sin publicar
-todavia.**
+exigia editar la base a mano; el usuario ya tuvo que hacerlo. **Publicado el
+2026-10-26**: backend en `9bbab31` y frontend (el boton) en `e7099dc`, despues
+de probarlo en local con el Colegio Demo. En produccion, la ruta responde 401
+sin sesion, como debe.
+
+Justo despues de ese despliegue, `/health` respondio 503 (`database: error`)
+durante unos 20 a 30 segundos y se recupero solo. Causa sin confirmar: puede
+ser el cambio de version o que crear el pool ahora abre 5 conexiones (si una
+falla, fallan todas las peticiones hasta el siguiente intento). Pendiente:
+revisar el log de Render ("Chequeo de salud: la base de datos no respondio") a
+esa hora.
 
 ### Que cambia
 

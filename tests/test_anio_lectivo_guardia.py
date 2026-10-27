@@ -231,6 +231,11 @@ def test_cada_lectura_devuelve_tupla_tambien_con_cursor_de_diccionarios(leer):
 SQL_GUARDIA = "SELECT al.anio, al.estado FROM"
 ESCRITURAS = ("INSERT", "UPDATE", "DELETE")
 
+# Firma del acudiente (docs/funcionalidades/FIRMA_OBSERVADOR.md): editar una
+# anotacion mira antes si ya esta firmada, porque lo firmado no se edita. Aqui
+# ninguna lo esta; lo firmado se prueba en test_observador_firma.py.
+SIN_FIRMA_DEL_ACUDIENTE = ("FROM observador_firmas WHERE anotacion_id", (False,), [])
+
 
 class Comodin:
     """Fila que responde a casi todo: indice o clave -> 1, verdadera."""
@@ -493,7 +498,9 @@ RUTAS = {
         [PROFESOR, ADMIN], "POST", "/observaciones",
         {"estudiante_id": 3, "asignacion_id": 9, "periodo": 3, "conductual": "Bien"}, None, [],
     ),
-    "PUT /observador/{id}": ([PROFESOR], "PUT", "/observador/15", {"conductual": "Bien"}, None, []),
+    "PUT /observador/{id}": (
+        [PROFESOR], "PUT", "/observador/15", {"conductual": "Bien"}, None, [SIN_FIRMA_DEL_ACUDIENTE],
+    ),
     "PUT /planeador-anual/{asignacion}/{periodo}": (
         [PROFESOR, ADMIN], "PUT", "/planeador-anual/9/3",
         [{"unidad_tematica": "U1", "fecha": "2026-10-30"}], None, [],

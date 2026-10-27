@@ -30,6 +30,10 @@ ADMIN = {"id": 1, "rol": "admin"}
 # La consulta de la guardia empieza siempre asi (repositorio del año).
 SQL_GUARDIA = "SELECT al.anio, al.estado FROM"
 
+# Firma del acudiente (docs/funcionalidades/FIRMA_OBSERVADOR.md): editar una
+# anotacion mira antes si ya esta firmada. Aqui ninguna lo esta.
+SIN_FIRMA_DEL_ACUDIENTE = ("FROM observador_firmas WHERE anotacion_id", (False,), [])
+
 
 class Comodin:
     """Fila que responde a casi todo: indice o clave -> 1, verdadera."""
@@ -253,7 +257,9 @@ RUTAS = {
         "POST", "/observaciones",
         {"estudiante_id": 3, "asignacion_id": 9, "periodo": 3, "conductual": "Bien"}, None, [],
     ),
-    "PUT /observador/{id}": ("PUT", "/observador/15", {"conductual": "Bien"}, None, []),
+    "PUT /observador/{id}": (
+        "PUT", "/observador/15", {"conductual": "Bien"}, None, [SIN_FIRMA_DEL_ACUDIENTE],
+    ),
     "PUT /planeador-anual/{asignacion}/{periodo}": (
         "PUT", "/planeador-anual/9/3", [{"unidad_tematica": "U1", "fecha": "2026-10-30"}], None, [],
     ),
@@ -433,6 +439,12 @@ SUBNOTAS = {"POST /planilla/nota": 1, "DELETE /planilla/tipo": 1}
 # boletin pregunta si la clase tiene porcentajes; sin ellos, es la unica.
 PORCENTAJES = {"DELETE /planilla/tipo": 1, "POST /boletines/guardar": 1}
 
+# Firma del acudiente (docs/funcionalidades/FIRMA_OBSERVADOR.md), propuesto al
+# usuario el 2026-10-27: una consulta mas en la misma conexion y ninguna
+# conexion nueva. Editar una anotacion la bloquea y mira si ya esta firmada
+# (el 409 de lo firmado), en un solo `execute` con dos sentencias.
+FIRMAS = {"PUT /observador/{id}": 1}
+
 USUARIOS = {"profesor": PROFESOR, "admin": ADMIN}
 
 
@@ -448,6 +460,10 @@ def test_la_guardia_suma_una_consulta_y_ninguna_conexion(con_base, ruta, rol):
     assert status in (200, 201)
     assert base.conexiones == conexiones
     assert len(base.consultas) == (
-        consultas + extra + SUBNOTAS.get(ruta, 0) + PORCENTAJES.get(ruta, 0)
+        consultas
+        + extra
+        + SUBNOTAS.get(ruta, 0)
+        + PORCENTAJES.get(ruta, 0)
+        + FIRMAS.get(ruta, 0)
     )
     assert sum(SQL_GUARDIA in c for c in base.consultas) == extra

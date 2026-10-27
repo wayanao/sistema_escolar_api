@@ -1,10 +1,59 @@
 # Cambios Backend
 
-Ultima revision documental: 2026-10-26.
+Ultima revision documental: 2026-10-27.
 
 ## Proposito
 
 Bitacora de cambios documentales y tecnicos observables del backend.
+
+## 2026-10-27 - Observador: firma del acudiente (paso 1, backend)
+
+Paso 1 de `docs/funcionalidades/FIRMA_OBSERVADOR.md`. **Lo que ven los
+colegios no cambia todavia**: la pantalla de firma llega en el paso 2, en el
+frontend. Al escribir esto no esta publicado: la migracion va a produccion
+antes del push.
+
+### Que cambia
+
+- Migracion `20261027_observador_firmas.sql`: tabla `observador_firmas` (ver
+  `docs/MIGRACIONES.md`). Esquema base regenerado.
+- `app/core/firma_observador.py` (nuevo, puro): validar la imagen (PNG de
+  hasta 100 KB), la version de una anotacion, la huella SHA-256 de lo firmado,
+  el documento enmascarado y quien puede tomar la firma.
+- `FirmaAnotacionCreate` en `app/schemas/observador.py`: quien toma la firma y
+  la hora no se aceptan del cuerpo.
+- Repositorio del observador:
+  - la bitacora suma el director de grupo, el año y la firma en la misma
+    consulta; la imagen no viaja, solo su SHA-256;
+  - funciones nuevas: `leer_anotacion_para_firmar` (con `FOR UPDATE OF a`),
+    `crear_firma`, `bloquear_y_saber_si_esta_firmada`,
+    `leer_firmas_para_imprimir` y `leer_firmantes_sugeridos`.
+- Rutas nuevas: `POST /observador/anotaciones/{anotacion_id}/firma`,
+  `GET /observador/{estudiante_id}/firmas` y
+  `GET /observador/{estudiante_id}/firmantes-sugeridos`.
+- Rutas que cambian: la bitacora devuelve `version`, `puede_firmar` y `firma`,
+  y editar una anotacion firmada da 409. Contrato en `docs/API_ENDPOINTS.md`;
+  permisos en `docs/ROLES_PERMISOS_BACKEND.md`.
+- Los errores de las rutas de firma registran solo el tipo de la excepcion,
+  nunca su mensaje, que podria traer el documento y la imagen.
+- Editar una anotacion cuesta una consulta mas: bloquearla y mirar si tiene
+  firma. Queda registrada en `FIRMAS` de
+  `tests/test_anio_lectivo_guardia_conteos.py`.
+
+### Pruebas
+
+- Nuevas: `tests/test_observador_firma.py` y
+  `tests/test_migracion_observador_firmas.py` (97 casos).
+- Ajustadas a proposito:
+  - las filas falsas de la bitacora, que ahora llevan las columnas nuevas;
+  - el doble del chequeo de firma en las pruebas de edicion;
+  - la respuesta "sin firma" en las de la guardia del año;
+  - el conteo de consultas de editar;
+  - la referencia nueva a `profesor` en
+    `tests/test_profesores_caracterizacion.py`.
+- `scripts/verify.py`: 2982 pasan (antes 2885); Ruff y `pip check` limpios.
+- En una rama de Neon: 21 de 21 comprobaciones contra la base real, sin dejar
+  nada guardado (ver `docs/MIGRACIONES.md`).
 
 ## 2026-10-26 - Super admin: registrar el pago de un colegio
 

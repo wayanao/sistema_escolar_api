@@ -2,8 +2,10 @@
 
 ## Control
 
-- Estado: **diseñado el 2026-10-27, nada implementado.** El paso 0 (este
-  documento) está hecho y el paso 1 espera la orden del usuario.
+- Estado: **el paso 1 (backend) está terminado y probado en una rama de Neon el
+  2026-10-27, pero sin publicar.** Falta aplicar la migración en producción y,
+  después, hacer el push. El paso 0 (este documento) está en `c97bf12`. Ver
+  "Avance del paso 1".
 - Tipo: función nueva de producto, construida encima del observador unificado
   (`docs/funcionalidades/OBSERVADOR_ESTUDIANTE.md`). No es un módulo de
   `docs/modularizacion/`.
@@ -86,7 +88,6 @@ de la bitácora.
 |---|---|---|
 | `id` | serial | PK |
 | `anotacion_id` | integer NOT NULL **UNIQUE** | FK a `observador_anotaciones(id)`, sin cascada. El UNIQUE asegura que haya como máximo una firma |
-| `estudiante_id` | integer NOT NULL | FK a `estudiantes(id)`. Tiene que coincidir con el de la anotación; lo verifica el servidor |
 | `firmante_nombre` | varchar(150) NOT NULL | |
 | `firmante_tipo_documento` | varchar(50) NOT NULL | |
 | `firmante_documento` | varchar(50) NOT NULL | |
@@ -101,6 +102,12 @@ de la bitácora.
 Un CHECK exige que exactamente una de las dos columnas `tomada_por_*` tenga
 valor. Son dos columnas, y no un `id` más un `rol`, porque los profesores y los
 admins viven en tablas distintas, y así cada columna conserva su clave foránea.
+Otro CHECK limita la imagen de 1 a 102400 bytes, el mismo límite que valida el
+servidor.
+
+**Cambio frente a la primera versión del diseño, hecho en el paso 1:** la
+tabla no lleva `estudiante_id`. Sale de la anotación, que nunca cambia de
+estudiante, y así no hay que vigilar que los dos coincidan.
 
 ### La huella
 
@@ -120,13 +127,14 @@ directamente en la base, sin pasar por la API, podría hacerla fallar.
 
 ### Migración
 
-`migrations/<fecha>_observador_firmas.sql`, junto con la base regenerada, como
-indica `CLAUDE.md` ("two sources of truth"). Se prueba primero en una rama de
-Neon y luego se aplica con `apply_migration.py` (`docs/MIGRACIONES.md`). El
-índice por `estudiante_id`, que usa la consulta para imprimir, sigue el mismo
-procedimiento que el de `observador_anotaciones`: va en
-`scripts/apply_tenant_indexes.py` y en la base, **no** dentro de la migración
-(la nota de `migrations/20260908_observador_anotaciones.sql` explica por qué).
+`migrations/20261027_observador_firmas.sql`, junto con la base regenerada,
+como indica `CLAUDE.md` ("two sources of truth"). Se prueba primero en una rama
+de Neon y luego se aplica con `apply_migration.py` (`docs/MIGRACIONES.md`).
+
+**No lleva índice aparte.** El UNIQUE de `anotacion_id` crea el índice que usan
+la bitácora (une por `anotacion_id`) y la impresión (entra por las anotaciones
+del estudiante, que ya tienen el suyo). Por eso no se toca
+`scripts/apply_tenant_indexes.py`.
 
 ## Permisos
 
@@ -137,17 +145,27 @@ Para **firmar** se tienen que cumplir dos cosas:
 2. Cumplir una de estas condiciones:
    - **profesor autor:** `anotacion.profesor_id` es el profesor de la sesión;
    - **director de grupo:** el profesor de la sesión es el
-     `cursos.director_grupo_id` del curso del estudiante en el año lectivo de la
-     anotación (`matriculas.curso_id` con `anotacion.anio_lectivo_id`). Se
-     confirma en el paso 1 (P1);
+     `cursos.director_grupo_id` del curso **actual** del estudiante
+     (`estudiantes.curso_id`). Así quedó resuelta la P1;
    - **admin:** cualquier anotación del colegio.
 
 Si no se cumple ninguna, responde 403.
 
+Firmar sigue además **la misma regla de año que editar** (`exigir_anio_editable`):
+el profesor, solo en el año activo; el admin, también en preparación o
+reabierto; nadie, en uno cerrado.
+
 Para **leer** las firmas valen las mismas reglas que para la bitácora. La imagen
 y el documento completo del firmante solo salen en la consulta para imprimir.
 
-## Cambios de API (propuesta, se fija en el paso 1)
+## Cambios de API (fijados en el paso 1)
+
+El contrato completo, con cada respuesta, está en `docs/API_ENDPOINTS.md`
+("Firma del acudiente"). Diferencias con la propuesta original: en la firma
+que devuelve la bitácora, quien la tomó viaja como `tomada_por_nombre`. Además,
+la respuesta de `firmantes-sugeridos` es una lista de
+`{parentesco, nombre, tipo_documento, documento}` con solo los padres que tienen
+nombre, y editar una anotación cuesta una consulta más.
 
 - `POST /observador/anotaciones/{anotacion_id}/firma`, nuevo.
   - Cuerpo: `firmante_nombre`, `firmante_tipo_documento`, `firmante_documento`,
@@ -214,16 +232,59 @@ y el documento completo del firmante solo salen en la consulta para imprimir.
 
 ## Preguntas abiertas
 
-- **P1 (paso 1):** al director de grupo, ¿se le busca por el curso del año de la
-  anotación o por el curso actual? Propuesta: por el del año de la anotación.
+- ~~**P1 (paso 1):** al director de grupo, ¿se le busca por el curso del año de
+  la anotación o por el curso actual?~~ **Resuelta sin preguntar:** por el
+  curso actual. Un profesor solo ve y firma el año activo (decisión 4 del año
+  lectivo y la misma regla de año que editar), y el admin, el único que firma
+  en otros años, no necesita ser director.
 - **P2 (paso 3):** si todas las anotaciones impresas ya están firmadas, ¿el pie
   conserva la línea "Firma del Acudiente"?
 - **P3 (paso 2):** el documento del firmante, ¿se muestra completo o enmascarado
   en pantalla? Propuesta: enmascarado en pantalla y completo en el impreso.
 
+## Avance del paso 1 (2026-10-27)
+
+Qué se construyó:
+
+- `migrations/20261027_observador_firmas.sql`.
+- `app/core/firma_observador.py`, puro.
+- `FirmaAnotacionCreate`.
+- Las funciones nuevas del repositorio.
+- Las tres rutas nuevas y los dos cambios en las existentes.
+
+El detalle está en `docs/CAMBIOS_BACKEND.md`.
+
+Cómo se resolvieron dos puntos finos:
+
+- **Que nadie firme un texto que otro está editando.** La lectura para firmar
+  bloquea la fila de la anotación (`FOR UPDATE OF a`), y la edición pide el mismo
+  bloqueo antes de escribir. La edición lo hace con dos sentencias en un solo
+  `execute`: bloquear, y después mirar si hay firma. En READ COMMITTED la
+  segunda ve una firma recién confirmada, cosa que una sola sentencia no
+  garantiza después de esperar el bloqueo. La comparación de la `version`
+  rechaza el caso contrario.
+- **Que los registros no guarden datos del acudiente.** Las rutas de firma
+  registran solo el tipo de cada error.
+
+Verificación:
+
+- `scripts/verify.py`: **2982 pasan, 0 fallan**; Ruff y `pip check` limpios.
+- En la rama `prueba-firma-observador` de Neon el usuario aplicó la migración en
+  los dos tenants (`PENDIENTE` → `OK` → `OMITIDA`).
+- En esa rama, un script dentro de una transacción que se deshace dio **21 de
+  21 comprobaciones** contra la base real. El esquema base se regeneró desde la
+  rama, y su diff fue solo la tabla nueva. Detalle en `docs/MIGRACIONES.md`.
+
 ## Entrega para el siguiente chat
 
-El siguiente es el **paso 1**, cuando el usuario lo ordene. Antes conviene leer
-`CLAUDE.md`, `docs/MIGRACIONES.md`, `docs/funcionalidades/OBSERVADOR_ESTUDIANTE.md`
-y `app/routes/observador.py`, sobre todo `_profesor_que_escribe` y
-`exigir_anotacion_editable`.
+El siguiente paso es **publicar el paso 1**, en este orden:
+
+1. El usuario aplica la migración en producción, con la cadena directa:
+   simulación, aplicación y simulación.
+2. Después hace commit y push del backend, y Render queda Live.
+3. Se comprueba que el observador de siempre sigue abriendo.
+
+Con eso empieza el paso 2 en `frontend-react`. Para probarlo en local sin dejar
+firmas reales en el Colegio Demo de producción (una firma no se borra), conviene
+apuntar el backend local a la rama `prueba-firma-observador` mientras dure esa
+prueba.

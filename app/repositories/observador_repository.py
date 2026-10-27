@@ -51,6 +51,13 @@ from app.repositories.anios_lectivos_repository import ANIO_ACTIVO_ID_SQL
 # filtro tambien en el `ON`, por lo mismo que el del periodo. Sin año, el
 # activo y ningun parametro nuevo; el curso del nivel sigue siendo
 # `e.curso_id`. Con otro año, el curso de su matricula de ese año.
+#
+# Firma del acudiente (docs/funcionalidades/FIRMA_OBSERVADOR.md): las
+# columnas del final. El director de grupo y el año de cada anotacion sirven
+# para decir de antemano si el boton de firmar va a funcionar; la firma, para
+# pintar su sello. **La imagen no viaja**: solo su SHA-256, calculado en
+# PostgreSQL, que basta para comprobar la huella. Las dos uniones nuevas son
+# `LEFT`, van en `_RESTO` y no anaden ninguna ida y vuelta.
 _SELECT = """
     SELECT c.nivel,
            a.id,
@@ -65,7 +72,20 @@ _SELECT = """
            a.lenguaje,
            a.creada_en,
            a.editada_en,
-           a.editada_por
+           a.editada_por,
+           c.director_grupo_id,
+           al.anio,
+           al.estado,
+           f.firmante_nombre,
+           f.firmante_tipo_documento,
+           f.firmante_documento,
+           f.firmante_parentesco,
+           f.tomada_por_profesor_id,
+           f.tomada_por_usuario_id,
+           f.tomada_por_nombre,
+           f.firmada_en,
+           f.huella,
+           encode(sha256(f.imagen_png), 'hex')
     FROM estudiantes e
     LEFT JOIN cursos c ON c.id = {curso}
     LEFT JOIN observador_anotaciones a
@@ -92,6 +112,8 @@ _FILTRO_PERIODO = "          AND a.periodo = %s\n"
 
 _RESTO = """
     LEFT JOIN profesor p ON p.id = a.profesor_id
+    LEFT JOIN anios_lectivos al ON al.id = a.anio_lectivo_id
+    LEFT JOIN observador_firmas f ON f.anotacion_id = a.id
     WHERE e.id = %s
     ORDER BY a.creada_en DESC NULLS LAST, a.id DESC NULLS LAST
 """
@@ -282,3 +304,267 @@ def leer_autor(cursor, anotacion_id):
     )
     fila = cursor.fetchone()
     return fila[0] if fila else None
+
+
+# ---------------------------------------------------------------------------
+# Firma del acudiente. Ver docs/funcionalidades/FIRMA_OBSERVADOR.md.
+# ---------------------------------------------------------------------------
+
+# `FOR UPDATE OF a` bloquea **solo la fila de la anotacion** hasta el fin de la
+# transaccion (con uniones izquierdas, PostgreSQL exige decir cual). Es lo que
+# impide firmar un texto que otro esta editando: la edicion pide el mismo
+# bloqueo antes de escribir (`bloquear_y_saber_si_esta_firmada`), asi que una
+# de las dos espera a la otra. Si gana la edicion, esta lectura devuelve el
+# texto nuevo y la version ya no coincide; si gana la firma, la edicion ve la
+# firma y se rechaza.
+#
+# El director de grupo es el del curso **actual** del alumno: un profesor solo
+# firma en el año activo (la misma regla de año que editar), y para el admin,
+# el unico que firma en otros años, no hace falta.
+#
+# El nombre de quien toma la firma sale de su tabla -`profesor` o `usuarios`,
+# segun el rol- con una subconsulta, para no pagar otra ida y vuelta. `now()`
+# es el instante de la transaccion: la hora que se guarda y la que cubre la
+# huella son la misma.
+_SQL_ANOTACION_PARA_FIRMAR = """
+    SELECT a.id,
+           a.estudiante_id,
+           a.profesor_id,
+           a.periodo,
+           a.conductual,
+           a.cognitivo,
+           a.lenguaje,
+           a.creada_en,
+           a.editada_en,
+           al.anio,
+           al.estado,
+           c.director_grupo_id,
+           f.id IS NOT NULL,
+           (SELECT concat_ws(' ', NULLIF(p.nombre, ''), NULLIF(p.apellido, ''))
+              FROM profesor p
+             WHERE p.id = %s),
+           (SELECT u.nombre FROM usuarios u WHERE u.id = %s),
+           now()
+    FROM observador_anotaciones a
+    JOIN estudiantes e ON e.id = a.estudiante_id
+    LEFT JOIN cursos c ON c.id = e.curso_id
+    LEFT JOIN anios_lectivos al ON al.id = a.anio_lectivo_id
+    LEFT JOIN observador_firmas f ON f.anotacion_id = a.id
+    WHERE a.id = %s
+    FOR UPDATE OF a
+"""
+
+
+def leer_anotacion_para_firmar(cursor, anotacion_id, profesor_id=None, usuario_id=None):
+    """Todo lo necesario para firmar una anotacion, con su fila bloqueada.
+
+    Una sola consulta. Devuelve `None` si la anotacion no existe; si no, un
+    diccionario con:
+
+    - `anotacion`: el contenido que cubren la version y la huella;
+    - `anio_y_estado`: `(anio, estado)` para la guardia del año;
+    - `director_grupo_id`: el del curso actual del alumno;
+    - `firmada`: si ya tiene firma;
+    - `tomada_por_nombre`: el nombre de quien la toma (profesor o admin);
+    - `ahora`: el instante de la transaccion.
+
+    `profesor_id` o `usuario_id`, segun el rol de quien firma; el otro va en
+    `None`. Salen del token, nunca del cuerpo.
+    """
+    cursor.execute(_SQL_ANOTACION_PARA_FIRMAR, (profesor_id, usuario_id, anotacion_id))
+    fila = cursor.fetchone()
+    if fila is None:
+        return None
+
+    (
+        anotacion_id,
+        estudiante_id,
+        autor_id,
+        periodo,
+        conductual,
+        cognitivo,
+        lenguaje,
+        creada_en,
+        editada_en,
+        anio,
+        estado,
+        director_grupo_id,
+        firmada,
+        nombre_profesor,
+        nombre_usuario,
+        ahora,
+    ) = fila
+
+    return {
+        "anotacion": {
+            "id": anotacion_id,
+            "estudiante_id": estudiante_id,
+            "profesor_id": autor_id,
+            "periodo": periodo,
+            "conductual": conductual,
+            "cognitivo": cognitivo,
+            "lenguaje": lenguaje,
+            "creada_en": creada_en,
+            "editada_en": editada_en,
+        },
+        "anio_y_estado": (anio, estado) if anio is not None else None,
+        "director_grupo_id": director_grupo_id,
+        "firmada": bool(firmada),
+        # `concat_ws` devuelve '' y no NULL cuando faltan nombre y apellido.
+        "tomada_por_nombre": nombre_profesor or nombre_usuario or "",
+        "ahora": ahora,
+    }
+
+
+def crear_firma(cursor, anotacion_id, firma, imagen, huella):
+    """Inserta la firma y devuelve su id. El `commit` es de quien llama.
+
+    Si otra firma de la misma anotacion se guardo mientras tanto, el UNIQUE de
+    `anotacion_id` la rechaza con `UniqueViolation`, y la ruta lo traduce a un
+    409. Es la ultima defensa del invariante 1.
+    """
+    cursor.execute(
+        """
+        INSERT INTO observador_firmas (
+            anotacion_id,
+            firmante_nombre,
+            firmante_tipo_documento,
+            firmante_documento,
+            firmante_parentesco,
+            imagen_png,
+            tomada_por_profesor_id,
+            tomada_por_usuario_id,
+            tomada_por_nombre,
+            firmada_en,
+            huella
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        RETURNING id
+        """,
+        (
+            anotacion_id,
+            firma["firmante_nombre"],
+            firma["firmante_tipo_documento"],
+            firma["firmante_documento"],
+            firma["firmante_parentesco"],
+            imagen,
+            firma["tomada_por_profesor_id"],
+            firma["tomada_por_usuario_id"],
+            firma["tomada_por_nombre"],
+            firma["firmada_en"],
+            huella,
+        ),
+    )
+    return cursor.fetchone()[0]
+
+
+# Dos sentencias en un solo `execute`: una ida y vuelta, pero **dos
+# sentencias, y separadas a proposito**. La primera bloquea la anotacion; si
+# una firma la tiene bloqueada, espera a que termine. La segunda empieza
+# despues, y en READ COMMITTED cada sentencia mira los datos confirmados en
+# ese momento, asi que ve la firma recien guardada. Juntas en una sola
+# sentencia (un `JOIN` o un `NOT EXISTS` en el `UPDATE`) no servirian:
+# despues de esperar, PostgreSQL relee la fila bloqueada pero no la otra
+# tabla, y la edicion pisaria un texto ya firmado.
+_SQL_BLOQUEAR_Y_VER_FIRMA = """
+    SELECT 1 FROM observador_anotaciones WHERE id = %s FOR UPDATE;
+    SELECT EXISTS (SELECT 1 FROM observador_firmas WHERE anotacion_id = %s)
+"""
+
+
+def bloquear_y_saber_si_esta_firmada(cursor, anotacion_id):
+    """Bloquea la anotacion para editarla y dice si ya tiene firma.
+
+    Con `psycopg2`, de varias sentencias en un `execute` solo queda el
+    resultado de la ultima: el `EXISTS`. Si la anotacion no existe, devuelve
+    `False` y la edicion sigue su camino de siempre, que responde 404.
+    """
+    cursor.execute(_SQL_BLOQUEAR_Y_VER_FIRMA, (anotacion_id, anotacion_id))
+    fila = cursor.fetchone()
+    return bool(fila and fila[0])
+
+
+# Las mismas anotaciones que `leer_bitacora` para el mismo año y periodo -se
+# imprime lo que se ve-, pero solo las firmadas y **con su imagen**. Esta es la
+# unica consulta que trae imagenes, y solo se paga al imprimir.
+_SELECT_FIRMAS = """
+    SELECT a.id,
+           a.estudiante_id,
+           a.profesor_id,
+           a.periodo,
+           a.conductual,
+           a.cognitivo,
+           a.lenguaje,
+           a.creada_en,
+           a.editada_en,
+           f.firmante_nombre,
+           f.firmante_tipo_documento,
+           f.firmante_documento,
+           f.firmante_parentesco,
+           f.tomada_por_profesor_id,
+           f.tomada_por_usuario_id,
+           f.tomada_por_nombre,
+           f.firmada_en,
+           f.huella,
+           f.imagen_png
+    FROM observador_anotaciones a
+    JOIN observador_firmas f ON f.anotacion_id = a.id
+    WHERE a.estudiante_id = %s
+      AND a.anio_lectivo_id = {anio}
+"""
+
+
+def leer_firmas_para_imprimir(cursor, estudiante_id, periodo=None, anio_lectivo_id=None):
+    """Las firmas, con imagen, de las anotaciones de un alumno. Una consulta.
+
+    Sin `anio_lectivo_id`, las del año activo, como la bitacora.
+    """
+    if anio_lectivo_id is None:
+        sql = _SELECT_FIRMAS.format(anio=ANIO_ACTIVO_ID_SQL)
+        params = (estudiante_id,)
+    else:
+        sql = _SELECT_FIRMAS.format(anio="%s")
+        params = (estudiante_id, anio_lectivo_id)
+    if periodo is not None:
+        sql += "      AND a.periodo = %s\n"
+        params += (periodo,)
+    cursor.execute(sql + "    ORDER BY a.creada_en DESC, a.id DESC\n", params)
+    return cursor.fetchall()
+
+
+def leer_firmantes_sugeridos(cursor, estudiante_id, profesor_id=None):
+    """El padre y la madre de la ficha, y si ese profesor puede pedirlos.
+
+    Devuelve `(nombre_padre, tipo_documento_padre, documento_padre,
+    nombre_madre, tipo_documento_madre, documento_madre, puede)`, o `None` si
+    el estudiante no existe. Una consulta.
+
+    `puede` responde a "¿este profesor podria tomar alguna firma de este
+    alumno?": es su director de grupo o escribio alguna anotacion suya este
+    año. Los documentos de los padres son para quien va a tomar una firma, no
+    para todos los profesores que comparten curso. Con `profesor_id` nulo (el
+    admin) sale falso, y la ruta no lo mira.
+    """
+    cursor.execute(
+        f"""
+        SELECT e.nombre_padre,
+               e.tipo_documento_padre,
+               e.documento_padre,
+               e.nombre_madre,
+               e.tipo_documento_madre,
+               e.documento_madre,
+               COALESCE(c.director_grupo_id = %s, false)
+               OR EXISTS (
+                   SELECT 1
+                   FROM observador_anotaciones a
+                   WHERE a.estudiante_id = e.id
+                     AND a.profesor_id = %s
+                     AND a.anio_lectivo_id = {ANIO_ACTIVO_ID_SQL}
+               )
+        FROM estudiantes e
+        LEFT JOIN cursos c ON c.id = e.curso_id
+        WHERE e.id = %s
+        """,
+        (profesor_id, profesor_id, estudiante_id),
+    )
+    return cursor.fetchone()

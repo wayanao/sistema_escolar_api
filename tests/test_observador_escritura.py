@@ -40,6 +40,28 @@ def guardia_del_anio(monkeypatch):
     return llamadas
 
 
+@pytest.fixture(autouse=True)
+def sin_firma_del_acudiente(monkeypatch):
+    """Firma del acudiente (`docs/funcionalidades/FIRMA_OBSERVADOR.md`): al
+    editar, se bloquea la anotacion y se mira si ya tiene firma, porque lo
+    firmado no se edita. Se dobla aqui como la guardia del año: ninguna
+    anotacion de este archivo esta firmada, y asi los `fetchone` de cada prueba
+    siguen siendo los de siempre. Lo firmado y su 409 viven en
+    `test_observador_firma.py`."""
+    llamadas = []
+
+    def no_esta_firmada(_cursor, anotacion_id):
+        llamadas.append(anotacion_id)
+        return False
+
+    monkeypatch.setattr(
+        observador.observador_repository,
+        "bloquear_y_saber_si_esta_firmada",
+        no_esta_firmada,
+    )
+    return llamadas
+
+
 class CursorFalso:
     def __init__(self, respuestas=None):
         self.respuestas = list(respuestas or [])

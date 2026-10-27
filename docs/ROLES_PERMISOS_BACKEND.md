@@ -182,6 +182,17 @@ Con usuario autenticado y alcance por rol, sin ownership:
   paso 3.5b): ademas del ownership de siempre, un profesor solo puede pedir
   el año activo (`anio_distinto_del_activo` con el usuario); otro año da 403.
   El admin puede pedir cualquiera.
+- firma del acudiente en el observador (2026-10-27,
+  `docs/funcionalidades/FIRMA_OBSERVADOR.md`): ademas de
+  `require_estudiante_access` y de la guardia del año, la toma el autor de la
+  anotacion, el director de grupo del curso actual del alumno o el admin
+  (`puede_tomar_firma` en `app/core/firma_observador.py`). **El admin firma
+  pero no escribe ni edita**: es una excepcion deliberada a
+  `_profesor_que_escribe`, porque firmar no cambia el texto. Su id va a
+  `tomada_por_usuario_id` y el del profesor a `tomada_por_profesor_id`, nunca
+  cruzados. Una anotacion firmada no la edita nadie (409). Los documentos de
+  los padres (`firmantes-sugeridos`) solo para el admin, el director de grupo
+  o un profesor con alguna anotacion del alumno este año.
 - guardia de escritura del año lectivo (paso 3.7, `exigir_anio_editable` en
   `app/services/anio_lectivo.py`): se suma al ownership, no lo reemplaza.
   Nadie escribe en un año `cerrado` (409); el profesor solo en el `activo`

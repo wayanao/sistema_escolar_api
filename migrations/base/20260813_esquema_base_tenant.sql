@@ -1,6 +1,6 @@
 -- Esquema base de un tenant. ARCHIVO GENERADO, no editar a mano.
 --
--- Extraido de tenant_colegio_1 el 2026-10-22 con
+-- Extraido de tenant_colegio_1 el 2026-10-27 con
 -- scripts/generar_esquema_base.py. Para rehacerlo, aplica antes la
 -- migracion nueva a ese schema y vuelve a ejecutar el script.
 --
@@ -11,7 +11,7 @@
 -- No usar apply_migration.py con este archivo: es para dar de alta un
 -- tenant nuevo, no para los existentes, que ya tienen estas tablas.
 --
--- MIGRACIONES INCORPORADAS (47):
+-- MIGRACIONES INCORPORADAS (48):
 --   20260429_pagos_tipo_pago_largo.sql
 --   20260429_plan_de_clases_reportes.sql
 --   20260509_branding_plantillas_impresion.sql
@@ -59,6 +59,7 @@
 --   20261019_estudiantes_sisben_residencia.sql
 --   20261021_planilla_subnotas.sql
 --   20261022_planilla_tipos_porcentaje.sql
+--   20261027_observador_firmas.sql
 -- FIN MIGRACIONES INCORPORADAS
 
 CREATE TABLE IF NOT EXISTS admisiones (
@@ -387,6 +388,25 @@ CREATE TABLE IF NOT EXISTS observador_anotaciones (
     CONSTRAINT observador_anotaciones_periodo_check CHECK (((periodo >= 1) AND (periodo <= 4))),
     CONSTRAINT observador_anotaciones_pkey PRIMARY KEY (id),
     CONSTRAINT observador_anotaciones_observacion_origen_id_key UNIQUE (observacion_origen_id)
+);
+
+CREATE TABLE IF NOT EXISTS observador_firmas (
+    id SERIAL,
+    anotacion_id integer NOT NULL,
+    firmante_nombre character varying(150) NOT NULL,
+    firmante_tipo_documento character varying(50) NOT NULL,
+    firmante_documento character varying(50) NOT NULL,
+    firmante_parentesco character varying(50) NOT NULL,
+    imagen_png bytea NOT NULL,
+    tomada_por_profesor_id integer,
+    tomada_por_usuario_id integer,
+    tomada_por_nombre character varying(150) NOT NULL,
+    firmada_en timestamp with time zone NOT NULL,
+    huella character(64) NOT NULL,
+    CONSTRAINT observador_firmas_imagen_check CHECK (((octet_length(imagen_png) >= 1) AND (octet_length(imagen_png) <= 102400))),
+    CONSTRAINT observador_firmas_tomada_por_check CHECK (((tomada_por_profesor_id IS NULL) <> (tomada_por_usuario_id IS NULL))),
+    CONSTRAINT observador_firmas_pkey PRIMARY KEY (id),
+    CONSTRAINT observador_firmas_anotacion_id_key UNIQUE (anotacion_id)
 );
 
 CREATE TABLE IF NOT EXISTS pagos (
@@ -770,6 +790,9 @@ ALTER TABLE observador_anotaciones ADD CONSTRAINT observador_anotaciones_anio_le
 ALTER TABLE observador_anotaciones ADD CONSTRAINT observador_anotaciones_editada_por_fkey FOREIGN KEY (editada_por) REFERENCES profesor(id);
 ALTER TABLE observador_anotaciones ADD CONSTRAINT observador_anotaciones_estudiante_id_fkey FOREIGN KEY (estudiante_id) REFERENCES estudiantes(id);
 ALTER TABLE observador_anotaciones ADD CONSTRAINT observador_anotaciones_profesor_id_fkey FOREIGN KEY (profesor_id) REFERENCES profesor(id);
+ALTER TABLE observador_firmas ADD CONSTRAINT observador_firmas_anotacion_id_fkey FOREIGN KEY (anotacion_id) REFERENCES observador_anotaciones(id);
+ALTER TABLE observador_firmas ADD CONSTRAINT observador_firmas_tomada_por_profesor_id_fkey FOREIGN KEY (tomada_por_profesor_id) REFERENCES profesor(id);
+ALTER TABLE observador_firmas ADD CONSTRAINT observador_firmas_tomada_por_usuario_id_fkey FOREIGN KEY (tomada_por_usuario_id) REFERENCES usuarios(id);
 ALTER TABLE pagos ADD CONSTRAINT pagos_anio_lectivo_id_fkey FOREIGN KEY (anio_lectivo_id) REFERENCES anios_lectivos(id);
 ALTER TABLE pagos ADD CONSTRAINT pagos_estudiante_id_fkey FOREIGN KEY (estudiante_id) REFERENCES estudiantes(id);
 ALTER TABLE pagos ADD CONSTRAINT pagos_venta_id_fkey FOREIGN KEY (venta_id) REFERENCES ventas(id);

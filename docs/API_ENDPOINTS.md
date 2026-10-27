@@ -387,6 +387,11 @@ el del plan o el de la anotacion) y aplica esta regla:
   año activo. `DELETE /tipos-pagos/{id}` nunca escribe.
 - `POST /observador` no la lleva: la anotacion nueva nace siempre en el año
   activo.
+- `POST /observador/anotaciones/{anotacion_id}/firma` (firma del acudiente,
+  2026-10-27) la lleva con la regla con usuario: el profesor solo en el año
+  activo; el admin tambien en preparacion o reabierto; nadie en uno cerrado.
+  Lee el año en la misma consulta que bloquea la anotacion, asi que no le
+  cuesta una consulta aparte.
 - En asistencia, boletin y observaciones, la comprobacion de que el
   estudiante es del curso de la clase corre antes, en la ruta. Para una clase
   de un año que ya no es el activo esa comprobacion responde primero `403`
@@ -1078,6 +1083,39 @@ las anotaciones del año activo (antes, todas; con un solo año es lo mismo). El
 admin puede pedir otro con `?anio_lectivo_id=` (y el `nivel` sale del curso de
 ese año); un profesor que pida otro año recibe `403` con `Solo se puede
 consultar el año lectivo activo.`; un año que no existe, `404`.
+
+### Firma del acudiente (2026-10-27)
+
+Ver `docs/funcionalidades/FIRMA_OBSERVADOR.md`.
+
+- `POST /observador/anotaciones/{anotacion_id}/firma`: el acudiente firma una
+  anotacion en pantalla. Cuerpo: `firmante_nombre`, `firmante_tipo_documento`,
+  `firmante_documento`, `firmante_parentesco`, `imagen` (PNG en base64, con o
+  sin `data:image/png;base64,`, maximo 100 KB) y `version` (la que trajo la
+  bitacora). Quien la toma, la fecha y la hora no se aceptan del cuerpo: salen
+  del token y del servidor. Respuestas: `201` con la firma sin imagen y con
+  `firmante_documento_enmascarado`; `403` si no es el autor, el director de
+  grupo del alumno ni el admin, o fuera de su año; `404` si la anotacion no
+  existe; `409` si ya esta firmada, si cambio desde que se mostro o si su año
+  esta cerrado; `422` si los datos o la imagen no sirven.
+- `GET /observador/{estudiante_id}/firmas?periodo=&anio_lectivo_id=`: las
+  firmas, con la imagen (`data:` lista para un `<img>`) y el documento
+  completo, de las anotaciones que devuelve la bitacora con los mismos
+  filtros. Para imprimir. Misma puerta que la bitacora.
+- `GET /observador/{estudiante_id}/firmantes-sugeridos`: el padre y la madre
+  de la ficha (`parentesco`, `nombre`, `tipo_documento`, `documento`), solo los
+  que tienen nombre. Para el admin, el director de grupo o un profesor con
+  alguna anotacion del alumno este año; otro profesor recibe `403`.
+- `GET /observador/{estudiante_id}`: cada anotacion suma `version`,
+  `puede_firmar` (calculado con las mismas reglas que la firma) y `firma`
+  (`null` o `firmante_nombre`, `firmante_tipo_documento`,
+  `firmante_documento_enmascarado`, `firmante_parentesco`, `firmada_en`,
+  `tomada_por_nombre` e `integra`). La imagen no viaja aqui. Sigue siendo una
+  sola consulta.
+- `PUT /observador/{anotacion_id}`: `409` si la anotacion ya esta firmada
+  (`Esta anotacion ya tiene la firma del acudiente y no se puede editar...`).
+  Le cuesta una consulta mas: bloquear la anotacion y mirar si tiene firma.
+- No existe ruta para editar ni borrar una firma.
 
 ## Plan de clases
 

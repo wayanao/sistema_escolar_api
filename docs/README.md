@@ -35,7 +35,7 @@ continuacion para retomarla en otro chat u otro LLM.
 - `funcionalidades/FIRMA_OBSERVADOR.md`: firma del acudiente en pantalla, una
   por anotacion; tabla `observador_firmas`, permisos (incluida la excepcion del
   admin), bloqueo de lo firmado y huella. Documento principal.
-  **Disenado, nada implementado.**
+  **Paso 1 (backend) construido y probado en una rama de Neon; sin publicar.**
 - `funcionalidades/LISTAS_SEGUIMIENTO.md`: columnas con nombre libre por
   curso para que el administrador marque alumnos (ej. asistencia a un
   evento, compra de un libro) fuera de notas y pagos. **Disenado, nada

@@ -16,6 +16,7 @@ que no declara, asi que un cliente viejo que la mande no rompe nada.
 """
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from app.core.firma_observador import decodificar_imagen
 from app.core.texto_observador import normalizar_texto
 
 
@@ -63,3 +64,54 @@ class AnotacionUpdate(_AnotacionBase):
     El periodo es la etiqueta del momento en que se escribio; moverla de
     periodo seria reescribir cuando paso, no corregir como se conto.
     """
+
+
+class FirmaAnotacionCreate(BaseModel):
+    """La firma del acudiente sobre una anotacion. Ver
+    `docs/funcionalidades/FIRMA_OBSERVADOR.md`.
+
+    **Quien toma la firma, la fecha y la hora no aparecen aqui**, igual que
+    `profesor_id` en la anotacion: salen del token y del servidor
+    (invariante 4). Si viajaran en el cuerpo, cualquiera podria fechar una
+    firma o ponerla a nombre de otro. Pydantic ignora lo que no declara.
+
+    `version` es la que la pantalla recibio con la bitacora: si la anotacion
+    cambio desde entonces, la firma se rechaza.
+    """
+
+    firmante_nombre: str = Field(min_length=1, max_length=150)
+    firmante_tipo_documento: str = Field(min_length=1, max_length=50)
+    firmante_documento: str = Field(min_length=1, max_length=50)
+    firmante_parentesco: str = Field(min_length=1, max_length=50)
+    # 100 KB de PNG en base64 son unos 136.600 caracteres; el prefijo
+    # `data:image/png;base64,` suma 22. Cortar aqui evita decodificar algo
+    # enorme solo para rechazarlo despues.
+    imagen: str = Field(min_length=1, max_length=140_000)
+    version: str = Field(min_length=1, max_length=64)
+
+    @field_validator(
+        "firmante_nombre",
+        "firmante_tipo_documento",
+        "firmante_documento",
+        "firmante_parentesco",
+        mode="before",
+    )
+    @classmethod
+    def quitar_espacios_sobrantes(cls, valor):
+        """Sin espacios al principio, al final ni repetidos: «  Ana   Gomez »
+        se guarda como «Ana Gomez», y un campo de solo espacios queda vacio y
+        se rechaza."""
+        if isinstance(valor, str):
+            return " ".join(valor.split())
+        return valor
+
+    @field_validator("imagen")
+    @classmethod
+    def validar_imagen(cls, valor):
+        """Un PNG aceptable o un 422 con un mensaje que se puede mostrar.
+
+        Vive en el esquema, como la validacion del contenido de la anotacion:
+        mas abajo, una imagen mala seria un 500.
+        """
+        decodificar_imagen(valor)
+        return valor

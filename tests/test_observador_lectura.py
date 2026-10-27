@@ -29,12 +29,18 @@ FILA = (
     "2026-03-20T14:03:00Z",  # creada_en
     None,                    # editada_en
     None,                    # editada_por
-)
+    # Firma del acudiente (docs/funcionalidades/FIRMA_OBSERVADOR.md): el
+    # director de grupo, el año de la anotacion y, al final, la firma, que en
+    # esta fila no hay. Sus pruebas viven en test_observador_firma.py.
+    30,                      # director_grupo_id
+    2026,                    # anio
+    "activo",                # estado del año
+) + (None,) * 10             # sin firma: firmante, quien la tomo, fecha, huella e imagen
 
 # Un alumno real que todavia no tiene ninguna anotacion: la consulta arranca en
 # `estudiantes`, asi que devuelve su nivel y el resto en NULL. Hoy es el caso de
 # TODOS los alumnos, porque la escritura no existe.
-FILA_SIN_ANOTACIONES = ("preescolar",) + (None,) * 13
+FILA_SIN_ANOTACIONES = ("preescolar",) + (None,) * 26
 
 PROFESOR = {"id": 7, "rol": "profesor"}
 ADMIN = {"id": 1, "rol": "admin"}
@@ -166,7 +172,7 @@ def test_una_anotacion_heredada_sale_sin_marca_y_sin_fecha(monkeypatch):
     """Las 68 que vienen de la tabla vieja. Ese modelo no guardaba ni la fecha
     ni si era positiva o negativa, y no se les inventa ninguna de las dos: la
     pantalla las pinta sin punto de color y con «Sin fecha»."""
-    heredada = FILA[:6] + (3, None, "Le cuesta compartir", "", "", None, None, None)
+    heredada = FILA[:6] + (3, None, "Le cuesta compartir", "", "", None, None, None) + FILA[14:]
     cursor_de(monkeypatch, filas=[heredada])
 
     anotacion = observador.obtener_observador(55, None, PROFESOR)["anotaciones"][0]

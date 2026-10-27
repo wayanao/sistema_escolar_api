@@ -1072,3 +1072,49 @@ Estado al 2026-10-22:
   en `200`. No rellenó ni cambió datos existentes.
 - A partir de aquí el archivo no se puede editar: el runner guarda su
   checksum. Cualquier cambio posterior debe ir en una migración nueva.
+
+## Migracion 20261027_observador_firmas.sql
+
+Objetivo:
+
+- Firma del acudiente en el observador, paso 1 de
+  `docs/funcionalidades/FIRMA_OBSERVADOR.md`: guardar una firma por anotación.
+
+Tabla creada (ninguna existente se modifica):
+
+- `observador_firmas`: `anotacion_id` UNIQUE y sin cascada (como máximo una
+  firma por anotación, y nadie borra), los datos del firmante, `imagen_png`
+  (`bytea`, de 1 a 102400 bytes por CHECK), quien la toma en dos columnas
+  (`tomada_por_profesor_id` o `tomada_por_usuario_id`, exactamente una por
+  CHECK), `tomada_por_nombre`, `firmada_en` sin DEFAULT (la fija el servidor
+  junto con la huella) y `huella` (SHA-256).
+
+Índice: ninguno aparte. El UNIQUE de `anotacion_id` crea el que usan la
+bitácora y la impresión. `scripts/apply_tenant_indexes.py` no se toca.
+
+No rellena, actualiza ni borra datos existentes. Es reejecutable.
+
+**Orden de publicación:** aplicar en producción, después el push del backend
+y Render **Live**, y al final el frontend. La bitácora del observador
+(`GET /observador/{estudiante_id}`) ahora une esta tabla: si el backend
+saliera antes, **el observador fallaría para todos los colegios**. Entre
+aplicar y el push no se crean colegios nuevos.
+
+Estado al 2026-10-27:
+
+- SQL y 8 pruebas de texto (`tests/test_migracion_observador_firmas.py`).
+- El usuario la aplicó en la rama `prueba-firma-observador` de Neon, con el
+  endpoint directo: la simulación previa dio `PENDIENTE`, la aplicación `OK` y
+  la posterior `OMITIDA (ya aplicada)`, en `tenant_colegio_1` y `tenant_2005`.
+- En la rama, un script que corre todo en una transacción que se deshace
+  (ROLLBACK) dio 21 de 21 comprobaciones: la bitácora con sus columnas nuevas,
+  leer y bloquear para firmar, guardar, la huella (el SHA-256 de PostgreSQL
+  coincide con el de Python), detectar la firma al editar, imprimir con la
+  imagen idéntica, el UNIQUE, el CHECK de quien toma la firma y los firmantes
+  sugeridos.
+- Esquema base regenerado desde `tenant_colegio_1` de la rama, que ya tenía la
+  migración: 40 tablas, 1 función y 1 disparador. El diff agregó solo la
+  migración a la cabecera (48), la tabla con sus reglas y sus tres claves
+  foráneas.
+- `scripts/verify.py`: **2982 pasan, 0 fallan**; Ruff y `pip check` limpios.
+- **Pendiente:** aplicarla en producción y, después, el push.

@@ -350,7 +350,7 @@ def test_ddl_fija_unicidad_estado_y_las_referencias_externas():
     assert "CONSTRAINT profesor_documento_identidad_key UNIQUE (documento_identidad)" in base
     assert "CONSTRAINT unique_documento_identidad UNIQUE (documento_identidad)" in base
     assert "estado character varying(30)," in base
-    assert base.count("REFERENCES profesor(id)") == 6
+    assert base.count("REFERENCES profesor(id)") == 7
     assert (
         "asignaciones_profesor_id_fkey FOREIGN KEY (profesor_id) "
         "REFERENCES profesor(id);"
@@ -379,6 +379,13 @@ def test_ddl_fija_unicidad_estado_y_las_referencias_externas():
     assert (
         "cursos_director_grupo_id_fkey FOREIGN KEY (director_grupo_id) "
         "REFERENCES profesor(id) ON DELETE SET NULL;"
+    ) in base
+    # La firma del acudiente guarda al profesor que la tomo como testigo
+    # (FIRMA_OBSERVADOR.md). Sin ON DELETE CASCADE, a proposito, igual que la
+    # bitacora: dar de baja a un profesor no puede borrar las firmas que tomo.
+    assert (
+        "observador_firmas_tomada_por_profesor_id_fkey FOREIGN KEY (tomada_por_profesor_id) "
+        "REFERENCES profesor(id);"
     ) in base
     assert "ADD COLUMN IF NOT EXISTS estado VARCHAR(30)" in migration
     assert "SET estado = 'activo'" in migration

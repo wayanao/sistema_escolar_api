@@ -2146,8 +2146,11 @@ class BaseDeBitacora:
             anio = params[1]
         else:
             anio = None
+        # Las 13 columnas del final son las de la firma del acudiente
+        # (FIRMA_OBSERVADOR.md): director, año y firma, que aqui no importan.
         self._filas = [
             ("primaria", id_, 7, "Ana", "Ruiz", None, 1, None, None, None, None, None, None, None)
+            + (None,) * 13
             for id_, anio_anotacion in self.ANOTACIONES
             if anio is None or anio_anotacion == anio
         ]

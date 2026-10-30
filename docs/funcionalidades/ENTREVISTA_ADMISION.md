@@ -1411,7 +1411,10 @@ colegio sin entrevista se quedaba sin forma de matricular estudiantes nuevos.
   `tests/test_admisiones_routes.py` (su `app_admin` dice ahora que el colegio
   usa la entrevista) y 3 en `tests/test_anio_lectivo_matriculacion_preparacion.py`.
   Fallaron antes del código. `scripts/verify.py` → **3018 pasan**, Ruff y
-  `pip check` limpios. **La migración no se ha probado contra una base.**
+  `pip check` limpios. **Migración aplicada en producción el 2026-10-30**
+  (antes, en la rama de Neon `prueba-entrevista-colegio`); los dos colegios
+  quedaron en `true`. Detalle en `docs/MIGRACIONES.md`. El código sigue sin
+  commit.
 
 **Orden para publicar:** primero la migración (rama de Neon, después
 producción, con el endpoint directo), después el backend y al final el

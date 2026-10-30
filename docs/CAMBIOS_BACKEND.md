@@ -29,7 +29,9 @@ usan"). **Con migración pública.**
   `tests/test_anio_lectivo_matriculacion_preparacion.py`. `scripts/verify.py`
   da 3018; Ruff y `pip check` limpios.
 
-Para publicar: **primero la migración, después el push.**
+Para publicar: **primero la migración, después el push.** La migración ya
+está aplicada en producción (2026-10-30, verificada: los dos colegios en
+`true`); falta el push del código.
 
 ## 2026-10-27 - Observador: firmar un periodo de una vez
 

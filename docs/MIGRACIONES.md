@@ -1157,4 +1157,15 @@ usan".
   ```
 
   Debe dar `true` en los dos colegios de hoy.
-- Estado: escrita el 2026-10-30, **sin probar contra una base ni aplicar**.
+- Probada el 2026-10-30 por el usuario en la rama de Neon
+  `prueba-entrevista-colegio` (copia de producción), con endpoint directo:
+  `PENDIENTE`, `OK` y `OMITIDA (migracion publica ya aplicada)`. Antes de
+  pasar a producción se comprobó, leyendo, que producción aún no tenía la
+  columna (se aplicó en la rama y no en producción).
+- **Aplicada en producción el 2026-10-30** por el usuario, con la cadena
+  directa: `PENDIENTE`, `OK` y `OMITIDA`. Verificado leyendo: la columna es
+  `boolean NOT NULL DEFAULT false`, `tenant_colegio_1` y `tenant_2005` en
+  `true`, y el registro en `public.schema_migrations` con destino `public`.
+- Aplicada **antes** del push del backend, a propósito: el backend publicado
+  no lee la columna. A partir de aquí el archivo no se puede editar (el
+  runner guarda su checksum).

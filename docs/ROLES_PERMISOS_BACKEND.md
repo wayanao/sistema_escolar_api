@@ -192,7 +192,11 @@ Con usuario autenticado y alcance por rol, sin ownership:
   `tomada_por_usuario_id` y el del profesor a `tomada_por_profesor_id`, nunca
   cruzados. Una anotacion firmada no la edita nadie (409). Los documentos de
   los padres (`firmantes-sugeridos`) solo para el admin, el director de grupo
-  o un profesor con alguna anotacion del alumno este año.
+  o un profesor con alguna anotacion del alumno este año. La firma de un
+  periodo (`POST /observador/{estudiante_id}/firmas`) aplica la misma regla a
+  cada anotacion, despues de `require_estudiante_access` sobre el alumno de la
+  ruta, y es todo o nada: un profesor que no es director solo puede firmar un
+  periodo hecho de anotaciones suyas.
 - guardia de escritura del año lectivo (paso 3.7, `exigir_anio_editable` en
   `app/services/anio_lectivo.py`): se suma al ownership, no lo reemplaza.
   Nadie escribe en un año `cerrado` (409); el profesor solo en el `activo`

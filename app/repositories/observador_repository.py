@@ -326,7 +326,12 @@ def leer_autor(cursor, anotacion_id):
 # segun el rol- con una subconsulta, para no pagar otra ida y vuelta. `now()`
 # es el instante de la transaccion: la hora que se guarda y la que cubre la
 # huella son la misma.
-_SQL_ANOTACION_PARA_FIRMAR = """
+#
+# La misma consulta sirve para una anotacion o para varias (la firma de un
+# periodo): cambia solo el `WHERE`. Con varias, el `ORDER BY a.id` bloquea las
+# filas siempre en el mismo orden, para que dos firmas simultaneas no se
+# esperen la una a la otra en orden cruzado.
+_SQL_PARA_FIRMAR = """
     SELECT a.id,
            a.estudiante_id,
            a.profesor_id,
@@ -350,32 +355,17 @@ _SQL_ANOTACION_PARA_FIRMAR = """
     LEFT JOIN cursos c ON c.id = e.curso_id
     LEFT JOIN anios_lectivos al ON al.id = a.anio_lectivo_id
     LEFT JOIN observador_firmas f ON f.anotacion_id = a.id
-    WHERE a.id = %s
+    {donde}
     FOR UPDATE OF a
 """
+_SQL_ANOTACION_PARA_FIRMAR = _SQL_PARA_FIRMAR.format(donde="WHERE a.id = %s")
+_SQL_ANOTACIONES_PARA_FIRMAR = _SQL_PARA_FIRMAR.format(
+    donde="WHERE a.id = ANY(%s)\n    ORDER BY a.id"
+)
 
 
-def leer_anotacion_para_firmar(cursor, anotacion_id, profesor_id=None, usuario_id=None):
-    """Todo lo necesario para firmar una anotacion, con su fila bloqueada.
-
-    Una sola consulta. Devuelve `None` si la anotacion no existe; si no, un
-    diccionario con:
-
-    - `anotacion`: el contenido que cubren la version y la huella;
-    - `anio_y_estado`: `(anio, estado)` para la guardia del año;
-    - `director_grupo_id`: el del curso actual del alumno;
-    - `firmada`: si ya tiene firma;
-    - `tomada_por_nombre`: el nombre de quien la toma (profesor o admin);
-    - `ahora`: el instante de la transaccion.
-
-    `profesor_id` o `usuario_id`, segun el rol de quien firma; el otro va en
-    `None`. Salen del token, nunca del cuerpo.
-    """
-    cursor.execute(_SQL_ANOTACION_PARA_FIRMAR, (profesor_id, usuario_id, anotacion_id))
-    fila = cursor.fetchone()
-    if fila is None:
-        return None
-
+def _anotacion_para_firmar(fila):
+    """Una fila de `_SQL_PARA_FIRMAR`, con la forma que usa la ruta."""
     (
         anotacion_id,
         estudiante_id,
@@ -414,6 +404,41 @@ def leer_anotacion_para_firmar(cursor, anotacion_id, profesor_id=None, usuario_i
         "tomada_por_nombre": nombre_profesor or nombre_usuario or "",
         "ahora": ahora,
     }
+
+
+def leer_anotacion_para_firmar(cursor, anotacion_id, profesor_id=None, usuario_id=None):
+    """Todo lo necesario para firmar una anotacion, con su fila bloqueada.
+
+    Una sola consulta. Devuelve `None` si la anotacion no existe; si no, un
+    diccionario con:
+
+    - `anotacion`: el contenido que cubren la version y la huella;
+    - `anio_y_estado`: `(anio, estado)` para la guardia del año;
+    - `director_grupo_id`: el del curso actual del alumno;
+    - `firmada`: si ya tiene firma;
+    - `tomada_por_nombre`: el nombre de quien la toma (profesor o admin);
+    - `ahora`: el instante de la transaccion.
+
+    `profesor_id` o `usuario_id`, segun el rol de quien firma; el otro va en
+    `None`. Salen del token, nunca del cuerpo.
+    """
+    cursor.execute(_SQL_ANOTACION_PARA_FIRMAR, (profesor_id, usuario_id, anotacion_id))
+    fila = cursor.fetchone()
+    return _anotacion_para_firmar(fila) if fila is not None else None
+
+
+def leer_anotaciones_para_firmar(cursor, anotacion_ids, profesor_id=None, usuario_id=None):
+    """Lo mismo que `leer_anotacion_para_firmar`, para varias: la firma de un
+    periodo. Una sola consulta, con todas las filas bloqueadas.
+
+    Devuelve solo las que existen, ordenadas por id. Si falta alguna, quien
+    llama lo nota porque devuelve menos de las que pidio.
+    """
+    cursor.execute(
+        _SQL_ANOTACIONES_PARA_FIRMAR,
+        (profesor_id, usuario_id, list(anotacion_ids)),
+    )
+    return [_anotacion_para_firmar(fila) for fila in cursor.fetchall()]
 
 
 def crear_firma(cursor, anotacion_id, firma, imagen, huella):
@@ -456,6 +481,62 @@ def crear_firma(cursor, anotacion_id, firma, imagen, huella):
         ),
     )
     return cursor.fetchone()[0]
+
+
+_COLUMNAS_DE_LA_FIRMA = """
+            anotacion_id,
+            firmante_nombre,
+            firmante_tipo_documento,
+            firmante_documento,
+            firmante_parentesco,
+            imagen_png,
+            tomada_por_profesor_id,
+            tomada_por_usuario_id,
+            tomada_por_nombre,
+            firmada_en,
+            huella
+"""
+
+
+def crear_firmas(cursor, firma, imagen, huellas):
+    """Inserta la misma firma en varias anotaciones: la firma de un periodo.
+
+    `huellas` son pares `(anotacion_id, huella)`: todo lo demas -quien firmo,
+    la imagen, quien la tomo y la hora- es igual en todas las filas, pero cada
+    huella cubre el texto de su anotacion. **Un solo `INSERT`** con una fila
+    por anotacion: contra Neon, una ida y vuelta por anotacion seria pagar
+    ~180 ms por cada una. Devuelve los pares `(id, anotacion_id)` creados.
+
+    Va en la misma transaccion que la lectura bloqueada: o se firman todas o
+    ninguna. Si otra firma de alguna se guardo mientras tanto, el UNIQUE de
+    `anotacion_id` rechaza el `INSERT` entero.
+    """
+    # Solo se repiten marcadores `%s`, nunca datos: el SQL no lleva nada que
+    # venga de fuera.
+    filas = ", ".join(["(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"] * len(huellas))
+    parametros = []
+    for anotacion_id, huella in huellas:
+        parametros.extend(
+            [
+                anotacion_id,
+                firma["firmante_nombre"],
+                firma["firmante_tipo_documento"],
+                firma["firmante_documento"],
+                firma["firmante_parentesco"],
+                imagen,
+                firma["tomada_por_profesor_id"],
+                firma["tomada_por_usuario_id"],
+                firma["tomada_por_nombre"],
+                firma["firmada_en"],
+                huella,
+            ]
+        )
+    cursor.execute(
+        f"INSERT INTO observador_firmas ({_COLUMNAS_DE_LA_FIRMA}) "
+        f"VALUES {filas} RETURNING id, anotacion_id",
+        parametros,
+    )
+    return cursor.fetchall()
 
 
 # Dos sentencias en un solo `execute`: una ida y vuelta, pero **dos

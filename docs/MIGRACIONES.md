@@ -1117,4 +1117,17 @@ Estado al 2026-10-27:
   migración a la cabecera (48), la tabla con sus reglas y sus tres claves
   foráneas.
 - `scripts/verify.py`: **2982 pasan, 0 fallan**; Ruff y `pip check` limpios.
-- **Pendiente:** aplicarla en producción y, después, el push.
+- **Aplicada en producción el 2026-10-27** por el usuario, en
+  `tenant_colegio_1` y `tenant_2005`, con la cadena directa de producción. La
+  simulación previa dio `PENDIENTE` y la posterior `OMITIDA (ya aplicada)` en
+  los dos.
+- En seguida hizo el push (`origin/main` en `c195fff`) y Render quedó Live:
+  - `GET /observador/{id}/firmas` y `GET /observador/{id}/firmantes-sugeridos`
+    pasaron de `404` a `401` sin sesión;
+  - `POST /observador/anotaciones/{id}/firma` también da `401`;
+  - `/health` respondió `200`.
+
+  El usuario comprobó que el observador abre como siempre. No se rellenaron
+  ni cambiaron datos existentes.
+- A partir de aquí el archivo no se puede editar: el runner guarda su
+  checksum. Cualquier cambio posterior debe ir en una migración nueva.

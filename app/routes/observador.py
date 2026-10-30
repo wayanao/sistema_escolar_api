@@ -32,7 +32,12 @@ from app.core.permissions import require_estudiante_access
 from app.database import get_cursor
 from app.dependencies import get_current_user
 from app.repositories import observador_repository
-from app.schemas.observador import AnotacionCreate, AnotacionUpdate, FirmaAnotacionCreate
+from app.schemas.observador import (
+    AnotacionCreate,
+    AnotacionUpdate,
+    FirmaAnotacionCreate,
+    FirmaVariasCreate,
+)
 from app.services.anio_lectivo import (
     AnioLectivoInexistenteError,
     AnioLectivoNoPermitidoError,
@@ -68,6 +73,30 @@ _ERROR_FIRMADA_NO_SE_EDITA = (
     "Esta anotacion ya tiene la firma del acudiente y no se puede editar. "
     "Escribe una anotacion nueva para aclararla."
 )
+# La firma de un periodo dice lo mismo, en plural: no se sabe cual fallo sin
+# volver a mirar, y la pantalla recarga la bitacora en cualquier caso.
+_ERROR_ALGUNA_NO_EXISTE = "Una de las anotaciones ya no existe. Vuelve a abrir la ventana."
+_ERROR_ALGUNA_YA_FIRMADA = (
+    "Una de las anotaciones ya tiene la firma del acudiente. Vuelve a abrir la ventana."
+)
+_ERROR_ALGUNA_CAMBIO = (
+    "Una de las anotaciones cambio mientras se firmaba. "
+    "Vuelve a abrir la ventana y pide la firma otra vez."
+)
+_ERROR_SIN_PERMISO_VARIAS = (
+    "Solo puedes tomar la firma de tus propias anotaciones, "
+    "o de todas si eres el director de grupo o el admin."
+)
+_MENSAJES_UNA_FIRMA = {
+    "sin_permiso": _ERROR_SIN_PERMISO_FIRMA,
+    "ya_firmada": _ERROR_YA_FIRMADA,
+    "cambio": _ERROR_CAMBIO_AL_FIRMAR,
+}
+_MENSAJES_VARIAS_FIRMAS = {
+    "sin_permiso": _ERROR_SIN_PERMISO_VARIAS,
+    "ya_firmada": _ERROR_ALGUNA_YA_FIRMADA,
+    "cambio": _ERROR_ALGUNA_CAMBIO,
+}
 
 router = APIRouter(tags=["Observador"], dependencies=[Depends(get_current_user)])
 
@@ -475,6 +504,26 @@ def editar_anotacion(
 # ---------------------------------------------------------------------------
 
 
+def _motivo_para_no_firmar(leida, usuario, version):
+    """Por que no se puede firmar esa anotacion, o `None` si se puede.
+
+    **La misma regla para una firma y para la de un periodo**, en el mismo
+    orden: el año, quien la toma, que no este firmada y que su version sea la
+    que se mostro. La guardia del año lanza su propia respuesta (403 o 409);
+    lo demas se devuelve como `(codigo, motivo)` para que cada ruta lo diga
+    con sus palabras.
+    """
+    exigir_anio_editable(leida["anio_y_estado"], usuario)
+    anotacion = leida["anotacion"]
+    if not puede_tomar_firma(usuario, anotacion["profesor_id"], leida["director_grupo_id"]):
+        return 403, "sin_permiso"
+    if leida["firmada"]:
+        return 409, "ya_firmada"
+    if version_de_anotacion(anotacion) != version:
+        return 409, "cambio"
+    return None
+
+
 @router.post("/observador/anotaciones/{anotacion_id}/firma", status_code=201)
 def firmar_anotacion(
     anotacion_id: int,
@@ -513,15 +562,10 @@ def firmar_anotacion(
             anotacion = leida["anotacion"]
 
             require_estudiante_access(anotacion["estudiante_id"], current_user, cursor=cursor)
-            exigir_anio_editable(leida["anio_y_estado"], current_user)
-            if not puede_tomar_firma(
-                current_user, anotacion["profesor_id"], leida["director_grupo_id"]
-            ):
-                raise HTTPException(status_code=403, detail=_ERROR_SIN_PERMISO_FIRMA)
-            if leida["firmada"]:
-                raise HTTPException(status_code=409, detail=_ERROR_YA_FIRMADA)
-            if version_de_anotacion(anotacion) != data.version:
-                raise HTTPException(status_code=409, detail=_ERROR_CAMBIO_AL_FIRMAR)
+            motivo = _motivo_para_no_firmar(leida, current_user, data.version)
+            if motivo:
+                codigo, clave = motivo
+                raise HTTPException(status_code=codigo, detail=_MENSAJES_UNA_FIRMA[clave])
 
             firma = _datos_de_firma(
                 data.firmante_nombre,
@@ -553,6 +597,98 @@ def firmar_anotacion(
         )
         raise HTTPException(status_code=500, detail=_ERROR_FIRMAR)
 
+    return _firma_guardada(firma_id, anotacion_id, firma)
+
+
+@router.post("/observador/{estudiante_id}/firmas", status_code=201)
+def firmar_varias_anotaciones(
+    estudiante_id: int,
+    data: FirmaVariasCreate,
+    current_user: dict = Depends(get_current_user),
+):
+    """Una sola firma del acudiente para varias anotaciones del estudiante: las
+    pendientes de un periodo (decision 2, ampliada el 2026-10-27).
+
+    **Todas o ninguna.** Cada anotacion pasa por la misma regla que la firma
+    individual -quien la toma, su año, que no este firmada y que su version sea
+    la que se mostro- y, si una sola falla, no se firma ninguna: el acudiente
+    firmo un conjunto, no una parte. Todas quedan con la misma hora y la misma
+    imagen, y cada una con su propia huella.
+
+    Errores: 404 si alguna no existe o no es de este estudiante; 403 sin
+    permiso sobre alguna o fuera de su año; 409 si alguna ya esta firmada, si
+    cambio o si su año esta cerrado; 422 si los datos o la imagen no sirven.
+    """
+    rol = current_user.get("rol")
+    if rol not in ("profesor", "admin"):
+        raise HTTPException(status_code=403, detail=_ERROR_SIN_PERMISO_VARIAS)
+
+    profesor_id = current_user["id"] if rol == "profesor" else None
+    usuario_id = current_user["id"] if rol == "admin" else None
+    imagen = decodificar_imagen(data.imagen)
+    versiones = {pedida.id: pedida.version for pedida in data.anotaciones}
+
+    try:
+        with get_cursor(commit=True) as cursor:
+            # Primero el alumno de la ruta: sin acceso a el, ni siquiera se
+            # mira si las anotaciones existen.
+            require_estudiante_access(estudiante_id, current_user, cursor=cursor)
+            leidas = observador_repository.leer_anotaciones_para_firmar(
+                cursor, list(versiones), profesor_id, usuario_id
+            )
+            if len(leidas) != len(versiones) or any(
+                leida["anotacion"]["estudiante_id"] != estudiante_id for leida in leidas
+            ):
+                raise HTTPException(status_code=404, detail=_ERROR_ALGUNA_NO_EXISTE)
+
+            for leida in leidas:
+                motivo = _motivo_para_no_firmar(
+                    leida, current_user, versiones[leida["anotacion"]["id"]]
+                )
+                if motivo:
+                    codigo, clave = motivo
+                    raise HTTPException(status_code=codigo, detail=_MENSAJES_VARIAS_FIRMAS[clave])
+
+            firma = _datos_de_firma(
+                data.firmante_nombre,
+                data.firmante_tipo_documento,
+                data.firmante_documento,
+                data.firmante_parentesco,
+                profesor_id,
+                usuario_id,
+                leidas[0]["tomada_por_nombre"],
+                leidas[0]["ahora"],
+            )
+            imagen_sha256 = sha256_de_imagen(imagen)
+            huellas = [
+                (
+                    leida["anotacion"]["id"],
+                    calcular_huella(leida["anotacion"], firma, imagen_sha256),
+                )
+                for leida in leidas
+            ]
+            creadas = observador_repository.crear_firmas(cursor, firma, imagen, huellas)
+    except HTTPException:
+        raise
+    except UniqueViolation:
+        raise HTTPException(status_code=409, detail=_ERROR_ALGUNA_YA_FIRMADA)
+    except Exception as exc:
+        logger.error(
+            "Fallo al firmar %s anotaciones del estudiante %s (la toma %s %s): %s",
+            len(versiones),
+            estudiante_id,
+            rol,
+            current_user["id"],
+            type(exc).__name__,
+        )
+        raise HTTPException(status_code=500, detail=_ERROR_FIRMAR)
+
+    return [_firma_guardada(firma_id, anotacion_id, firma) for firma_id, anotacion_id in creadas]
+
+
+def _firma_guardada(firma_id, anotacion_id, firma):
+    """La respuesta de una firma recien guardada: sin imagen y con el documento
+    enmascarado, como en la bitacora."""
     return {
         "id": firma_id,
         "anotacion_id": anotacion_id,

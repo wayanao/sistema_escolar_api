@@ -6,12 +6,35 @@ Ultima revision documental: 2026-10-27.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
+## 2026-10-27 - Observador: firmar un periodo de una vez
+
+Ampliación de `docs/funcionalidades/FIRMA_OBSERVADOR.md` pedida por el
+usuario: **una sola firma para todas las anotaciones pendientes de un
+periodo**. La firma individual se mantiene. **Sin migración.**
+
+- Ruta nueva `POST /observador/{estudiante_id}/firmas`
+  (`firmar_varias_anotaciones`). Recibe la lista exacta de anotaciones que se
+  mostró, `[{id, version}]`. Es todo o nada.
+- `_motivo_para_no_firmar`: la regla para firmar (año, quién la toma, ya
+  firmada, versión) la comparten ahora las dos rutas. La individual responde
+  igual que antes.
+- Repositorio: `leer_anotaciones_para_firmar` (una consulta, `FOR UPDATE`,
+  ordenada por id) y `crear_firmas` (un solo `INSERT` con una fila por
+  anotación).
+- Esquemas: `_FirmaBase`, `FirmaVariasCreate` (de 1 a 50, sin repetidas) y
+  `AnotacionAFirmar`.
+- Pruebas: 17 más en `tests/test_observador_firma.py`. `scripts/verify.py` da
+  2999; Ruff y `pip check` limpios.
+
+Para publicar basta el push: no hay tabla nueva.
+
 ## 2026-10-27 - Observador: firma del acudiente (paso 1, backend)
 
 Paso 1 de `docs/funcionalidades/FIRMA_OBSERVADOR.md`. **Lo que ven los
 colegios no cambia todavia**: la pantalla de firma llega en el paso 2, en el
-frontend. Al escribir esto no esta publicado: la migracion va a produccion
-antes del push.
+frontend. **Publicado el 2026-10-27** en este orden: primero la migracion en
+produccion y despues el push (`c195fff`). Con Render Live, las rutas nuevas
+responden 401 sin sesion y el observador abre como siempre.
 
 ### Que cambia
 

@@ -66,17 +66,14 @@ class AnotacionUpdate(_AnotacionBase):
     """
 
 
-class FirmaAnotacionCreate(BaseModel):
-    """La firma del acudiente sobre una anotacion. Ver
+class _FirmaBase(BaseModel):
+    """Quien firma y su firma: lo comun a firmar una anotacion o varias. Ver
     `docs/funcionalidades/FIRMA_OBSERVADOR.md`.
 
     **Quien toma la firma, la fecha y la hora no aparecen aqui**, igual que
     `profesor_id` en la anotacion: salen del token y del servidor
     (invariante 4). Si viajaran en el cuerpo, cualquiera podria fechar una
     firma o ponerla a nombre de otro. Pydantic ignora lo que no declara.
-
-    `version` es la que la pantalla recibio con la bitacora: si la anotacion
-    cambio desde entonces, la firma se rechaza.
     """
 
     firmante_nombre: str = Field(min_length=1, max_length=150)
@@ -87,7 +84,6 @@ class FirmaAnotacionCreate(BaseModel):
     # `data:image/png;base64,` suma 22. Cortar aqui evita decodificar algo
     # enorme solo para rechazarlo despues.
     imagen: str = Field(min_length=1, max_length=140_000)
-    version: str = Field(min_length=1, max_length=64)
 
     @field_validator(
         "firmante_nombre",
@@ -114,4 +110,47 @@ class FirmaAnotacionCreate(BaseModel):
         mas abajo, una imagen mala seria un 500.
         """
         decodificar_imagen(valor)
+        return valor
+
+
+class FirmaAnotacionCreate(_FirmaBase):
+    """La firma del acudiente sobre una anotacion.
+
+    `version` es la que la pantalla recibio con la bitacora: si la anotacion
+    cambio desde entonces, la firma se rechaza.
+    """
+
+    version: str = Field(min_length=1, max_length=64)
+
+
+class AnotacionAFirmar(BaseModel):
+    """Una de las anotaciones de una firma de periodo, con la version que se
+    mostro de ella."""
+
+    id: int = Field(gt=0)
+    version: str = Field(min_length=1, max_length=64)
+
+
+class FirmaVariasCreate(_FirmaBase):
+    """Una sola firma del acudiente para varias anotaciones del mismo
+    estudiante: las pendientes de un periodo (decision 2, ampliada el
+    2026-10-27).
+
+    La pantalla manda **la lista exacta que mostro**, cada una con su version,
+    y no el numero del periodo: si el servidor eligiera las anotaciones, una
+    escrita mientras el acudiente leia entraria en la firma sin que nadie se
+    la hubiera mostrado.
+
+    Hasta 50: un periodo de un alumno no llega a tanto, y el limite evita
+    pedidos desmedidos.
+    """
+
+    anotaciones: list[AnotacionAFirmar] = Field(min_length=1, max_length=50)
+
+    @field_validator("anotaciones")
+    @classmethod
+    def sin_repetidas(cls, valor):
+        ids = [anotacion.id for anotacion in valor]
+        if len(ids) != len(set(ids)):
+            raise ValueError("Una anotación viene repetida.")
         return valor

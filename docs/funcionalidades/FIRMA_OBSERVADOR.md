@@ -2,10 +2,11 @@
 
 ## Control
 
-- Estado: **el paso 1 (backend) está terminado y probado en una rama de Neon el
-  2026-10-27, pero sin publicar.** Falta aplicar la migración en producción y,
-  después, hacer el push. El paso 0 (este documento) está en `c97bf12`. Ver
-  "Avance del paso 1".
+- Estado: **el paso 1 (backend) se publicó el 2026-10-27** (`c195fff`). Primero
+  se aplicó la migración en producción y después se hizo el push. Render quedó
+  Live y el observador abre como siempre. Lo que ven los colegios no cambia
+  hasta el paso 2 (la pantalla, en `frontend-react`). El paso 0 (este
+  documento) está en `c97bf12`. Ver "Avance del paso 1".
 - Tipo: función nueva de producto, construida encima del observador unificado
   (`docs/funcionalidades/OBSERVADOR_ESTUDIANTE.md`). No es un módulo de
   `docs/modularizacion/`.
@@ -47,7 +48,7 @@ Esa firma reemplaza la línea en blanco del observador impreso.
 | # | Decisión |
 |---|---|
 | 1 | La firma es **presencial, en pantalla**, con el dedo |
-| 2 | **Cada anotación se firma por separado** |
+| 2 | **Cada anotación se firma por separado**. **Ampliada el mismo 2026-10-27:** también se puede firmar **todo un periodo de una vez**, con una sola firma para todas sus anotaciones pendientes; la firma individual se mantiene |
 | 3 | Toma la firma el **profesor**, de sus propias anotaciones, y el **director de grupo** y el **admin**, de todas las del estudiante |
 | 4 | Una anotación firmada queda **bloqueada para siempre**. Un error se corrige con una anotación nueva |
 | 5 | Solo firma el **acudiente** |
@@ -275,16 +276,40 @@ Verificación:
   21 comprobaciones** contra la base real. El esquema base se regeneró desde la
   rama, y su diff fue solo la tabla nueva. Detalle en `docs/MIGRACIONES.md`.
 
+## Ampliación: firmar un periodo de una vez (2026-10-27)
+
+El usuario pidió poder firmar todas las anotaciones de un periodo con una sola
+firma, sin quitar la individual. Eligió esta forma: el acudiente ve juntas
+**todas las anotaciones pendientes del periodo**, cada una con sus tres
+dimensiones, y firma una vez. La alternativa de una firma por dimensión la
+descartó.
+
+- **No hay migración.** Cada anotación sigue teniendo su propia fila en
+  `observador_firmas`, con la misma imagen, hora y testigo, y con su propia
+  huella. El UNIQUE de `anotacion_id` sigue valiendo, así que lo firmado sigue
+  sin editarse.
+- **Endpoint nuevo:** `POST /observador/{estudiante_id}/firmas`
+  (`firmar_varias_anotaciones`). La pantalla manda la lista exacta que mostró,
+  `[{id, version}]`, y no el número del periodo. Si el servidor eligiera las
+  anotaciones, una escrita mientras el acudiente leía entraría en la firma sin
+  que nadie se la mostrara.
+- **Todo o nada:** cada anotación pasa por la misma regla que la individual
+  (`_motivo_para_no_firmar`, compartida por las dos rutas), y si una falla no
+  se firma ninguna.
+- **Una consulta para leerlas todas bloqueadas** (`leer_anotaciones_para_firmar`,
+  con `ORDER BY a.id` para bloquear siempre en el mismo orden) y un solo
+  `INSERT` (`crear_firmas`).
+- Pruebas: 17 casos más en `tests/test_observador_firma.py`. `verify.py` da
+  2999. El script de la rama de Neon suma la firma de un periodo.
+- **Para publicar no hace falta migración**: basta el push del backend antes
+  que el del frontend.
+
 ## Entrega para el siguiente chat
 
-El siguiente paso es **publicar el paso 1**, en este orden:
+El paso 1 ya está publicado. Lo siguiente es el **paso 2**, en
+`frontend-react` (ver su `docs/funcionalidades/FIRMA_OBSERVADOR.md`).
 
-1. El usuario aplica la migración en producción, con la cadena directa:
-   simulación, aplicación y simulación.
-2. Después hace commit y push del backend, y Render queda Live.
-3. Se comprueba que el observador de siempre sigue abriendo.
-
-Con eso empieza el paso 2 en `frontend-react`. Para probarlo en local sin dejar
-firmas reales en el Colegio Demo de producción (una firma no se borra), conviene
-apuntar el backend local a la rama `prueba-firma-observador` mientras dure esa
-prueba.
+Una firma no se borra, así que para probarlo en local sin dejar firmas reales
+en el Colegio Demo de producción, el backend local debe apuntar a la rama
+`prueba-firma-observador` mientras dure la prueba. Esa rama ya tiene la
+migración.

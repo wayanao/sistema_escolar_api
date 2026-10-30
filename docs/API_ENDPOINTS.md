@@ -1098,6 +1098,16 @@ Ver `docs/funcionalidades/FIRMA_OBSERVADOR.md`.
   grupo del alumno ni el admin, o fuera de su año; `404` si la anotacion no
   existe; `409` si ya esta firmada, si cambio desde que se mostro o si su año
   esta cerrado; `422` si los datos o la imagen no sirven.
+- `POST /observador/{estudiante_id}/firmas` (ampliacion del 2026-10-27): **una
+  sola firma para varias anotaciones** del estudiante, las pendientes de un
+  periodo. Cuerpo: los mismos datos de quien firma y la `imagen`, mas
+  `anotaciones: [{id, version}]` (de 1 a 50, sin repetidas), que es la lista
+  exacta que la pantalla mostro. **Todas o ninguna**: cada una pasa por la
+  misma regla que la firma individual, y si una falla no se firma ninguna.
+  Respuestas: `201` con la lista de firmas creadas; `404` si alguna no existe o
+  no es de ese estudiante; `403`/`409` como la individual, con mensajes en
+  plural. Lee todas en una consulta (`FOR UPDATE`) y las guarda con un solo
+  `INSERT`.
 - `GET /observador/{estudiante_id}/firmas?periodo=&anio_lectivo_id=`: las
   firmas, con la imagen (`data:` lista para un `<img>`) y el documento
   completo, de las anotaciones que devuelve la bitacora con los mismos

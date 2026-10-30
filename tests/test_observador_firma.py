@@ -20,7 +20,7 @@ from pydantic import ValidationError
 from app.core import firma_observador as reglas
 from app.repositories import observador_repository
 from app.routes import observador
-from app.schemas.observador import AnotacionUpdate, FirmaAnotacionCreate
+from app.schemas.observador import AnotacionUpdate, FirmaAnotacionCreate, FirmaVariasCreate
 from app.services.anio_lectivo import MENSAJE_ANIO_CERRADO, MENSAJE_SOLO_ANIO_ACTIVO
 
 
@@ -87,9 +87,12 @@ HUELLA = reglas.calcular_huella(CONTENIDO, FIRMA, IMAGEN_SHA256)
 
 
 class CursorFalso:
-    def __init__(self, respuestas=(), filas=(), falla_en=None):
+    def __init__(self, respuestas=(), filas=(), falla_en=None, tandas=None):
         self.respuestas = list(respuestas)
         self.filas = list(filas)
+        # Con `tandas`, cada `fetchall` devuelve la siguiente: al firmar un
+        # periodo, primero las anotaciones leidas y despues las firmas creadas.
+        self.tandas = list(tandas) if tandas is not None else None
         self.falla_en = falla_en
         self.calls = []
 
@@ -102,13 +105,15 @@ class CursorFalso:
         return self.respuestas.pop(0) if self.respuestas else None
 
     def fetchall(self):
+        if self.tandas is not None:
+            return list(self.tandas.pop(0)) if self.tandas else []
         return list(self.filas)
 
 
-def cursor_de(monkeypatch, respuestas=(), filas=(), falla_en=None):
+def cursor_de(monkeypatch, respuestas=(), filas=(), falla_en=None, tandas=None):
     """`respuestas` alimenta los `fetchone` en orden: al firmar, la anotacion,
     el permiso del profesor (el admin no lo consulta) y el `INSERT`."""
-    cursor = CursorFalso(respuestas, filas, falla_en)
+    cursor = CursorFalso(respuestas, filas, falla_en, tandas)
     commits = []
 
     @contextmanager
@@ -800,3 +805,244 @@ def test_una_firma_no_se_edita_ni_se_borra():
     for ruta in observador.router.routes:
         if "firma" in getattr(ruta, "path", ""):
             assert ruta.methods <= {"GET", "POST"}, ruta.path
+
+
+# ---------------------------------------------------------------------------
+# Firmar un periodo: una sola firma para varias anotaciones
+# ---------------------------------------------------------------------------
+
+# La segunda anotacion de Pepito en el periodo 1, tambien de la profesora 7.
+CONTENIDO_13 = {**CONTENIDO, "id": 13, "conductual": "Otra cosa.", "creada_en": AHORA}
+VERSION_13 = reglas.version_de_anotacion(CONTENIDO_13)
+
+
+def fila_13(**cambios):
+    return fila_para_firmar(**{"id": 13, "conductual": "Otra cosa.", "creada_en": AHORA, **cambios})
+
+
+def firma_periodo(**cambios):
+    datos = {
+        "firmante_nombre": "Maria Lopez",
+        "firmante_tipo_documento": "CC",
+        "firmante_documento": "52123456",
+        "firmante_parentesco": "Madre",
+        "imagen": data_url(IMAGEN),
+        "anotaciones": [{"id": 12, "version": VERSION}, {"id": 13, "version": VERSION_13}],
+    }
+    datos.update(cambios)
+    return FirmaVariasCreate(**datos)
+
+
+def _filas_del_insert(cursor):
+    """Los parametros del INSERT, partidos en una fila de 11 por anotacion."""
+    params = _insert(cursor)
+    return [tuple(params[i:i + 11]) for i in range(0, len(params), 11)]
+
+
+def test_una_sola_firma_para_las_pendientes_del_periodo(monkeypatch):
+    cursor = cursor_de(
+        monkeypatch,
+        [(1,)],
+        tandas=[[fila_para_firmar(), fila_13()], [(99, 12), (100, 13)]],
+    )
+
+    respuesta = observador.firmar_varias_anotaciones(55, firma_periodo(), PROFESOR)
+
+    assert [(f["id"], f["anotacion_id"]) for f in respuesta] == [(99, 12), (100, 13)]
+    assert all(f["firmante_documento_enmascarado"] == "****3456" for f in respuesta)
+    assert cursor.commits == [True]
+
+
+def test_todas_quedan_con_la_misma_firma_y_cada_una_con_su_huella(monkeypatch):
+    """Un solo INSERT: la misma imagen, hora y testigo; la huella de cada fila
+    cubre el texto de su propia anotacion."""
+    cursor = cursor_de(
+        monkeypatch,
+        [(1,)],
+        tandas=[[fila_para_firmar(), fila_13()], [(99, 12), (100, 13)]],
+    )
+
+    observador.firmar_varias_anotaciones(55, firma_periodo(), PROFESOR)
+
+    primera, segunda = _filas_del_insert(cursor)
+    assert [primera[0], segunda[0]] == [12, 13]
+    assert primera[1:10] == segunda[1:10]
+    assert primera[5] == IMAGEN
+    assert primera[6:10] == (7, None, "Ana Gomez", AHORA)
+    assert primera[10] == HUELLA
+    assert segunda[10] == reglas.calcular_huella(CONTENIDO_13, FIRMA, IMAGEN_SHA256)
+    assert sum("INSERT INTO observador_firmas" in sql for sql, _ in cursor.calls) == 1
+
+
+def test_las_lee_todas_en_una_consulta_y_bloqueadas(monkeypatch):
+    cursor = cursor_de(
+        monkeypatch,
+        [(1,)],
+        tandas=[[fila_para_firmar(), fila_13()], [(99, 12), (100, 13)]],
+    )
+
+    observador.firmar_varias_anotaciones(55, firma_periodo(), PROFESOR)
+
+    sql, params = next((s, p) for s, p in cursor.calls if "FOR UPDATE OF a" in s)
+    assert "a.id = ANY(%s)" in sql
+    assert params == (7, None, [12, 13])
+
+
+def test_si_una_no_se_puede_firmar_no_se_firma_ninguna(monkeypatch):
+    """La 13 es de otro profesor y la 7 no es directora: ni la 12 se firma.
+    El acudiente firmo un conjunto, no una parte."""
+    cursor = cursor_de(
+        monkeypatch,
+        [(1,)],
+        tandas=[[fila_para_firmar(), fila_13(profesor_id=9)]],
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        observador.firmar_varias_anotaciones(55, firma_periodo(), PROFESOR)
+
+    assert exc.value.status_code == 403
+    assert exc.value.detail == observador._ERROR_SIN_PERMISO_VARIAS
+    assert not _hubo_insert(cursor)
+
+
+def test_el_director_firma_el_periodo_con_anotaciones_de_varios(monkeypatch):
+    cursor = cursor_de(
+        monkeypatch,
+        [(1,)],
+        tandas=[[fila_para_firmar(), fila_13(profesor_id=9)], [(99, 12), (100, 13)]],
+    )
+    # La pantalla mostro la 13 tal como es: escrita por el profesor 9.
+    version_13 = reglas.version_de_anotacion({**CONTENIDO_13, "profesor_id": 9})
+    firma = firma_periodo(
+        anotaciones=[{"id": 12, "version": VERSION}, {"id": 13, "version": version_13}]
+    )
+
+    assert len(observador.firmar_varias_anotaciones(55, firma, DIRECTOR)) == 2
+    assert _filas_del_insert(cursor)[0][6] == 30
+
+
+def test_el_admin_firma_el_periodo_con_su_id_de_usuarios(monkeypatch):
+    cursor = cursor_de(
+        monkeypatch,
+        tandas=[
+            [
+                fila_para_firmar(nombre_profesor=None, nombre_usuario="Rectora"),
+                fila_13(nombre_profesor=None, nombre_usuario="Rectora"),
+            ],
+            [(99, 12), (100, 13)],
+        ],
+    )
+
+    observador.firmar_varias_anotaciones(55, firma_periodo(), ADMIN)
+
+    assert _filas_del_insert(cursor)[1][6:9] == (None, 1, "Rectora")
+
+
+@pytest.mark.parametrize(
+    "cambios,detalle",
+    [
+        ({"firmada": True}, "_ERROR_ALGUNA_YA_FIRMADA"),
+        ({"conductual": "Cambiada despues de mostrarla."}, "_ERROR_ALGUNA_CAMBIO"),
+    ],
+    ids=["ya-firmada", "cambio"],
+)
+def test_una_firmada_o_cambiada_frena_todo_el_periodo(monkeypatch, cambios, detalle):
+    cursor = cursor_de(monkeypatch, [(1,)], tandas=[[fila_para_firmar(), fila_13(**cambios)]])
+
+    with pytest.raises(HTTPException) as exc:
+        observador.firmar_varias_anotaciones(55, firma_periodo(), PROFESOR)
+
+    assert exc.value.status_code == 409
+    assert exc.value.detail == getattr(observador, detalle)
+    assert not _hubo_insert(cursor)
+
+
+def test_si_falta_una_o_es_de_otro_estudiante_da_404(monkeypatch):
+    cursor_de(monkeypatch, [(1,)], tandas=[[fila_para_firmar()]])
+    with pytest.raises(HTTPException) as exc:
+        observador.firmar_varias_anotaciones(55, firma_periodo(), PROFESOR)
+    assert exc.value.status_code == 404
+
+    cursor_de(monkeypatch, [(1,)], tandas=[[fila_para_firmar(), fila_13(estudiante_id=77)]])
+    with pytest.raises(HTTPException) as exc:
+        observador.firmar_varias_anotaciones(55, firma_periodo(), PROFESOR)
+    assert exc.value.status_code == 404
+    assert exc.value.detail == observador._ERROR_ALGUNA_NO_EXISTE
+
+
+def test_sin_acceso_al_estudiante_ni_se_miran_las_anotaciones(monkeypatch):
+    cursor = cursor_de(monkeypatch, [None])
+
+    with pytest.raises(HTTPException) as exc:
+        observador.firmar_varias_anotaciones(55, firma_periodo(), OTRO_PROFESOR)
+
+    assert exc.value.status_code == 403
+    assert not any("FOR UPDATE" in sql for sql, _ in cursor.calls)
+
+
+def test_si_otra_firma_gana_la_carrera_da_409(monkeypatch):
+    cursor_de(
+        monkeypatch,
+        [(1,)],
+        tandas=[[fila_para_firmar(), fila_13()]],
+        falla_en=("INSERT INTO observador_firmas", UniqueViolation()),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        observador.firmar_varias_anotaciones(55, firma_periodo(), PROFESOR)
+
+    assert exc.value.status_code == 409
+    assert exc.value.detail == observador._ERROR_ALGUNA_YA_FIRMADA
+
+
+def test_en_un_anio_cerrado_no_se_firma_el_periodo(monkeypatch):
+    cursor = cursor_de(
+        monkeypatch,
+        [(1,)],
+        tandas=[[fila_para_firmar(estado="cerrado"), fila_13(estado="cerrado")]],
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        observador.firmar_varias_anotaciones(55, firma_periodo(), PROFESOR)
+
+    assert exc.value.status_code == 409
+    assert not _hubo_insert(cursor)
+
+
+def test_un_fallo_de_base_al_firmar_el_periodo_no_deja_datos_en_el_log(monkeypatch, caplog):
+    cursor_de(
+        monkeypatch,
+        [(1,)],
+        tandas=[[fila_para_firmar(), fila_13()]],
+        falla_en=("INSERT INTO observador_firmas", RuntimeError("Failing row contains (52123456)")),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        observador.firmar_varias_anotaciones(55, firma_periodo(), PROFESOR)
+
+    assert exc.value.status_code == 500
+    assert "52123456" not in caplog.text
+    assert "RuntimeError" in caplog.text
+
+
+def test_una_anotacion_repetida_se_rechaza_antes_de_la_base():
+    with pytest.raises(ValidationError):
+        firma_periodo(anotaciones=[{"id": 12, "version": VERSION}, {"id": 12, "version": VERSION}])
+
+
+@pytest.mark.parametrize("cantidad", [0, 51])
+def test_la_firma_del_periodo_lleva_de_1_a_50_anotaciones(cantidad):
+    with pytest.raises(ValidationError):
+        firma_periodo(anotaciones=[{"id": i + 1, "version": "v"} for i in range(cantidad)])
+
+
+def test_crear_firmas_es_un_solo_insert_con_una_fila_por_anotacion():
+    cursor = CursorFalso(tandas=[[(99, 12), (100, 13)]])
+
+    creadas = observador_repository.crear_firmas(cursor, FIRMA, IMAGEN, [(12, "h12"), (13, "h13")])
+
+    [(sql, params)] = cursor.calls
+    assert sql.count("(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)") == 2
+    assert "RETURNING id, anotacion_id" in sql
+    assert len(params) == 22
+    assert creadas == [(99, 12), (100, 13)]

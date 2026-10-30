@@ -96,8 +96,12 @@ def peticion(aplicacion, metodo, ruta, cuerpo=None, query=b""):
 
 @pytest.fixture
 def app_admin(monkeypatch):
-    """La aplicación real, con un admin autenticado y el controlador doblado."""
-    from app.dependencies import get_current_user
+    """La aplicación real, con un admin autenticado y el controlador doblado.
+
+    El colegio usa la entrevista (2026-10-30): sin esto, las escrituras
+    preguntarían a `public.colegios`.
+    """
+    from app.dependencies import get_current_user, usa_entrevista_admision
     from app.main import app
 
     llamadas = []
@@ -112,10 +116,22 @@ def app_admin(monkeypatch):
         monkeypatch.setattr(rutas, nombre, falso)
 
     app.dependency_overrides[get_current_user] = lambda: ADMIN
+    app.dependency_overrides[usa_entrevista_admision] = lambda: True
     try:
         yield app, doblar, llamadas
     finally:
         app.dependency_overrides.pop(get_current_user, None)
+        app.dependency_overrides.pop(usa_entrevista_admision, None)
+
+
+@pytest.fixture
+def app_sin_entrevista(app_admin):
+    """El mismo admin, en un colegio que no usa la entrevista."""
+    from app.dependencies import usa_entrevista_admision
+
+    app, doblar, llamadas = app_admin
+    app.dependency_overrides[usa_entrevista_admision] = lambda: False
+    return app, doblar, llamadas
 
 
 @pytest.fixture
@@ -412,3 +428,61 @@ def test_editar_lleva_el_cuestionario_solo_si_llega(app_admin):
 
     assert llamadas[0][1][1].cuestionario is None
     assert llamadas[1][1][1].cuestionario == {}
+
+
+# ---------------------------------------------------------------------------
+# Solo en los colegios que usan la entrevista (2026-10-30).
+# ---------------------------------------------------------------------------
+
+ESCRITURAS = [
+    ("POST", "/anios-lectivos/3/admisiones", ASPIRANTE),
+    ("PUT", "/admisiones/7", ASPIRANTE),
+    ("PUT", "/admisiones/7/resultado", RESULTADO),
+    ("POST", "/admisiones/7/matricular", FICHA),
+]
+
+
+def test_solo_las_escrituras_exigen_que_el_colegio_use_la_entrevista():
+    """Leer y borrar quedan abiertos: borrar es el derecho de supresión."""
+    from app.dependencies import exigir_entrevista_admision
+
+    exigen = {
+        (ruta.path, metodo)
+        for ruta in rutas.router.routes
+        for metodo in ruta.methods
+        if exigir_entrevista_admision
+        in [dependencia.call for dependencia in ruta.dependant.dependencies]
+    }
+
+    assert exigen == {
+        ("/anios-lectivos/{anio_lectivo_id}/admisiones", "POST"),
+        ("/admisiones/{admision_id}", "PUT"),
+        ("/admisiones/{admision_id}/resultado", "PUT"),
+        ("/admisiones/{admision_id}/matricular", "POST"),
+    }
+
+
+@pytest.mark.parametrize("metodo,ruta,cuerpo", ESCRITURAS)
+def test_sin_entrevista_escribir_da_403_sin_llegar_al_controlador(
+    app_sin_entrevista, metodo, ruta, cuerpo
+):
+    app, doblar, llamadas = app_sin_entrevista
+    for nombre in CONTROLADORES:
+        doblar(nombre, resultado={"id": 7})
+
+    estado, respuesta = peticion(app, metodo, ruta, cuerpo)
+
+    assert estado == 403
+    assert respuesta == {"detail": "Este colegio no usa la entrevista de admisión."}
+    assert llamadas == []
+
+
+def test_sin_entrevista_se_puede_leer_y_borrar(app_sin_entrevista):
+    app, doblar, _ = app_sin_entrevista
+    doblar("listar_admisiones_controller", resultado={"admisiones": []})
+    doblar("obtener_admision_controller", resultado={"id": 7})
+    doblar("borrar_admision_controller", resultado={"mensaje": "Admisión borrada", "id": 7})
+
+    assert peticion(app, "GET", "/anios-lectivos/3/admisiones")[0] == 200
+    assert peticion(app, "GET", "/admisiones/7")[0] == 200
+    assert peticion(app, "DELETE", "/admisiones/7")[0] == 200

@@ -431,6 +431,72 @@ def test_el_alta_directa_en_preparacion_queda_cerrada(entorno_matriculas):
     assert entorno_matriculas.eventos[-1] == ("cierra",)
 
 
+# 2026-10-30: en un colegio que no usa la entrevista, el alta directa vuelve a
+# ser la del paso 5.5: la ficha y solo la matrícula del año en preparación.
+def test_sin_entrevista_el_alta_directa_crea_la_ficha_y_la_matricula(entorno_matriculas):
+    respuesta = controlador.crear_estudiante_en_preparacion_controller(
+        3, _estudiante_nuevo(), usa_entrevista=False
+    )
+
+    nombres = [evento[0] for evento in entorno_matriculas.eventos]
+    assert nombres.index("estudiante") < nombres.index("matricula")
+    assert nombres.index("matricula") < nombres.index("sincroniza")
+    assert ("matricula", True, 55, 20, 3) in entorno_matriculas.eventos
+    assert entorno_matriculas.commits == 1
+    assert respuesta == {
+        "mensaje": "Estudiante creado y matriculado en el año en preparación",
+        "id": 55,
+        "matricula_id": 1055,
+        "anio_lectivo_id": 3,
+        "curso_id": 20,
+        "curso_vigente_id": None,
+        "valores_especiales_copiados": [],
+    }
+
+
+def test_sin_entrevista_en_un_anio_que_no_esta_en_preparacion_no_crea_nada(
+    entorno_matriculas,
+):
+    entorno_matriculas.destino = (3, 2027, "activo")
+
+    with pytest.raises(controlador.AnioLectivoDestinoInvalidoError):
+        controlador.crear_estudiante_en_preparacion_controller(
+            3, _estudiante_nuevo(), usa_entrevista=False
+        )
+
+    nombres = [evento[0] for evento in entorno_matriculas.eventos]
+    assert "estudiante" not in nombres
+    assert entorno_matriculas.commits == 0
+
+
+def test_la_ruta_del_alta_directa_pregunta_si_el_colegio_usa_la_entrevista(monkeypatch):
+    from app.dependencies import usa_entrevista_admision
+
+    ruta = next(
+        ruta
+        for ruta in rutas.router.routes
+        if ruta.path == "/anios-lectivos/{anio_lectivo_id}/estudiantes"
+    )
+    assert usa_entrevista_admision in [
+        dependencia.call for dependencia in ruta.dependant.dependencies
+    ]
+
+    recibidos = []
+
+    def falso(anio_id, est, usa_entrevista=True):
+        recibidos.append((anio_id, est.nombre, usa_entrevista))
+        return {"id": 55}
+
+    monkeypatch.setattr(rutas, "crear_estudiante_en_preparacion_controller", falso)
+
+    respuesta = rutas.crear_estudiante_en_preparacion(
+        3, _estudiante_nuevo(), usa_entrevista=False
+    )
+
+    assert respuesta == {"id": 55}
+    assert recibidos == [(3, "Lina", False)]
+
+
 def test_en_un_anio_que_no_esta_en_preparacion_dice_lo_de_siempre(entorno_matriculas):
     entorno_matriculas.destino = (3, 2027, "activo")
 

@@ -71,6 +71,8 @@ Incidente documentado:
 Tabla global usada por login y scripts:
 
 - `public.colegios`
+  (desde el 2026-10-30, con `usa_entrevista_admision`: si el colegio usa la
+  entrevista de admisión; ver `docs/MIGRACIONES.md`)
 
 Tabla global usada por administracion de plataforma:
 

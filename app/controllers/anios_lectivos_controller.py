@@ -855,18 +855,44 @@ def _crear_estudiante_en_preparacion(cursor, destino, est):
     return estudiante_id, matricula_id
 
 
-def crear_estudiante_en_preparacion_controller(anio_destino_id, _est):
+def crear_estudiante_en_preparacion_controller(
+    anio_destino_id, est, usa_entrevista=True
+):
     """El alta directa del paso 5.5, cerrada desde el paso E7 de la entrevista
-    de admisión.
+    de admisión en los colegios que la usan.
 
-    Un estudiante nuevo del año en preparación solo entra desde una admisión
-    aprobada (`POST /admisiones/{id}/matricular`, decisión 3 de
-    docs/funcionalidades/ENTREVISTA_ADMISION.md); quien sigue, por la
+    En esos colegios, un estudiante nuevo del año en preparación solo entra
+    desde una admisión aprobada (`POST /admisiones/{id}/matricular`, decisión
+    3 de docs/funcionalidades/ENTREVISTA_ADMISION.md); quien sigue, por la
     promoción. La ruta se conserva para que una pestaña vieja reciba un
     mensaje claro: con un año que no está en preparación responde como
     siempre, y con el año en preparación, que entre por Admisiones. No
     escribe nada.
+
+    Desde el 2026-10-30, en un colegio que no usa la entrevista
+    (`usa_entrevista=False`, lo dice la ruta) vuelve a ser la del paso 5.5:
+    crea la ficha y solo la matrícula del año en preparación. Sin decirlo,
+    queda cerrada.
     """
+    if not usa_entrevista:
+        with get_cursor(commit=True) as cursor:
+            _activo, destino = _contexto_matricula_en_preparacion(
+                cursor, anio_destino_id
+            )
+            estudiante_id, matricula_id = _crear_estudiante_en_preparacion(
+                cursor, destino, est
+            )
+
+        return {
+            "mensaje": "Estudiante creado y matriculado en el año en preparación",
+            "id": estudiante_id,
+            "matricula_id": matricula_id,
+            "anio_lectivo_id": destino[0],
+            "curso_id": est.curso_id,
+            "curso_vigente_id": None,
+            "valores_especiales_copiados": [],
+        }
+
     with get_cursor() as cursor:
         _activo, destino = _contexto_matricula_en_preparacion(
             cursor, anio_destino_id

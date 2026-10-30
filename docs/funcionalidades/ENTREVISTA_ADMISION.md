@@ -1368,6 +1368,63 @@ a ninguna base):
   2435), Ruff y `pip check` limpios; `git diff --check` limpio. Sin
   migración, sin acceso a bases. **No se ha probado contra una base real.**
 
+## Solo en los colegios que la usan (2026-10-30)
+
+Pedido por el usuario: la entrevista es solo para el colegio 2005; los
+colegios que lleguen después no la van a usar. Al 2026-10-30 solo existen
+**dos colegios**, Demo (`tenant_colegio_1`) y 2005 (`tenant_2005`), y los dos
+la conservan: **para ninguno cambia nada**. Solo cambia para los colegios
+nuevos, que empiezan sin entrevista.
+
+Por qué hacía falta más que esconder pantallas: desde el E7, un estudiante
+nuevo del año en preparación **solo** entra por una admisión aprobada. Un
+colegio sin entrevista se quedaba sin forma de matricular estudiantes nuevos.
+
+**Paso 1, backend (hecho el 2026-10-30, sin commit):**
+
+- Migración pública `migrations/public/20261030_colegios_entrevista_admision.sql`:
+  `public.colegios.usa_entrevista_admision BOOLEAN NOT NULL DEFAULT FALSE`, y
+  `TRUE` para `tenant_2005` y `tenant_colegio_1`. El alta de un colegio
+  (`POST /super-admin/tenants`) no la nombra, así que toma el `FALSE`.
+- `app/core/tenant_status.py: colegio_usa_entrevista_admision(esquema)`. Es
+  una consulta aparte de `_query_public_colegio` a propósito: esa corre en
+  cada petición autenticada y en el login, y así una falla de esta columna
+  no deja a nadie sin entrar. Cuesta una conexión más, solo donde se usa.
+- `GET /tenant/status` agrega `usa_entrevista_admision` (el frontend decide
+  con esto qué muestra).
+- `app/dependencies.py`: `usa_entrevista_admision` (solo admin) y
+  `exigir_entrevista_admision` (403 "Este colegio no usa la entrevista de
+  admisión."). La exigen **registrar, editar, poner el resultado y
+  matricular**. **Leer y borrar quedan abiertos**: borrar es el derecho de
+  supresión (decisión 9), y leer muestra lo que ya exista.
+- `POST /anios-lectivos/{id}/estudiantes` (alta directa): en un colegio sin
+  entrevista vuelve a ser la del paso 5.5 (ficha y solo la matrícula del año
+  en preparación, misma respuesta que antes del E7). En uno con entrevista
+  sigue cerrada como desde el E7.
+- Sin botón del super admin para cambiarlo, decidido con el usuario: los
+  colegios nuevos ya empiezan sin entrevista. Para cambiar uno, por ahora,
+  `UPDATE public.colegios SET usa_entrevista_admision = ... WHERE id = ...`.
+- Fuera de este paso: los campos que el E6 pasó de la ficha a la entrevista
+  (estudios anteriores, ocupación de los padres) no tienen dónde llenarse en
+  un colegio sin entrevista. Hoy no afecta a nadie.
+- Pruebas: `tests/test_entrevista_por_colegio.py` (10, nuevo), 6 más en
+  `tests/test_admisiones_routes.py` (su `app_admin` dice ahora que el colegio
+  usa la entrevista) y 3 en `tests/test_anio_lectivo_matriculacion_preparacion.py`.
+  Fallaron antes del código. `scripts/verify.py` → **3018 pasan**, Ruff y
+  `pip check` limpios. **La migración no se ha probado contra una base.**
+
+**Orden para publicar:** primero la migración (rama de Neon, después
+producción, con el endpoint directo), después el backend y al final el
+frontend. Si el backend sale antes que la migración, en el 2005 fallan las
+escrituras de Admisiones y `GET /tenant/status` hasta aplicarla.
+
+**Paso 2 (pendiente):** botón "Entrevista" en "Matricular estudiantes" para
+los estudiantes que siguen, **opcional** (decidido con el usuario el
+2026-10-30: no bloquea la matrícula ni la activación). Necesita guardar una
+entrevista unida a un estudiante que ya estudia y cambiar
+`admisiones_estudiante_id_key` por una regla de una por año (ver "Preguntas
+abiertas").
+
 ## Entrega para el siguiente chat
 
 - Estado al 2026-10-14: **E1 a E6 en producción**, según el usuario; **E7 en

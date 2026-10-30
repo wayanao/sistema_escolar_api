@@ -37,7 +37,7 @@ from app.controllers.anios_lectivos_controller import (
     CursoMatriculaInvalidoError,
     EstudianteNoReingresableError,
 )
-from app.dependencies import get_current_active_admin
+from app.dependencies import exigir_entrevista_admision, get_current_active_admin
 from app.schemas.admision import (
     AdmisionCreate,
     AdmisionUpdate,
@@ -52,6 +52,11 @@ router = APIRouter(
     tags=["Admisiones"],
     dependencies=[Depends(get_current_active_admin)],
 )
+
+# 2026-10-30: registrar, editar, poner el resultado y matricular exigen además
+# que el colegio use la entrevista (`exigir_entrevista_admision`, 403). Leer y
+# borrar quedan abiertos: borrar es el derecho de supresión (decisión 9) y
+# leer muestra lo que ya exista. Ver docs/funcionalidades/ENTREVISTA_ADMISION.md.
 
 _NO_EXISTE = (AnioLectivoInexistenteError, AdmisionNoEncontradaError)
 _ERRORES = _NO_EXISTE + (
@@ -92,6 +97,7 @@ def listar_admisiones(
 @router.post(
     "/anios-lectivos/{anio_lectivo_id}/admisiones",
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(exigir_entrevista_admision)],
 )
 def registrar_admision(
     anio_lectivo_id: Annotated[int, Path(gt=0)],
@@ -131,7 +137,10 @@ def obtener_admision(admision_id: Annotated[int, Path(gt=0)]):
         _traducir_error(exc)
 
 
-@router.put("/admisiones/{admision_id}")
+@router.put(
+    "/admisiones/{admision_id}",
+    dependencies=[Depends(exigir_entrevista_admision)],
+)
 def actualizar_admision(
     admision_id: Annotated[int, Path(gt=0)],
     datos: AdmisionUpdate,
@@ -152,7 +161,10 @@ def borrar_admision(admision_id: Annotated[int, Path(gt=0)]):
         _traducir_error(exc)
 
 
-@router.put("/admisiones/{admision_id}/resultado")
+@router.put(
+    "/admisiones/{admision_id}/resultado",
+    dependencies=[Depends(exigir_entrevista_admision)],
+)
 def cambiar_resultado(
     admision_id: Annotated[int, Path(gt=0)],
     datos: ResultadoAdmisionUpdate,
@@ -167,6 +179,7 @@ def cambiar_resultado(
 @router.post(
     "/admisiones/{admision_id}/matricular",
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(exigir_entrevista_admision)],
 )
 def matricular_admision(
     admision_id: Annotated[int, Path(gt=0)],

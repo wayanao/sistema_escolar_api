@@ -59,7 +59,11 @@ Notas:
 
 ## Tenant
 
-- `GET /tenant/status`
+- `GET /tenant/status`: `{ estado, mostrar_aviso, mensaje,
+  usa_entrevista_admision }`. El último, desde el 2026-10-30, dice si el
+  colegio usa la entrevista de admisión (`public.colegios`); ver
+  `docs/funcionalidades/ENTREVISTA_ADMISION.md`, "Solo en los colegios que
+  la usan".
 
 ## Super Admin
 
@@ -183,6 +187,10 @@ Notas:
   ficha y solo la matrícula del año en preparación, con
   `estudiantes.curso_id` sin cambiar mientras el año activo siga siendo 2026.
   Hasta el E7 la creaba esta ruta, con el cuerpo de `POST /estudiantes`.
+  **Desde el 2026-10-30, en un colegio que no usa la entrevista**
+  (`public.colegios.usa_entrevista_admision = FALSE`) vuelve a crearla así:
+  `201` con `{ mensaje, id, matricula_id, anio_lectivo_id, curso_id,
+  curso_vigente_id: null, valores_especiales_copiados: [] }`.
 - Las tres rutas validan el año y los cursos en el backend. Un año inexistente
   responde `404`; un destino que no sea el siguiente en preparación responde
   `409`. No crean pagos ni calculan deudas.
@@ -418,6 +426,11 @@ preparación. Router **solo admin** (datos de menores, Ley 1581 de 2012), en
 Se consulta cualquier año. **Registrar, editar, borrar, poner el resultado y
 matricular solo en un año en `preparacion`**; una admisión matriculada
 (`estudiante_id`) es de solo consulta.
+
+Desde el 2026-10-30, **registrar, editar, poner el resultado y matricular**
+responden `403` "Este colegio no usa la entrevista de admisión." si el
+colegio no la usa (`exigir_entrevista_admision`). Leer y borrar siguen
+abiertos.
 
 `GET /anios-lectivos/{anio_lectivo_id}/admisiones` acepta `resultado`
 (`pendiente`, `aprobado` o `no_aprobado`; otro valor da `422`). Los conteos

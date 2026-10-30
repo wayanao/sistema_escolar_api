@@ -64,6 +64,7 @@ Migraciones globales `public`:
 - `public/20260601_tenant_suscripciones.sql`
 - `public/20260601_tenant_estado_auditoria.sql`
 - `public/20260601_tenant_eventos_auditoria.sql`
+- `public/20261030_colegios_entrevista_admision.sql`
 
 ## Runner actual
 
@@ -1131,3 +1132,29 @@ Estado al 2026-10-27:
   ni cambiaron datos existentes.
 - A partir de aquí el archivo no se puede editar: el runner guarda su
   checksum. Cualquier cambio posterior debe ir en una migración nueva.
+
+## Migracion public/20261030_colegios_entrevista_admision.sql
+
+Objetivo: la entrevista de admisión solo en los colegios que la usan. Detalle
+en `docs/funcionalidades/ENTREVISTA_ADMISION.md`, "Solo en los colegios que la
+usan".
+
+- Es **pública**: el runner la aplica una vez, contra `public`.
+- `public.colegios.usa_entrevista_admision BOOLEAN NOT NULL DEFAULT FALSE`. Un
+  colegio nuevo (`POST /super-admin/tenants`, que no nombra la columna)
+  empieza sin entrevista.
+- Pone `TRUE` en `tenant_2005` y `tenant_colegio_1`, los dos colegios que hay
+  al 2026-10-30 y que usan la entrevista: para ellos no cambia nada.
+- No toca ningún `tenant_*`, así que el esquema base no cambia ni se
+  regenera (`tests/test_esquema_base.py` deja fuera `public/` a propósito).
+- **Orden:** aplicarla **antes** de publicar el backend que la lee. Sin la
+  columna fallan las escrituras de Admisiones y `GET /tenant/status`; el
+  login y el resto de la API no la leen.
+- Comprobación después de aplicarla:
+
+  ```sql
+  SELECT esquema_db, usa_entrevista_admision FROM public.colegios ORDER BY id;
+  ```
+
+  Debe dar `true` en los dos colegios de hoy.
+- Estado: escrita el 2026-10-30, **sin probar contra una base ni aplicar**.

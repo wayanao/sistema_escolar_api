@@ -1,10 +1,35 @@
 # Cambios Backend
 
-Ultima revision documental: 2026-10-27.
+Ultima revision documental: 2026-10-30.
 
 ## Proposito
 
 Bitacora de cambios documentales y tecnicos observables del backend.
+
+## 2026-10-30 - Entrevista de admisión solo en los colegios que la usan
+
+Pedido por el usuario. Detalle en
+`docs/funcionalidades/ENTREVISTA_ADMISION.md` ("Solo en los colegios que la
+usan"). **Con migración pública.**
+
+- `migrations/public/20261030_colegios_entrevista_admision.sql`:
+  `public.colegios.usa_entrevista_admision` (`FALSE` por defecto; `TRUE` en
+  `tenant_2005` y `tenant_colegio_1`, así que hoy no cambia nada para nadie).
+- `GET /tenant/status` agrega `usa_entrevista_admision`.
+- Admisiones: registrar, editar, poner el resultado y matricular responden
+  `403` si el colegio no usa la entrevista (`exigir_entrevista_admision`).
+  Leer y borrar siguen abiertos.
+- `POST /anios-lectivos/{id}/estudiantes`: en un colegio sin entrevista crea
+  otra vez la ficha y la matrícula del año en preparación (como antes del
+  E7); con entrevista sigue cerrada.
+- El dato se lee en una consulta aparte (`colegio_usa_entrevista_admision`):
+  el login y la validación de cada petición no cambian.
+- Pruebas: 10 nuevas en `tests/test_entrevista_por_colegio.py`, 6 en
+  `tests/test_admisiones_routes.py` y 3 en
+  `tests/test_anio_lectivo_matriculacion_preparacion.py`. `scripts/verify.py`
+  da 3018; Ruff y `pip check` limpios.
+
+Para publicar: **primero la migración, después el push.**
 
 ## 2026-10-27 - Observador: firmar un periodo de una vez
 

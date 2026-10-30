@@ -30,7 +30,11 @@ from app.controllers.anios_lectivos_controller import (
     resumen_anio_preparacion_controller,
     vista_previa_activacion_controller,
 )
-from app.dependencies import get_current_active_admin, get_current_user
+from app.dependencies import (
+    get_current_active_admin,
+    get_current_user,
+    usa_entrevista_admision,
+)
 from app.schemas.anio_lectivo import (
     ActivarAnioLectivo,
     ConfirmacionAnioLectivo,
@@ -285,14 +289,20 @@ def guardar_decision_salida(
 def crear_estudiante_en_preparacion(
     anio_lectivo_id: Annotated[int, Path(gt=0)],
     est: EstudianteCreate,
+    usa_entrevista: bool = Depends(usa_entrevista_admision),
 ):
-    """Cerrada desde el paso E7 de la entrevista de admisión: responde 409.
+    """Cerrada desde el paso E7 en los colegios que usan la entrevista de
+    admisión: responde 409.
 
-    Un estudiante nuevo del año en preparación entra por
-    `POST /admisiones/{id}/matricular`. Ver el controlador.
+    Allí un estudiante nuevo del año en preparación entra por
+    `POST /admisiones/{id}/matricular`. Desde el 2026-10-30, en un colegio que
+    no la usa, crea la ficha y la matrícula como en el paso 5.5. Ver el
+    controlador.
     """
     try:
-        return crear_estudiante_en_preparacion_controller(anio_lectivo_id, est)
+        return crear_estudiante_en_preparacion_controller(
+            anio_lectivo_id, est, usa_entrevista=usa_entrevista
+        )
     except (
         AnioLectivoInexistenteError,
         AnioLectivoActivoInexistenteError,

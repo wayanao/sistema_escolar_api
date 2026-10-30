@@ -4,7 +4,10 @@ from jose import JWTError, jwt
 from starlette.concurrency import run_in_threadpool
 
 from app.config import settings
-from app.core.tenant_status import ensure_tenant_allowed_for_app
+from app.core.tenant_status import (
+    colegio_usa_entrevista_admision,
+    ensure_tenant_allowed_for_app,
+)
 from app.database import get_connection
 from app.db.tenant import TENANT_SCHEMA_PATTERN
 from app.globals import tenant_schema_var
@@ -176,3 +179,28 @@ async def get_current_active_admin(current_user: dict = Depends(get_current_user
             detail="No tienes los permisos necesarios"
         )
     return current_user
+
+
+# Entrevista de admisión solo en los colegios que la usan (2026-10-30). Ver
+# docs/funcionalidades/ENTREVISTA_ADMISION.md, "Solo en los colegios que la
+# usan". Dependen del admin: un profesor recibe 403 antes de que se consulte
+# nada.
+MENSAJE_SIN_ENTREVISTA = "Este colegio no usa la entrevista de admisión."
+
+
+async def usa_entrevista_admision(
+    current_user: dict = Depends(get_current_active_admin),
+) -> bool:
+    return await run_in_threadpool(
+        colegio_usa_entrevista_admision, current_user["tenant"]
+    )
+
+
+async def exigir_entrevista_admision(
+    usa_entrevista: bool = Depends(usa_entrevista_admision),
+):
+    if not usa_entrevista:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=MENSAJE_SIN_ENTREVISTA,
+        )

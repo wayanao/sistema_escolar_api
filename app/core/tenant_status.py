@@ -122,6 +122,33 @@ def get_tenant_by_schema(schema_name: str) -> dict | None:
     return _query_public_colegio("c.esquema_db = %s", (schema_name,))
 
 
+def colegio_usa_entrevista_admision(schema_name: str) -> bool:
+    """Si el colegio usa la entrevista de admisión (2026-10-30).
+
+    Consulta aparte de `_query_public_colegio` a propósito: esa corre en cada
+    petición autenticada y en el login, y así una falla de esta columna no
+    deja a nadie sin entrar. Ver docs/funcionalidades/ENTREVISTA_ADMISION.md.
+    """
+    token = tenant_schema_var.set("public")
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            """
+            SELECT usa_entrevista_admision
+            FROM colegios
+            WHERE esquema_db = %s
+            """,
+            (schema_name,),
+        )
+        row = cursor.fetchone()
+        return bool(row and row[0])
+    finally:
+        cursor.close()
+        conn.close()
+        tenant_schema_var.reset(token)
+
+
 def is_tenant_allowed_for_login(estado: str | None) -> bool:
     return normalize_tenant_status(estado) in LOGIN_ALLOWED_STATUSES
 

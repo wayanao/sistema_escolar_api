@@ -48,7 +48,8 @@ migración.**
     periodos. Preescolar: la carita de su curso de preescolar ("logrado",
     3,50).
 
-Para publicar basta el push: no hay tabla nueva.
+**Publicado el 2026-10-31** (`a7560e0`): Render Live, `/health` en `200`. No
+llevó migración.
 
 ## 2026-10-31 - Nombres de los cuadros del plan de clase (paso 1, backend)
 

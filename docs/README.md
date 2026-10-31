@@ -73,8 +73,8 @@ continuacion para retomarla en otro chat u otro LLM.
 - `funcionalidades/NOTAS_RESUMEN_ESTUDIANTE.md`: notas por periodo, caritas
   de preescolar e inasistencias por periodo en `GET
   /estudiantes/{id}/detalles`, con la regla del reporte parcial. Sin
-  migración. Documento principal. **Paso 1 (backend) completo el
-  2026-10-31, probado contra la base del Colegio Demo; falta el push.**
+  migración. Documento principal. **Paso 1 (backend) publicado el
+  2026-10-31 (`a7560e0`); falta la pantalla (frontend).**
 
 ## Estado actual resumido
 

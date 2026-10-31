@@ -2,9 +2,10 @@
 
 ## Control
 
-- Estado: **paso 1 (backend) completo el 2026-10-31, sin commit ni push.**
-  Probado contra la base real del Colegio Demo, solo leyendo. Ver "Avance
-  del paso 1".
+- Estado: **el paso 1 (backend) se publicó el 2026-10-31** (`a7560e0`,
+  Render Live, `/health` en `200`). Lleva juntos el paso 0 y el paso 1. El
+  paso 2 (la pantalla) está construido en `frontend-react`, sin publicar.
+  Ver "Avance del paso 1".
 - Tipo: mejora del resumen del estudiante (la ficha del admin), que lee
   `GET /estudiantes/{id}/detalles`. No es un módulo de `docs/modularizacion/`.
 - **Este es el documento principal.** La pantalla está en
@@ -236,8 +237,12 @@ llama al resumen y al reporte parcial reales:
   más alta, como en la planilla.
 - `scripts/verify.py`: **3076 pasan**; Ruff y `pip check` limpios.
 
+Publicación (2026-10-31): el usuario hizo el commit `a7560e0` y el push. Render
+quedó Live, con `/health` en `200`. `GET /estudiantes/1/detalles` da `401` sin
+sesión, como antes.
+
 ## Entrega para el siguiente paso
 
-1. Commit y push del paso 1. No hay migración.
-2. Comprobar que Render quede Live y que la ficha abra igual.
-3. Paso 2, en `frontend-react`.
+El paso 2, en `frontend-react`, está construido. Falta la prueba en local con
+el Colegio Demo: el estudiante 1 (primaria) y el 9 (preescolar). Después, el
+commit y el push.

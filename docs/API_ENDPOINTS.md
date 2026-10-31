@@ -1155,6 +1155,8 @@ Ver `docs/funcionalidades/FIRMA_OBSERVADOR.md`.
 - `DELETE /admin/plan-de-clases/{plan_id}/imagen`
 - `GET /plan-de-clases/{asignacion_id}/anio-anterior`
 - `GET /plan-de-clases/{asignacion_id}/anio-anterior/{plan_id}`
+- `GET /plan-de-clases/cuadros`
+- `PUT /admin/plan-de-clases/cuadros`
 
 Notas:
 
@@ -1234,6 +1236,33 @@ sin evidencias:
   no dicta la clase, y la guardia del año sobre la clase (`409` año cerrado,
   `403` profesor fuera del año activo), porque sirven para crear un plan en
   ella. El cliente nunca manda ids de clases del año pasado.
+
+### Nombres de los cuadros (2026-10-31)
+
+Ver `docs/funcionalidades/NOMBRES_CUADROS_PLAN.md`. Viven en su propio router
+(`app/routes/cuadros_plan_de_clases.py`), incluido **antes** que el del plan
+para que `GET /plan-de-clases/{asignacion_id}` no atrape
+`/plan-de-clases/cuadros`. Sin guardia de año lectivo: los nombres son del
+colegio.
+
+- `GET /plan-de-clases/cuadros`: cualquier sesión del colegio (profesor o
+  admin). Responde `{"cuadros": [{"clave", "nombre", "ayuda"}]}` con **solo
+  los cuadros renombrados**, en el orden del formulario. Lista vacía: todos
+  con su nombre original, que vive en el frontend.
+- `PUT /admin/plan-de-clases/cuadros`: solo admin (`403` al profesor, sin
+  abrir la base). Cuerpo `{"cuadros": [{"clave", "nombre", "ayuda"}]}` con la
+  lista **completa** de cuadros renombrados, de 0 a 9; los textos llegan
+  recortados. Reemplaza todo en una transacción (bloquear, borrar e insertar)
+  y responde como el `GET`. Lista vacía: vuelve a los originales.
+- Claves: `unidad`, `estandar`, `tema`, `proposito`, `clase`, `dba`,
+  `actividad_casa`, `imagen1` e `imagen2`. `competencias` no se renombra.
+- `422` con un mensaje en `detail`, sin abrir la base: "Ese cuadro no existe
+  en el plan de clase.", "Un cuadro aparece dos veces.", "Cada cuadro necesita
+  un nombre.", "El nombre de un cuadro no puede pasar de 60 caracteres.", "El
+  texto de ayuda no puede pasar de 150 caracteres." y "Los archivos no llevan
+  texto de ayuda.". Más de 9 cuadros da el `422` del validador.
+- Si dos admins guardan a la vez, gana el último. Que dos cuadros no se llamen
+  igual lo revisa el frontend.
 
 ## Planeador anual
 

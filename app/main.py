@@ -36,6 +36,7 @@ from app.routes import (
     boletines,
     branding,
     cartera,
+    cuadros_plan_de_clases,
     cuentas,
     cursos,
     dashboard,
@@ -223,6 +224,9 @@ app.include_router(auth.router)
 app.include_router(materias.router)
 app.include_router(observaciones.router)
 app.include_router(observador.router)
+# Antes que plan_de_clases: su GET /plan-de-clases/{asignacion_id} atraparia
+# /plan-de-clases/cuadros. Ver docs/funcionalidades/NOMBRES_CUADROS_PLAN.md.
+app.include_router(cuadros_plan_de_clases.router)
 app.include_router(plan_de_clases.router)
 app.include_router(dashboard.router)
 app.include_router(planeador_anual.router)

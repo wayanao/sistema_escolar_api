@@ -1,6 +1,6 @@
 -- Esquema base de un tenant. ARCHIVO GENERADO, no editar a mano.
 --
--- Extraido de tenant_colegio_1 el 2026-10-27 con
+-- Extraido de tenant_colegio_1 el 2026-10-31 con
 -- scripts/generar_esquema_base.py. Para rehacerlo, aplica antes la
 -- migracion nueva a ese schema y vuelve a ejecutar el script.
 --
@@ -11,7 +11,7 @@
 -- No usar apply_migration.py con este archivo: es para dar de alta un
 -- tenant nuevo, no para los existentes, que ya tienen estas tablas.
 --
--- MIGRACIONES INCORPORADAS (48):
+-- MIGRACIONES INCORPORADAS (49):
 --   20260429_pagos_tipo_pago_largo.sql
 --   20260429_plan_de_clases_reportes.sql
 --   20260509_branding_plantillas_impresion.sql
@@ -60,6 +60,7 @@
 --   20261021_planilla_subnotas.sql
 --   20261022_planilla_tipos_porcentaje.sql
 --   20261027_observador_firmas.sql
+--   20261031_plan_de_clases_cuadros.sql
 -- FIN MIGRACIONES INCORPORADAS
 
 CREATE TABLE IF NOT EXISTS admisiones (
@@ -470,6 +471,16 @@ CREATE TABLE IF NOT EXISTS plan_de_clases (
     CONSTRAINT plan_de_clases_pkey PRIMARY KEY (id)
 );
 
+CREATE TABLE IF NOT EXISTS plan_de_clases_cuadros (
+    clave character varying(30) NOT NULL,
+    nombre character varying(60) NOT NULL,
+    ayuda character varying(150) DEFAULT ''::character varying NOT NULL,
+    actualizado_en timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    actualizado_por integer,
+    CONSTRAINT chk_plan_de_clases_cuadros_nombre_no_vacio CHECK ((char_length(btrim((nombre)::text)) > 0)),
+    CONSTRAINT plan_de_clases_cuadros_pkey PRIMARY KEY (clave)
+);
+
 CREATE TABLE IF NOT EXISTS plan_de_clases_notificaciones_admin (
     id SERIAL,
     plan_id integer NOT NULL,
@@ -802,6 +813,7 @@ ALTER TABLE pagos_aplicaciones ADD CONSTRAINT pagos_aplicaciones_tipo_pago_id_fk
 ALTER TABLE plan_de_clases ADD CONSTRAINT plan_de_clases_admin_visto_por_fkey FOREIGN KEY (admin_visto_por) REFERENCES usuarios(id) ON DELETE SET NULL;
 ALTER TABLE plan_de_clases ADD CONSTRAINT plan_de_clases_asignacion_id_fkey FOREIGN KEY (asignacion_id) REFERENCES asignaciones(id);
 ALTER TABLE plan_de_clases ADD CONSTRAINT plan_de_clases_revisado_por_fkey FOREIGN KEY (revisado_por) REFERENCES usuarios(id) ON DELETE SET NULL;
+ALTER TABLE plan_de_clases_cuadros ADD CONSTRAINT plan_de_clases_cuadros_actualizado_por_fkey FOREIGN KEY (actualizado_por) REFERENCES usuarios(id) ON DELETE SET NULL;
 ALTER TABLE plan_de_clases_notificaciones_admin ADD CONSTRAINT plan_de_clases_notificaciones_admin_plan_id_fkey FOREIGN KEY (plan_id) REFERENCES plan_de_clases(id) ON DELETE CASCADE;
 ALTER TABLE plan_de_clases_observaciones ADD CONSTRAINT plan_de_clases_observaciones_admin_id_fkey FOREIGN KEY (admin_id) REFERENCES usuarios(id) ON DELETE SET NULL;
 ALTER TABLE plan_de_clases_observaciones ADD CONSTRAINT plan_de_clases_observaciones_plan_id_fkey FOREIGN KEY (plan_id) REFERENCES plan_de_clases(id) ON DELETE CASCADE;

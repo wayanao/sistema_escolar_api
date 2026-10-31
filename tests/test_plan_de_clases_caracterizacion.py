@@ -287,7 +287,16 @@ def test_domain_boundary_is_five_own_product_files():
         for path in (ROOT / directory).glob("*plan_de_clases*.py")
     }
 
-    assert discovered == DOMAIN_FILES
+    # Nombres de los cuadros (docs/funcionalidades/NOMBRES_CUADROS_PLAN.md)
+    # suma cuatro propios -ruta, controlador, repositorio y esquema- en vez de
+    # crecer dentro de los cinco de siempre, que no cambian; sus reglas viven
+    # en app/core/cuadros_plan_de_clases.py.
+    assert discovered == DOMAIN_FILES | {
+        "app/routes/cuadros_plan_de_clases.py",
+        "app/controllers/cuadros_plan_de_clases_controller.py",
+        "app/repositories/cuadros_plan_de_clases_repository.py",
+        "app/schemas/cuadros_plan_de_clases.py",
+    }
     # 1382 -> 1395: año lectivo, fase 3 (paso 3.5b), la lista de planes del
     # admin por año (repositorio y ruta). 1395 -> 1413: paso 3.7a, la guardia
     # de escritura en crear, borrar imagen y marcar vista (quien guarda llega

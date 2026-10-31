@@ -1,10 +1,38 @@
 # Cambios Backend
 
-Ultima revision documental: 2026-10-30.
+Ultima revision documental: 2026-10-31.
 
 ## Proposito
 
 Bitacora de cambios documentales y tecnicos observables del backend.
+
+## 2026-10-31 - Nombres de los cuadros del plan de clase (paso 1, backend)
+
+Paso 1 de `docs/funcionalidades/NOMBRES_CUADROS_PLAN.md`. **Lo que ven los
+colegios no cambia** hasta el paso 2 (frontend). **Con migración.**
+
+- `migrations/20261031_plan_de_clases_cuadros.sql`: tabla nueva
+  `plan_de_clases_cuadros`, una fila por cuadro renombrado. Ninguna tabla
+  existente cambia.
+- `app/core/cuadros_plan_de_clases.py`: las nueve claves, los largos y las
+  reglas, sin base de datos.
+- Router propio `app/routes/cuadros_plan_de_clases.py`, incluido en
+  `app/main.py` antes que el del plan: `GET /plan-de-clases/cuadros`
+  (cualquier sesión del colegio) y `PUT /admin/plan-de-clases/cuadros` (solo
+  admin). Con su controlador, repositorio y esquema. Las 13 rutas del plan no
+  cambian.
+- Pruebas: 29 en `tests/test_cuadros_plan_de_clases.py` y 6 en
+  `tests/test_migracion_plan_de_clases_cuadros.py`. Se reconoció el
+  repositorio nuevo en las cinco listas de repositorios
+  (`test_asistencia_`, `test_dashboard_`, `test_notas_`, `test_planilla_` y
+  `test_ventas_caracterizacion.py`) y los cuatro archivos nuevos en
+  `test_plan_de_clases_caracterizacion.py`, sin tocar los cinco de siempre.
+- Migración probada en una rama de Neon (24 de 24 comprobaciones) y esquema
+  base regenerado desde ella; el diff fue solo la tabla nueva. Detalle en
+  `docs/MIGRACIONES.md`.
+- `scripts/verify.py`: **3053 pasan, 0 fallan**; Ruff y `pip check` limpios.
+
+Para publicar: **primero la migración en producción, después el push.**
 
 ## 2026-10-30 - Entrevista de admisión solo en los colegios que la usan
 

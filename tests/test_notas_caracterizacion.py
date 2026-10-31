@@ -193,6 +193,7 @@ def test_el_repositorio_de_notas_es_el_septimo():
         "asistencia_repository",
         "boletin_repository",
         "branding_repository",
+        "cuadros_plan_de_clases_repository",
         "dashboard_repository",
         "estudiantes_repository",
         "listas_seguimiento_repository",

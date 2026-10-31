@@ -125,6 +125,10 @@ Segun los routers actuales, usan `get_current_active_admin`:
 - nomina
 - listas_seguimiento
 - varias rutas admin de plan de clases, plantillas, branding, ventas, prestamos y egresos
+- `PUT /admin/plan-de-clases/cuadros` (nombres de los cuadros del plan). Su
+  lectura, `GET /plan-de-clases/cuadros`, la puede hacer cualquier sesión del
+  colegio, profesor o admin: los nombres no son un dato sensible y el
+  profesor los necesita para ver su formulario
 
 ## Routers protegidos por super admin
 

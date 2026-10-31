@@ -253,6 +253,14 @@ Nota sobre `plan_de_clases`:
   historicos. Las notificaciones del profesor se derivan directamente de
   `plan_de_clases_observaciones.vista_por_profesor_at`, por lo que no duplican
   el historial ni requieren otra tabla.
+- `plan_de_clases_cuadros` (migración `20261031_plan_de_clases_cuadros.sql`,
+  escrita el 2026-10-31, probada en una rama de Neon y **todavía sin aplicar
+  en producción**; ver
+  `docs/funcionalidades/NOMBRES_CUADROS_PLAN.md`): los cuadros del plan que
+  el colegio renombró, una fila por cuadro (`clave` es la llave primaria) con
+  `nombre`, `ayuda`, `actualizado_en` y `actualizado_por`. Un cuadro sin fila
+  usa su nombre original, que vive en el frontend. No se relaciona con
+  `plan_de_clases`: renombrar no cambia ningún plan.
 
 ## Cursos y cobros
 

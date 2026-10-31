@@ -2,7 +2,10 @@
 
 ## Control
 
-- Estado: **diseñado el 2026-10-31 (paso 0), nada implementado.**
+- Estado: **paso 1 (backend) completo el 2026-10-31, sin commit.** La
+  migración está probada en una rama de Neon y la base regenerada; falta
+  aplicarla en producción y hacer el push. El paso 0 (este documento) está en
+  `864e8d6`. Ver "Avance del paso 1".
 - Tipo: función nueva de producto, encima del plan de clases. No es un módulo
   de `docs/modularizacion/`.
 - **Este es el documento principal.** La ventana del admin y los cambios en
@@ -208,3 +211,56 @@ El conteo se fija con una prueba en el paso 2, antes y después.
   quien escribe el plan. Así, el admin pasaría a ver "Estándar / Lineamientos
   curriculares" en vez de "Estándar", y "Actividad a desarrollar" en vez de
   "Evidencia de desarrollo cognitivo".
+
+## Avance del paso 1 (2026-10-31)
+
+Qué se construyó:
+
+- `migrations/20261031_plan_de_clases_cuadros.sql`.
+- `app/core/cuadros_plan_de_clases.py`, puro: las claves, los largos, los
+  mensajes, `motivo_para_rechazar` y `en_orden_del_formulario`.
+- `app/schemas/cuadros_plan_de_clases.py`: `CuadroPlan` y
+  `CuadrosPlanUpdate` (recortan los textos; de 0 a 9 cuadros).
+- `app/repositories/cuadros_plan_de_clases_repository.py`: `leer_cuadros`,
+  `bloquear_cuadros`, `borrar_cuadros` e `insertar_cuadros` (un solo
+  `INSERT`).
+- `app/controllers/cuadros_plan_de_clases_controller.py` y
+  `app/routes/cuadros_plan_de_clases.py`, en un router propio. `app/main.py`
+  lo incluye antes que el del plan.
+
+El detalle está en `docs/CAMBIOS_BACKEND.md` y el contrato en
+`docs/API_ENDPOINTS.md` ("Nombres de los cuadros").
+
+Cambios frente al diseño:
+
+- **Router propio**, y no dentro de `app/routes/plan_de_clases.py`, para que
+  las 13 rutas del plan y sus pruebas de caracterización no cambien. Por eso
+  el orden se resuelve al incluirlo en `app/main.py`, y una prueba lo fija.
+- **Dos guardados a la vez:** guardar es borrar e insertar, y sin más cuidado
+  dos admins podían mezclar sus listas o chocar con la llave primaria. Antes
+  de borrar se bloquea la tabla (`LOCK TABLE ... IN SHARE ROW EXCLUSIVE
+  MODE`), que pone en fila a quienes guardan sin frenar a quienes leen. Sigue
+  ganando el último.
+
+Consultas, sin contar la sesión: leer, 1; guardar, 3 en una transacción (2
+al volver a los originales). Una lista inválida se rechaza sin abrir la base.
+
+Verificación:
+
+- En una rama de Neon creada desde producción, el usuario aplicó la migración
+  en los dos colegios (`PENDIENTE` → `OK` → `OMITIDA`).
+- En esa rama, un script dentro de una transacción que se deshace dio **24 de
+  24 comprobaciones** con las funciones reales del repositorio. El esquema base
+  se regeneró desde la rama, y su diff fue solo la tabla nueva. Detalle en
+  `docs/MIGRACIONES.md`.
+- `scripts/verify.py`: **3053 pasan, 0 fallan**; Ruff y `pip check` limpios.
+
+## Entrega para el siguiente paso
+
+1. Commit del paso 1, con la migración y la base juntas.
+2. Aplicar la migración en producción, con la cadena directa (`PENDIENTE` →
+   `OK` → `OMITIDA`).
+3. Push del backend y comprobar que Render quede Live, que `/health` dé `200`
+   y que las dos rutas nuevas respondan `401` sin sesión.
+4. Paso 2, en `frontend-react`. Para probarlo en local, la base a la que
+   apunta el backend local debe tener la tabla (punto 2).

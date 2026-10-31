@@ -1169,3 +1169,50 @@ usan".
 - Aplicada **antes** del push del backend, a propósito: el backend publicado
   no lee la columna. A partir de aquí el archivo no se puede editar (el
   runner guarda su checksum).
+
+## Migracion 20261031_plan_de_clases_cuadros.sql
+
+Objetivo:
+
+- Nombres de los cuadros del plan de clase, paso 1 de
+  `docs/funcionalidades/NOMBRES_CUADROS_PLAN.md`: guardar los cuadros que
+  cada colegio renombra.
+
+Tabla creada (ninguna existente se modifica, `plan_de_clases` tampoco):
+
+- `plan_de_clases_cuadros`: `clave` como llave primaria (un nombre por
+  cuadro), `nombre` de 1 a 60 caracteres (CHECK de no vacío), `ayuda` hasta
+  150 (vacía por defecto), `actualizado_en` y `actualizado_por` (FK a
+  `usuarios` con `ON DELETE SET NULL`). Que la clave sea uno de los nueve
+  cuadros lo revisa el backend, no la base.
+
+Índice: ninguno aparte; la llave primaria basta y la tabla tiene como máximo
+nueve filas. `scripts/apply_tenant_indexes.py` no se toca.
+
+No rellena, actualiza ni borra datos existentes. Es reejecutable.
+
+**Orden de publicación:** aplicar en producción, después el push del backend.
+El código viejo no lee la tabla, así que aplicarla antes no cambia nada. Si el
+backend saliera antes, solo fallaría `GET /plan-de-clases/cuadros` (el
+frontend de entonces no lo llama todavía).
+
+Estado al 2026-10-31:
+
+- SQL y 6 pruebas de texto (`tests/test_migracion_plan_de_clases_cuadros.py`).
+- El usuario la aplicó en una rama de Neon creada desde producción, con el
+  endpoint directo: la simulación previa dio `PENDIENTE`, la aplicación `OK` y
+  la posterior `OMITIDA (ya aplicada)`, en `tenant_colegio_1` y `tenant_2005`.
+- En la rama, un script que corre todo en una transacción que se deshace
+  (ROLLBACK) dio **24 de 24 comprobaciones**, 12 por colegio, con las
+  funciones reales del repositorio:
+  - la tabla con sus cinco columnas;
+  - guardar dos cuadros en un solo `INSERT`, la hora y quién guardó;
+  - reemplazar la lista y volver a los originales;
+  - los rechazos de la base: nombre en blanco (CHECK), nombre de 61 y ayuda
+    de 151 caracteres, el mismo cuadro dos veces (llave primaria) y un
+    usuario que no existe (clave foránea).
+- Esquema base regenerado desde `tenant_colegio_1` de la rama: 41 tablas, 1
+  función y 1 disparador. El diff agregó solo la migración a la cabecera
+  (49), la tabla y su clave foránea.
+- `scripts/verify.py`: **3053 pasan, 0 fallan**; Ruff y `pip check` limpios.
+- **Falta aplicarla en producción**, antes del push.

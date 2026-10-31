@@ -207,11 +207,12 @@ El conteo se fija con una prueba en el paso 2, antes y después.
 
 ## Preguntas abiertas
 
-- **P1 (paso 2):** cuando hoy un cuadro tiene dos nombres, ¿cuál queda como
-  original? Propuesta: el del formulario del profesor, porque es lo que ve
-  quien escribe el plan. Así, el admin pasaría a ver "Estándar / Lineamientos
-  curriculares" en vez de "Estándar", y "Actividad a desarrollar" en vez de
-  "Evidencia de desarrollo cognitivo".
+- ~~**P1 (paso 2):** cuando hoy un cuadro tiene dos nombres, ¿cuál queda como
+  original?~~ **Resuelta por el usuario el 2026-10-31: opción A, el del
+  formulario del profesor**, porque es lo que ve quien escribe el plan todos
+  los días. Así, el admin pasa a ver "Estándar / Lineamientos curriculares"
+  en vez de "Estándar", y "Actividad a desarrollar" en vez de "Evidencia de
+  desarrollo cognitivo".
 
 ## Avance del paso 1 (2026-10-31)
 
@@ -267,9 +268,10 @@ Publicación (2026-10-31):
 
 ## Entrega para el siguiente paso
 
-El paso 1 ya está publicado. Lo siguiente es el **paso 2**, en
-`frontend-react` (ver su `docs/funcionalidades/NOMBRES_CUADROS_PLAN.md`).
-Antes de empezarlo hay que resolver la P1.
+El paso 1 ya está publicado. El **paso 2**, en `frontend-react`, se
+construyó el 2026-10-31 con la P1 resuelta (ver su
+`docs/funcionalidades/NOMBRES_CUADROS_PLAN.md`); falta probarlo en el
+navegador y publicarlo.
 
 Producción ya tiene la tabla, así que se puede probar en local con el Colegio
 Demo. Renombrar desde local cambia los nombres de verdad en el Colegio Demo de

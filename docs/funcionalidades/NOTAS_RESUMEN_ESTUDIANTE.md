@@ -2,9 +2,12 @@
 
 ## Control
 
-- Estado: **el paso 1 (backend) se publicó el 2026-10-31** (`a7560e0`,
-  Render Live, `/health` en `200`). Lleva juntos el paso 0 y el paso 1. El
-  paso 2 (la pantalla) está construido en `frontend-react`, sin publicar.
+- Estado: **completo y publicado el 2026-10-31.**
+  - Backend: `a7560e0`, con el paso 0 y el paso 1 juntos; Render Live,
+    `/health` en `200`.
+  - Pantalla: `f5a573d` en `frontend-react`; Vercel OK.
+  - El usuario lo probó en local antes de publicar la pantalla.
+
   Ver "Avance del paso 1".
 - Tipo: mejora del resumen del estudiante (la ficha del admin), que lee
   `GET /estudiantes/{id}/detalles`. No es un módulo de `docs/modularizacion/`.
@@ -243,6 +246,12 @@ sesión, como antes.
 
 ## Entrega para el siguiente paso
 
-El paso 2, en `frontend-react`, está construido. Falta la prueba en local con
-el Colegio Demo: el estudiante 1 (primaria) y el 9 (preescolar). Después, el
-commit y el push.
+Los pasos 1 y 2 están publicados. El paso 3 se cumplió así:
+
+- el usuario probó en local con el estudiante 1 (primaria) y el 9
+  (preescolar), y dijo que todo estaba bien;
+- después publicó la pantalla (`f5a573d`).
+
+Queda pendiente, solo si se pide, **el reporte parcial impreso de
+preescolar** ("Fuera de alcance"). Hoy deja vacía la nota de la materia, y
+podría usar `app/core/notas_resumen.py` para mostrar su carita.

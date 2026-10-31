@@ -1421,12 +1421,20 @@ producción, con el endpoint directo), después el backend y al final el
 frontend. Si el backend sale antes que la migración, en el 2005 fallan las
 escrituras de Admisiones y `GET /tenant/status` hasta aplicarla.
 
-**Paso 2 (pendiente):** botón "Entrevista" en "Matricular estudiantes" para
-los estudiantes que siguen, **opcional** (decidido con el usuario el
-2026-10-30: no bloquea la matrícula ni la activación). Necesita guardar una
-entrevista unida a un estudiante que ya estudia y cambiar
-`admisiones_estudiante_id_key` por una regla de una por año (ver "Preguntas
-abiertas").
+**Paso 1 publicado el 2026-10-30:** backend `c44a389` y frontend `3c0aca3`.
+
+**Paso 2 descartado por el usuario el 2026-10-31.** Era un botón
+"Entrevista", opcional, en "Matricular estudiantes" para los estudiantes que
+siguen. Se diseñó con una tabla aparte (`entrevistas_estudiantes`, una por
+estudiante y año) en vez de `admisiones`, porque allí una admisión unida a
+un estudiante queda "Matriculada" y de solo consulta, exige "Aprobado" y solo
+puede haber una por estudiante en toda su vida, y cambiar eso en plena
+matrícula del 2005 era arriesgado. El backend llegó a escribirse y probarse
+en local, pero el usuario decidió no hacerlo: se borró sin commit y **la
+migración nunca se aplicó**. Los estudiantes que siguen pasan a 2027 sin
+entrevista, como siempre. Antes de descartarlo, el usuario preguntó por usar
+la misma tabla `admisiones` con el interruptor; se le recomendó, si se
+retoma, hacerlo después de la matrícula (enero).
 
 ## Entrega para el siguiente chat
 

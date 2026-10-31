@@ -2286,7 +2286,9 @@ class BaseDeExpediente:
             or (asignacion is None and cuenta_sin_clase)
             or (asignacion is not None and self.ANIO_DE_ASIGNACION[asignacion] == anio)
         )
-        self._filas = [(total,)]
+        # Notas por periodo (2026-10-31): la cuenta llega como
+        # `(p1, p2, p3, p4, total)`; aqui todas son del periodo 1.
+        self._filas = [(total, 0, 0, 0, total)]
 
     def fetchone(self):
         return self._filas[0] if self._filas else None
@@ -2299,7 +2301,7 @@ def test_las_faltas_del_anio_activo_siguen_contando_las_que_no_tienen_clase():
     """Hoy esas filas se cuentan: en el año activo se siguen contando."""
     base = BaseDeExpediente()
 
-    assert estudiantes_repository.contar_inasistencias(base, 55) == 2
+    assert estudiantes_repository.contar_inasistencias_por_periodo(base, 55) == (2, 0, 0, 0, 2)
     [(_sql, params)] = base.consultas
     assert params == (55,)
 
@@ -2307,22 +2309,41 @@ def test_las_faltas_del_anio_activo_siguen_contando_las_que_no_tienen_clase():
 def test_las_faltas_de_2026_son_solo_las_de_sus_clases():
     base = BaseDeExpediente()
 
-    assert estudiantes_repository.contar_inasistencias(base, 55, anio_lectivo_id=1) == 1
+    assert estudiantes_repository.contar_inasistencias_por_periodo(
+        base, 55, anio_lectivo_id=1
+    ) == (1, 0, 0, 0, 1)
     [(sql, params)] = base.consultas
     assert "asignacion_id IS NULL" not in sql
     assert params == (55, 1)
 
 
-@pytest.mark.parametrize("leer", ["leer_promedios_por_materia", "leer_observaciones"])
-def test_notas_y_observaciones_del_expediente_son_del_anio(leer):
+def test_las_observaciones_del_expediente_son_del_anio():
     cursor = CursorQueAnota()
 
-    getattr(estudiantes_repository, leer)(cursor, 55)
-    getattr(estudiantes_repository, leer)(cursor, 55, anio_lectivo_id=1)
+    estudiantes_repository.leer_observaciones(cursor, 55)
+    estudiantes_repository.leer_observaciones(cursor, 55, anio_lectivo_id=1)
 
     (activo, p1), (otro, p2) = cursor.consultas
     assert SOLO_EL_ACTIVO in activo and p1 == (55,)
     assert SOLO_EL_PEDIDO in otro and p2 == (55, 1)
+
+
+def test_las_notas_del_expediente_son_las_del_curso_de_ese_anio():
+    """Notas por periodo (2026-10-31): las mismas materias que el reporte
+    parcial. En el año activo, las del curso del estudiante; en otro, las del
+    curso de su matricula de ese año, con las ocultas de su foto si esta
+    cerrado."""
+    cursor = CursorQueAnota()
+
+    estudiantes_repository.leer_planilla_del_anio(cursor, 55)
+    estudiantes_repository.leer_planilla_del_anio(cursor, 55, anio_lectivo_id=1)
+
+    (activo, p1), (otro, p2) = cursor.consultas
+    assert "asig.curso_id = e.curso_id" in activo
+    assert p1 == (55, "ASISTENCIA DIARIA")
+    assert "FROM matriculas m WHERE m.estudiante_id = e.id AND m.anio_lectivo_id = %s" in otro
+    assert "anios_lectivos_materias_ocultas" in otro
+    assert p2 == (1, 55, "ASISTENCIA DIARIA", 1, 1)
 
 
 @pytest.fixture
@@ -2337,12 +2358,12 @@ def expediente(monkeypatch):
     monkeypatch.setattr(estudiante_controller, "get_connection", lambda: ConexionFalsa(base))
     monkeypatch.setattr(estudiante_controller, "calcular_deudas_estudiante", calcular)
     for nombre in (
-        "leer_promedios_por_materia", "contar_inasistencias",
+        "leer_planilla_del_anio", "contar_inasistencias_por_periodo",
         "leer_observaciones", "leer_cargos_de_inventario",
     ):
         def falso(cursor, est_id, anio_lectivo_id="no-se-paso", _nombre=nombre):
             llamadas.append((_nombre, anio_lectivo_id))
-            return 0 if _nombre == "contar_inasistencias" else []
+            return None if _nombre == "contar_inasistencias_por_periodo" else []
         monkeypatch.setattr(estudiante_controller.estudiantes_repository, nombre, falso)
     return llamadas
 
@@ -2351,8 +2372,8 @@ def test_el_expediente_de_2026_pide_todo_en_2026_menos_el_inventario(expediente)
     estudiante_controller.obtener_detalles_estudiante_controller(55, anio_lectivo_id=1)
 
     assert expediente == [
-        ("leer_promedios_por_materia", 1),
-        ("contar_inasistencias", 1),
+        ("leer_planilla_del_anio", 1),
+        ("contar_inasistencias_por_periodo", 1),
         ("leer_observaciones", 1),
         {"anio_lectivo_id": 1},
         ("leer_cargos_de_inventario", "no-se-paso"),
@@ -2363,8 +2384,8 @@ def test_el_expediente_con_el_activo_es_el_de_siempre(expediente):
     estudiante_controller.obtener_detalles_estudiante_controller(55, anio_lectivo_id=2)
 
     assert expediente == [
-        ("leer_promedios_por_materia", None),
-        ("contar_inasistencias", None),
+        ("leer_planilla_del_anio", None),
+        ("contar_inasistencias_por_periodo", None),
         ("leer_observaciones", None),
         {},
         ("leer_cargos_de_inventario", "no-se-paso"),

@@ -813,12 +813,29 @@ def test_deudas_de_estudiante_solo_devuelve_las_positivas(cursor_de, monkeypatch
     }
 
 
-def test_detalles_del_estudiante_cuesta_cuatro_consultas_propias(conexion_de, monkeypatch):
+# Notas por periodo en el resumen (docs/funcionalidades/NOTAS_RESUMEN_ESTUDIANTE.md):
+# la planilla llega con los cuatro periodos, y las inasistencias en una fila
+# `(p1, p2, p3, p4, total)`. Cada fila de la planilla es `(asignacion_id,
+# materia, nivel, periodo, tipo_nota, nota, tipo_evaluacion, valoracion)`.
+SIN_FALTAS = (0, 0, 0, 0, 0)
+
+
+def _fila_numerica(asignacion_id, materia, periodo, nota, tipo="Taller"):
+    from decimal import Decimal
+
+    return (asignacion_id, materia, "primaria", periodo, tipo, Decimal(str(nota)), "numerica", None)
+
+
+def test_detalles_del_estudiante_cuesta_cinco_consultas_propias(conexion_de, monkeypatch):
+    """Eran cuatro. Las notas por periodo suman los porcentajes de sus clases
+    (una consulta, dos si alguna los tiene activos), a cambio de traer los
+    cuatro periodos de una vez."""
     cursor, conn = conexion_de(
         estudiante_controller,
-        una=[(3,)],
+        una=[(3, 0, 0, 0, 3)],
         todas=[
-            [("Matemáticas", 4.5)],
+            [_fila_numerica(10, "Matemáticas", 1, 4.5)],
+            [],
             [(1, "P1", "bien", "bien", "bien", "Matemáticas", "Ana Ríos")],
             [],
         ],
@@ -831,11 +848,17 @@ def test_detalles_del_estudiante_cuesta_cuatro_consultas_propias(conexion_de, mo
 
     respuesta = estudiante_controller.obtener_detalles_estudiante_controller(55)
 
-    # notas, inasistencias, observaciones e inventario: las deudas las cuenta cobros.
-    assert len(cursor.ejecutadas) == 4
+    # planilla, porcentajes, inasistencias, observaciones e inventario: las
+    # deudas las cuenta cobros.
+    assert len(cursor.ejecutadas) == 5
     assert respuesta["notas"] == [{"materia": "Matemáticas", "promedio": 4.5}]
     assert respuesta["promedio_general"] == 4.5
+    assert respuesta["notas_por_periodo"]["materias"][0]["periodos"]["1"] == {
+        "nota": 4.5,
+        "valoracion": None,
+    }
     assert respuesta["inasistencias"] == 3
+    assert respuesta["inasistencias_por_periodo"] == {"1": 3, "2": 0, "3": 0, "4": 0, "anio": 3}
     assert len(respuesta["observaciones"]) == 1
     assert respuesta["deudas"] == []
     assert "errores" not in respuesta
@@ -850,8 +873,8 @@ def test_detalles_degrada_por_seccion_sin_tumbar_la_respuesta(conexion_de, monke
 
     cursor, conn = conexion_de(
         estudiante_controller,
-        una=[(3,)],
-        todas=[[], [], []],
+        una=[(3, 0, 0, 0, 3)],
+        todas=[[], []],
         fallar_si=fallar,
     )
     monkeypatch.setattr(
@@ -865,23 +888,30 @@ def test_detalles_degrada_por_seccion_sin_tumbar_la_respuesta(conexion_de, monke
     # La seccion rota revierte y se anota, pero las demas siguen respondiendo.
     assert respuesta["errores"] == {"notas": "No se pudo cargar esta seccion."}
     assert respuesta["notas"] == []
+    assert respuesta["notas_por_periodo"]["materias"] == []
     assert respuesta["inasistencias"] == 3
     assert conn.rollbacks == 1
     assert conn.cerrada is True
 
 
-def test_detalles_promedia_los_promedios_por_materia(conexion_de, monkeypatch):
-    """Ampliada en 6.2 antes de mover las cuatro lecturas.
-
-    El promedio general no es el promedio de las notas: es el promedio de los
-    promedios por materia, redondeado a un decimal en Python. Con 4,5 y 3,0 da
-    3,75 que se redondea a 3,8. Si una extraccion cambiara el redondeo o la
-    agrupacion, el numero que ve el usuario cambiaria.
-    """
+def test_detalles_promedia_las_notas_del_anio_de_cada_materia(conexion_de, monkeypatch):
+    """El promedio general no es el promedio de las notas: es el promedio de
+    las notas del año de cada materia, a un decimal. Con 4,5 y 3,0 da 3,75,
+    que queda en 3,8. Antes del 2026-10-31 eran los promedios de todas las
+    celdas del año juntas; ahora cada materia promedia sus periodos."""
     conexion_de(
         estudiante_controller,
-        una=[(0,)],
-        todas=[[("Matemáticas", 4.5), ("Lengua", 3.0)], [], []],
+        una=[SIN_FALTAS],
+        todas=[
+            [
+                _fila_numerica(10, "Matemáticas", 1, 4.0),
+                _fila_numerica(10, "Matemáticas", 2, 5.0),
+                _fila_numerica(11, "Lengua", 1, 3.0),
+            ],
+            [],
+            [],
+            [],
+        ],
     )
     monkeypatch.setattr(
         estudiante_controller,
@@ -896,11 +926,51 @@ def test_detalles_promedia_los_promedios_por_materia(conexion_de, monkeypatch):
         {"materia": "Lengua", "promedio": 3.0},
     ]
     assert respuesta["promedio_general"] == 3.8
+    assert respuesta["notas_por_periodo"]["promedio"] == {
+        "1": 3.5, "2": 5.0, "3": None, "4": None, "anio": 3.75,
+    }
+
+
+def test_detalles_de_preescolar_muestra_la_carita(conexion_de, monkeypatch):
+    """Hasta el 2026-10-31 una materia de caritas llegaba con promedio `None`
+    y `float(None)` tumbaba la seccion entera (lo fijaba la prueba
+    `..._tumba_la_seccion_de_notas`). Ahora sale su carita, y la forma vieja
+    no la lleva porque no es un numero."""
+    conexion_de(
+        estudiante_controller,
+        una=[SIN_FALTAS],
+        todas=[
+            [
+                (20, "DIMENSIÓN COGNITIVA", "preescolar", 1, "Juego", None, "desarrollo", "logrado"),
+                (20, "DIMENSIÓN COGNITIVA", "preescolar", 1, "Canto", None, "desarrollo", "destacado"),
+            ],
+            [],
+            [],
+            [],
+        ],
+    )
+    monkeypatch.setattr(
+        estudiante_controller,
+        "calcular_deudas_estudiante",
+        lambda cursor, est_id: {"curso_id": 4, "deudas": []},
+    )
+
+    respuesta = estudiante_controller.obtener_detalles_estudiante_controller(55)
+
+    assert "errores" not in respuesta
+    [materia] = respuesta["notas_por_periodo"]["materias"]
+    assert materia["tipo_evaluacion"] == "desarrollo"
+    # 4 y 5 promedian 4,5: empate entre logrado y destacado, gana la mas alta.
+    assert materia["periodos"]["1"] == {"nota": 4.5, "valoracion": "destacado"}
+    assert respuesta["notas_por_periodo"]["promedio"]["1"] is None
+    assert respuesta["notas"] == []
+    assert respuesta["promedio_general"] == 0.0
 
 
 def test_detalles_cuenta_solo_las_ausencias(conexion_de, monkeypatch):
-    """Ampliada en 6.2: el filtro de asistencia es ILIKE 'ausente'."""
-    cursor, _ = conexion_de(estudiante_controller, una=[(7,)], todas=[[], [], []])
+    """Ampliada en 6.2: el filtro de asistencia es ILIKE 'ausente'. Desde el
+    2026-10-31 cuenta por periodo, y el total es el numero de antes."""
+    cursor, _ = conexion_de(estudiante_controller, una=[(5, 2, 0, 0, 7)], todas=[[], [], []])
     monkeypatch.setattr(
         estudiante_controller,
         "calcular_deudas_estudiante",
@@ -915,13 +985,14 @@ def test_detalles_cuenta_solo_las_ausencias(conexion_de, monkeypatch):
     assert "estado ILIKE 'ausente'" in consulta_asistencia[0]
     assert consulta_asistencia[1] == (55,)
     assert respuesta["inasistencias"] == 7
+    assert respuesta["inasistencias_por_periodo"] == {"1": 5, "2": 2, "3": 0, "4": 0, "anio": 7}
 
 
 def test_detalles_ordena_las_observaciones_por_periodo_descendente(conexion_de, monkeypatch):
     """Ampliada en 6.2: fija la forma del payload y el orden de observaciones."""
     cursor, _ = conexion_de(
         estudiante_controller,
-        una=[(0,)],
+        una=[SIN_FALTAS],
         todas=[
             [],
             [
@@ -959,7 +1030,7 @@ def test_detalles_no_calcula_saldo_de_una_venta_ya_pagada(conexion_de, monkeypat
 
     conexion_de(
         estudiante_controller,
-        una=[(0,)],
+        una=[SIN_FALTAS],
         todas=[
             [],
             [],
@@ -984,7 +1055,7 @@ def test_detalles_calcula_el_saldo_pendiente_del_inventario(conexion_de, monkeyp
 
     cursor, _ = conexion_de(
         estudiante_controller,
-        una=[(0,)],
+        una=[SIN_FALTAS],
         todas=[
             [],
             [],

@@ -70,6 +70,11 @@ continuacion para retomarla en otro chat u otro LLM.
   `GET /plan-de-clases/cuadros` y `PUT /admin/plan-de-clases/cuadros` (solo
   admin). Documento principal. **Paso 1 (backend) publicado el 2026-10-31
   (`f4c7fcb`, migración en producción); falta la pantalla (frontend).**
+- `funcionalidades/NOTAS_RESUMEN_ESTUDIANTE.md`: notas por periodo, caritas
+  de preescolar e inasistencias por periodo en `GET
+  /estudiantes/{id}/detalles`, con la regla del reporte parcial. Sin
+  migración. Documento principal. **Paso 1 (backend) completo el
+  2026-10-31, probado contra la base del Colegio Demo; falta el push.**
 
 ## Estado actual resumido
 

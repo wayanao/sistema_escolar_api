@@ -1,5 +1,11 @@
 import logging
 
+from app.core.notas_resumen import (
+    armar_notas_por_periodo,
+    inasistencias_por_periodo,
+    notas_compatibles,
+    notas_por_periodo_vacias,
+)
 from app.database import get_connection, get_cursor
 from app.repositories import anios_lectivos_repository, estudiantes_repository
 from app.services.anio_lectivo import anio_distinto_del_activo, exigir_anio_lectivo
@@ -8,6 +14,7 @@ from app.services.cobros import (
     calcular_deudas_estudiante,
     con_anio,
 )
+from app.services.porcentajes_activos import porcentajes_activos_del_anio
 
 logger = logging.getLogger(__name__)
 
@@ -358,13 +365,21 @@ def obtener_detalles_estudiante_controller(est_id, anio_lectivo_id=None):
     lanza `AnioLectivoInexistenteError` antes de leer nada.
 
     Los productos de inventario no son de ningun año y salen igual siempre.
+
+    Notas por periodo (docs/funcionalidades/NOTAS_RESUMEN_ESTUDIANTE.md):
+    `notas_por_periodo` e `inasistencias_por_periodo` traen los cuatro
+    periodos y el año a la vez. `notas`, `promedio_general` e `inasistencias`
+    conservan su forma para el frontend que todavia no los lee, y se llenan
+    con "Todo el año".
     """
     conn = get_connection()
     cursor = conn.cursor()
     detalles = {
         "notas": [],
         "promedio_general": 0.0,
+        "notas_por_periodo": notas_por_periodo_vacias(),
         "inasistencias": 0,
+        "inasistencias_por_periodo": inasistencias_por_periodo(None),
         "observaciones": [],
         "deudas": [],
         "total_deuda": 0,
@@ -377,25 +392,30 @@ def obtener_detalles_estudiante_controller(est_id, anio_lectivo_id=None):
         anio = anio_distinto_del_activo(cursor, anio_lectivo_id)
 
         try:
-            # Notas por materia (promediando los detalles de la planilla)
-            filas_notas = estudiantes_repository.leer_promedios_por_materia(
+            # La planilla del año, los cuatro periodos de una vez, y los
+            # porcentajes activos de sus clases. El calculo es el del reporte
+            # parcial mas las caritas (app/core/notas_resumen.py).
+            filas_notas = estudiantes_repository.leer_planilla_del_anio(
                 cursor, est_id, anio_lectivo_id=anio
             )
-
-            notas_list = [{'materia': r[0], 'promedio': float(r[1])} for r in filas_notas]
-            detalles['notas'] = notas_list
-
-            if notas_list:
-                promedio_gen = sum(n['promedio'] for n in notas_list) / len(notas_list)
-                detalles['promedio_general'] = round(promedio_gen, 1)
+            asignaciones = sorted({fila[0] for fila in filas_notas})
+            resumen = armar_notas_por_periodo(
+                filas_notas, porcentajes_activos_del_anio(cursor, asignaciones)
+            )
+            detalles['notas_por_periodo'] = resumen
+            detalles['notas'], detalles['promedio_general'] = notas_compatibles(resumen)
         except Exception as exc:
             conn.rollback()
             _registrar_error_detalle(detalles, "notas", exc)
 
         try:
-            detalles['inasistencias'] = estudiantes_repository.contar_inasistencias(
-                cursor, est_id, anio_lectivo_id=anio
+            por_periodo = inasistencias_por_periodo(
+                estudiantes_repository.contar_inasistencias_por_periodo(
+                    cursor, est_id, anio_lectivo_id=anio
+                )
             )
+            detalles['inasistencias_por_periodo'] = por_periodo
+            detalles['inasistencias'] = por_periodo["anio"]
         except Exception as exc:
             conn.rollback()
             _registrar_error_detalle(detalles, "asistencia", exc)

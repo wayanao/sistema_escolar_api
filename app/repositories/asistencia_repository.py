@@ -33,7 +33,8 @@ Lo que **no** vive aqui, y es deliberado:
   vive en `app/core/permissions.py`, infraestructura compartida y fuera del
   alcance de esta capa;
 - las **dos lecturas ajenas** de esta tabla siguen donde las dejaron las capas 6
-  y 7: `contar_inasistencias` en `estudiantes_repository`, dentro del bloque del
+  y 7: `contar_inasistencias_por_periodo` en `estudiantes_repository` (hasta
+  el 2026-10-31, `contar_inasistencias`), dentro del bloque del
   expediente, y las inasistencias por profesor en `dashboard_repository`. **No
   se movieron.** Ambas filtran con `estado ILIKE 'ausente'`; este modulo no usa
   `ILIKE` en ninguna de sus tres sentencias, y esa asimetria es el hallazgo 6 de

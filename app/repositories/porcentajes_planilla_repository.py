@@ -97,6 +97,36 @@ def leer_tipos_de_asignaciones(cursor, asignacion_ids, periodo):
     return [_tupla(fila, "asignacion_id", "descripcion") for fila in cursor.fetchall()]
 
 
+def leer_porcentajes_de_asignaciones_del_anio(cursor, asignacion_ids):
+    """`(asignacion_id, periodo, tipo_nota, porcentaje)` de varias clases en
+    todos sus periodos, en una consulta. La usa el resumen del estudiante, que
+    trae los cuatro periodos a la vez (NOTAS_RESUMEN_ESTUDIANTE.md)."""
+    cursor.execute("""
+            SELECT asignacion_id, periodo, tipo_nota, porcentaje
+            FROM planilla_tipos_porcentaje
+            WHERE asignacion_id = ANY(%s)
+            ORDER BY id
+        """, (asignacion_ids,))
+    return [
+        _tupla(fila, "asignacion_id", "periodo", "tipo_nota", "porcentaje")
+        for fila in cursor.fetchall()
+    ]
+
+
+def leer_tipos_de_asignaciones_del_anio(cursor, asignacion_ids):
+    """`(asignacion_id, periodo, descripcion)` de los tipos de nota de varias
+    clases en todos sus periodos."""
+    cursor.execute("""
+            SELECT DISTINCT asignacion_id, periodo, descripcion FROM notas_detalle
+            WHERE asignacion_id = ANY(%s)
+              AND descripcion IS NOT NULL
+            ORDER BY asignacion_id, periodo, descripcion
+        """, (asignacion_ids,))
+    return [
+        _tupla(fila, "asignacion_id", "periodo", "descripcion") for fila in cursor.fetchall()
+    ]
+
+
 def leer_celdas_del_estudiante_en_asignaciones(cursor, asignacion_ids, periodo, estudiante_id):
     """`(asignacion_id, tipo_nota, nota, valoracion)` de un estudiante en varias clases."""
     cursor.execute("""

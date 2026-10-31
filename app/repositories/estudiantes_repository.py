@@ -20,7 +20,12 @@ año. Sin el, su SQL es el de siempre, letra por letra; con el, va por otro
 camino que lee las matriculas de ese año. Ver `_MATRICULAS_DEL_ANIO`.
 """
 
+from app.core.nivel_academico import NOMBRE_MATERIA_ASISTENCIA_JORNADA
 from app.repositories.anios_lectivos_repository import condicion_anio
+# Las mismas reglas del reporte parcial para saber que materias salen: el
+# resumen del estudiante tiene que mostrar las mismas (ver
+# docs/funcionalidades/NOTAS_RESUMEN_ESTUDIANTE.md).
+from app.repositories.boletin_repository import _curso_del_estudiante, _materia_visible
 
 
 def insertar_estudiante(cursor, valores):
@@ -330,26 +335,67 @@ def actualizar_estado_estudiante(cursor, estado, est_id):
 # ---------------------------------------------------------------------------
 
 
-def leer_promedios_por_materia(cursor, est_id, anio_lectivo_id=None):
-    """Promedio de cada materia del estudiante, redondeado a un decimal en SQL.
+def leer_planilla_del_anio(cursor, est_id, anio_lectivo_id=None):
+    """La planilla del estudiante en los cuatro periodos, para su resumen.
 
-    El promedio general NO sale de aqui: el controlador promedia estos
-    promedios y redondea otra vez en Python.
+    Las mismas materias que `boletin_repository.leer_planilla_vigente` (la del
+    reporte parcial): las del curso del estudiante en ese año, sin "ASISTENCIA
+    DIARIA" y sin las inactivas, en el orden del boletin. La diferencia es que
+    trae **todos los periodos a la vez**, para que cambiar de periodo en la
+    pantalla no cueste otra peticion.
+
+    Cada fila: `(asignacion_id, materia, nivel_del_curso, periodo, tipo_nota,
+    nota, tipo_evaluacion, valoracion)`. Una materia sin notas trae una sola
+    fila con el periodo vacio. El calculo vive en `app/core/notas_resumen.py`.
     """
-    condicion, params_anio = condicion_anio("c.anio_lectivo_id", anio_lectivo_id)
+    curso, params_curso = _curso_del_estudiante(anio_lectivo_id)
+    materia_visible, params_materia = _materia_visible(anio_lectivo_id)
     cursor.execute(f'''
-                SELECT m.nombre, ROUND(AVG(n.nota), 1) as promedio
-                FROM notas_detalle n
-                JOIN asignaciones a ON n.asignacion_id = a.id
-                JOIN materias m ON a.materia_id = m.id
-                JOIN cursos c ON c.id = a.curso_id
-                WHERE n.estudiante_id = %s AND {condicion} GROUP BY m.id
-            ''', (est_id, *params_anio))
+            WITH asignaciones_academicas AS (
+                SELECT DISTINCT ON (COALESCE(a.asignacion_academica_id, a.id))
+                    COALESCE(a.asignacion_academica_id, a.id) AS id,
+                    a.curso_id,
+                    a.materia_id,
+                    a.profesor_id,
+                    COALESCE(a.orden_boletin, 100) AS orden_boletin
+                FROM asignaciones a
+                WHERE a.activo = TRUE
+                ORDER BY
+                    COALESCE(a.asignacion_academica_id, a.id),
+                    COALESCE(a.orden_boletin, 100),
+                    a.id
+            )
+            SELECT
+                asig.id AS asignacion_id,
+                m.nombre AS materia,
+                cu.nivel,
+                nd.periodo,
+                nd.descripcion,
+                nd.nota,
+                COALESCE(nd.tipo_evaluacion, 'numerica') AS tipo_evaluacion,
+                nd.valoracion
+            FROM estudiantes e
+            JOIN asignaciones_academicas asig ON asig.curso_id = {curso}
+            JOIN cursos cu ON cu.id = asig.curso_id
+            JOIN materias m ON m.id = asig.materia_id
+            JOIN profesor p ON p.id = asig.profesor_id
+            LEFT JOIN notas_detalle nd
+                ON nd.estudiante_id = e.id
+                AND nd.asignacion_id = asig.id
+            WHERE e.id = %s
+              AND m.nombre <> %s
+              AND {materia_visible}
+            ORDER BY asig.orden_boletin, m.nombre, asig.id, nd.periodo, nd.id
+        ''', (*params_curso, est_id, NOMBRE_MATERIA_ASISTENCIA_JORNADA, *params_materia))
     return cursor.fetchall()
 
 
-def contar_inasistencias(cursor, est_id, anio_lectivo_id=None):
-    """Numero de ausencias. El filtro es `ILIKE 'ausente'`, no una igualdad.
+def contar_inasistencias_por_periodo(cursor, est_id, anio_lectivo_id=None):
+    """Ausencias por periodo y su total, en una fila: `(p1, p2, p3, p4, total)`.
+
+    El filtro es `ILIKE 'ausente'`, no una igualdad. Un periodo vacio cuenta
+    como el 1 (la columna tiene ese valor por defecto), y el total cuenta
+    todas: es el mismo numero que daba antes la cuenta del año.
 
     Las de un año, por el curso de su clase. `asistencia.asignacion_id` admite
     nulos y hoy esas filas se cuentan: en el año activo se siguen contando, para
@@ -358,7 +404,13 @@ def contar_inasistencias(cursor, est_id, anio_lectivo_id=None):
     condicion, params_anio = condicion_anio("c.anio_lectivo_id", anio_lectivo_id)
     sin_clase = "asignacion_id IS NULL OR " if anio_lectivo_id is None else ""
     cursor.execute(f'''
-                SELECT count(*) FROM asistencia
+                SELECT
+                    count(*) FILTER (WHERE COALESCE(periodo, 1) = 1),
+                    count(*) FILTER (WHERE periodo = 2),
+                    count(*) FILTER (WHERE periodo = 3),
+                    count(*) FILTER (WHERE periodo = 4),
+                    count(*)
+                FROM asistencia
                 WHERE estudiante_id = %s AND estado ILIKE 'ausente'
                   AND ({sin_clase}asignacion_id IN (
                       SELECT a.id FROM asignaciones a
@@ -366,7 +418,7 @@ def contar_inasistencias(cursor, est_id, anio_lectivo_id=None):
                       WHERE {condicion}
                   ))
             ''', (est_id, *params_anio))
-    return cursor.fetchone()[0]
+    return cursor.fetchone()
 
 
 def leer_observaciones(cursor, est_id, anio_lectivo_id=None):

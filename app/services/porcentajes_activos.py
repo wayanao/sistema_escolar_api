@@ -51,3 +51,35 @@ def porcentajes_activos_de_asignaciones(cursor, asignacion_ids, periodo):
         for asignacion_id, porcentajes in por_clase.items()
         if porcentajes_activos(tipos.get(asignacion_id, []), porcentajes)
     }
+
+
+def porcentajes_activos_del_anio(cursor, asignacion_ids):
+    """`{(asignacion_id, periodo): porcentajes}` de las clases y periodos con
+    porcentajes activos, en todo el año.
+
+    Para el resumen del estudiante, que trae los cuatro periodos a la vez
+    (NOTAS_RESUMEN_ESTUDIANTE.md). Sin clases no consulta nada; si ninguna
+    tiene porcentajes, una consulta; si alguna los tiene, dos. **No crece con
+    el numero de clases ni de periodos.**
+    """
+    if not asignacion_ids:
+        return {}
+    por_clase_y_periodo = {}
+    for asignacion_id, periodo, tipo_nota, porcentaje in (
+        repositorio.leer_porcentajes_de_asignaciones_del_anio(cursor, list(asignacion_ids))
+    ):
+        por_clase_y_periodo.setdefault((asignacion_id, periodo), {})[tipo_nota] = porcentaje
+    if not por_clase_y_periodo:
+        return {}
+
+    tipos = {}
+    for asignacion_id, periodo, descripcion in repositorio.leer_tipos_de_asignaciones_del_anio(
+        cursor, sorted({asignacion_id for asignacion_id, _ in por_clase_y_periodo})
+    ):
+        tipos.setdefault((asignacion_id, periodo), []).append(descripcion)
+
+    return {
+        clave: porcentajes
+        for clave, porcentajes in por_clase_y_periodo.items()
+        if porcentajes_activos(tipos.get(clave, []), porcentajes)
+    }

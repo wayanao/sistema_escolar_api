@@ -6,6 +6,50 @@ Ultima revision documental: 2026-10-31.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
+## 2026-10-31 - Notas por periodo en el resumen del estudiante (paso 1, backend)
+
+Paso 1 de `docs/funcionalidades/NOTAS_RESUMEN_ESTUDIANTE.md`. **Sin
+migración.**
+
+- `GET /estudiantes/{id}/detalles` suma `notas_por_periodo` (cuatro
+  periodos y el año por materia, con la carita en preescolar) e
+  `inasistencias_por_periodo`. Los campos de siempre conservan su forma y se
+  llenan con "Todo el año".
+- **Lo que ven los colegios cambia un poco** antes del frontend nuevo: el
+  promedio por materia de la ficha pasa de "todas las celdas del año juntas"
+  al promedio de los periodos.
+- **Arregla preescolar:** su materia ya no tumba la sección de notas. Antes
+  `float(None)` fallaba; lo fijó primero una prueba con el código viejo.
+- Archivos nuevos:
+  - `app/core/notas_resumen.py`, el cálculo puro. Reutiliza
+    `calcular_nota_del_periodo`, la escala de caritas y `normalizar_nota`.
+  - `tests/test_notas_resumen.py`, con 22 pruebas.
+- `estudiantes_repository`:
+  - `leer_planilla_del_anio` reemplaza a `leer_promedios_por_materia`. Usa
+    las mismas materias que el reporte parcial (`_curso_del_estudiante` y
+    `_materia_visible` de `boletin_repository`).
+  - `contar_inasistencias_por_periodo` reemplaza a `contar_inasistencias`.
+    Es una sola fila con `count(*) FILTER`.
+- Porcentajes de todo el año:
+  - `porcentajes_activos_del_anio` en `app/services/porcentajes_activos.py`;
+  - `leer_porcentajes_de_asignaciones_del_anio` y
+    `leer_tipos_de_asignaciones_del_anio` en el repositorio de porcentajes.
+- Consultas propias de la ficha: de 4 a 5, por los porcentajes; 6 si alguna
+  clase los tiene activos.
+- Pruebas viejas actualizadas al contrato nuevo:
+  - en `test_asignaciones_estudiantes_caracterizacion.py`, el conteo, la
+    degradación, el promedio, preescolar y las faltas;
+  - en `test_anio_lectivo_lecturas.py`, las faltas y las notas del año.
+- Verificación:
+  - `scripts/verify.py`: **3076 pasan, 0 fallan**; Ruff y `pip check`
+    limpios.
+  - Contra la base del Colegio Demo, un script que solo lee comparó el
+    resumen con el reporte parcial. Primaria: **0 diferencias** en los 4
+    periodos. Preescolar: la carita de su curso de preescolar ("logrado",
+    3,50).
+
+Para publicar basta el push: no hay tabla nueva.
+
 ## 2026-10-31 - Nombres de los cuadros del plan de clase (paso 1, backend)
 
 Paso 1 de `docs/funcionalidades/NOMBRES_CUADROS_PLAN.md`. **Lo que ven los

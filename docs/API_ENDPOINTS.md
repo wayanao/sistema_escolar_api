@@ -732,6 +732,27 @@ Notas:
   `deuda_anios_anteriores`: la deuda de cada año anterior al que se mira, en
   que el estudiante tuvo matricula, aparte de `total_deuda`. Mismo formato que
   en cartera; vacia mientras haya un solo año.
+- Notas por periodo (2026-10-31, `docs/funcionalidades/NOTAS_RESUMEN_ESTUDIANTE.md`):
+  la respuesta suma dos campos, con los cuatro periodos y el año de una vez.
+  - `notas_por_periodo`: `{"materias": [{"materia", "tipo_evaluacion",
+    "periodos": {"1".."4": {"nota", "valoracion"} | null}, "anio": ... |
+    null}], "promedio": {"1".."4", "anio": número | null}}`.
+    - La nota de cada periodo es la del reporte parcial: la planilla
+      vigente, sin columnas internas, sin ceros y ponderada si hay
+      porcentajes activos.
+    - En preescolar, además, la carita (`valoracion`).
+    - "Año" es el promedio de los periodos con nota.
+    - `promedio` solo cuenta las materias numéricas.
+    - Las materias son las del curso del estudiante en ese año, las mismas
+      del reporte parcial, en el orden del boletín.
+  - `inasistencias_por_periodo`: `{"1".."4", "anio"}`. "Año" es el total de
+    siempre.
+  - `notas`, `promedio_general` e `inasistencias` conservan su forma. Desde
+    esta fecha se llenan con "Todo el año": las materias numéricas con su
+    nota del año a un decimal. Antes eran el promedio de todas las celdas del
+    año juntas.
+  - Preescolar ya no tumba la sección de notas: su `AVG(nota)` vacío hacía
+    fallar `float(None)`.
 
 ## Cuentas
 

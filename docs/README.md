@@ -65,6 +65,11 @@ continuacion para retomarla en otro chat u otro LLM.
   parcial y rankings), B3 (rama de Neon) bien y backend en producción el
   mismo día (`dfe0336`, Render Live) y frontend publicado también
   (`82eecf9`). Partes A y B completas y publicadas.**
+- `funcionalidades/NOMBRES_CUADROS_PLAN.md`: nombres de los cuadros del plan
+  de clase por colegio; tabla `plan_de_clases_cuadros` (solo los renombrados),
+  `GET /plan-de-clases/cuadros` y `PUT /admin/plan-de-clases/cuadros` (solo
+  admin). Documento principal. **Diseñado (paso 0, 2026-10-31), nada
+  implementado.**
 
 ## Estado actual resumido
 

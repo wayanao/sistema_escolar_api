@@ -32,7 +32,10 @@ colegios no cambia** hasta el paso 2 (frontend). **Con migración.**
   `docs/MIGRACIONES.md`.
 - `scripts/verify.py`: **3053 pasan, 0 fallan**; Ruff y `pip check` limpios.
 
-Para publicar: **primero la migración en producción, después el push.**
+**Publicado el 2026-10-31:** primero la migración en producción (los dos
+colegios en `OMITIDA` al volver a simular) y después el push (`f4c7fcb`).
+Render quedó Live, `/health` en `200` y `PUT /admin/plan-de-clases/cuadros`
+en `401` sin sesión (antes habría sido `405`).
 
 ## 2026-10-30 - Entrevista de admisión solo en los colegios que la usan
 

@@ -2,9 +2,10 @@
 
 ## Control
 
-- Estado: **paso 1 (backend) completo el 2026-10-31, sin commit.** La
-  migración está probada en una rama de Neon y la base regenerada; falta
-  aplicarla en producción y hacer el push. El paso 0 (este documento) está en
+- Estado: **el paso 1 (backend) se publicó el 2026-10-31** (`f4c7fcb`).
+  Primero se aplicó la migración en producción y después se hizo el push.
+  Render quedó Live. Lo que ven los colegios no cambia hasta el paso 2 (la
+  pantalla, en `frontend-react`). El paso 0 (este documento) está en
   `864e8d6`. Ver "Avance del paso 1".
 - Tipo: función nueva de producto, encima del plan de clases. No es un módulo
   de `docs/modularizacion/`.
@@ -255,12 +256,22 @@ Verificación:
   `docs/MIGRACIONES.md`.
 - `scripts/verify.py`: **3053 pasan, 0 fallan**; Ruff y `pip check` limpios.
 
+Publicación (2026-10-31):
+
+- Commit `f4c7fcb`, con la migración y la base juntas.
+- El usuario aplicó la migración en producción, y al volver a simular salió
+  `OMITIDA (ya aplicada)` en los dos colegios.
+- Después hizo el push y Render quedó Live. `/health` dio `200` y
+  `PUT /admin/plan-de-clases/cuadros` dio `401` sin sesión; con el código
+  anterior habría dado `405`, así que la ruta nueva está publicada.
+
 ## Entrega para el siguiente paso
 
-1. Commit del paso 1, con la migración y la base juntas.
-2. Aplicar la migración en producción, con la cadena directa (`PENDIENTE` →
-   `OK` → `OMITIDA`).
-3. Push del backend y comprobar que Render quede Live, que `/health` dé `200`
-   y que las dos rutas nuevas respondan `401` sin sesión.
-4. Paso 2, en `frontend-react`. Para probarlo en local, la base a la que
-   apunta el backend local debe tener la tabla (punto 2).
+El paso 1 ya está publicado. Lo siguiente es el **paso 2**, en
+`frontend-react` (ver su `docs/funcionalidades/NOMBRES_CUADROS_PLAN.md`).
+Antes de empezarlo hay que resolver la P1.
+
+Producción ya tiene la tabla, así que se puede probar en local con el Colegio
+Demo. Renombrar desde local cambia los nombres de verdad en el Colegio Demo de
+producción; se deshace con "Volver a los originales". La rama de Neon de
+prueba ya no se necesita.

@@ -1215,4 +1215,15 @@ Estado al 2026-10-31:
   función y 1 disparador. El diff agregó solo la migración a la cabecera
   (49), la tabla y su clave foránea.
 - `scripts/verify.py`: **3053 pasan, 0 fallan**; Ruff y `pip check` limpios.
-- **Falta aplicarla en producción**, antes del push.
+- **Aplicada en producción el 2026-10-31** por el usuario, en
+  `tenant_colegio_1` y `tenant_2005`. La simulación posterior dio `OMITIDA (ya
+  aplicada)` en los dos.
+- Después hizo el push (`origin/main` en `f4c7fcb`) y Render quedó Live:
+  - `/health` respondió `200`;
+  - `PUT /admin/plan-de-clases/cuadros` da `401` sin sesión. Con el código
+    anterior habría dado `405`, así que la ruta nueva está publicada;
+  - `GET /plan-de-clases/cuadros` y `GET /plan-de-clases/{id}` dan `401`.
+
+  No se rellenaron ni cambiaron datos existentes.
+- A partir de aquí el archivo no se puede editar: el runner guarda su
+  checksum. Cualquier cambio posterior debe ir en una migración nueva.

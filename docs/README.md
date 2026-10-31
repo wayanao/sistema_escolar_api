@@ -68,9 +68,8 @@ continuacion para retomarla en otro chat u otro LLM.
 - `funcionalidades/NOMBRES_CUADROS_PLAN.md`: nombres de los cuadros del plan
   de clase por colegio; tabla `plan_de_clases_cuadros` (solo los renombrados),
   `GET /plan-de-clases/cuadros` y `PUT /admin/plan-de-clases/cuadros` (solo
-  admin). Documento principal. **Paso 1 (backend) completo el 2026-10-31,
-  sin commit: migración probada en una rama de Neon y base regenerada; falta
-  aplicarla en producción y el push.**
+  admin). Documento principal. **Paso 1 (backend) publicado el 2026-10-31
+  (`f4c7fcb`, migración en producción); falta la pantalla (frontend).**
 
 ## Estado actual resumido
 

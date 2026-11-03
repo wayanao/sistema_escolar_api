@@ -20,12 +20,21 @@ Los demas routers usan paths completos en cada decorator.
 
 ## Health
 
+- `GET /ping`
 - `GET /health`
 
-Notas:
+`GET /ping`:
 
-- Publico, sin autenticacion: un monitor externo no puede iniciar sesion. Es la
-  unica ruta abierta ademas de `login`.
+- Publico, sin autenticacion. Es la que llama el monitor externo.
+- Responde `200` con `{"status": "ok"}` y **no toca la base**: si la
+  consultara cada 5 minutos, Neon no se dormiria nunca y cobraria las 24 horas.
+- No detecta fallos de la base ni el pool agotado.
+- Limite: `60/minute` por IP.
+
+`GET /health`:
+
+- Publico, sin autenticacion. Con `/ping`, son las unicas rutas abiertas
+  ademas de `login`. Queda para comprobar a mano, por ejemplo tras publicar.
 - `200` cuando la API vive y PostgreSQL responde:
 
 ```json

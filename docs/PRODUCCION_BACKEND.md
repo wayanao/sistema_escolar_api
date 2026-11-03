@@ -237,9 +237,26 @@ Scripts operativos:
 
 ## Monitoreo de disponibilidad
 
-Endpoint:
+Endpoints, los dos publicos y sin autenticacion:
 
-- `GET /health`, publico y sin autenticacion.
+- `GET /ping`: el que llama el monitor externo. Responde `200` con
+  `{"status": "ok"}` y no toca la base.
+- `GET /health`: consulta la base. Queda para comprobar a mano.
+
+### Por que el monitor no llama a `/health`
+
+Neon cobra por el tiempo que la base esta despierta y la duerme tras 5 minutos
+sin consultas. Hasta el 2026-11-03 UptimeRobot llamaba a `/health` cada 5
+minutos, y `/health` hace `SELECT 1`: la base no se dormia nunca, ni de noche
+ni los fines de semana. En Monitoring de Neon se vieron tres dias seguidos sin
+un solo tramo inactivo.
+
+Lo que se pierde, decidido por el responsable del sistema: el monitor avisa si
+el servidor se cae, si un deploy falla o si la API se traba atendiendo, pero
+**no** si falla solo la base o si se agota el pool. Esos casos se ven por
+quejas de los colegios o en los logs de Render.
+
+### `/health`
 
 Respuestas:
 
@@ -271,14 +288,14 @@ agravaria la caida en vez de contenerla.
 Regla operativa:
 
 - `Health Check Path` de Render: **vacio**.
-- `/health`: solo para el monitor externo.
+- `/health`: solo para comprobar a mano.
 
 ### Configuracion del monitor externo
 
 Con UptimeRobot en plan gratuito:
 
 1. Crear un monitor tipo `HTTP(s)`.
-2. URL: `https://<dominio-del-backend>/health`.
+2. URL: `https://<dominio-del-backend>/ping`. **No** `/health`: ver arriba.
 3. Intervalo: 5 minutos, el minimo del plan gratuito.
 4. Activar el aviso **despues de 2 fallos consecutivos**, no del primero. Evita
    alertas por un bache momentaneo de la base.
@@ -304,7 +321,7 @@ porque el mensaje de `psycopg2` revela DSN y nombres internos.
 - Abrir backend y confirmar que no hay errores de arranque.
 - Probar `GET /health` sin token y confirmar `200` con `"database": "ok"`.
 - Confirmar que el `Health Check Path` de Render sigue vacio.
-- Confirmar que el monitor externo apunta a `/health` y esta activo.
+- Confirmar que el monitor externo apunta a `/ping` y esta activo.
 - Probar `POST /login` desde el dominio real del frontend.
 - Revisar en navegador que la cookie `token` queda `HttpOnly`, con `Secure`
   segun entorno y `SameSite` esperado.
@@ -332,7 +349,8 @@ porque el mensaje de `psycopg2` revela DSN y nombres internos.
 - El pool puede agotarse si alguna ruta abre conexion y no la cierra.
 - El rate limit global `100/minute` de `app/main.py` es inerte: `slowapi`
   requiere `SlowAPIMiddleware` para aplicar `default_limits` y la app no lo
-  monta. Solo `POST /login` y `GET /health` estan limitados de verdad.
+  monta. Solo `POST /login`, `GET /health` y `GET /ping` estan limitados de
+  verdad.
 - Cookies cross-site mal configuradas pueden cerrar sesion en movil aunque en
   PC parezca funcionar.
 

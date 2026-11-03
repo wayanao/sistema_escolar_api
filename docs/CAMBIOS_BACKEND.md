@@ -6,6 +6,28 @@ Ultima revision documental: 2026-11-03.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
+## 2026-11-03 - `GET /ping` para el monitor externo (paso 2)
+
+Segundo paso para que Neon pueda dormirse. **Sin migracion. Lo que ven los
+colegios no cambia.**
+
+- `GET /ping` (`app/routes/health.py`): publico, `60/minute` por IP, responde
+  `{"status": "ok"}` y **no toca la base**. Es sincrona a proposito: pasa por
+  los mismos hilos que el resto de la API, asi que si la API se traba el
+  monitor lo nota.
+- `/health` no cambia. Queda para comprobar a mano tras publicar.
+- Decidido por el responsable del sistema: **sin segundo monitor a
+  `/health`**. El monitor ya no avisara si falla solo la base o se agota el
+  pool.
+- Pruebas en `tests/test_health.py`: `/ping` responde `200` sin pedir nunca
+  el pool, aun con la base caida; es publica, solo `GET` y sincrona. Antes
+  del cambio fallaban 3; despues pasan las 15 del archivo.
+- Docs: `API_ENDPOINTS.md`, `PRODUCCION_BACKEND.md` (el monitor apunta a
+  `/ping`), `ARQUITECTURA_BACKEND.md`.
+- Pendiente (paso 3, fuera del repo): publicar los pasos 1 y 2 y, despues,
+  cambiar la URL del monitor de UptimeRobot a `/ping`. Paso 4: comparar el
+  consumo de Neon.
+
 ## 2026-11-03 - Reconexion cuando Neon corta las conexiones (paso 1)
 
 Primer paso para que Neon pueda dormirse de noche y deje de cobrar 24 horas.

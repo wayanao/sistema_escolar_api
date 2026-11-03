@@ -38,7 +38,7 @@ Ultima revision documental: 2026-08-27.
 - `app/db/session.py`: pool y obtencion de conexiones.
 - `app/core/permissions.py`: permisos reutilizables por profesor, asignacion, estudiante y plan de clases.
 - `app/core/logging.py`: configuracion de logging.
-- `app/core/health.py`: chequeo de salud contra `public` para monitoreo externo.
+- `app/core/health.py`: chequeo de la base contra `public` para `GET /health`. El monitor externo llama a `GET /ping`, que no toca la base.
 - `app/core/tenant_status.py`: calculo de estado efectivo del tenant por suscripcion, mora y bloqueo.
 - `app/core/super_admin.py`: dependencia de autenticacion para plataforma SaaS en `public`.
 - `app/routes/`: routers HTTP.
@@ -175,3 +175,4 @@ Limites realmente vigentes:
 
 - `POST /login`: `5/minute`
 - `GET /health`: `60/minute`
+- `GET /ping`: `60/minute`

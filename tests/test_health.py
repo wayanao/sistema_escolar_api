@@ -1,13 +1,16 @@
-"""Contrato del endpoint de salud usado por el monitoreo externo.
+"""Contrato de los endpoints de salud: `GET /health` y `GET /ping`.
 
-`GET /health` es la unica ruta publica ademas de `login`, y su valor operativo
-depende de tres cosas que estas pruebas fijan:
+Son las unicas rutas publicas ademas de `login`. El valor operativo de
+`/health` depende de tres cosas que estas pruebas fijan:
 
 1. distingue "la API vive y la base contesta" de "la base fallo", porque un
    monitor solo mira el status code;
 2. no exige autenticacion, porque un monitor no puede iniciar sesion;
 3. no filtra el detalle del fallo al cuerpo de la respuesta, porque el mensaje
    de psycopg2 revela DSN, host y nombres internos.
+
+`/ping` es la que llama el monitor externo, y lo que se fija de ella es que no
+toca la base: si lo hiciera, Neon no se dormiria nunca.
 
 Como el resto de la suite, no requieren PostgreSQL: la capa de datos va con
 dobles. La peticion HTTP se conduce por la interfaz ASGI real, no llamando a la
@@ -19,11 +22,13 @@ import asyncio
 import inspect
 import json
 
+import psycopg2
 import pytest
 from fastapi.routing import APIRoute
 from psycopg2.pool import PoolError
 
 from app.core import health as core_health
+from app.db import session
 from app.globals import tenant_schema_var
 from app.main import app
 from app.routes import health as rutas_health
@@ -172,22 +177,23 @@ def test_health_registra_el_detalle_en_el_log(base_de_datos, caplog):
 # ---------------------------------------------------------------------------
 
 
-def _ruta_health():
+def _ruta(path):
     # Se inspecciona el router y no `app.routes`: desde FastAPI 0.137
     # `include_router` es perezoso y `app.routes` ya no contiene las rutas
     # incluidas, sino un envoltorio `_IncludedRouter` por router.
     rutas = [
         ruta
         for ruta in rutas_health.router.routes
-        if isinstance(ruta, APIRoute) and ruta.path == "/health"
+        if isinstance(ruta, APIRoute) and ruta.path == path
     ]
-    assert len(rutas) == 1, "se espera exactamente una ruta /health"
+    assert len(rutas) == 1, f"se espera exactamente una ruta {path}"
     return rutas[0]
 
 
-def test_health_es_publica_y_solo_get():
+@pytest.mark.parametrize("path", ["/health", "/ping"])
+def test_la_ruta_es_publica_y_solo_get(path):
     """Un monitor no puede iniciar sesion: la ruta no admite dependencias."""
-    ruta = _ruta_health()
+    ruta = _ruta(path)
 
     assert ruta.methods == {"GET"}
     assert ruta.dependant.dependencies == []
@@ -196,7 +202,44 @@ def test_health_es_publica_y_solo_get():
 
 def test_health_se_ejecuta_de_forma_sincrona():
     """La consulta es bloqueante, asi que FastAPI debe sacarla del event loop."""
-    assert not inspect.iscoroutinefunction(_ruta_health().endpoint)
+    assert not inspect.iscoroutinefunction(_ruta("/health").endpoint)
+
+
+# ---------------------------------------------------------------------------
+# `GET /ping`: la API vive, sin despertar la base
+# ---------------------------------------------------------------------------
+
+
+def test_ping_responde_200_sin_tocar_la_base(monkeypatch):
+    """Neon se duerme tras 5 minutos sin consultas y cobra mientras esta despierta.
+
+    El monitor llama cada 5 minutos: si `/ping` consultara la base, no la
+    dejaria dormir nunca, como pasaba con `/health` hasta el 2026-11-03. Toda
+    conexion sale de `get_pool()`, asi que basta vigilarlo. La base se simula
+    caida para fijar tambien que `/ping` no depende de ella.
+    """
+    pedidas = []
+
+    def base_caida():
+        pedidas.append(1)
+        raise psycopg2.OperationalError("could not connect to server")
+
+    monkeypatch.setattr(session, "get_pool", base_caida)
+
+    estado, cuerpo = _peticion_asgi(app, "GET", "/ping")
+
+    assert estado == 200
+    assert cuerpo == {"status": "ok"}
+    assert pedidas == []
+
+
+def test_ping_se_ejecuta_de_forma_sincrona():
+    """Pasa por los mismos hilos que el resto de la API.
+
+    Si estan todos ocupados, `/ping` tambien espera y el monitor lo nota. Una
+    version `async` responderia "ok" desde el event loop con la API trabada.
+    """
+    assert not inspect.iscoroutinefunction(_ruta("/ping").endpoint)
 
 
 # ---------------------------------------------------------------------------

@@ -4,8 +4,8 @@ No pertenece a ningun dominio: es infraestructura transversal, igual que
 `logging` o `tenant_status`, asi que vive en `app/core/`.
 
 El chequeo es deliberadamente barato. No cuenta filas, no toca ningun schema de
-colegio y no revela versiones ni rutas: es el unico endpoint sin autenticacion
-ademas de `login`, y un monitor no necesita mas que un si o un no.
+colegio y no revela versiones ni rutas: con `/ping`, es el unico endpoint sin
+autenticacion ademas de `login`, y no hace falta mas que un si o un no.
 """
 import logging
 

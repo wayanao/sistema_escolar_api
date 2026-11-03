@@ -133,22 +133,52 @@ def get_pool() -> ThreadedConnectionPool:
     return _pool
 
 
-def get_connection() -> PooledConnection:
-    pool = get_pool()
-    connection = pool.getconn()
+def _devolver_tras_fallo(pool: ThreadedConnectionPool, connection) -> None:
     try:
-        connection.autocommit = False
-        with connection.cursor() as cursor:
-            apply_session_setup(cursor)
-    except Exception:
+        connection.rollback()
+    except psycopg2.Error:
+        pool.putconn(connection, close=True)
+    else:
+        pool.putconn(connection)
+
+
+def get_connection() -> PooledConnection:
+    """Toma una conexion del pool y la deja lista para el tenant en curso.
+
+    Neon duerme la base tras unos minutos sin consultas y, al dormirse, corta
+    las conexiones abiertas. El pool de psycopg2 no lo nota y las sigue
+    entregando: sin este reintento, las primeras peticiones tras despertar
+    fallaban, una por conexion cortada. Si la preparacion falla y psycopg2
+    marco la conexion como rota (`closed`), se descarta y se toma otra.
+
+    Solo se repite la preparacion -search_path y timeouts-, nunca la consulta
+    de quien llama, asi que reintentar no puede duplicar una escritura.
+
+    El pool guarda como mucho `minconn` conexiones libres, y `minconn` no pasa
+    de `maxconn`: con `maxconn + 1` intentos se descartan todas las cortadas y
+    la ultima ya es nueva. Si la base no responde, abrir esa conexion nueva
+    lanza el error de siempre desde `getconn()` y no se reintenta.
+    """
+    pool = get_pool()
+    ultimo_error = None
+    for _intento in range(settings.DB_POOL_MAX_CONNECTIONS + 1):
+        connection = pool.getconn()
         try:
-            connection.rollback()
-        except psycopg2.Error:
+            connection.autocommit = False
+            with connection.cursor() as cursor:
+                apply_session_setup(cursor)
+        except psycopg2.Error as error:
+            if not connection.closed:
+                _devolver_tras_fallo(pool, connection)
+                raise
             pool.putconn(connection, close=True)
+            ultimo_error = error
+        except Exception:
+            _devolver_tras_fallo(pool, connection)
+            raise
         else:
-            pool.putconn(connection)
-        raise
-    return PooledConnection(pool, connection)
+            return PooledConnection(pool, connection)
+    raise ultimo_error
 
 
 @contextmanager

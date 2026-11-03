@@ -1,6 +1,6 @@
 # Base de Datos
 
-Ultima revision documental: 2026-10-21.
+Ultima revision documental: 2026-11-03.
 
 ## Motor
 
@@ -28,6 +28,11 @@ Variables:
 - pone `autocommit = False`;
 - ejecuta `SET search_path`;
 - devuelve `PooledConnection`.
+- si la preparacion falla porque la conexion esta cortada (psycopg2 la marca
+  `closed`), la descarta y toma otra, hasta `DB_POOL_MAX_CONNECTIONS + 1`
+  intentos. Neon corta las conexiones libres al dormirse por inactividad.
+  Solo se repite la preparacion, nunca la consulta de quien llama. Un error
+  que no corta la conexion, o no poder abrir una nueva, falla como siempre.
 
 `PooledConnection.close()`:
 

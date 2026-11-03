@@ -1,10 +1,32 @@
 # Cambios Backend
 
-Ultima revision documental: 2026-10-31.
+Ultima revision documental: 2026-11-03.
 
 ## Proposito
 
 Bitacora de cambios documentales y tecnicos observables del backend.
+
+## 2026-11-03 - Reconexion cuando Neon corta las conexiones (paso 1)
+
+Primer paso para que Neon pueda dormirse de noche y deje de cobrar 24 horas.
+Hoy no se duerme: UptimeRobot consulta `/health` cada 5 minutos y `/health`
+hace un `SELECT 1`. **Sin migracion. Lo que ven los colegios no cambia.**
+
+- Al dormirse, Neon corta las conexiones que el pool deja libres, y el pool no
+  lo nota. Con el codigo anterior, las 5 primeras peticiones tras despertar
+  fallaban con "server closed the connection unexpectedly", una por conexion
+  cortada. Lo fijo primero una prueba contra ese codigo.
+- `get_connection()` (`app/db/session.py`): si la preparacion falla y la
+  conexion quedo marcada `closed`, la descarta y toma otra, hasta
+  `DB_POOL_MAX_CONNECTIONS + 1` intentos. Solo se repite la preparacion
+  (`search_path` y timeouts), nunca la consulta de quien llama. Con conexiones
+  sanas hace exactamente lo mismo que antes.
+- Archivo nuevo: `tests/test_db_conexiones_cortadas.py`, 5 pruebas con un
+  `ThreadedConnectionPool` real y `psycopg2.connect` sustituido.
+- Verificacion: `scripts/verify.py`, **3081 pasan, 0 fallan**; Ruff y
+  `pip check` limpios.
+- Pendiente: agregar `/ping` sin base, apuntar UptimeRobot ahi y medir en
+  Neon si la base se duerme.
 
 ## 2026-10-31 - Notas por periodo en el resumen del estudiante (paso 1, backend)
 

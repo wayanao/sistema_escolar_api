@@ -271,6 +271,8 @@ def test_el_repositorio_de_planilla_es_el_duodecimo():
         "branding_repository",
         "cuadros_plan_de_clases_repository",
         "dashboard_repository",
+        # «Mi curso» del director de grupo (2026-11-07): solo lee.
+        "director_grupo_repository",
         "estudiantes_repository",
         "listas_seguimiento_repository",
         "notas_repository",

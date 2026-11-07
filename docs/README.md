@@ -75,6 +75,10 @@ continuacion para retomarla en otro chat u otro LLM.
   /estudiantes/{id}/detalles`, con la regla del reporte parcial. Sin
   migración. Documento principal. **Completo y publicado el 2026-10-31:
   backend `a7560e0` y pantalla `f5a573d`.**
+- `funcionalidades/MI_CURSO_DIRECTOR.md`: "Mi curso" del director de grupo
+  en Boletín Final: ranking del curso (puesto, promedio, definitivas,
+  inasistencias) y observación general guardada. Documento principal.
+  **Diseñado el 2026-11-07; nada construido.**
 
 ## Estado actual resumido
 

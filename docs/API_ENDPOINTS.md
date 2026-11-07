@@ -9,6 +9,7 @@ Los routers se incluyen en `app/main.py`.
 Prefijos definidos en router:
 
 - `boletines`: prefix `/boletines`
+- `director_grupo`: prefix `/director-grupo`
 - `egresos`: prefix `/api/egresos`
 - `listas_seguimiento`: prefix `/listas-seguimiento`
 - `prestamos`: prefix `/api/prestamos`
@@ -1770,6 +1771,33 @@ Router incluido con prefix `/api/nomina`
 - `GET /api/nomina/empleados`
 - `GET /api/nomina/historial`
 - `POST /api/nomina/pagar`
+
+## Director de grupo ("Mi curso")
+
+Router prefix: `/director-grupo`. Desde el 2026-11-07, paso 1 de
+`docs/funcionalidades/MI_CURSO_DIRECTOR.md`. Solo leen. Todo con
+`get_current_user` en el router; año lectivo activo.
+
+- `GET /director-grupo/cursos`: cursos activos del año activo que dirige el
+  profesor de la sesión, `[{id, nombre, jornada, nivel}]`. El admin recibe
+  `[]` sin consultar la base.
+- `GET /director-grupo/cursos/{curso_id}/{periodo}`: `curso_id > 0`,
+  `periodo` de 1 a 4 (si no, `422`). Exige `require_director_de_curso`:
+  admin, o el profesor que dirige ese curso del año activo; si no, `403`
+  (también si el curso no existe). Admin con un curso que no es del año
+  activo: `404`. Responde `{curso: {id, nombre, jornada, nivel}, periodo,
+  total_rankeados, materias: [{asignacion_id, materia, profesor,
+  tipo_evaluacion, guardados, total}], estudiantes: [{estudiante_id, nombre,
+  apellido, puesto, promedio, notas: {"<asignacion_id>": {definitiva,
+  guardada}}, inasistencias: {periodo, anio}}]}`, ordenados por puesto (sin
+  puesto al final, por apellido).
+  - Mismas reglas que el boletín impreso: puesto y promedio con las
+    definitivas **guardadas** (`AVG` + `RANK()`, como
+    `leer_puesto_en_el_curso`); la definitiva de cada materia es la guardada o,
+    si no hay o es 0, el promedio de la planilla (`guardada` dice cuál).
+    Inasistencias como `contar_inasistencias_por_periodo`.
+  - Cinco consultas fijas por petición (más el permiso), sin una por
+    estudiante ni por materia.
 
 ## Boletines
 

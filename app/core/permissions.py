@@ -1,6 +1,7 @@
 from fastapi import HTTPException, status
 
 from app.database import get_connection
+from app.repositories.anios_lectivos_repository import ANIO_ACTIVO_ID_SQL
 from app.repositories.plan_de_clases_repository import (
     profesor_tiene_acceso_plan_de_clases_cursor,
 )
@@ -54,6 +55,60 @@ def require_estudiante_access(
     own_cursor = conn.cursor()
     try:
         own_cursor.execute(_SQL_PROFESOR_COMPARTE_CURSO, parametros)
+        if own_cursor.fetchone():
+            return
+    finally:
+        own_cursor.close()
+        conn.close()
+
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No autorizado")
+
+
+# "Mi curso" del director de grupo (docs/funcionalidades/MI_CURSO_DIRECTOR.md):
+# el profesor dirige ese curso **del año activo**. Dar clase en el curso no
+# basta: el director ve las notas de todos los profesores del curso.
+_SQL_PROFESOR_DIRIGE_CURSO = f"""
+    SELECT 1
+    FROM cursos c
+    WHERE c.id = %s
+      AND c.director_grupo_id = %s
+      AND c.anio_lectivo_id = {ANIO_ACTIVO_ID_SQL}
+"""
+
+
+def require_director_de_curso(
+    curso_id: int,
+    current_user: dict,
+    *,
+    cursor=None,
+) -> None:
+    """El admin, o el profesor que es director de grupo de ese curso.
+
+    Un profesor que solo da clase en el curso recibe **403**: este permiso abre
+    las notas de las demás materias, que `require_asignacion_access` no abre.
+    Un curso que no existe también da 403, para no revelar cuáles existen.
+
+    `cursor` es opcional, como en `require_asignacion_access`: prestarlo ahorra
+    pedir otra conexión al pool y no relaja el permiso.
+    """
+    if current_user.get("rol") == "admin":
+        return
+
+    if current_user.get("rol") != "profesor":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No autorizado")
+
+    parametros = (curso_id, current_user.get("id"))
+
+    if cursor is not None:
+        cursor.execute(_SQL_PROFESOR_DIRIGE_CURSO, parametros)
+        if cursor.fetchone():
+            return
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No autorizado")
+
+    conn = get_connection()
+    own_cursor = conn.cursor()
+    try:
+        own_cursor.execute(_SQL_PROFESOR_DIRIGE_CURSO, parametros)
         if own_cursor.fetchone():
             return
     finally:

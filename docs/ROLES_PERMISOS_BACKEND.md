@@ -77,6 +77,7 @@ Funciones actuales:
 - `require_asignacion_access(asignacion_id, current_user, detail="No autorizado")`
 - `require_estudiante_in_asignacion(estudiante_id, asignacion_id)`
 - `require_plan_de_clases_access(plan_id, current_user, detail="No autorizado")`
+- `require_director_de_curso(curso_id, current_user)` (2026-11-07)
 
 ## Reglas por funcion
 
@@ -106,6 +107,15 @@ Funciones actuales:
 
 - admin pasa;
 - profesor pasa si el plan esta asociado a una asignacion propia.
+
+`require_director_de_curso` (`docs/funcionalidades/MI_CURSO_DIRECTOR.md`):
+
+- admin pasa sin consultar la base;
+- profesor pasa solo si es `cursos.director_grupo_id` de ese curso **del año
+  activo**. Dar clase en el curso no basta: este permiso abre las notas de las
+  demás materias del curso;
+- un curso que no existe, o de otro año, da `403` al profesor;
+- otros roles reciben `403`.
 
 ## Routers protegidos por admin
 
@@ -148,6 +158,7 @@ Usan `get_current_user` y permisos por ownership:
 - planilla
 - asistencia
 - boletines
+- director de grupo (`/director-grupo`, con `require_director_de_curso`)
 - dashboard
 - asignaciones para `/mis-clases` y `/profesores/{profesor_id}/cursos`
 - plan de clases de profesor

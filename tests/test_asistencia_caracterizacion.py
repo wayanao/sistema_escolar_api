@@ -223,6 +223,8 @@ def test_el_repositorio_de_asistencia_es_el_noveno():
         "branding_repository",
         "cuadros_plan_de_clases_repository",
         "dashboard_repository",
+        # «Mi curso» del director de grupo (2026-11-07): solo lee.
+        "director_grupo_repository",
         "estudiantes_repository",
         "listas_seguimiento_repository",
         "notas_repository",
@@ -239,7 +241,7 @@ def test_el_repositorio_de_asistencia_es_el_noveno():
         "super_admin_repository",
         "ventas_repository",
     ]
-    assert len(repositorios) == 23
+    assert len(repositorios) == 24
 
 
 def test_las_tres_sentencias_viven_ahora_en_el_repositorio():

@@ -40,6 +40,7 @@ from app.routes import (
     cuentas,
     cursos,
     dashboard,
+    director_grupo,
     egresos,
     estudiantes,
     health,
@@ -241,6 +242,7 @@ app.include_router(prestamos.router)
 app.include_router(ventas.router)
 app.include_router(nomina.router, prefix="/api/nomina")
 app.include_router(boletines.router)
+app.include_router(director_grupo.router)
 app.include_router(branding.router)
 app.include_router(plantillas.router)
 app.include_router(cartera.router)

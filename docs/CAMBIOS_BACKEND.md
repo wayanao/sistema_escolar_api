@@ -1,10 +1,35 @@
 # Cambios Backend
 
-Ultima revision documental: 2026-11-03.
+Ultima revision documental: 2026-11-07.
 
 ## Proposito
 
 Bitacora de cambios documentales y tecnicos observables del backend.
+
+## 2026-11-07 - "Mi curso" del director de grupo, paso 1 (solo lectura)
+
+Pedido del usuario: que cada director de grupo vea, en Boletín Final, el
+ranking de su curso con sus notas y sus inasistencias. Plan en
+`docs/funcionalidades/MI_CURSO_DIRECTOR.md`. **Sin migracion. Solo lee.**
+
+- Router nuevo `app/routes/director_grupo.py` (prefijo `/director-grupo`), con
+  `GET /director-grupo/cursos` y `GET /director-grupo/cursos/{curso_id}/{periodo}`.
+  Vive aparte de `boletines.py` para no tocar sus guardias de caracterizacion.
+- Permiso nuevo `require_director_de_curso` en `app/core/permissions.py`:
+  admin, o el profesor que dirige ese curso del año activo.
+- Repositorio nuevo `app/repositories/director_grupo_repository.py` y
+  controlador `app/controllers/director_grupo_controller.py`. Copian las reglas
+  del boletin (materias, puesto, definitiva con respaldo en la planilla,
+  inasistencias) y no las reinterpretan.
+- Pruebas: `tests/test_director_grupo.py` (24): permiso, armado, cinco
+  consultas fijas, rutas por ASGI (200, 403 sin leer nada, 404, 422, 500 sin
+  detalles). Las guardias que enumeran los repositorios (asistencia,
+  dashboard, notas, planilla, ventas) y los consumidores de `profesor` anotan
+  el repositorio nuevo.
+- `python scripts/verify.py`: 3108 pruebas, ruff y pip check correctos.
+- Comprobado en la base real, solo lectura y solo en el Colegio Demo: puesto,
+  definitivas e inasistencias iguales al boletín del admin en los 7
+  estudiantes del curso probado.
 
 ## 2026-11-03 - `GET /ping` para el monitor externo (paso 2)
 

@@ -307,6 +307,9 @@ def test_consumidores_sql_directos_de_profesor_quedan_enumerados():
         "app/dependencies.py",
         "app/repositories/asignaciones_repository.py",
         "app/repositories/boletin_repository.py",
+        # «Mi curso» del director de grupo (2026-11-07): une con profesor
+        # solo para el nombre de quien dicta cada materia, en una lectura.
+        "app/repositories/director_grupo_repository.py",
         "app/repositories/estudiantes_repository.py",
         "app/repositories/notas_repository.py",
         # Une con profesor solo para el nombre que muestra la bitacora, en la

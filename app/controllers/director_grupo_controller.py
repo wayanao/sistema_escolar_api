@@ -1,4 +1,5 @@
-"""«Mi curso» del director de grupo: los cursos que dirige y el ranking de uno.
+"""«Mi curso» del director de grupo: los cursos que dirige, el ranking de uno
+y la observación general de cada estudiante (paso 3).
 
 Ver `docs/funcionalidades/MI_CURSO_DIRECTOR.md`. El permiso (director del curso
 o admin) lo pone la ruta con `require_director_de_curso`; aqui solo se lee y se
@@ -68,11 +69,16 @@ def obtener_mi_curso_controller(curso_id, periodo):
             else []
         )
         inasistencias = repositorio.leer_inasistencias_del_curso(cursor, curso_id, periodo)
+        observaciones = repositorio.leer_observaciones_del_curso(cursor, curso_id, periodo)
 
-    return armar_mi_curso(curso, periodo, materias, estudiantes, definitivas, inasistencias)
+    return armar_mi_curso(
+        curso, periodo, materias, estudiantes, definitivas, inasistencias, observaciones
+    )
 
 
-def armar_mi_curso(curso, periodo, materias, estudiantes, definitivas, inasistencias):
+def armar_mi_curso(
+    curso, periodo, materias, estudiantes, definitivas, inasistencias, observaciones=()
+):
     """La respuesta de "Mi curso", con las reglas del boletin.
 
     La definitiva de cada materia es la guardada, o el promedio de la planilla
@@ -105,6 +111,8 @@ def armar_mi_curso(curso, periodo, materias, estudiantes, definitivas, inasisten
         }
         for fila in inasistencias
     }
+
+    textos = {fila["estudiante_id"]: fila.get("texto") or "" for fila in observaciones}
 
     salida_materias = []
     for fila in materias:
@@ -141,6 +149,7 @@ def armar_mi_curso(curso, periodo, materias, estudiantes, definitivas, inasisten
                 for materia in materias
             },
             "inasistencias": ausencias.get(fila["estudiante_id"], {"periodo": 0, "anio": 0}),
+            "observacion_general": textos.get(fila["estudiante_id"], ""),
         }
         for fila in estudiantes
     ]
@@ -159,3 +168,40 @@ def armar_mi_curso(curso, periodo, materias, estudiantes, definitivas, inasisten
         "materias": salida_materias,
         "estudiantes": salida_estudiantes,
     }
+
+
+class EstudianteFueraDelCursoError(LookupError):
+    """El estudiante no está activo en ese curso del año activo (es el 404)."""
+
+
+def guardar_observacion_general_controller(curso_id, periodo, estudiante_id, texto, usuario):
+    """Guarda, reemplaza o borra (texto vacío) la observación general del
+    estudiante en el periodo del año activo.
+
+    El permiso sobre el curso lo pone la ruta; aquí se exige además que el
+    estudiante sea de ese curso, para que dirigir un curso no deje escribir en
+    otro.
+    """
+    with get_cursor(commit=True, cursor_factory=RealDictCursor) as cursor:
+        if not repositorio.estudiante_activo_en_curso(cursor, estudiante_id, curso_id):
+            raise EstudianteFueraDelCursoError("El estudiante no está en este curso")
+        if not texto:
+            repositorio.borrar_observacion_general(cursor, estudiante_id, periodo)
+            return {
+                "estudiante_id": estudiante_id,
+                "periodo": periodo,
+                "texto": "",
+                "actualizado_en": None,
+            }
+        fila = repositorio.guardar_observacion_general(
+            cursor, estudiante_id, periodo, texto, usuario.get("rol"), usuario.get("id")
+        )
+
+    actualizado_en = fila.get("actualizado_en")
+    return {
+        "estudiante_id": estudiante_id,
+        "periodo": periodo,
+        "texto": fila.get("texto") or "",
+        "actualizado_en": actualizado_en.isoformat() if hasattr(actualizado_en, "isoformat") else actualizado_en,
+    }
+

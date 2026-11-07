@@ -6,6 +6,31 @@ Ultima revision documental: 2026-11-07.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
+## 2026-11-07 - "Mi curso" del director de grupo, paso 3 (observación general)
+
+La caja "Observación general" del boletín impreso solo existía en pantalla; ahora
+se guarda. **Con migración:** `migrations/20261107_boletin_observacion_general.sql`
+crea la tabla `boletin_observacion_general` (una por estudiante, año y periodo;
+texto de 1 a 500 caracteres; se va con el estudiante; quién la guardó, sin clave
+foránea). No toca tablas existentes.
+
+- `PUT /director-grupo/cursos/{curso_id}/{periodo}/observaciones/{estudiante_id}`:
+  guarda, reemplaza o (con texto vacío) borra. Permiso del director del curso o
+  admin, y el estudiante debe ser de ese curso.
+- `GET /director-grupo/cursos/{curso_id}/{periodo}` trae `observacion_general`
+  por estudiante (6 consultas fijas).
+- `GET /boletines/admin/generar/...` trae `observacion_general`: una consulta
+  más (de 4 a 5). Se actualizaron las guardias que cuentan esas consultas
+  (`test_boletin_caracterizacion.py`, `test_anio_lectivo_lecturas.py`).
+- Esquema `app/schemas/director_grupo.py` (`LARGO_MAXIMO_OBSERVACION = 500`).
+- Pruebas: `tests/test_director_grupo.py`, `tests/test_migracion_boletin_observacion_general.py`.
+- Migración probada en una rama de Neon (copia de producción) y esquema base
+  regenerado desde ella: solo cambió la tabla nueva. Prueba de guardar,
+  reemplazar, leer, otro curso, más de 500 caracteres y borrar: todo bien.
+- `scripts/verify.py`: 3124 pruebas, ruff y pip check correctos.
+- **Orden de publicación:** aplicar la migración en producción **antes** del
+  push: `/boletines/admin/generar` nuevo lee la tabla.
+
 ## 2026-11-07 - "Mi curso" del director de grupo, paso 1 (solo lectura)
 
 Pedido del usuario: que cada director de grupo vea, en Boletín Final, el

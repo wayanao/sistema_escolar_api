@@ -56,6 +56,8 @@ Archivos actuales:
 - `20261014_admisiones_cuestionario.sql`
 - `20261019_estudiantes_sisben_residencia.sql`
 - `20261021_planilla_subnotas.sql`
+- `20261107_boletin_observacion_general.sql` (observación general del
+  boletín; `docs/funcionalidades/MI_CURSO_DIRECTOR.md`, paso 3)
 - `README.md`
 
 Migraciones globales `public`:

@@ -6,7 +6,8 @@ del curso entero para su director), aunque lea lo que guarda el boletin.
 
 Toda ruta nace protegida por `get_current_user` en el router; la del curso
 exige ademas `require_director_de_curso`: el admin o el profesor que dirige ese
-curso del año activo.
+curso del año activo. Lo mismo para escribir la observación general, que
+además exige que el estudiante sea de ese curso.
 """
 import logging
 from typing import Annotated
@@ -14,11 +15,14 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Path
 
 from app.controllers.director_grupo_controller import (
+    EstudianteFueraDelCursoError,
+    guardar_observacion_general_controller,
     listar_cursos_dirigidos_controller,
     obtener_mi_curso_controller,
 )
 from app.core.permissions import require_director_de_curso
 from app.dependencies import get_current_user
+from app.schemas.director_grupo import ObservacionGeneralIn
 
 logger = logging.getLogger(__name__)
 
@@ -56,3 +60,26 @@ def obtener_mi_curso(
     if resultado is None:
         raise HTTPException(status_code=404, detail="Curso no encontrado")
     return resultado
+
+
+@router.put("/cursos/{curso_id}/{periodo}/observaciones/{estudiante_id}")
+def guardar_observacion_general(
+    curso_id: Annotated[int, Path(gt=0)],
+    periodo: Annotated[int, Path(ge=1, le=4)],
+    estudiante_id: Annotated[int, Path(gt=0)],
+    datos: ObservacionGeneralIn,
+    current_user: dict = Depends(get_current_user),
+):
+    """Guarda la observación general del estudiante en el periodo (vacía la
+    borra). Máximo 500 caracteres."""
+    require_director_de_curso(curso_id, current_user)
+    try:
+        return guardar_observacion_general_controller(
+            curso_id, periodo, estudiante_id, datos.texto, current_user
+        )
+    except EstudianteFueraDelCursoError as e:
+        raise HTTPException(status_code=404, detail="El estudiante no está en este curso") from e
+    except Exception as e:
+        logger.exception("Error guardando la observación general")
+        raise HTTPException(status_code=500, detail="No se pudo guardar la observación") from e
+

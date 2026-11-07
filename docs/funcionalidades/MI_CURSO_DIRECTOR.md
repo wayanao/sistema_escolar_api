@@ -2,8 +2,9 @@
 
 ## Control
 
-- Estado: **paso 1 (backend, solo lectura) construido el 2026-11-07, sin
-  commit.** Pasos 2 a 4 pendientes.
+- Estado: **pasos 1 y 2 construidos el 2026-11-07; paso 3 (backend con
+  migración) construido el mismo día y probado en una rama de Neon; falta
+  aplicar la migración en producción.** Paso 4 pendiente.
 - **Este es el documento principal.** La pantalla está en
   `frontend-react/docs/funcionalidades/MI_CURSO_DIRECTOR.md`.
 - Tipo: función nueva de producto. No es un módulo de `docs/modularizacion/`.
@@ -117,7 +118,8 @@ Pedidos del usuario, 2026-11-07:
 
 ### Paso 2 — Pantalla: pestaña "Mi curso (director de grupo)"
 
-Ver el documento de la pantalla.
+Ver el documento de la pantalla. Construido el 2026-11-07 con las dos lecturas
+del paso 1; sin cambios en el backend.
 
 ### Paso 3 — Backend: observación general guardada (con migración)
 
@@ -131,6 +133,33 @@ Ver el documento de la pantalla.
 - Migración según `docs/MIGRACIONES.md`: probar en una rama de Neon, aplicar
   con `apply_migration.py` (endpoint directo), regenerar el esquema base y
   subir migración y base juntas. Se aplica en producción **antes** del push.
+
+#### Avance del paso 3 (2026-11-07)
+
+- Largo máximo: **500 caracteres**, aceptado por el usuario («continua» tras
+  la propuesta).
+- Construido: migración `20261107_boletin_observacion_general.sql`, consultas
+  en `director_grupo_repository.py` (leer las del curso, comprobar que el
+  estudiante es del curso, `UPSERT`, borrar, leer una para el boletín del
+  admin), `PUT .../observaciones/{estudiante_id}`, `observacion_general` en
+  «Mi curso» y en `/boletines/admin/generar`.
+- La observación se guarda solo del **año activo**; el boletín del admin la lee
+  del año que se mira.
+- Ruta: `PUT /director-grupo/cursos/{curso_id}/{periodo}/observaciones/{estudiante_id}`
+  (no `/boletines/...`, como se pensó al diseñar).
+- 2026-11-07, en la rama de Neon `prueba-observacion-general` (copia de
+  producción, endpoint directo; el usuario lo hizo en su terminal): simulación
+  con todo PENDIENTE, migración aplicada con OK en todos los colegios, esquema
+  base regenerado desde `tenant_colegio_1` (solo cambió la tabla nueva, su
+  índice, sus dos claves foráneas y la lista: 49 → 50). Prueba con un script
+  que se niega a correr contra producción: guardar, reemplazar, «Mi curso», el
+  boletín del admin, otro curso (404), más de 500 caracteres (la base lo
+  rechaza) y texto vacío (borra): todo bien, y el script borró lo que
+  escribió. `scripts/verify.py`: 3124 pruebas, ruff y pip check correctos.
+- Pendiente, en este orden: commit (migración + base + código), **aplicar la
+  migración en producción antes del push del backend** (el boletín del admin
+  nuevo lee la tabla: sin ella daría error), push del backend y comprobar que
+  Render quede Live.
 
 ### Paso 4 — Pantalla: la caja en cada fila y el impreso
 

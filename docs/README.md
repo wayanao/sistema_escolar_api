@@ -78,7 +78,8 @@ continuacion para retomarla en otro chat u otro LLM.
 - `funcionalidades/MI_CURSO_DIRECTOR.md`: "Mi curso" del director de grupo
   en Boletín Final: ranking del curso (puesto, promedio, definitivas,
   inasistencias) y observación general guardada. Documento principal.
-  **Diseñado el 2026-11-07; nada construido.**
+  **Pasos 1 (backend, lectura) y 2 (pantalla) construidos el 2026-11-07;
+  faltan el 3 y el 4.**
 
 ## Estado actual resumido
 

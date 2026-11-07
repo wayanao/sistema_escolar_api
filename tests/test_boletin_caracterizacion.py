@@ -680,12 +680,53 @@ def test_linea_base_de_consultas_del_boletin_de_admin(monkeypatch):
     assert resultado["materias"][0]["definitiva"] == 4.0
     assert resultado["materias"][0]["detalles"][0]["observacion"] == "Buen desempeño"
 
-    # 4 consultas fijas y NINGUN N+1: los detalles se piden con `= ANY(%s)`.
-    # Coincide con la medicion de la capa 4, que conto 4 consultas para un
-    # boletin de 13 materias.
-    assert len(cursor.calls) == 4
+    # Consultas fijas y NINGUN N+1: los detalles se piden con `= ANY(%s)`.
+    # La capa 4 midio 4 consultas para un boletin de 13 materias. Desde el
+    # 2026-11-07 son 5: la observacion general que guarda el director de grupo
+    # («Mi curso», paso 3, docs/funcionalidades/MI_CURSO_DIRECTOR.md). Sigue
+    # siendo un numero fijo, sin importar cuantas materias haya.
+    assert len(cursor.calls) == 5
+    assert "boletin_observacion_general" in cursor.calls[4][0]
     assert "= ANY(%s)" in cursor.calls[1][0]
     assert conn.closed is True
+
+
+def test_boletin_de_admin_incluye_la_observacion_general_del_director(monkeypatch):
+    """«Mi curso», paso 3: la que guardó el director, del año que se mira."""
+    llamadas = []
+
+    def leer(_cursor, estudiante_id, periodo, anio):
+        llamadas.append((estudiante_id, periodo, anio))
+        return {"texto": "Muy buen periodo."}
+
+    monkeypatch.setattr(
+        boletin_controller.director_grupo_repository, "leer_observacion_general", leer
+    )
+    cursor = CursorFalso(
+        una_fila={"estudiante_nombre": "Sara", "estudiante_apellido": "López", "curso_nombre": "Quinto"},
+        filas=[],
+    )
+    monkeypatch.setattr(boletin_controller, "get_connection", lambda: ConexionFalsa(cursor))
+
+    resultado = boletin_controller.obtener_boletin_admin_controller(8, 2)
+
+    assert resultado["observacion_general"] == "Muy buen periodo."
+    assert llamadas == [(8, 2, None)]
+
+
+def test_boletin_de_admin_sin_observacion_general_la_deja_vacia(monkeypatch):
+    monkeypatch.setattr(
+        boletin_controller.director_grupo_repository,
+        "leer_observacion_general",
+        lambda *_args: None,
+    )
+    cursor = CursorFalso(
+        una_fila={"estudiante_nombre": "Sara", "estudiante_apellido": "López", "curso_nombre": "Quinto"},
+        filas=[],
+    )
+    monkeypatch.setattr(boletin_controller, "get_connection", lambda: ConexionFalsa(cursor))
+
+    assert boletin_controller.obtener_boletin_admin_controller(8, 2)["observacion_general"] == ""
 
 
 def test_boletin_de_admin_incluye_el_director_de_grupo_cuando_el_curso_tiene(monkeypatch):

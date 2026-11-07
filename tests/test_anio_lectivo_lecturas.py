@@ -2001,13 +2001,14 @@ def _boletin(monkeypatch, funcion, **kwargs):
 
 @pytest.mark.parametrize(
     ("funcion", "consultas_de_siempre"),
-    [("obtener_boletin_admin_controller", 3), ("obtener_reporte_parcial_admin_controller", 2)],
+    [("obtener_boletin_admin_controller", 4), ("obtener_reporte_parcial_admin_controller", 2)],
 )
 def test_el_boletin_sin_anio_hace_las_consultas_de_siempre(
     monkeypatch, funcion, consultas_de_siempre
 ):
-    """Sin materias, el boletin hace 3 (materias, datos, puesto): la linea base
-    de 4 cuenta tambien los detalles, que aqui no hay."""
+    """Sin materias, el boletin hace 4 (materias, datos, puesto y, desde el
+    2026-11-07, la observacion general de «Mi curso», paso 3): la linea base
+    de 5 cuenta tambien los detalles, que aqui no hay."""
     _, consultas = _boletin(monkeypatch, funcion)
 
     assert len(consultas) == consultas_de_siempre
@@ -2033,6 +2034,12 @@ def test_el_boletin_de_2026_lee_el_curso_de_la_matricula_de_2026(monkeypatch, fu
     assert respuesta["curso"] == "PRIMERO A"
     assert consultas[0] == (SQL_POR_ID, (1,))
     for sql, params in consultas[1:]:
+        if "boletin_observacion_general" in sql:
+            # La observacion general («Mi curso», paso 3) no necesita el curso:
+            # se guarda por estudiante y año, y se lee con el id de ese año.
+            assert "anio_lectivo_id = %s" in sql
+            assert params == (7, 1, 1)
+            continue
         assert CURSO_DE_LA_MATRICULA in sql
         assert params[0] == 1
 

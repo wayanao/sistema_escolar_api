@@ -1796,8 +1796,15 @@ Router prefix: `/director-grupo`. Desde el 2026-11-07, paso 1 de
     `leer_puesto_en_el_curso`); la definitiva de cada materia es la guardada o,
     si no hay o es 0, el promedio de la planilla (`guardada` dice cuál).
     Inasistencias como `contar_inasistencias_por_periodo`.
-  - Cinco consultas fijas por petición (más el permiso), sin una por
-    estudiante ni por materia.
+  - Seis consultas fijas por petición (más el permiso), sin una por
+    estudiante ni por materia. Desde el paso 3 cada estudiante trae
+    `observacion_general` (texto o `""`).
+- `PUT /director-grupo/cursos/{curso_id}/{periodo}/observaciones/{estudiante_id}`
+  (paso 3): cuerpo `{texto}`, recortado y de máximo 500 caracteres (si no,
+  `422`); vacío borra la observación. Mismo permiso que la lectura (`403`), y
+  el estudiante debe estar activo en ese curso del año activo (si no, `404`).
+  Responde `{estudiante_id, periodo, texto, actualizado_en}`. Tabla
+  `boletin_observacion_general`.
 
 ## Boletines
 
@@ -1805,7 +1812,9 @@ Router prefix: `/boletines`
 
 - `POST /boletines/guardar`
 - `GET /boletines/referencia/{asignacion_id}/{periodo}`
-- `GET /boletines/admin/generar/{estudiante_id}/{periodo}`
+- `GET /boletines/admin/generar/{estudiante_id}/{periodo}`: desde el
+  2026-11-07 trae `observacion_general` (la que guardó el director de grupo,
+  del año que se mira; `""` si no hay). Una consulta más.
 - `GET /boletines/admin/reporte-parcial/{estudiante_id}/{periodo}`
 
 Notas:

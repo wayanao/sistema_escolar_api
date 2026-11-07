@@ -1,7 +1,9 @@
 """Lecturas de "Mi curso" del director de grupo.
 
 Ver `docs/funcionalidades/MI_CURSO_DIRECTOR.md`. Todas son del **año
-lectivo activo**, como el resto del perfil profesor, y ninguna escribe.
+lectivo activo**, como el resto del perfil profesor. Solo escriben las dos de
+la observacion general (paso 3), al final del archivo; el `commit` es de quien
+llama.
 
 Cada funcion recibe el cursor de quien llama y ejecuta una sola sentencia, como
 en los demas repositorios: abrir, cerrar y confirmar no es de este modulo.
@@ -208,3 +210,86 @@ def leer_inasistencias_del_curso(cursor, curso_id, periodo):
             GROUP BY asi.estudiante_id
         ''', (periodo, curso_id))
     return cursor.fetchall()
+
+
+# --------------------------------------------------------------------------
+# Observacion general del boletin (paso 3). Tabla
+# `boletin_observacion_general`: una por estudiante, año y periodo.
+# --------------------------------------------------------------------------
+
+def leer_observaciones_del_curso(cursor, curso_id, periodo):
+    """Observaciones generales del periodo de los estudiantes activos del
+    curso, en el año activo. Solo salen quienes tienen una."""
+    cursor.execute(f'''
+            SELECT og.estudiante_id, og.texto, og.actualizado_en
+            FROM boletin_observacion_general og
+            JOIN estudiantes e ON e.id = og.estudiante_id
+            WHERE e.curso_id = %s
+              AND {_ESTUDIANTE_ACTIVO}
+              AND og.periodo = %s
+              AND og.anio_lectivo_id = {ANIO_ACTIVO_ID_SQL}
+        ''', (curso_id, periodo))
+    return cursor.fetchall()
+
+
+def estudiante_activo_en_curso(cursor, estudiante_id, curso_id):
+    """`True` si el estudiante esta activo en ese curso y el curso es del año
+    activo. Es lo que impide escribir la observacion de alguien de otro
+    curso, aunque quien escribe dirija el suyo."""
+    cursor.execute(f'''
+            SELECT 1
+            FROM estudiantes e
+            JOIN cursos c ON c.id = e.curso_id
+            WHERE e.id = %s
+              AND e.curso_id = %s
+              AND {_ESTUDIANTE_ACTIVO}
+              AND c.anio_lectivo_id = {ANIO_ACTIVO_ID_SQL}
+        ''', (estudiante_id, curso_id))
+    return cursor.fetchone() is not None
+
+
+def guardar_observacion_general(cursor, estudiante_id, periodo, texto, rol, usuario_id):
+    """Crea o reemplaza la observacion del estudiante en el periodo del año
+    activo. Devuelve el texto y cuando quedo guardado."""
+    cursor.execute(f'''
+            INSERT INTO boletin_observacion_general (
+                estudiante_id, anio_lectivo_id, periodo, texto,
+                actualizado_por_rol, actualizado_por_id
+            )
+            VALUES (%s, {ANIO_ACTIVO_ID_SQL}, %s, %s, %s, %s)
+            ON CONFLICT (estudiante_id, anio_lectivo_id, periodo)
+            DO UPDATE SET
+                texto = EXCLUDED.texto,
+                actualizado_en = CURRENT_TIMESTAMP,
+                actualizado_por_rol = EXCLUDED.actualizado_por_rol,
+                actualizado_por_id = EXCLUDED.actualizado_por_id
+            RETURNING texto, actualizado_en
+        ''', (estudiante_id, periodo, texto, rol, usuario_id))
+    return cursor.fetchone()
+
+
+def borrar_observacion_general(cursor, estudiante_id, periodo):
+    """Borra la observacion del estudiante en el periodo del año activo (un
+    texto vacio no se guarda)."""
+    cursor.execute(f'''
+            DELETE FROM boletin_observacion_general
+            WHERE estudiante_id = %s
+              AND periodo = %s
+              AND anio_lectivo_id = {ANIO_ACTIVO_ID_SQL}
+        ''', (estudiante_id, periodo))
+
+
+def leer_observacion_general(cursor, estudiante_id, periodo, anio_lectivo_id=None):
+    """La observacion de un estudiante para el boletin del admin. Sin
+    `anio_lectivo_id`, la del año activo, como el resto de ese boletin."""
+    anio_sql, params_anio = (
+        (ANIO_ACTIVO_ID_SQL, ()) if anio_lectivo_id is None else ("%s", (anio_lectivo_id,))
+    )
+    cursor.execute(f'''
+            SELECT texto
+            FROM boletin_observacion_general
+            WHERE estudiante_id = %s
+              AND periodo = %s
+              AND anio_lectivo_id = {anio_sql}
+        ''', (estudiante_id, periodo, *params_anio))
+    return cursor.fetchone()

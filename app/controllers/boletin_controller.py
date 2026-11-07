@@ -7,7 +7,11 @@ from app.core.nota_periodo import (
     tipo_de_evaluacion_de_celdas,
 )
 from app.database import get_connection
-from app.repositories import boletin_repository, porcentajes_planilla_repository
+from app.repositories import (
+    boletin_repository,
+    director_grupo_repository,
+    porcentajes_planilla_repository,
+)
 from app.services.anio_lectivo import anio_distinto_del_activo, exigir_asignacion_editable
 from app.services.asignacion_academica import (
     resolver_asignacion_academica_id_cursor,
@@ -335,6 +339,13 @@ def obtener_boletin_admin_controller(estudiante_id: int, periodo: int, anio_lect
             cur, estudiante_id, periodo, materias_res
         )
 
+        # «Mi curso», paso 3 (docs/funcionalidades/MI_CURSO_DIRECTOR.md): la
+        # observacion general que guardo el director de grupo, del año que se
+        # mira. Una consulta mas; su SQL vive en director_grupo_repository.
+        observacion_general = director_grupo_repository.leer_observacion_general(
+            cur, estudiante_id, periodo, anio
+        ) or {}
+
         resultado = {
             'estudiante_id': estudiante_id,
             'estudiante_nombre': est_info['estudiante_nombre'],
@@ -348,6 +359,7 @@ def obtener_boletin_admin_controller(estudiante_id: int, periodo: int, anio_lect
             'periodo': periodo,
             'puesto': ranking_row.get('puesto'),
             'total_estudiantes': ranking_row.get('total') or 0,
+            'observacion_general': observacion_general.get('texto') or '',
             'materias': []
         }
 

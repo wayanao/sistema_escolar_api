@@ -2,9 +2,9 @@
 
 ## Control
 
-- Estado: **pasos 1 y 2 construidos el 2026-11-07; paso 3 (backend con
-  migración) construido el mismo día y probado en una rama de Neon; falta
-  aplicar la migración en producción.** Paso 4 pendiente.
+- Estado: **pasos 1 a 4 construidos el 2026-11-07.** Backend (pasos 1 y 3)
+  publicado ese día, con la migración aplicada antes en producción; la
+  pantalla (pasos 2 y 4) espera la prueba en local y su push.
 - **Este es el documento principal.** La pantalla está en
   `frontend-react/docs/funcionalidades/MI_CURSO_DIRECTOR.md`.
 - Tipo: función nueva de producto. No es un módulo de `docs/modularizacion/`.
@@ -163,7 +163,15 @@ del paso 1; sin cambios en el backend.
 
 ### Paso 4 — Pantalla: la caja en cada fila y el impreso
 
-Ver el documento de la pantalla.
+Ver el documento de la pantalla. Construido el 2026-11-07.
+
+### Publicación del backend (2026-11-07)
+
+- Migración aplicada en producción por el usuario (simulación PENDIENTE,
+  aplicación OK, segunda simulación OMITIDA) **antes** del push.
+- Push de `7a8f76f` (paso 1) y `3787eb9` (paso 3); Render Live. Comprobado sin
+  sesión: `/ping` y `/health` 200; `/director-grupo/...` pasó de 404 a 401
+  (existe y pide sesión), también el `PUT`.
 
 ## Preguntas abiertas (se hacen justo antes del paso que las necesita)
 

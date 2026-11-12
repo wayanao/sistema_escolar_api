@@ -97,8 +97,13 @@ Router `app/routes/firmas.py`, prefijo `/firmas`, protegido por
    `profesor`. `test_profesores_caracterizacion.py` sube de 7 a 8
    `REFERENCES profesor(id)`, con la clave nueva declarada con su
    `ON DELETE CASCADE`. `verify.py`: 3191 pruebas, ruff y pip check correctos.
-2. **Identidad institucional** (frontend): cuadro "Firma" para que el admin
-   suba la del rector(a).
+   **Migración aplicada en producción el 2026-11-12** (el usuario, con
+   `apply_migration.py`). Falta el commit y el push del backend: ya se pueden
+   hacer, porque el frontend de hoy ignora los campos nuevos del boletín.
+2. **Identidad institucional** (frontend): cuadro "Firma del rector(a)" para
+   que el admin la suba con una foto o la firme con el dedo. **Construido el
+   2026-11-12, sin commit** (detalle en
+   `frontend-react/docs/funcionalidades/FIRMAS_BOLETIN.md`).
 3. **«Mi curso»** (frontend): botón "Guardar mi firma" para el director de
    grupo: firmar con el dedo (el recuadro del observador) o subir una foto.
 4. **Boletín** (frontend): cada firma sobre su raya; sin firma, la raya queda

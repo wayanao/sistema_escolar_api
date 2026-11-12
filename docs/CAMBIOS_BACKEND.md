@@ -33,7 +33,8 @@ en `bytea`, de 1 a 100 KB. No toca tablas existentes.
   `tenant_colegio_1` (44 tablas): solo cambiaron las dos tablas nuevas.
 - `scripts/verify.py`: 3191 pruebas, ruff y pip check correctos.
 - **Orden de publicación:** aplicar la migración en producción **antes** del
-  push: el boletín del admin nuevo lee las tablas.
+  push: el boletín del admin nuevo lee las tablas. **Aplicada en producción el
+  2026-11-12.**
 
 ## 2026-11-11 - Puntualidad de pagos para el panel del admin (paso 3)
 

@@ -104,8 +104,9 @@ Router `app/routes/firmas.py`, prefijo `/firmas`, protegido por
    que el admin la suba con una foto o la firme con el dedo. **Construido el
    2026-11-12, sin commit** (detalle en
    `frontend-react/docs/funcionalidades/FIRMAS_BOLETIN.md`).
-3. **«Mi curso»** (frontend): botón "Guardar mi firma" para el director de
-   grupo: firmar con el dedo (el recuadro del observador) o subir una foto.
+3. **«Mi curso»** (frontend): un solo botón grande, "Firmar con el dedo" (el
+   recuadro del observador), y la foto como enlace. **Construido el
+   2026-11-12, sin commit.**
 4. **Boletín** (frontend): cada firma sobre su raya; sin firma, la raya queda
    para firmar a mano y el admin ve un aviso antes de imprimir. **Adelantado
    al paso 3 y construido el 2026-11-12, sin commit.**

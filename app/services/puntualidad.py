@@ -18,7 +18,9 @@ con el usuario ese día:
 - Siempre a tiempo: todas sus cuotas vencidas a tiempo. Quien no tiene cuotas
   vencidas (becados en $0, conceptos sin cuotas todavía) no se cuenta.
 - Ranking: primero la mayor parte de cuotas a tiempo; si empatan, quien suele
-  pagar más días antes del límite. Nadie que deba hoy entra al ranking.
+  pagar más días antes del límite. Nadie que deba hoy entra al ranking, ni
+  quien no ha pagado ninguna cuota a tiempo (en el Colegio Demo, el
+  2026-11-11, alguien con sus 19 cuotas pagadas tarde salía de primero).
 - Cursos: por el porcentaje de sus estudiantes que pagan siempre a tiempo.
 
 Solo cuentas: sin base de datos. Las lecturas están en
@@ -172,8 +174,9 @@ def _publico(item: dict) -> dict:
 
 
 def _ranking(items: Iterable[dict], limite: int) -> list[dict]:
-    """Los mejores, sin nadie que deba hoy."""
-    return [_publico(item) for item in sorted((i for i in items if not i["debe"]), key=_orden_ranking)[:limite]]
+    """Los mejores: sin nadie que deba hoy ni quien nunca ha pagado a tiempo."""
+    elegibles = (item for item in items if not item["debe"] and item["cuotas_a_tiempo"] > 0)
+    return [_publico(item) for item in sorted(elegibles, key=_orden_ranking)[:limite]]
 
 
 def armar_puntualidad(estudiantes: list[dict], hoy: date) -> dict:

@@ -35,6 +35,13 @@ lee.
 - Pruebas: `tests/test_puntualidad.py` (la regla y el armado). Se reconoció el
   repositorio nuevo en las cinco guardias que enumeran todos los repositorios
   y la ruta nueva en `test_reportes_query_counts.py`.
+- Probado contra la base real (Colegio Demo, solo lectura, conexión en modo
+  `READ ONLY`): responde en ~1 s y las cuotas sin pagar coinciden con las de
+  la cartera (`obtener_cuotas_vencidas_estudiante`) en los 13 estudiantes
+  activos. Ahí apareció un caso: alguien con sus 19 cuotas pagadas, todas
+  tarde, salía de primero en `mejores`. Desde entonces tampoco entra al
+  ranking quien no ha pagado ninguna cuota a tiempo (sí se cuenta en el total
+  y en su curso).
 
 ## 2026-11-07 - "Mi curso" del director de grupo, paso 3 (observación general)
 

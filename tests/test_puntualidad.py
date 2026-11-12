@@ -210,6 +210,21 @@ def test_el_ranking_desempata_por_dias_antes_y_deja_fuera_a_quien_debe():
     assert "debe" not in curso["mejores"][0]
 
 
+def test_quien_nunca_pago_a_tiempo_se_cuenta_pero_no_entra_al_ranking():
+    # Visto en el Colegio Demo: todo pagado, pero tarde, salía de primero.
+    estudiantes = [
+        evaluado(1, 10, 19, 0),
+        evaluado(2, 10, 10, 1, -4),
+    ]
+
+    respuesta = armar_puntualidad(estudiantes, date(2026, 11, 11))
+
+    assert respuesta["total_estudiantes"] == 2
+    assert respuesta["cursos"][0]["estudiantes"] == 2
+    assert [item["estudiante_id"] for item in respuesta["mejores"]] == [2]
+    assert [item["estudiante_id"] for item in respuesta["cursos"][0]["mejores"]] == [2]
+
+
 def test_cuantos_mejores_se_muestran():
     estudiantes = [evaluado(numero, 10, 10, 10, numero) for numero in range(1, 9)]
 

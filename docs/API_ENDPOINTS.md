@@ -1913,8 +1913,9 @@ Notas:
   `estudiantes`, `siempre_a_tiempo`, `porcentaje` y sus `mejores`, hasta 5).
   Cada estudiante de `mejores` trae `estudiante_id`, `nombre`, `apellido`,
   `curso_id`, `curso_nombre`, `cuotas_vencidas`, `cuotas_a_tiempo`,
-  `dias_antes_promedio` y `siempre_a_tiempo`; nadie que deba hoy entra en
-  `mejores`. Regla completa en `app/services/puntualidad.py`: cuenta a tiempo
+  `dias_antes_promedio` y `siempre_a_tiempo`; nadie que deba hoy ni quien no
+  ha pagado ninguna cuota a tiempo entra en `mejores` (puede venir vacía).
+  Regla completa en `app/services/puntualidad.py`: cuenta a tiempo
   la cuota pagada completa a más tardar el día límite más los días de gracia,
   con la fecha registrada del pago; los adelantos pagan el mes al que se
   aplicaron y los demás pagos se reparten de la cuota más vieja a la más

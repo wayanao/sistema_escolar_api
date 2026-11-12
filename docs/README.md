@@ -83,8 +83,8 @@ continuacion para retomarla en otro chat u otro LLM.
 - `funcionalidades/FIRMAS_BOLETIN.md`: firmas guardadas para el boletín, la
   del rector(a) (la sube el admin) y la de cada director de grupo (la pone él
   desde «Mi curso»). Tablas `firma_institucional` y `firmas_profesores`,
-  rutas `/firmas`. Documento principal. **Paso 1 (backend) construido el
-  2026-11-12 y probado en una rama de Neon, sin commit; faltan las pantallas.**
+  rutas `/firmas`. Documento principal. **Los 5 pasos construidos el
+  2026-11-12, sin commit; migración ya en producción.**
 
 ## Estado actual resumido
 

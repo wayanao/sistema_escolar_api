@@ -110,7 +110,8 @@ Router `app/routes/firmas.py`, prefijo `/firmas`, protegido por
 4. **Boletín** (frontend): cada firma sobre su raya; sin firma, la raya queda
    para firmar a mano y el admin ve un aviso antes de imprimir. **Adelantado
    al paso 3 y construido el 2026-11-12, sin commit.**
-5. **Certificados** (frontend): la firma del rector(a), opcional.
+5. **Certificados** (frontend): casilla «Con la firma del rector(a)»,
+   desmarcada en cada certificado. **Construido el 2026-11-12, sin commit.**
 
 ## Orden de publicación
 

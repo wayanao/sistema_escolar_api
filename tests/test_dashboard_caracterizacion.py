@@ -265,6 +265,8 @@ def test_el_dominio_tiene_su_repositorio():
         # «Mi curso» del director de grupo (2026-11-07): solo lee.
         "director_grupo_repository",
         "estudiantes_repository",
+        # Firmas guardadas para el boletin (2026-11-12, FIRMAS_BOLETIN.md).
+        "firmas_repository",
         "listas_seguimiento_repository",
         "notas_repository",
         "observaciones_repository",

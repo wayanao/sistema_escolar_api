@@ -11,6 +11,7 @@ decision explicita.
 """
 
 import ast
+import base64
 import inspect
 from pathlib import Path
 
@@ -683,10 +684,13 @@ def test_linea_base_de_consultas_del_boletin_de_admin(monkeypatch):
     # Consultas fijas y NINGUN N+1: los detalles se piden con `= ANY(%s)`.
     # La capa 4 midio 4 consultas para un boletin de 13 materias. Desde el
     # 2026-11-07 son 5: la observacion general que guarda el director de grupo
-    # («Mi curso», paso 3, docs/funcionalidades/MI_CURSO_DIRECTOR.md). Sigue
-    # siendo un numero fijo, sin importar cuantas materias haya.
-    assert len(cursor.calls) == 5
+    # («Mi curso», paso 3, docs/funcionalidades/MI_CURSO_DIRECTOR.md). Desde el
+    # 2026-11-12 son 6: las dos firmas guardadas, en una sola consulta
+    # (docs/funcionalidades/FIRMAS_BOLETIN.md). Sigue siendo un numero fijo,
+    # sin importar cuantas materias haya.
+    assert len(cursor.calls) == 6
     assert "boletin_observacion_general" in cursor.calls[4][0]
+    assert "firmas_profesores" in cursor.calls[5][0]
     assert "= ANY(%s)" in cursor.calls[1][0]
     assert conn.closed is True
 
@@ -763,6 +767,64 @@ def test_boletin_de_admin_sin_director_de_grupo_devuelve_none(monkeypatch):
     resultado = boletin_controller.obtener_boletin_admin_controller(8, 2)
 
     assert resultado["director_grupo"] is None
+
+
+def test_boletin_de_admin_incluye_las_firmas_guardadas(monkeypatch):
+    """FIRMAS_BOLETIN.md: la del rector(a) y la del director de grupo de ese
+    curso, buscada con su id. El id no sale en la respuesta."""
+    llamadas = []
+
+    def leer(_cursor, director_grupo_id):
+        llamadas.append(director_grupo_id)
+        return {
+            "firma_institucional": memoryview(b"\x89PNG rector"),
+            "firma_director_grupo": memoryview(b"\x89PNG director"),
+        }
+
+    monkeypatch.setattr(boletin_controller.firmas_repository, "leer_firmas_del_boletin", leer)
+    cursor = CursorFalso(
+        una_fila={
+            "estudiante_nombre": "Sara",
+            "estudiante_apellido": "López",
+            "curso_nombre": "Quinto",
+            "director_grupo_nombre": "Ana",
+            "director_grupo_apellido": "Gómez",
+            "director_grupo_id": 31,
+        },
+        filas=[],
+    )
+    monkeypatch.setattr(boletin_controller, "get_connection", lambda: ConexionFalsa(cursor))
+
+    resultado = boletin_controller.obtener_boletin_admin_controller(8, 2)
+
+    assert llamadas == [31]
+    assert resultado["firma_institucional"] == "data:image/png;base64," + base64.b64encode(
+        b"\x89PNG rector"
+    ).decode()
+    assert resultado["firma_director_grupo"] == "data:image/png;base64," + base64.b64encode(
+        b"\x89PNG director"
+    ).decode()
+    assert "director_grupo_id" not in resultado
+
+
+def test_boletin_de_admin_sin_firmas_guardadas_las_deja_en_none(monkeypatch):
+    """Sin firma, la raya del boletin queda para firmar a mano, como antes."""
+    cursor = CursorFalso(
+        una_fila={"estudiante_nombre": "Sara", "estudiante_apellido": "López", "curso_nombre": "Quinto"},
+        filas=[],
+    )
+    monkeypatch.setattr(boletin_controller, "get_connection", lambda: ConexionFalsa(cursor))
+
+    resultado = boletin_controller.obtener_boletin_admin_controller(8, 2)
+
+    assert resultado["firma_institucional"] is None
+    assert resultado["firma_director_grupo"] is None
+
+
+def test_la_consulta_de_datos_trae_el_id_del_director_para_buscar_su_firma():
+    sql = (RAIZ / "app/repositories/boletin_repository.py").read_text(encoding="utf-8")
+    bloque = sql.split("def leer_datos_del_estudiante", 1)[1].split("def ", 1)[0]
+    assert "dg.id as director_grupo_id" in bloque
 
 
 def test_boletin_de_admin_incluye_la_jornada_del_curso(monkeypatch):

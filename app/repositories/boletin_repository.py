@@ -295,12 +295,16 @@ def leer_detalles_por_asignaciones(cursor, periodo, estudiante_id, asignacion_id
 def leer_datos_del_estudiante(cursor, estudiante_id, anio_lectivo_id=None):
     """Nombre, apellido, curso, jornada y director de grupo del curso. Devuelve
     `None` si el estudiante no existe, y eso es lo que acaba siendo el **404**
-    de la ruta. Con `anio_lectivo_id`, el curso de su matricula de ese año."""
+    de la ruta. Con `anio_lectivo_id`, el curso de su matricula de ese año.
+
+    `director_grupo_id` (2026-11-12) es para buscar su firma guardada
+    (docs/funcionalidades/FIRMAS_BOLETIN.md); no sale en la respuesta."""
     curso, params_curso = _curso_del_estudiante(anio_lectivo_id)
     cursor.execute(f'''
             SELECT e.nombre as estudiante_nombre, e.apellido as estudiante_apellido,
                    c.nombre as curso_nombre, c.jornada as jornada,
-                   dg.nombre as director_grupo_nombre, dg.apellido as director_grupo_apellido
+                   dg.nombre as director_grupo_nombre, dg.apellido as director_grupo_apellido,
+                   dg.id as director_grupo_id
             FROM estudiantes e
             LEFT JOIN cursos c ON {curso} = c.id
             LEFT JOIN profesor dg ON dg.id = c.director_grupo_id

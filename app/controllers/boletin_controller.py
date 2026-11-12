@@ -1,3 +1,4 @@
+from app.core.firmas import a_data_url
 from app.core.nivel_academico import (
     NOMBRE_MATERIA_ASISTENCIA_JORNADA,
     resolver_tipo_evaluacion,
@@ -10,6 +11,7 @@ from app.database import get_connection
 from app.repositories import (
     boletin_repository,
     director_grupo_repository,
+    firmas_repository,
     porcentajes_planilla_repository,
 )
 from app.services.anio_lectivo import anio_distinto_del_activo, exigir_asignacion_editable
@@ -346,6 +348,13 @@ def obtener_boletin_admin_controller(estudiante_id: int, periodo: int, anio_lect
             cur, estudiante_id, periodo, anio
         ) or {}
 
+        # Firmas guardadas (docs/funcionalidades/FIRMAS_BOLETIN.md): la del
+        # rector(a) y la del director de grupo del curso, en una consulta mas.
+        # Sin firma guardada, `None`: el boletin deja la raya para firmar a mano.
+        firmas = firmas_repository.leer_firmas_del_boletin(
+            cur, est_info.get('director_grupo_id')
+        ) or {}
+
         resultado = {
             'estudiante_id': estudiante_id,
             'estudiante_nombre': est_info['estudiante_nombre'],
@@ -360,6 +369,8 @@ def obtener_boletin_admin_controller(estudiante_id: int, periodo: int, anio_lect
             'puesto': ranking_row.get('puesto'),
             'total_estudiantes': ranking_row.get('total') or 0,
             'observacion_general': observacion_general.get('texto') or '',
+            'firma_institucional': a_data_url(firmas.get('firma_institucional')),
+            'firma_director_grupo': a_data_url(firmas.get('firma_director_grupo')),
             'materias': []
         }
 

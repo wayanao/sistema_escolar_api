@@ -226,6 +226,8 @@ def test_el_repositorio_de_asistencia_es_el_noveno():
         # «Mi curso» del director de grupo (2026-11-07): solo lee.
         "director_grupo_repository",
         "estudiantes_repository",
+        # Firmas guardadas para el boletin (2026-11-12, FIRMAS_BOLETIN.md).
+        "firmas_repository",
         "listas_seguimiento_repository",
         "notas_repository",
         "observaciones_repository",
@@ -244,7 +246,8 @@ def test_el_repositorio_de_asistencia_es_el_noveno():
         "ventas_repository",
     ]
     # 24 -> 25 el 2026-11-11 con el de puntualidad de pagos.
-    assert len(repositorios) == 25
+    # 25 -> 26 el 2026-11-12 con el de las firmas guardadas para el boletin.
+    assert len(repositorios) == 26
 
 
 def test_las_tres_sentencias_viven_ahora_en_el_repositorio():

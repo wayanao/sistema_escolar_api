@@ -43,6 +43,7 @@ from app.routes import (
     director_grupo,
     egresos,
     estudiantes,
+    firmas,
     health,
     inventario,
     listas_seguimiento,
@@ -243,6 +244,7 @@ app.include_router(ventas.router)
 app.include_router(nomina.router, prefix="/api/nomina")
 app.include_router(boletines.router)
 app.include_router(director_grupo.router)
+app.include_router(firmas.router)
 app.include_router(branding.router)
 app.include_router(plantillas.router)
 app.include_router(cartera.router)

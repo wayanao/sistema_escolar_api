@@ -58,6 +58,8 @@ Archivos actuales:
 - `20261021_planilla_subnotas.sql`
 - `20261107_boletin_observacion_general.sql` (observación general del
   boletín; `docs/funcionalidades/MI_CURSO_DIRECTOR.md`, paso 3)
+- `20261112_firmas_boletin.sql` (firmas guardadas del rector(a) y de cada
+  profesor; `docs/funcionalidades/FIRMAS_BOLETIN.md`, paso 1)
 - `README.md`
 
 Migraciones globales `public`:

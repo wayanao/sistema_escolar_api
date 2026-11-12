@@ -1,10 +1,39 @@
 # Cambios Backend
 
-Ultima revision documental: 2026-11-11.
+Ultima revision documental: 2026-11-12.
 
 ## Proposito
 
 Bitacora de cambios documentales y tecnicos observables del backend.
+
+## 2026-11-12 - Firmas guardadas para el boletín (paso 1)
+
+Pedido del usuario: que los boletines salgan firmados. Se guarda una vez la
+firma del rector(a) y la de cada director de grupo. Documento principal:
+`docs/funcionalidades/FIRMAS_BOLETIN.md`. **Con migración:**
+`migrations/20261112_firmas_boletin.sql` crea `firma_institucional` (una sola
+fila) y `firmas_profesores` (una por profesor, `ON DELETE CASCADE`). Imagen PNG
+en `bytea`, de 1 a 100 KB. No toca tablas existentes.
+
+- Rutas nuevas `/firmas/institucional` (solo admin, también para leer) y
+  `/firmas/mia` (solo profesor, con el `id` de su sesión): `GET`, `PUT` y
+  `DELETE`.
+- `GET /boletines/admin/generar/...` trae `firma_institucional` y
+  `firma_director_grupo`: una consulta más (de 5 a 6). `leer_datos_del_estudiante`
+  trae además `dg.id as director_grupo_id`, que no sale en la respuesta.
+- Archivos nuevos: `app/core/firmas.py`, `app/schemas/firmas.py`,
+  `app/repositories/firmas_repository.py`, `app/controllers/firmas_controller.py`,
+  `app/routes/firmas.py`.
+- Pruebas nuevas: `tests/test_firmas.py`, `tests/test_migracion_firmas_boletin.py`.
+  Guardias actualizadas: los conteos de consultas del boletín
+  (`test_boletin_caracterizacion.py`, `test_anio_lectivo_lecturas.py`) y la
+  lista de repositorios (asistencia, dashboard, notas, planilla, ventas), y
+  `test_profesores_caracterizacion.py` (de 7 a 8 claves hacia `profesor`).
+- Migración aplicada en una rama de Neon y esquema base regenerado desde
+  `tenant_colegio_1` (44 tablas): solo cambiaron las dos tablas nuevas.
+- `scripts/verify.py`: 3191 pruebas, ruff y pip check correctos.
+- **Orden de publicación:** aplicar la migración en producción **antes** del
+  push: el boletín del admin nuevo lee las tablas.
 
 ## 2026-11-11 - Puntualidad de pagos para el panel del admin (paso 3)
 

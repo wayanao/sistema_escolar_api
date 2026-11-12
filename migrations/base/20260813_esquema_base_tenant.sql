@@ -1,6 +1,6 @@
 -- Esquema base de un tenant. ARCHIVO GENERADO, no editar a mano.
 --
--- Extraido de tenant_colegio_1 el 2026-11-07 con
+-- Extraido de tenant_colegio_1 el 2026-11-12 con
 -- scripts/generar_esquema_base.py. Para rehacerlo, aplica antes la
 -- migracion nueva a ese schema y vuelve a ejecutar el script.
 --
@@ -11,7 +11,7 @@
 -- No usar apply_migration.py con este archivo: es para dar de alta un
 -- tenant nuevo, no para los existentes, que ya tienen estas tablas.
 --
--- MIGRACIONES INCORPORADAS (50):
+-- MIGRACIONES INCORPORADAS (51):
 --   20260429_pagos_tipo_pago_largo.sql
 --   20260429_plan_de_clases_reportes.sql
 --   20260509_branding_plantillas_impresion.sql
@@ -62,6 +62,7 @@
 --   20261027_observador_firmas.sql
 --   20261031_plan_de_clases_cuadros.sql
 --   20261107_boletin_observacion_general.sql
+--   20261112_firmas_boletin.sql
 -- FIN MIGRACIONES INCORPORADAS
 
 CREATE TABLE IF NOT EXISTS admisiones (
@@ -267,6 +268,24 @@ CREATE TABLE IF NOT EXISTS estudiantes (
     CONSTRAINT chk_estudiantes_zona_residencia CHECK (((zona_residencia)::text = ANY ((ARRAY['urbana'::character varying, 'rural'::character varying])::text[]))),
     CONSTRAINT estudiantes_pkey PRIMARY KEY (id),
     CONSTRAINT estudiantes_documento_identidad_key UNIQUE (documento_identidad)
+);
+
+CREATE TABLE IF NOT EXISTS firma_institucional (
+    id smallint DEFAULT 1 NOT NULL,
+    imagen_png bytea NOT NULL,
+    actualizado_en timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    actualizado_por_id integer NOT NULL,
+    CONSTRAINT chk_firma_institucional_imagen CHECK (((octet_length(imagen_png) >= 1) AND (octet_length(imagen_png) <= 102400))),
+    CONSTRAINT chk_firma_institucional_una_sola CHECK ((id = 1)),
+    CONSTRAINT firma_institucional_pkey PRIMARY KEY (id)
+);
+
+CREATE TABLE IF NOT EXISTS firmas_profesores (
+    profesor_id integer NOT NULL,
+    imagen_png bytea NOT NULL,
+    actualizado_en timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT chk_firmas_profesores_imagen CHECK (((octet_length(imagen_png) >= 1) AND (octet_length(imagen_png) <= 102400))),
+    CONSTRAINT firmas_profesores_pkey PRIMARY KEY (profesor_id)
 );
 
 CREATE TABLE IF NOT EXISTS institucion_branding (
@@ -803,6 +822,7 @@ ALTER TABLE cursos ADD CONSTRAINT cursos_anio_lectivo_id_fkey FOREIGN KEY (anio_
 ALTER TABLE cursos ADD CONSTRAINT cursos_curso_origen_id_fkey FOREIGN KEY (curso_origen_id) REFERENCES cursos(id);
 ALTER TABLE cursos ADD CONSTRAINT cursos_director_grupo_id_fkey FOREIGN KEY (director_grupo_id) REFERENCES profesor(id) ON DELETE SET NULL;
 ALTER TABLE estudiantes ADD CONSTRAINT estudiantes_curso_id_fkey FOREIGN KEY (curso_id) REFERENCES cursos(id);
+ALTER TABLE firmas_profesores ADD CONSTRAINT firmas_profesores_profesor_id_fkey FOREIGN KEY (profesor_id) REFERENCES profesor(id) ON DELETE CASCADE;
 ALTER TABLE listas_seguimiento_columnas ADD CONSTRAINT listas_seguimiento_columnas_curso_id_fkey FOREIGN KEY (curso_id) REFERENCES cursos(id) ON DELETE CASCADE;
 ALTER TABLE listas_seguimiento_marcas ADD CONSTRAINT listas_seguimiento_marcas_columna_id_fkey FOREIGN KEY (columna_id) REFERENCES listas_seguimiento_columnas(id) ON DELETE CASCADE;
 ALTER TABLE listas_seguimiento_marcas ADD CONSTRAINT listas_seguimiento_marcas_estudiante_id_fkey FOREIGN KEY (estudiante_id) REFERENCES estudiantes(id) ON DELETE CASCADE;

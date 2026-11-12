@@ -1814,7 +1814,10 @@ Router prefix: `/boletines`
 - `GET /boletines/referencia/{asignacion_id}/{periodo}`
 - `GET /boletines/admin/generar/{estudiante_id}/{periodo}`: desde el
   2026-11-07 trae `observacion_general` (la que guardó el director de grupo,
-  del año que se mira; `""` si no hay). Una consulta más.
+  del año que se mira; `""` si no hay). Una consulta más. Desde el 2026-11-12
+  trae también `firma_institucional` y `firma_director_grupo` (PNG como
+  `data:image/png;base64,...`, o `null`), en una consulta más
+  (`docs/funcionalidades/FIRMAS_BOLETIN.md`).
 - `GET /boletines/admin/reporte-parcial/{estudiante_id}/{periodo}`
 
 Notas:
@@ -1886,6 +1889,26 @@ Notas:
 
 - `GET /branding` y `PUT /branding` incluyen `codigo_dane` como dato
   institucional opcional del colegio.
+- La imagen de la firma del rector(a) **no** va en el branding: tiene sus
+  rutas, solo para el admin (ver "Firmas").
+
+## Firmas
+
+Router prefix: `/firmas`. Desde el 2026-11-12
+(`docs/funcionalidades/FIRMAS_BOLETIN.md`). Protegido por `get_current_user`.
+
+- `GET /firmas/institucional`, `PUT /firmas/institucional`,
+  `DELETE /firmas/institucional`: la firma del rector(a). **Solo admin**
+  (también para leer); un profesor recibe `403`.
+- `GET /firmas/mia`, `PUT /firmas/mia`, `DELETE /firmas/mia`: la firma del
+  profesor de la sesión. **Solo profesor**, siempre con el `id` de su sesión;
+  el admin recibe `403`.
+- `PUT` recibe `{imagen}`: PNG en base64, con o sin el prefijo
+  `data:image/png;base64,`, de hasta 100 KB y lados de hasta 2000 px. Si no,
+  `422` con un mensaje en español.
+- Todas responden `{imagen, actualizado_en}`; sin firma guardada, los dos en
+  `null`.
+- Tablas `firma_institucional` (una fila) y `firmas_profesores`.
 
 ## Plantillas
 

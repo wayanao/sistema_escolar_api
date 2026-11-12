@@ -159,6 +159,11 @@ Usan `get_current_user` y permisos por ownership:
 - asistencia
 - boletines
 - director de grupo (`/director-grupo`, con `require_director_de_curso`)
+- firmas guardadas para el boletín (`/firmas`, 2026-11-12):
+  `/firmas/institucional` solo admin, también para leer;
+  `/firmas/mia` solo profesor, con el `id` de su sesión. La firma del
+  director de grupo solo la ve el admin dentro de
+  `/boletines/admin/generar`. Ver `docs/funcionalidades/FIRMAS_BOLETIN.md`.
 - dashboard
 - asignaciones para `/mis-clases` y `/profesores/{profesor_id}/cursos`
 - plan de clases de profesor

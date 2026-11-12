@@ -208,6 +208,8 @@ def test_el_repositorio_de_notas_es_el_septimo():
         "planilla_repository",
         "porcentajes_planilla_repository",
         "profesores_repository",
+        # Puntualidad de pagos del panel del admin (2026-11-11): solo lee.
+        "puntualidad_repository",
         "reportes_repository",
         "subnotas_planilla_repository",
         "super_admin_repository",

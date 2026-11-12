@@ -1901,9 +1901,25 @@ Notas:
 
 - `GET /cartera/mora`
 - `GET /cartera/mora/resumen`
+- `GET /cartera/puntualidad` (desde el 2026-11-11)
 
 Notas:
 
+- `GET /cartera/puntualidad` (panel del admin, solo admin, solo lee): quién
+  paga a tiempo sus cuotas mensuales del año activo. Responde `fecha_corte`,
+  `total_estudiantes` (los que tienen cuotas mensuales vencidas),
+  `siempre_a_tiempo`, `porcentaje`, `mejores` (hasta 6 del colegio) y `cursos`
+  (de mayor a menor `porcentaje`, cada uno con `curso_id`, `curso_nombre`,
+  `estudiantes`, `siempre_a_tiempo`, `porcentaje` y sus `mejores`, hasta 5).
+  Cada estudiante de `mejores` trae `estudiante_id`, `nombre`, `apellido`,
+  `curso_id`, `curso_nombre`, `cuotas_vencidas`, `cuotas_a_tiempo`,
+  `dias_antes_promedio` y `siempre_a_tiempo`; nadie que deba hoy entra en
+  `mejores`. Regla completa en `app/services/puntualidad.py`: cuenta a tiempo
+  la cuota pagada completa a más tardar el día límite más los días de gracia,
+  con la fecha registrada del pago; los adelantos pagan el mes al que se
+  aplicaron y los demás pagos se reparten de la cuota más vieja a la más
+  nueva, como en la cartera. 10 consultas fijas, sin importar cuántos
+  estudiantes haya.
 - Año lectivo (fase 2, paso 2.4): cada estudiante de `GET /cartera/mora` trae
   `deuda_anios_anteriores`, la deuda de cada año anterior al activo en que
   tuvo matricula (`anio_lectivo_id`, `anio`, `curso_id`, `deudas`,

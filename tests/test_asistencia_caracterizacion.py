@@ -236,12 +236,15 @@ def test_el_repositorio_de_asistencia_es_el_noveno():
         "planilla_repository",
         "porcentajes_planilla_repository",
         "profesores_repository",
+        # Puntualidad de pagos del panel del admin (2026-11-11): solo lee.
+        "puntualidad_repository",
         "reportes_repository",
         "subnotas_planilla_repository",
         "super_admin_repository",
         "ventas_repository",
     ]
-    assert len(repositorios) == 24
+    # 24 -> 25 el 2026-11-11 con el de puntualidad de pagos.
+    assert len(repositorios) == 25
 
 
 def test_las_tres_sentencias_viven_ahora_en_el_repositorio():

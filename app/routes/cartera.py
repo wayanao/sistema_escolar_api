@@ -7,6 +7,7 @@ from app.controllers.cartera_mora_controller import (
     reporte_cartera_vencida,
     resumen_cartera_vencida,
 )
+from app.controllers.puntualidad_controller import reporte_puntualidad
 
 router = APIRouter(tags=["Cartera"], dependencies=[Depends(get_current_active_admin)])
 
@@ -32,3 +33,11 @@ def get_resumen_cartera_mora(
         return resumen_cartera_vencida(anio_lectivo_id=anio_lectivo_id)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.get("/cartera/puntualidad")
+def get_puntualidad_pagos():
+    """Quién paga a tiempo sus cuotas mensuales del año activo (panel del admin):
+    el total, el ranking de cursos y los mejores de cada curso y del colegio.
+    Solo lee. Regla: `app/services/puntualidad.py`."""
+    return reporte_puntualidad()

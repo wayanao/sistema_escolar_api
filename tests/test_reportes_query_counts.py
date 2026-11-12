@@ -167,6 +167,9 @@ def test_financial_report_http_boundary_is_admin_only_sync_get():
         "/estado-cuenta/estudiante/{estudiante_id}",
         "/cartera/mora",
         "/cartera/mora/resumen",
+        # Panel del admin (2026-11-11): quién paga a tiempo. También GET y
+        # solo admin; su conteo de consultas está en test_puntualidad.py.
+        "/cartera/puntualidad",
     }
 
     assert set(routes) == expected_paths

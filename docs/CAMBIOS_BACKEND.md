@@ -1,10 +1,40 @@
 # Cambios Backend
 
-Ultima revision documental: 2026-11-07.
+Ultima revision documental: 2026-11-11.
 
 ## Proposito
 
 Bitacora de cambios documentales y tecnicos observables del backend.
+
+## 2026-11-11 - Puntualidad de pagos para el panel del admin (paso 3)
+
+El panel del admin va a mostrar quién paga siempre a tiempo y un ranking por
+curso. Hasta hoy el backend solo sumaba lo pagado; no miraba fechas. **Sin
+migración** y sin cambios en endpoints existentes: un endpoint nuevo que solo
+lee.
+
+- `GET /cartera/puntualidad` (solo admin): el total que paga siempre a tiempo,
+  el ranking de cursos por porcentaje y los mejores de cada curso (5) y del
+  colegio (6). Forma de la respuesta en `docs/API_ENDPOINTS.md`.
+- Regla acordada con el usuario el 2026-11-11 (`app/services/puntualidad.py`):
+  conceptos mensuales activos con precio mayor que cero en el curso del
+  estudiante, del año activo, solo cuotas ya vencidas (las mismas de la
+  cartera). A tiempo = pagada completa a más tardar el día límite más los días
+  de gracia, con la fecha registrada del pago (`COALESCE(fecha, fecha_pago)`).
+  Los adelantos (`pagos_aplicaciones`) pagan su mes; los demás pagos se
+  reparten de la cuota más vieja a la más nueva, buscados por `tipo_pago` y,
+  si no, por `descripcion`, como en la cartera. Un abono parcial cuenta el día
+  del que completa la cuota. Ranking: más cuotas a tiempo y, si empatan, más
+  días antes del límite en promedio; nadie que deba hoy entra al ranking.
+  Quien no tiene cuotas vencidas (becados en $0) no se cuenta.
+- Capas: lecturas en `app/repositories/puntualidad_repository.py`, armado en
+  `app/controllers/puntualidad_controller.py` (con las reglas de precio de
+  `cobros.py` y las cuotas de `cartera.py`), ruta en `app/routes/cartera.py`.
+- 10 consultas fijas, sin importar cuántos estudiantes haya (5 sin
+  estudiantes); lo vigila `tests/test_puntualidad.py`.
+- Pruebas: `tests/test_puntualidad.py` (la regla y el armado). Se reconoció el
+  repositorio nuevo en las cinco guardias que enumeran todos los repositorios
+  y la ruta nueva en `test_reportes_query_counts.py`.
 
 ## 2026-11-07 - "Mi curso" del director de grupo, paso 3 (observación general)
 

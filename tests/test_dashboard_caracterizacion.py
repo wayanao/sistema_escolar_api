@@ -275,6 +275,8 @@ def test_el_dominio_tiene_su_repositorio():
         "planilla_repository",
         "porcentajes_planilla_repository",
         "profesores_repository",
+        # Puntualidad de pagos del panel del admin (2026-11-11): solo lee.
+        "puntualidad_repository",
         "reportes_repository",
         "subnotas_planilla_repository",
         "super_admin_repository",

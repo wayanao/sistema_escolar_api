@@ -9,23 +9,29 @@ Toda ruta nace protegida por `get_current_user` en el router. Ademas:
   sesion, nunca de la URL ni del cuerpo, asi que nadie guarda, ve ni borra la
   firma de otro. El admin no tiene una: recibe 403.
 
-El admin ve la firma del director de grupo solo dentro del boletin que genera
-(`GET /boletines/admin/generar/...`), que ya es solo suyo.
+El admin ve la firma del director de grupo solo en los documentos que imprime
+el colegio: dentro del boletin que genera (`GET /boletines/admin/generar/...`)
+y, desde el 2026-11-18, en el observador del estudiante
+(`GET /firmas/director-grupo/{estudiante_id}`). Las dos rutas son solo suyas;
+un profesor nunca ve la firma de otro.
 """
 import logging
+from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.controllers.firmas_controller import (
     borrar_firma_institucional_controller,
     borrar_mi_firma_controller,
     guardar_firma_institucional_controller,
     guardar_mi_firma_controller,
+    obtener_firma_director_grupo_controller,
     obtener_firma_institucional_controller,
     obtener_mi_firma_controller,
 )
 from app.dependencies import get_current_active_admin, get_current_user
 from app.schemas.firmas import FirmaIn
+from app.services.anio_lectivo import AnioLectivoInexistenteError
 
 logger = logging.getLogger(__name__)
 
@@ -108,3 +114,36 @@ def borrar_mi_firma(profesor: dict = Depends(profesor_de_la_sesion)):
     except Exception as e:
         logger.exception("Error borrando la firma del profesor")
         raise HTTPException(status_code=500, detail="No se pudo quitar tu firma") from e
+
+
+# --------------------------------------------------------------------------
+# Firma del director de grupo, para el observador que imprime el admin
+# --------------------------------------------------------------------------
+
+@router.get(
+    "/director-grupo/{estudiante_id}",
+    dependencies=[Depends(get_current_active_admin)],
+)
+def obtener_firma_director_grupo(
+    estudiante_id: int,
+    anio_lectivo_id: Annotated[Optional[int], Query(gt=0)] = None,
+):
+    """La firma guardada del director de grupo del curso del estudiante, con su
+    nombre, para la raya «Firma del Director de Grupo» del observador impreso.
+
+    `anio_lectivo_id` es el año que mira el admin: el curso sale de la
+    matricula de ese año, como en el boletin. Sin firma guardada, `imagen` en
+    `null`, y la raya queda para firmar a mano.
+    """
+    try:
+        respuesta = obtener_firma_director_grupo_controller(estudiante_id, anio_lectivo_id)
+    except AnioLectivoInexistenteError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except Exception as e:
+        logger.exception("Error leyendo la firma del director de grupo")
+        raise HTTPException(
+            status_code=500, detail="No se pudo cargar la firma del director de grupo"
+        ) from e
+    if respuesta is None:
+        raise HTTPException(status_code=404, detail="Estudiante no encontrado")
+    return respuesta

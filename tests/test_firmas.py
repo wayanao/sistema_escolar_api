@@ -132,7 +132,7 @@ def test_el_esquema_ignora_cualquier_id_que_venga_en_el_cuerpo():
 # Las rutas, por HTTP
 # --------------------------------------------------------------------------
 
-def peticion(aplicacion, metodo, ruta, cuerpo=None):
+def peticion(aplicacion, metodo, ruta, cuerpo=None, consulta=""):
     """Una peticion HTTP real contra la app. Devuelve (status, cuerpo)."""
     crudo = json.dumps(cuerpo).encode() if cuerpo is not None else b""
     scope = {
@@ -143,7 +143,7 @@ def peticion(aplicacion, metodo, ruta, cuerpo=None):
         "scheme": "http",
         "path": ruta,
         "raw_path": ruta.encode(),
-        "query_string": b"",
+        "query_string": consulta.encode(),
         "root_path": "",
         "headers": [
             (b"host", b"testserver"),
@@ -184,6 +184,7 @@ def con_sesion(monkeypatch):
         "obtener_mi_firma_controller",
         "guardar_mi_firma_controller",
         "borrar_mi_firma_controller",
+        "obtener_firma_director_grupo_controller",
     ):
         def falso(*args, _nombre=nombre):
             llamadas.append((_nombre, args))
@@ -215,6 +216,7 @@ def test_las_rutas_quedan_fijadas_y_nacen_protegidas_en_el_router():
         ("GET", "/firmas/mia"),
         ("PUT", "/firmas/mia"),
         ("DELETE", "/firmas/mia"),
+        ("GET", "/firmas/director-grupo/{estudiante_id}"),
     }
     assert [d.dependency for d in rutas.router.dependencies] == [get_current_user]
 
@@ -318,6 +320,101 @@ def test_un_profesor_no_puede_guardar_la_firma_de_otro_mandando_su_id(con_sesion
     assert llamadas == [("guardar_mi_firma_controller", (7, PNG_DATA_URL))]
 
 
+# --- Firma del director de grupo, para el observador del admin (2026-11-18) ---
+
+def test_un_profesor_no_ve_la_firma_del_director_de_grupo(con_sesion):
+    abrir, llamadas, _ = con_sesion
+
+    estado, respuesta = peticion(abrir(PROFESOR), "GET", "/firmas/director-grupo/5")
+
+    assert estado == 403
+    assert respuesta == {"detail": "No tienes los permisos necesarios"}
+    assert llamadas == []
+
+
+def test_el_admin_lee_la_firma_del_director_de_grupo_del_estudiante(con_sesion):
+    abrir, llamadas, esperada = con_sesion
+
+    estado, respuesta = peticion(abrir(ADMIN), "GET", "/firmas/director-grupo/5")
+
+    assert estado == 200
+    assert respuesta == esperada
+    assert llamadas == [("obtener_firma_director_grupo_controller", (5, None))]
+
+
+def test_la_firma_del_director_de_grupo_sigue_el_anio_que_mira_el_admin(con_sesion):
+    abrir, llamadas, _ = con_sesion
+
+    estado, _ = peticion(
+        abrir(ADMIN), "GET", "/firmas/director-grupo/5", consulta="anio_lectivo_id=3"
+    )
+
+    assert estado == 200
+    assert llamadas == [("obtener_firma_director_grupo_controller", (5, 3))]
+
+
+def test_un_anio_lectivo_invalido_responde_422_sin_consultar(con_sesion):
+    abrir, llamadas, _ = con_sesion
+
+    estado, _ = peticion(
+        abrir(ADMIN), "GET", "/firmas/director-grupo/5", consulta="anio_lectivo_id=0"
+    )
+
+    assert estado == 422
+    assert llamadas == []
+
+
+def test_un_estudiante_que_no_existe_responde_404(monkeypatch):
+    from app.main import app
+
+    monkeypatch.setattr(rutas, "obtener_firma_director_grupo_controller", lambda *_args: None)
+    app.dependency_overrides[get_current_user] = lambda: ADMIN
+    try:
+        estado, respuesta = peticion(app, "GET", "/firmas/director-grupo/999")
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+
+    assert estado == 404
+    assert respuesta == {"detail": "Estudiante no encontrado"}
+
+
+def test_un_anio_lectivo_que_no_existe_responde_404_con_su_mensaje(monkeypatch):
+    from app.main import app
+    from app.services.anio_lectivo import AnioLectivoInexistenteError
+
+    def falla(*_args):
+        raise AnioLectivoInexistenteError("El año lectivo seleccionado no existe.")
+
+    monkeypatch.setattr(rutas, "obtener_firma_director_grupo_controller", falla)
+    app.dependency_overrides[get_current_user] = lambda: ADMIN
+    try:
+        estado, respuesta = peticion(
+            app, "GET", "/firmas/director-grupo/5", consulta="anio_lectivo_id=99"
+        )
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+
+    assert estado == 404
+    assert respuesta == {"detail": "El año lectivo seleccionado no existe."}
+
+
+def test_un_fallo_al_leer_la_del_director_responde_500_sin_filtrar_el_texto(monkeypatch):
+    from app.main import app
+
+    def falla(*_args):
+        raise RuntimeError("detalle interno de la base")
+
+    monkeypatch.setattr(rutas, "obtener_firma_director_grupo_controller", falla)
+    app.dependency_overrides[get_current_user] = lambda: ADMIN
+    try:
+        estado, respuesta = peticion(app, "GET", "/firmas/director-grupo/5")
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+
+    assert estado == 500
+    assert respuesta == {"detail": "No se pudo cargar la firma del director de grupo"}
+
+
 def test_un_fallo_responde_500_sin_filtrar_el_texto(monkeypatch):
     from app.main import app
 
@@ -391,6 +488,30 @@ def test_las_dos_firmas_del_boletin_salen_en_una_sola_consulta():
     assert params == (7,)
 
 
+def test_la_del_director_sale_del_curso_de_hoy_en_una_sola_consulta():
+    cursor = CursorFalso()
+    firmas_repository.leer_firma_del_director_de_grupo(cursor, 5)
+
+    [(sql, params)] = cursor.llamadas
+    assert "LEFT JOIN cursos c ON e.curso_id = c.id" in sql
+    assert "LEFT JOIN profesor dg ON dg.id = c.director_grupo_id" in sql
+    assert "LEFT JOIN firmas_profesores fp ON fp.profesor_id = dg.id" in sql
+    assert "WHERE e.id = %s" in sql
+    assert params == (5,)
+
+
+def test_con_otro_anio_la_del_director_sale_del_curso_de_su_matricula():
+    cursor = CursorFalso()
+    firmas_repository.leer_firma_del_director_de_grupo(cursor, 5, 3)
+
+    [(sql, params)] = cursor.llamadas
+    assert (
+        "(SELECT m.curso_id FROM matriculas m"
+        " WHERE m.estudiante_id = e.id AND m.anio_lectivo_id = %s) = c.id"
+    ) in sql
+    assert params == (3, 5)
+
+
 # --------------------------------------------------------------------------
 # Controlador
 # --------------------------------------------------------------------------
@@ -449,6 +570,60 @@ def test_guardar_la_propia_guarda_los_bytes_del_profesor(cursor_doblado):
     [(_, params)] = cursor_doblado["cursor"].llamadas
     assert params == (7, PNG)
     assert cursor_doblado["commits"] == [True]
+
+
+def test_la_del_director_trae_su_nombre_y_su_firma_y_no_confirma(cursor_doblado):
+    cursor_doblado["cursor"].fila = ("Ana", "Gómez", memoryview(PNG), GUARDADA_EN)
+
+    assert firmas_controller.obtener_firma_director_grupo_controller(5) == {
+        "director_grupo": "Ana Gómez",
+        "imagen": PNG_DATA_URL,
+        "actualizado_en": "2026-11-12T15:30:00+00:00",
+    }
+    assert cursor_doblado["commits"] == [False]
+
+
+def test_la_del_director_sin_firma_guardada_trae_el_nombre_y_la_imagen_en_none(cursor_doblado):
+    cursor_doblado["cursor"].fila = ("Ana", "Gómez", None, None)
+
+    assert firmas_controller.obtener_firma_director_grupo_controller(5) == {
+        "director_grupo": "Ana Gómez",
+        "imagen": None,
+        "actualizado_en": None,
+    }
+
+
+def test_sin_director_de_grupo_todo_va_en_none(cursor_doblado):
+    cursor_doblado["cursor"].fila = (None, None, None, None)
+
+    assert firmas_controller.obtener_firma_director_grupo_controller(5) == {
+        "director_grupo": None,
+        "imagen": None,
+        "actualizado_en": None,
+    }
+
+
+def test_un_estudiante_que_no_existe_devuelve_none(cursor_doblado):
+    cursor_doblado["cursor"].fila = None
+
+    assert firmas_controller.obtener_firma_director_grupo_controller(999) is None
+
+
+def test_con_otro_anio_lo_valida_y_busca_por_su_matricula(cursor_doblado, monkeypatch):
+    pedidos = []
+
+    def anio_falso(cursor, anio_lectivo_id, usuario=None):
+        pedidos.append((anio_lectivo_id, usuario))
+        return anio_lectivo_id
+
+    monkeypatch.setattr(firmas_controller, "anio_distinto_del_activo", anio_falso)
+    cursor_doblado["cursor"].fila = ("Ana", "Gómez", None, None)
+
+    firmas_controller.obtener_firma_director_grupo_controller(5, 3)
+
+    assert pedidos == [(3, None)]
+    [(_, params)] = cursor_doblado["cursor"].llamadas
+    assert params == (3, 5)
 
 
 def test_quitar_confirma_y_devuelve_nones(cursor_doblado):

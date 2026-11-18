@@ -7,6 +7,7 @@ Las tablas (`firma_institucional`, `firmas_profesores`) solo se leen aqui. La
 imagen nunca se une a otra consulta: sale por las rutas de `/firmas`, que
 exigen el rol, y por el boletin del admin.
 """
+from app.repositories.boletin_repository import _curso_del_estudiante
 
 
 # --------------------------------------------------------------------------
@@ -101,5 +102,33 @@ def leer_firmas_del_boletin(cursor, director_grupo_id):
                 AS firma_director_grupo
         """,
         (director_grupo_id,),
+    )
+    return cursor.fetchone()
+
+
+# --------------------------------------------------------------------------
+# Observador que imprime el admin (2026-11-18)
+# --------------------------------------------------------------------------
+
+def leer_firma_del_director_de_grupo(cursor, estudiante_id, anio_lectivo_id=None):
+    """El director de grupo del curso del estudiante y su firma guardada, en una
+    consulta: `(nombre, apellido, imagen_png, actualizado_en)`.
+
+    El curso es el mismo que usa el boletin: sin año, el de hoy
+    (`e.curso_id`); con año, el de su matricula de ese año. `None` si el
+    estudiante no existe. Sin director, o sin firma guardada, esas columnas
+    vienen en `None`.
+    """
+    curso, params_curso = _curso_del_estudiante(anio_lectivo_id)
+    cursor.execute(
+        f"""
+        SELECT dg.nombre, dg.apellido, fp.imagen_png, fp.actualizado_en
+        FROM estudiantes e
+        LEFT JOIN cursos c ON {curso} = c.id
+        LEFT JOIN profesor dg ON dg.id = c.director_grupo_id
+        LEFT JOIN firmas_profesores fp ON fp.profesor_id = dg.id
+        WHERE e.id = %s
+        """,
+        (*params_curso, estudiante_id),
     )
     return cursor.fetchone()

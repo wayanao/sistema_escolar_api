@@ -1903,11 +1903,19 @@ Router prefix: `/firmas`. Desde el 2026-11-12
 - `GET /firmas/mia`, `PUT /firmas/mia`, `DELETE /firmas/mia`: la firma del
   profesor de la sesión. **Solo profesor**, siempre con el `id` de su sesión;
   el admin recibe `403`.
+- `GET /firmas/director-grupo/{estudiante_id}` (2026-11-18): la firma guardada
+  del director de grupo del curso del estudiante, para la raya «Firma del
+  Director de Grupo» del observador que imprime el admin. **Solo admin**; un
+  profesor recibe `403`. `anio_lectivo_id` opcional (`> 0`): el curso sale de
+  la matrícula de ese año, como en el boletín. Responde
+  `{director_grupo, imagen, actualizado_en}`; sin director, `director_grupo` en
+  `null`; sin firma guardada, `imagen` y `actualizado_en` en `null`. `404` si
+  el estudiante o el año no existen. Una consulta.
 - `PUT` recibe `{imagen}`: PNG en base64, con o sin el prefijo
   `data:image/png;base64,`, de hasta 100 KB y lados de hasta 2000 px. Si no,
   `422` con un mensaje en español.
-- Todas responden `{imagen, actualizado_en}`; sin firma guardada, los dos en
-  `null`.
+- Las de `institucional` y `mia` responden `{imagen, actualizado_en}`; sin
+  firma guardada, los dos en `null`.
 - Tablas `firma_institucional` (una fila) y `firmas_profesores`.
 
 ## Plantillas

@@ -1,10 +1,50 @@
 # Cambios Backend
 
-Ultima revision documental: 2026-11-12.
+Ultima revision documental: 2026-11-18.
 
 ## Proposito
 
 Bitacora de cambios documentales y tecnicos observables del backend.
+
+## 2026-11-18 - Firma del director de grupo en el observador del admin
+
+Pedido del usuario: que la firma del profesor salga en el observador que
+imprime el admin desde la ficha del estudiante. Confirmó que es la del
+**director de grupo**, sobre su raya, y que el admin pueda verla también ahí
+(antes, solo en el boletín). Detalle en
+`docs/funcionalidades/FIRMAS_BOLETIN.md` ("Ampliación").
+
+### Que cambia
+
+- Ruta nueva `GET /firmas/director-grupo/{estudiante_id}`
+  (`app/routes/firmas.py`), **solo admin** (`get_current_active_admin`), con
+  `anio_lectivo_id` opcional. Responde `{director_grupo, imagen,
+  actualizado_en}`; `404` si el estudiante o el año no existen. Contrato en
+  `docs/API_ENDPOINTS.md`.
+- `obtener_firma_director_grupo_controller` y
+  `leer_firma_del_director_de_grupo` (repositorio): una conexión, una
+  consulta, sin commit. El curso sale como en el boletín
+  (`boletin_repository._curso_del_estudiante`, que ya usaba también
+  `estudiantes_repository`).
+- Permiso ampliado a propósito: el admin ve la firma del director también en el
+  observador. Un profesor sigue sin ver la de otro. Sin migración y sin
+  cambios en rutas existentes.
+
+### Pruebas
+
+- `tests/test_firmas.py`: 14 casos nuevos (rutas, `403` del profesor, año,
+  `404`, `422`, `500` sin filtrar el texto, SQL y controlador) y la ruta nueva
+  en la lista fija de rutas del router.
+- `tests/test_profesores_caracterizacion.py`: `firmas_repository.py` entra, con
+  su motivo, en la lista de archivos que leen `profesor` (solo el nombre del
+  director).
+- `scripts/verify.py`: 3205 pasan; Ruff y `pip check` correctos.
+
+### Publicación
+
+El frontend que usa la ruta va en el mismo cambio. **Push del backend
+primero**: si el frontend llega antes, el impreso del admin sale igual, pero
+con la raya del director vacía y el aviso "No se pudieron cargar las firmas".
 
 ## 2026-11-12 - Firmas guardadas para el boletín (paso 1)
 

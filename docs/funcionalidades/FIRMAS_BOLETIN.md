@@ -113,6 +113,35 @@ Router `app/routes/firmas.py`, prefijo `/firmas`, protegido por
 5. **Certificados** (frontend): casilla «Con la firma del rector(a)»,
    desmarcada en cada certificado. **Construido el 2026-11-12, sin commit.**
 
+## Ampliación: la firma del director en el observador (2026-11-18)
+
+Pedido del usuario: "la firma del profesor puede salir en el observador que
+imprime admin desde el observador del estudiante". Se le explicó que hoy solo
+guardan firma los directores de grupo (desde «Mi curso») y que el observador
+general termina con la raya «Firma del Director de Grupo». Confirmó las tres
+cosas que se le preguntaron:
+
+1. La firma es la del **director de grupo**, sobre su raya del pie. Que cada
+   profesor firme sus propias anotaciones queda fuera: los que no son
+   directores no tienen dónde guardar su firma.
+2. **Se amplía el permiso de la decisión técnica "Quién ve qué"**: el admin ve
+   la firma del director de grupo en el boletín **y en el observador** que
+   imprime. Sigue siendo solo el admin y solo en documentos del colegio; un
+   profesor nunca ve la firma de otro.
+3. En el mismo cambio, el observador impreso muestra también las firmas del
+   acudiente (paso 3 de `FIRMA_OBSERVADOR.md`).
+
+- Ruta nueva `GET /firmas/director-grupo/{estudiante_id}`, solo admin, con
+  `anio_lectivo_id` opcional: el curso sale de la matrícula de ese año, como
+  en el boletín (`_curso_del_estudiante`). Una consulta
+  (`leer_firma_del_director_de_grupo`). Sin migración.
+- Es una ruta aparte, y no un campo más de `GET /observador/{id}/firmas`,
+  porque esa responde una lista (cambiarla rompería su contrato) y porque la
+  usan también los profesores.
+- En el impreso: con firma, la raya lleva el nombre del director y su firma;
+  sin firma, su nombre y la raya para firmar a mano, con un aviso para el
+  admin antes de imprimir; sin director, la raya de siempre.
+
 ## Orden de publicación
 
 1. Aplicar la migración en producción (todos los colegios).

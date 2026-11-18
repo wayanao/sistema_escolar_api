@@ -238,10 +238,22 @@ nombre, y editar una anotación cuesta una consulta más.
   curso actual. Un profesor solo ve y firma el año activo (decisión 4 del año
   lectivo y la misma regla de año que editar), y el admin, el único que firma
   en otros años, no necesita ser director.
-- **P2 (paso 3):** si todas las anotaciones impresas ya están firmadas, ¿el pie
-  conserva la línea "Firma del Acudiente"?
-- **P3 (paso 2):** el documento del firmante, ¿se muestra completo o enmascarado
-  en pantalla? Propuesta: enmascarado en pantalla y completo en el impreso.
+- ~~**P2 (paso 3):** si todas las anotaciones impresas ya están firmadas, ¿el
+  pie conserva la línea "Firma del Acudiente"?~~ **Resuelta al construir el
+  paso 3 (2026-11-18): sí la conserva.** La firma de cada anotación va junto a
+  ella; la del pie es la del documento completo. Si el colegio prefiere
+  quitarla, es un cambio de una línea en `firmasObservador`.
+- ~~**P3 (paso 2):** el documento del firmante, ¿se muestra completo o
+  enmascarado en pantalla?~~ Como se propuso: enmascarado en pantalla y
+  **completo en el impreso** (paso 3).
+
+## Paso 3: la firma en el impreso (2026-11-18)
+
+Construido en `frontend-react` junto con la firma del director de grupo en el
+observador del admin (ampliación del 2026-11-18 en `FIRMAS_BOLETIN.md`). El
+backend no cambió para esto: `GET /observador/{estudiante_id}/firmas` ya
+existía desde el paso 1 y por fin tiene quien lo use. El detalle está en
+`frontend-react/docs/funcionalidades/FIRMA_OBSERVADOR.md`.
 
 ## Avance del paso 1 (2026-10-27)
 

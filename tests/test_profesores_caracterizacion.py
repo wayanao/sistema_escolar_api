@@ -311,6 +311,9 @@ def test_consumidores_sql_directos_de_profesor_quedan_enumerados():
         # solo para el nombre de quien dicta cada materia, en una lectura.
         "app/repositories/director_grupo_repository.py",
         "app/repositories/estudiantes_repository.py",
+        # Firma del director de grupo para el observador que imprime el admin
+        # (2026-11-18): une con profesor solo para su nombre, en una lectura.
+        "app/repositories/firmas_repository.py",
         "app/repositories/notas_repository.py",
         # Une con profesor solo para el nombre que muestra la bitacora, en la
         # misma consulta de lectura. Ver observador_repository.

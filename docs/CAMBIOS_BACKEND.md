@@ -41,6 +41,34 @@ Detalle en `docs/funcionalidades/MI_CURSO_DIRECTOR.md` ("Puesto sin empates").
   que reconoce la consulta del puesto en los cursores guionados
   (`"RANK() OVER"` → `"AS puesto"`).
 
+### Corrección de datos en producción (mismo día)
+
+Al revisar por qué un estudiante de Jardín A (`tenant_2005`, curso 29) con
+todo ⭐ en la planilla salía 6°, se encontró que **el boletín guardado no
+coincidía con la planilla**: las caritas se cambiaron en la planilla después
+de guardar el boletín. Además, la planilla reemplaza una nota con
+`DELETE` + `INSERT` (nuevo `id`), y como Boletín final ordena las tarjetas por
+`nd.id` y empareja los textos guardados **por posición**, los textos quedaron
+corridos una tarjeta en la pantalla, que seguía diciendo "Guardado".
+
+- Con autorización explícita del usuario se corrigieron **14 boletines (16
+  caritas) del periodo 4** de ese curso: a cada detalle guardado se le puso la
+  carita de la planilla de su tarjeta y se recalculó `boletin_cabecera.definitiva`
+  (promedio simple; el curso no usa porcentajes). Una sola transacción, con
+  verificación de que cada fila seguía igual que en el respaldo antes de
+  escribir. Se tocaron solo `boletin_detalles.valoracion` y
+  `boletin_cabecera.definitiva`; ni la planilla ni los textos.
+- Después, también con autorización, **4 boletines más (6 caritas)**: sus
+  textos estaban en otro orden, pero cada uno coincide con el texto de una
+  sola tarjeta, así que se emparejaron por contenido. Mismo procedimiento.
+- Queda 1 caso para el profesor: mismas caritas en otro orden (no cambia el
+  puesto; solo puede quedar un texto junto a otra carita en el impreso).
+- Respaldo de los valores anteriores: fuera del repositorio (tiene datos de
+  estudiantes), en la carpeta temporal de la sesión.
+- Pendiente (propuesto, sin hacer): que cambiar una carita actualice la misma
+  nota en vez de borrarla y crearla, y un aviso en Boletín final cuando la
+  planilla cambió después de guardar.
+
 ## 2026-11-18 - Firma del director de grupo en el observador del admin
 
 Pedido del usuario: que la firma del profesor salga en el observador que

@@ -52,7 +52,12 @@ los promedia a mano al final y escribe ese resultado en la planilla. Se busca:
   asignación, periodo y `descripcion` (el nombre del tipo de nota).
   `POST /planilla/nota` la reemplaza: la borra y la vuelve a insertar
   (`planilla_repository.borrar_nota_existente` e `insertar_nota`). Una celda
-  vaciada queda como fila con `nota NULL`.
+  vaciada queda como fila con `nota NULL`. *(Desde 2026-11-23 la celda que
+  existe se cambia en su lugar y conserva su `id`
+  (`planilla_service.guardar_celda`): con borrar e insertar pasaba al final y
+  los textos de Boletín final se corrían una tarjeta. Ver `CAMBIOS_BACKEND.md`.
+  Las subnotas usan la misma función, y el recálculo en lote al borrar una
+  subnota, `actualizar_celdas` + `borrar_celdas_repetidas` + `insertar_celdas`.)*
 - **Los tipos de nota no tienen tabla propia.** Existen porque hay filas en
   `notas_detalle` con esa `descripcion`. Para crear un tipo, el frontend hace
   un `POST /planilla/nota` con el primer estudiante y `nota: null`

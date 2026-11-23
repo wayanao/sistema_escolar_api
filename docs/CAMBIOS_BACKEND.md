@@ -6,6 +6,58 @@ Ultima revision documental: 2026-11-23.
 
 Bitacora de cambios documentales y tecnicos observables del backend.
 
+## 2026-11-23 - Cambiar una nota de la planilla ya no la mueve; aviso en Boletín final
+
+Para que no se repita lo de Jardín A (ver la entrada siguiente, "Corrección de
+datos en producción"). Pedido y aprobado por el usuario.
+
+### Qué cambia
+
+- **La nota que ya existe se cambia en su lugar y conserva su `id`.** Antes,
+  `POST /planilla/nota` la borraba y la volvía a insertar: recibía un `id`
+  nuevo, pasaba al final de las tarjetas de Boletín final (ordenadas por
+  `nd.id`) y los textos guardados, que se emparejan por posición, se corrían.
+  - `planilla_repository`: `actualizar_nota_existente` (`UPDATE` de la más
+    antigua con esa clave, `RETURNING id`) y `borrar_notas_repetidas` (las
+    demás de la misma clave). Sale `borrar_nota_existente`, que era el borrado
+    previo a insertar y ya no tiene uso. `insertar_nota` queda para la nota
+    que no existía.
+  - `planilla_service.guardar_celda`: cambiar y quitar repetidas, o insertar.
+    La usan el guardado a mano y el de subnotas (`guardar_calificaciones_controller`).
+  - `subnotas_planilla_repository`: al borrar una subnota, las celdas se
+    cambian en lote (`actualizar_celdas`, `UNNEST`), se quitan sus repetidas
+    (`borrar_celdas_repetidas`) y solo se insertan las que faltaban. Sale
+    `borrar_celdas`.
+  - Siguen siendo dos sentencias por celda (tres en el lote solo si hay celdas
+    que cambiar y otras que insertar), en la misma transacción. Sigue quedando
+    una nota por estudiante, tipo y periodo. Las respuestas no cambian
+    (`nota_id` es el de la nota que ya existía). Sin migración.
+  - No reordena lo que ya está desordenado: solo evita que pase de nuevo.
+- **`GET /boletines/referencia/{asignacion_id}/{periodo}`** trae, por
+  estudiante, `guardado: {definitiva, detalles: [{valor, valoracion}]}` (o
+  `null`): lo guardado en el boletín, de la misma lectura de siempre. El
+  frontend lo compara con la planilla y muestra "La planilla cambió" en vez de
+  "Guardado". Aditivo.
+
+### Pruebas
+
+- `tests/test_planilla_nota_en_su_lugar.py` (nuevo): ejecuta las sentencias en
+  SQLite y comprueba que cambiar "Fam 10" deja la tarjeta en su lugar, que la
+  descripción se reconoce sin mayúsculas ni espacios, que una nota nueva va al
+  final, que de las repetidas queda la original y que no toca otro periodo ni
+  otro estudiante.
+- Actualizadas al flujo nuevo: `test_planilla_controlador.py`,
+  `test_planilla_caracterizacion.py` (seis sentencias, cuatro escrituras),
+  `test_subnotas_planilla_caracterizacion.py` y `test_subnotas_planilla.py`
+  (con casos nuevos: celdas que existen y una mezcla de las dos).
+- `test_porcentajes_planilla_caracterizacion.py`: `guardado` en el JSON de la
+  lectura del profesor, y un caso con caritas.
+- `scripts/verify.py`: 3223 pasan; Ruff y `pip check` correctos.
+
+### Publicación
+
+Backend primero. Si el frontend llega antes, solo no aparece el aviso.
+
 ## 2026-11-23 - El puesto del curso ya no se repite
 
 Pedido del usuario: en el perfil profesor ("Mi curso" del director), los
@@ -65,9 +117,8 @@ corridos una tarjeta en la pantalla, que seguía diciendo "Guardado".
   puesto; solo puede quedar un texto junto a otra carita en el impreso).
 - Respaldo de los valores anteriores: fuera del repositorio (tiene datos de
   estudiantes), en la carpeta temporal de la sesión.
-- Pendiente (propuesto, sin hacer): que cambiar una carita actualice la misma
-  nota en vez de borrarla y crearla, y un aviso en Boletín final cuando la
-  planilla cambió después de guardar.
+- Para que no se repita: ver la entrada "Cambiar una nota de la planilla ya no
+  la mueve; aviso en Boletín final" (mismo día).
 
 ## 2026-11-18 - Firma del director de grupo en el observador del admin
 

@@ -1813,7 +1813,12 @@ Router prefix: `/director-grupo`. Desde el 2026-11-07, paso 1 de
 Router prefix: `/boletines`
 
 - `POST /boletines/guardar`
-- `GET /boletines/referencia/{asignacion_id}/{periodo}`
+- `GET /boletines/referencia/{asignacion_id}/{periodo}`: desde el 2026-11-23
+  cada estudiante trae `guardado`: `{definitiva, detalles: [{valor,
+  valoracion}]}` con lo guardado en el boletín, en su orden, o `null` si no
+  hay nada guardado. Boletín final lo compara con la planilla y avisa "La
+  planilla cambió" en vez de "Guardado". Sale de la lectura que ya se hacía:
+  ninguna consulta más. Aditivo: lo demás no cambia.
 - `GET /boletines/admin/generar/{estudiante_id}/{periodo}`: desde el
   2026-11-07 trae `observacion_general` (la que guardó el director de grupo,
   del año que se mira; `""` si no hay). Una consulta más. Desde el 2026-11-12

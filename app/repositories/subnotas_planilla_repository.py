@@ -10,14 +10,16 @@ vuelta cuesta ~180 ms. Por eso ninguna escritura va fila por fila:
 
 - `guardar_calificaciones` escribe todas las subnotas de un estudiante en una
   sentencia, con `UNNEST` y `ON CONFLICT`, como `listas_seguimiento_repository`;
-- `borrar_celdas` e `insertar_celdas` rehacen las celdas de todos los
-  estudiantes afectados al borrar una subnota en dos sentencias, no dos por
-  estudiante.
+- `actualizar_celdas`, `borrar_celdas_repetidas` e `insertar_celdas` rehacen
+  las celdas de todos los estudiantes afectados al borrar una subnota en dos o
+  tres sentencias, no por estudiante. Desde 2026-11-23 las que existen se
+  cambian en su lugar (conservan su `id`), en vez de borrarlas y volver a
+  insertarlas.
 
-Esas dos son las unicas escrituras en `notas_detalle` fuera de
+Esas tres son las unicas escrituras en `notas_detalle` fuera de
 `planilla_repository`, y existen solo para ese recalculo en lote. Para la celda
-de **un** estudiante el controlador usa las de `planilla_repository`, las
-mismas del guardado a mano.
+de **un** estudiante el controlador usa `planilla_service.guardar_celda`, la
+misma del guardado a mano.
 
 Los tipos de nota se comparan siempre con `LOWER(TRIM(...))`, la misma
 expresion de `planilla_repository` y del indice unico de la migracion
@@ -226,17 +228,53 @@ def guardar_calificaciones(cursor, estudiante_id, calificaciones):
         """, (estudiante_id, subnota_ids, notas, valoraciones))
 
 
-def borrar_celdas(cursor, asignacion_id, periodo, tipo_nota, estudiante_ids):
-    """Borra las celdas de esos estudiantes en ese tipo, para reinsertarlas.
+def _columnas_de_celdas(celdas):
+    """Las cuatro listas de `UNNEST` a partir de `(estudiante_id, nota,
+    tipo_evaluacion, valoracion)`."""
+    return (
+        [estudiante_id for estudiante_id, _, _, _ in celdas],
+        [nota for _, nota, _, _ in celdas],
+        [tipo for _, _, tipo, _ in celdas],
+        [valoracion for _, _, _, valoracion in celdas],
+    )
 
-    Es el mismo par borrar e insertar de `planilla_repository`, en lote.
+
+def actualizar_celdas(cursor, asignacion_id, periodo, tipo_nota, celdas):
+    """Cambia en su lugar las celdas que ya existen, en una sola sentencia.
+
+    Es `planilla_repository.actualizar_nota_existente` en lote: cada celda
+    conserva su `id` -y su tarjeta en Boletin final- (2026-11-23). Si un
+    estudiante tuviera repetidas, cambia la mas antigua. Devuelve
+    `(estudiante_id, id)` de las que cambio; quien no aparece no tenia celda.
     """
+    cursor.execute("""
+            UPDATE notas_detalle nd
+            SET nota = t.nota, descripcion = TRIM(%s),
+                tipo_evaluacion = t.tipo_evaluacion, valoracion = t.valoracion
+            FROM UNNEST(%s::integer[], %s::numeric[], %s::varchar[], %s::varchar[])
+                AS t(estudiante_id, nota, tipo_evaluacion, valoracion)
+            WHERE nd.id = (
+                SELECT MIN(x.id) FROM notas_detalle x
+                WHERE x.estudiante_id = t.estudiante_id
+                  AND x.asignacion_id = %s AND x.periodo = %s
+                  AND LOWER(TRIM(x.descripcion)) = LOWER(TRIM(%s))
+            )
+            RETURNING nd.estudiante_id, nd.id
+        """, (tipo_nota, *_columnas_de_celdas(celdas), asignacion_id, periodo, tipo_nota))
+    return cursor.fetchall()
+
+
+def borrar_celdas_repetidas(cursor, asignacion_id, periodo, tipo_nota, estudiante_ids, conservar_ids):
+    """Borra las demas celdas de esos estudiantes en ese tipo, menos las que se
+    acaban de cambiar (`conservar_ids`). Asi sigue quedando una por estudiante,
+    como cuando se borraban todas antes de insertar."""
     cursor.execute("""
             DELETE FROM notas_detalle
             WHERE asignacion_id = %s AND periodo = %s
               AND LOWER(TRIM(descripcion)) = LOWER(TRIM(%s))
               AND estudiante_id = ANY(%s)
-        """, (asignacion_id, periodo, tipo_nota, list(estudiante_ids)))
+              AND NOT (id = ANY(%s))
+        """, (asignacion_id, periodo, tipo_nota, list(estudiante_ids), list(conservar_ids)))
 
 
 def insertar_celdas(cursor, asignacion_id, periodo, tipo_nota, celdas):
@@ -244,11 +282,10 @@ def insertar_celdas(cursor, asignacion_id, periodo, tipo_nota, celdas):
 
     `celdas` es una lista de `(estudiante_id, nota, tipo_evaluacion,
     valoracion)`. Las columnas son las mismas de `planilla_repository.insertar_nota`.
+    Solo para quienes no tenian celda: las que existen se cambian con
+    `actualizar_celdas`.
     """
-    estudiante_ids = [estudiante_id for estudiante_id, _, _, _ in celdas]
-    notas = [nota for _, nota, _, _ in celdas]
-    tipos = [tipo for _, _, tipo, _ in celdas]
-    valoraciones = [valoracion for _, _, _, valoracion in celdas]
+    estudiante_ids, notas, tipos, valoraciones = _columnas_de_celdas(celdas)
     cursor.execute("""
             INSERT INTO notas_detalle (
                 estudiante_id,

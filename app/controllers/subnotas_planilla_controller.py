@@ -18,11 +18,17 @@ las tres rutas viejas de la planilla. Consultas de cada una, para un profesor
   cambio-.
 - `eliminar_subnota_controller`: 7 si nadie la habia calificado -permiso, año,
   asignacion academica, buscarla, bloquear el tipo, leer sus calificaciones y
-  borrarla-, y 10 si alguien si: el nivel del curso y rehacer las celdas en dos
-  sentencias. **No crece con el numero de estudiantes.**
+  borrarla-, y 10 u 11 si alguien si: el nivel del curso y rehacer las celdas
+  (cambiar las que existen y quitar sus repetidas, o insertar las que faltan;
+  las tres solo si hay de las dos clases). **No crece con el numero de
+  estudiantes.**
 - `guardar_calificaciones_controller`: 9 o 10 -permiso, año, estudiante,
   asignacion academica, nivel, bloquear y leer, vaciar o escribir (una o las
-  dos) y la celda (borrar e insertar)-.
+  dos) y la celda (cambiarla y quitar repetidas, o insertarla)-.
+
+Desde 2026-11-23 la celda se cambia en su lugar y conserva su `id`
+(`planilla_service.guardar_celda`); antes se borraba y se volvia a crear, y la
+tarjeta se movia en Boletin final.
 
 La celda la calcula `app/core/subnotas_planilla.py` y la escribe este modulo en
 la misma transaccion que las subnotas: o se guarda todo o nada (P9).
@@ -41,9 +47,9 @@ from app.core.subnotas_planilla import (
 )
 from app.core.valoraciones_desarrollo import es_valoracion
 from app.database import get_cursor
-from app.repositories import planilla_repository
 from app.repositories import subnotas_planilla_repository as repositorio
 from app.services.anio_lectivo import exigir_asignacion_editable
+from app.services.planilla_service import guardar_celda
 from app.services.asignacion_academica import (
     resolver_asignacion_academica_id_cursor,
     resolver_nivel_curso_cursor,
@@ -209,10 +215,24 @@ def eliminar_subnota_controller(subnota_id, asignacion_id_pedido, *, usuario):
                 )
                 celdas.append((estudiante_id, nota, tipo_evaluacion, valoracion))
 
-            repositorio.borrar_celdas(
-                cursor, asignacion_id, periodo, tipo_nota, [celda[0] for celda in celdas]
+            # Cada celda se cambia en su lugar, sin borrarla (2026-11-23): asi
+            # no cambia su `id` ni su tarjeta en Boletin final. Solo se inserta
+            # la de quien no tenia, y se quitan las repetidas de quien si.
+            actualizadas = dict(
+                repositorio.actualizar_celdas(cursor, asignacion_id, periodo, tipo_nota, celdas)
             )
-            repositorio.insertar_celdas(cursor, asignacion_id, periodo, tipo_nota, celdas)
+            if actualizadas:
+                repositorio.borrar_celdas_repetidas(
+                    cursor,
+                    asignacion_id,
+                    periodo,
+                    tipo_nota,
+                    list(actualizadas),
+                    list(actualizadas.values()),
+                )
+            nuevas = [celda for celda in celdas if celda[0] not in actualizadas]
+            if nuevas:
+                repositorio.insertar_celdas(cursor, asignacion_id, periodo, tipo_nota, nuevas)
 
     return {
         "mensaje": "Subnota eliminada correctamente",
@@ -243,9 +263,9 @@ def guardar_calificaciones_controller(datos, *, usuario):
     """Guarda las subnotas de un estudiante en un tipo y recalcula su celda.
 
     Solo se tocan las subnotas que llegan (ver `CalificacionesCreate`). La
-    celda se escribe con las mismas dos sentencias del guardado a mano
-    (`planilla_repository`), asi queda exactamente como si el profesor la
-    hubiera escrito.
+    celda se escribe con la misma funcion del guardado a mano
+    (`planilla_service.guardar_celda`), asi queda exactamente como si el
+    profesor la hubiera escrito.
 
     El tipo de evaluacion se resuelve como en `POST /planilla/nota`: el nivel
     del curso manda (preescolar caritas, primaria numeros).
@@ -302,10 +322,7 @@ def guardar_calificaciones_controller(datos, *, usuario):
                 resultado[subnota_id] = calificacion
 
         nota, valoracion = calcular_celda(tipo_evaluacion, resultado.values())
-        planilla_repository.borrar_nota_existente(
-            cursor, datos.estudiante_id, asignacion_id, datos.periodo, datos.tipo_nota
-        )
-        planilla_repository.insertar_nota(
+        guardar_celda(
             cursor,
             datos.estudiante_id,
             asignacion_id,

@@ -389,6 +389,8 @@ def test_la_lectura_del_boletin_del_profesor_devuelve_el_json_de_hoy(boletin):
                 {"tipo_nota": "mas_alto", "valor": 5.0, "tipo_evaluacion": "numerica",
                  "valoracion": None, "observacion_guardada": ""},
             ],
+            # 2026-11-23: lo guardado, para avisar si la planilla cambio despues.
+            "guardado": {"definitiva": 4.75, "detalles": [{"valor": 4.5, "valoracion": None}]},
         },
         {
             "estudiante_id": 4,
@@ -397,8 +399,44 @@ def test_la_lectura_del_boletin_del_profesor_devuelve_el_json_de_hoy(boletin):
                 {"tipo_nota": "Cognitivo", "valor": None, "tipo_evaluacion": "desarrollo",
                  "valoracion": "logrado", "observacion_guardada": ""},
             ],
+            "guardado": None,
         },
-        {"estudiante_id": 5, "nombre": "Leo Soto", "notas": []},
+        {"estudiante_id": 5, "nombre": "Leo Soto", "notas": [], "guardado": None},
+    ]
+
+
+def test_la_lectura_del_boletin_del_profesor_trae_las_caritas_guardadas_en_su_orden(boletin):
+    """2026-11-23: con esto la pantalla ve que el boletin guardado tiene 😀
+    donde la planilla ya dice ⭐ (lo que paso en Jardin A, periodo 4)."""
+    celdas = [
+        {"estudiante_id": 8, "nombre": "Moises", "apellido": "Lopez", "tipo_nota": tipo,
+         "nota": None, "tipo_evaluacion": "desarrollo", "valoracion": "destacado"}
+        for tipo in ("Del 1al9", "Fam 10")
+    ]
+    guardado = [
+        {"estudiante_id": 8, "definitiva": Decimal("4.50"), "nota": None,
+         "observacion": texto, "tipo_evaluacion": "desarrollo", "valoracion": valoracion}
+        for texto, valoracion in (("Numeros del 1 al 9", "destacado"), ("Familia del 10", "logrado"))
+    ]
+    boletin([
+        RESUELVE,
+        ("nd.descripcion as tipo_nota", None, celdas),
+        ("bc.estudiante_id = ANY(%s)", None, guardado),
+    ])
+
+    (moises,) = boletin_controller.obtener_boletin_para_profesor_controller(44, 4)
+
+    assert moises["guardado"] == {
+        "definitiva": 4.5,
+        "detalles": [
+            {"valor": None, "valoracion": "destacado"},
+            {"valor": None, "valoracion": "logrado"},
+        ],
+    }
+    # Lo de siempre no cambia: la planilla manda la carita de hoy y el texto guardado.
+    assert [(n["valoracion"], n["observacion_guardada"]) for n in moises["notas"]] == [
+        ("destacado", "Numeros del 1 al 9"),
+        ("destacado", "Familia del 10"),
     ]
 
 

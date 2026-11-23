@@ -4,9 +4,11 @@ Cubre los tres sitios: los dos de planilla_controller y el de
 planilla_excel_controller.
 
 Lo que mas importa fijar:
-- registrar_nota_planilla_controller borra e inserta en la MISMA transaccion.
-  Ese par evita notas duplicadas para la misma descripcion; separarlo permitiria
-  perder la nota anterior sin escribir la nueva.
+- registrar_nota_planilla_controller escribe la celda en la MISMA transaccion.
+  Desde 2026-11-23 una nota que ya existe se cambia en su lugar (conserva su
+  `id` y su tarjeta en Boletin final) y se quitan las repetidas; una que no
+  existia se inserta. Siguen siendo dos sentencias y sigue quedando una sola
+  nota por descripcion.
 - planilla_excel_controller descarta la descripcion "Desde React", una cadena
   magica heredada, y devuelve el promedio como CADENA VACIA cuando el estudiante
   no tiene ninguna nota numerica.
@@ -51,15 +53,19 @@ def sin_subnotas(monkeypatch):
 
 
 class CursorFalso:
-    def __init__(self, fila=None, filas=()):
+    def __init__(self, fila=None, filas=(), respuestas=None):
         self.fila = fila
         self.filas = list(filas)
+        # Si llega, cada `fetchone` devuelve la siguiente; si no, siempre `fila`.
+        self.respuestas = None if respuestas is None else list(respuestas)
         self.calls = []
 
     def execute(self, query, params=None):
         self.calls.append((query, params))
 
     def fetchone(self):
+        if self.respuestas is not None:
+            return self.respuestas.pop(0)
         return self.fila
 
     def fetchall(self):
@@ -67,8 +73,8 @@ class CursorFalso:
 
 
 def _instalador(modulo, monkeypatch):
-    def instalar(fila=None, filas=(), asignacion_resuelta=77, nivel_curso=None):
-        cursor = CursorFalso(fila=fila, filas=filas)
+    def instalar(fila=None, filas=(), asignacion_resuelta=77, nivel_curso=None, respuestas=None):
+        cursor = CursorFalso(fila=fila, filas=filas, respuestas=respuestas)
         commits = []
         resueltos = []
         niveles_consultados = []
@@ -125,23 +131,41 @@ DATOS = SimpleNamespace(
 )
 
 
-def test_registrar_nota_borra_y_reinserta_en_la_misma_transaccion(cursor_planilla):
+def test_registrar_nota_cambia_la_existente_en_su_lugar(cursor_planilla):
+    """2026-11-23: la nota que ya existe no se borra; se cambia y conserva su
+    `id` (asi su tarjeta no se mueve en Boletin final). Despues se quitan las
+    repetidas, las que antes quitaba el borrado previo."""
     cursor, commits, resueltos, _ = cursor_planilla(fila=(901,))
 
     respuesta = planilla_controller.registrar_nota_planilla_controller(DATOS, usuario=PROFESOR)
 
-    borrado, params_borrado = cursor.calls[0]
-    insercion, params_insercion = cursor.calls[1]
-    assert "DELETE FROM notas_detalle" in borrado
-    assert params_borrado == (11, 77, 2, "  Parcial 1  ")
-    assert "INSERT INTO notas_detalle" in insercion
-    assert "TRIM(%s)" in insercion
-    assert params_insercion == (11, 77, 2, 4.5, "  Parcial 1  ", "numerica", None)
-    # Un solo bloque para el par borrar/insertar: si se partiera, un fallo entre
-    # ambos dejaria al estudiante sin la nota anterior ni la nueva.
+    (cambio, params_cambio), (repetidas, params_repetidas) = cursor.calls
+    assert cambio.lstrip().startswith("UPDATE notas_detalle")
+    assert "TRIM(%s)" in cambio
+    assert "SELECT MIN(id) FROM notas_detalle" in cambio
+    assert params_cambio == (4.5, "  Parcial 1  ", "numerica", None, 11, 77, 2, "  Parcial 1  ")
+    assert repetidas.lstrip().startswith("DELETE FROM notas_detalle")
+    assert "id <> %s" in repetidas
+    assert params_repetidas == (11, 77, 2, "  Parcial 1  ", 901)
+    # Un solo bloque para las dos sentencias.
     assert commits == [True]
     assert resueltos == [12]
     assert respuesta == {"mensaje": "Nota registrada correctamente", "nota_id": 901}
+
+
+def test_registrar_nota_nueva_la_inserta(cursor_planilla):
+    """Si no habia nota, el UPDATE no cambia nada y se inserta, como siempre."""
+    cursor, commits, _, _ = cursor_planilla(respuestas=[None, (902,)])
+
+    respuesta = planilla_controller.registrar_nota_planilla_controller(DATOS, usuario=PROFESOR)
+
+    (cambio, _), (insercion, params_insercion) = cursor.calls
+    assert cambio.lstrip().startswith("UPDATE notas_detalle")
+    assert "INSERT INTO notas_detalle" in insercion
+    assert "TRIM(%s)" in insercion
+    assert params_insercion == (11, 77, 2, 4.5, "  Parcial 1  ", "numerica", None)
+    assert commits == [True]
+    assert respuesta == {"mensaje": "Nota registrada correctamente", "nota_id": 902}
 
 
 def test_registrar_nota_de_desarrollo_guarda_valoracion_y_no_nota(cursor_planilla):
@@ -153,10 +177,10 @@ def test_registrar_nota_de_desarrollo_guarda_valoracion_y_no_nota(cursor_planill
 
     planilla_controller.registrar_nota_planilla_controller(datos, usuario=PROFESOR)
 
-    _, params = cursor.calls[1]
-    assert params[3] is None
-    assert params[5] == "desarrollo"
-    assert params[6] == "Alto"
+    _, params = cursor.calls[0]  # el UPDATE de la nota
+    assert params[0] is None
+    assert params[2] == "desarrollo"
+    assert params[3] == "Alto"
 
 
 def test_registrar_nota_en_curso_preescolar_fuerza_desarrollo_aunque_pidan_numerica(
@@ -177,9 +201,9 @@ def test_registrar_nota_en_curso_preescolar_fuerza_desarrollo_aunque_pidan_numer
 
     planilla_controller.registrar_nota_planilla_controller(datos, usuario=PROFESOR)
 
-    _, params = cursor.calls[1]
-    assert params[3] is None  # nota numerica descartada
-    assert params[5] == "desarrollo"
+    _, params = cursor.calls[0]  # el UPDATE de la nota
+    assert params[0] is None  # nota numerica descartada
+    assert params[2] == "desarrollo"
     # El nivel se consulta sobre la asignacion academica YA resuelta (77),
     # no sobre la asignacion original que llego en el payload (12).
     assert niveles == [77]
@@ -200,10 +224,10 @@ def test_registrar_nota_en_curso_primaria_fuerza_numerica_aunque_pidan_desarroll
 
     planilla_controller.registrar_nota_planilla_controller(datos, usuario=PROFESOR)
 
-    _, params = cursor.calls[1]
-    assert params[3] == 4.5  # nota numerica si se guarda
-    assert params[5] == "numerica"
-    assert params[6] is None  # valoracion descartada
+    _, params = cursor.calls[0]  # el UPDATE de la nota
+    assert params[0] == 4.5  # nota numerica si se guarda
+    assert params[2] == "numerica"
+    assert params[3] is None  # valoracion descartada
     assert niveles == [77]
 
 
@@ -216,8 +240,8 @@ def test_registrar_nota_sin_nivel_definido_mantiene_comportamiento_actual(
 
     planilla_controller.registrar_nota_planilla_controller(DATOS, usuario=PROFESOR)
 
-    _, params = cursor.calls[1]
-    assert params[5] == "numerica"
+    _, params = cursor.calls[0]  # el UPDATE de la nota
+    assert params[2] == "numerica"
     assert niveles == [77]
 
 

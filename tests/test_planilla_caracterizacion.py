@@ -248,12 +248,14 @@ def test_el_helper_de_boletin_es_un_sexto_sql_fuera_de_la_frontera_propia():
     )
 
 
-def test_las_cinco_sentencias_viven_solo_en_el_repositorio():
+def test_las_sentencias_viven_solo_en_el_repositorio():
     assert _literales_sql("app/routes/planilla.py") == []
     assert _literales_sql("app/controllers/planilla_controller.py") == []
     assert _literales_sql("app/controllers/planilla_excel_controller.py") == []
     assert _literales_sql("app/services/planilla_service.py") == []
-    assert len(_literales_sql("app/repositories/planilla_repository.py")) == 5
+    # 2026-11-23: borrar-e-insertar pasa a cambiar-en-su-lugar; el borrado
+    # previo se va y entran el UPDATE y el borrado de repetidas (5 - 1 + 2).
+    assert len(_literales_sql("app/repositories/planilla_repository.py")) == 6
 
 
 def test_el_repositorio_de_planilla_es_el_duodecimo():
@@ -295,7 +297,7 @@ def test_el_repositorio_de_planilla_es_el_duodecimo():
     }
 
 
-def test_las_cinco_funciones_publicas_reciben_el_cursor():
+def test_las_funciones_publicas_reciben_el_cursor():
     arbol = ast.parse(
         (RAIZ / "app/repositories/planilla_repository.py").read_text(
             encoding="utf-8"
@@ -308,7 +310,8 @@ def test_las_cinco_funciones_publicas_reciben_el_cursor():
     }
 
     assert set(funciones) == {
-        "borrar_nota_existente",
+        "actualizar_nota_existente",
+        "borrar_notas_repetidas",
         "buscar_estudiante_en_asignacion",
         "eliminar_tipo",
         "insertar_nota",
@@ -340,7 +343,8 @@ def test_la_unica_tabla_escrita_es_notas_detalle():
         if literal.lstrip().upper().startswith(("DELETE", "INSERT", "UPDATE"))
     ]
 
-    assert len(escrituras) == 3
+    # UPDATE de la nota, DELETE de repetidas, INSERT y DELETE del tipo.
+    assert len(escrituras) == 4
     assert all("notas_detalle" in sentencia for sentencia in escrituras)
 
 

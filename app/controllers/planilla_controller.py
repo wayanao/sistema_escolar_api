@@ -10,7 +10,7 @@ from app.services.asignacion_academica import (
     resolver_asignacion_academica_id_cursor,
     resolver_nivel_curso_cursor,
 )
-from app.services.planilla_service import validar_estudiante_asignacion
+from app.services.planilla_service import guardar_celda, validar_estudiante_asignacion
 
 
 NOTA_CALCULADA = "Esta nota se calcula con sus subnotas. Cámbiala desde las subnotas."
@@ -58,15 +58,7 @@ def registrar_nota_planilla_controller(data, *, usuario):
         ):
             raise NotaCalculadaError(NOTA_CALCULADA)
 
-        # 🔥 Evitar duplicados: Primero eliminamos si ya existe la nota para ese tipo, luego insertamos
-        planilla_repository.borrar_nota_existente(
-            cursor,
-            data.estudiante_id,
-            asignacion_id,
-            data.periodo,
-            data.descripcion,
-        )
-        nota_id = planilla_repository.insertar_nota(
+        nota_id = guardar_celda(
             cursor,
             data.estudiante_id,
             asignacion_id,

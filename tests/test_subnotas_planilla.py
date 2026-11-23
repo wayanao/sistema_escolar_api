@@ -261,7 +261,8 @@ def test_una_celda_sin_subnotas_se_escribe_a_mano_como_siempre(con_base):
 
     assert status == 200
     assert respuesta == {"mensaje": "Nota registrada correctamente", "nota_id": 950}
-    assert [t.split()[0] for t, _ in base.escrituras] == ["DELETE", "INSERT"]
+    # 2026-11-23: primero se intenta cambiar la que existe; como no hay, se inserta.
+    assert [t.split()[0] for t, _ in base.escrituras] == ["UPDATE", "INSERT"]
     assert base.commits == 1
 
 
@@ -442,7 +443,14 @@ def test_borrar_una_subnota_recalcula_solo_a_los_afectados(con_base, usuario, co
         },
     }
     assert base.sentencia("DELETE FROM planilla_subnotas WHERE id")[1] == (5,)
-    assert base.sentencia("DELETE FROM notas_detalle")[1] == (77, 1, "Cognitivo", [1, 2])
+    # 2026-11-23: primero se cambian en su lugar las celdas que existen. Aqui
+    # ninguna existia (la base no devuelve filas): se insertan las dos, sin
+    # borrar nada.
+    assert base.sentencia("UPDATE notas_detalle nd")[1] == (
+        "Cognitivo", [1, 2], [Decimal("3.00"), None], ["numerica", "numerica"], [None, None],
+        77, 1, "Cognitivo",
+    )
+    assert not any(t.startswith("DELETE FROM notas_detalle") for t, _ in base.consultas)
     assert base.sentencia("INSERT INTO notas_detalle")[1] == (
         77, 1, "Cognitivo", [1, 2], [Decimal("3.00"), None], ["numerica", "numerica"], [None, None],
     )
@@ -450,6 +458,49 @@ def test_borrar_una_subnota_recalcula_solo_a_los_afectados(con_base, usuario, co
     assert len(base.consultas) == consultas
     assert base.conexiones == 1
     assert base.commits == 1
+
+
+@pytest.mark.parametrize("usuario,consultas", [(ADMIN, 9), (PROFESOR, 10)])
+def test_borrar_una_subnota_cambia_las_celdas_en_su_lugar(con_base, usuario, consultas):
+    """2026-11-23: si las celdas ya existen (lo normal), se cambian sin borrarlas
+    -conservan su `id` y su tarjeta en Boletin final- y solo se quitan las
+    repetidas. Nada se inserta y son las mismas consultas de siempre."""
+    base = con_base(Base([
+        SUBNOTA_BUSCADA,
+        ("SELECT v.subnota_id, v.estudiante_id", None, CALIFICACIONES),
+        ("UPDATE notas_detalle nd", None, [(1, 501), (2, 502)]),
+    ]))
+
+    status, respuesta = peticion(usuario, "DELETE", "/planilla/subnotas/5?asignacion_id=9")
+
+    assert status == 200
+    assert respuesta["celdas"] == {
+        "1": {"nota": 3.0, "valoracion": None},
+        "2": {"nota": None, "valoracion": None},
+    }
+    assert base.sentencia("DELETE FROM notas_detalle")[1] == (77, 1, "Cognitivo", [1, 2], [501, 502])
+    assert not any("INSERT INTO notas_detalle" in t for t, _ in base.consultas)
+    assert len(base.consultas) == consultas
+    assert base.commits == 1
+
+
+def test_borrar_una_subnota_inserta_solo_la_celda_que_faltaba(con_base):
+    """Ana (1) tenia celda y se cambia; Luis (2) no tenia y se inserta: una
+    consulta mas, sin crecer con el numero de estudiantes."""
+    base = con_base(Base([
+        SUBNOTA_BUSCADA,
+        ("SELECT v.subnota_id, v.estudiante_id", None, CALIFICACIONES),
+        ("UPDATE notas_detalle nd", None, [(1, 501)]),
+    ]))
+
+    status, _ = peticion(ADMIN, "DELETE", "/planilla/subnotas/5?asignacion_id=9")
+
+    assert status == 200
+    assert base.sentencia("DELETE FROM notas_detalle")[1] == (77, 1, "Cognitivo", [1], [501])
+    assert base.sentencia("INSERT INTO notas_detalle")[1] == (
+        77, 1, "Cognitivo", [2], [None], ["numerica"], [None],
+    )
+    assert len(base.consultas) == 10
 
 
 def test_borrar_una_subnota_de_preescolar_deja_la_carita_de_lo_que_queda(con_base):
@@ -538,8 +589,12 @@ def test_guardar_calificaciones_recalcula_la_celda(con_base, usuario, consultas)
     assert base.sentencia("INSERT INTO planilla_subnotas_valores")[1] == (
         3, [6], [Decimal("3.50")], [None],
     )
-    # La celda se escribe con las dos sentencias del guardado a mano.
-    assert base.sentencia("DELETE FROM notas_detalle")[1] == (3, 77, 1, "Cognitivo")
+    # La celda se escribe con las dos sentencias del guardado a mano
+    # (`planilla_service.guardar_celda`): intentar cambiarla en su lugar y,
+    # como aqui no existia, insertarla.
+    assert base.sentencia("UPDATE notas_detalle")[1] == (
+        Decimal("3.75"), "Cognitivo", "numerica", None, 3, 77, 1, "Cognitivo",
+    )
     assert base.sentencia("INSERT INTO notas_detalle")[1] == (
         3, 77, 1, Decimal("3.75"), "Cognitivo", "numerica", None,
     )

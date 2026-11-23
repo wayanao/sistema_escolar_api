@@ -8,7 +8,9 @@ del cambio tiene que seguir pasando igual:
   las mismas dos consultas y sin mirar las tablas nuevas (Asistencia usa esta
   misma ruta);
 - guardar una nota a mano y borrar un tipo escriben en `notas_detalle` lo
-  mismo que hoy, con la misma respuesta.
+  mismo que hoy, con la misma respuesta. (2026-11-23: guardar una nota que ya
+  existe la cambia en su lugar en vez de borrarla e insertarla; ver
+  `planilla_service.guardar_celda`. Los valores escritos son los mismos.)
 
 Lo unico que el paso A1 agrega a esas dos escrituras es una consulta cada una
 (la comprobacion del `409` y el borrado de las subnotas del tipo). Esas se
@@ -128,7 +130,7 @@ def _escrituras_de_notas(cursor):
     return [
         (texto, params)
         for texto, params in cursor.consultas
-        if "notas_detalle" in texto and texto.split()[0] in ("DELETE", "INSERT")
+        if "notas_detalle" in texto and texto.split()[0] in ("DELETE", "INSERT", "UPDATE")
     ]
 
 
@@ -144,6 +146,7 @@ def test_la_planilla_sin_parametro_devuelve_el_json_de_hoy(base):
 
 
 def test_guardar_una_nota_a_mano_escribe_lo_mismo_de_hoy(base):
+    """Nota nueva: el UPDATE no encuentra ninguna y se inserta, como siempre."""
     db = base([GUARDIA, ESTUDIANTE, RESUELVE, NIVEL, INSERTA])
     datos = SimpleNamespace(
         estudiante_id=11, asignacion_id=12, periodo=2, nota=4.5,
@@ -153,11 +156,30 @@ def test_guardar_una_nota_a_mano_escribe_lo_mismo_de_hoy(base):
     respuesta = planilla_controller.registrar_nota_planilla_controller(datos, usuario=ADMIN)
 
     assert respuesta == {"mensaje": "Nota registrada correctamente", "nota_id": 901}
-    borrado, insercion = _escrituras_de_notas(db.cursor)
-    assert borrado[0].startswith("DELETE FROM notas_detalle WHERE estudiante_id = %s")
-    assert borrado[1] == (11, 77, 2, "Cognitivo")
+    cambio, insercion = _escrituras_de_notas(db.cursor)
+    assert cambio[0].startswith("UPDATE notas_detalle SET nota = %s")
+    assert cambio[1] == (4.5, "Cognitivo", "numerica", None, 11, 77, 2, "Cognitivo")
     assert insercion[0].startswith("INSERT INTO notas_detalle")
     assert insercion[1] == (11, 77, 2, 4.5, "Cognitivo", "numerica", None)
+    assert db.commits == [True]
+
+
+def test_guardar_una_nota_que_ya_existe_la_cambia_en_su_lugar(base):
+    """2026-11-23: mismos valores, pero en la fila que ya existia (conserva su
+    `id`); despues se quitan las repetidas. Nada se inserta."""
+    db = base([GUARDIA, ESTUDIANTE, RESUELVE, NIVEL, ("UPDATE notas_detalle", (901,), [])])
+    datos = SimpleNamespace(
+        estudiante_id=11, asignacion_id=12, periodo=2, nota=4.5,
+        descripcion="Cognitivo", tipo_evaluacion="numerica", valoracion=None,
+    )
+
+    respuesta = planilla_controller.registrar_nota_planilla_controller(datos, usuario=ADMIN)
+
+    assert respuesta == {"mensaje": "Nota registrada correctamente", "nota_id": 901}
+    cambio, repetidas = _escrituras_de_notas(db.cursor)
+    assert cambio[1] == (4.5, "Cognitivo", "numerica", None, 11, 77, 2, "Cognitivo")
+    assert repetidas[0].startswith("DELETE FROM notas_detalle WHERE estudiante_id = %s")
+    assert repetidas[1] == (11, 77, 2, "Cognitivo", 901)
     assert db.commits == [True]
 
 

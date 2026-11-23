@@ -254,15 +254,33 @@ def obtener_boletin_para_profesor_controller(asignacion_id: int, periodo: int):
                 est_id = row['estudiante_id']
                 if est_id not in saved_by_student:
                     saved_by_student[est_id] = {
-                        'observaciones': []
+                        'observaciones': [],
+                        'definitiva': row['definitiva'],
+                        'detalles': [],
                     }
                 saved_by_student[est_id]['observaciones'].append({
                     'observacion': row['observacion'] or '',
                 })
+                saved_by_student[est_id]['detalles'].append({
+                    'valor': float(row['nota']) if row['nota'] is not None else None,
+                    'valoracion': row['valoracion'],
+                })
 
             for est_id, est_data in estudiantes_dict.items():
-                if est_id in saved_by_student:
-                    saved = saved_by_student[est_id]
+                saved = saved_by_student.get(est_id)
+                # Lo guardado en el boletin, en su orden (2026-11-23): la
+                # pantalla lo compara con la planilla para avisar "La planilla
+                # cambio" cuando una nota o carita cambio despues de guardar.
+                # Sale de la misma lectura; no hay consultas nuevas.
+                est_data['guardado'] = (
+                    {
+                        'definitiva': float(saved['definitiva']) if saved['definitiva'] is not None else None,
+                        'detalles': saved['detalles'],
+                    }
+                    if saved
+                    else None
+                )
+                if saved:
                     for i, nota in enumerate(est_data['notas']):
                         if i < len(saved['observaciones']):
                             saved_det = saved['observaciones'][i]

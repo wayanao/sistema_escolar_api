@@ -30,3 +30,27 @@ def validar_estudiante_asignacion(estudiante_id, asignacion_id, *, cursor=None):
         )
 
     return existe is not None
+
+
+def guardar_celda(
+    cursor, estudiante_id, asignacion_id, periodo, nota, descripcion, tipo_evaluacion, valoracion
+):
+    """Escribe la celda de un estudiante y devuelve el `id` de su nota.
+
+    Si ya existia, la cambia en su lugar y quita las repetidas; si no, la
+    inserta. Son dos sentencias, como el par borrar/insertar de antes, en la
+    transaccion de quien llama. Conservar el `id` es lo que evita que la
+    tarjeta se mueva en Boletin final (2026-11-23). La usan el guardado a mano
+    (`planilla_controller`) y el de subnotas (`subnotas_planilla_controller`).
+    """
+    nota_id = planilla_repository.actualizar_nota_existente(
+        cursor, estudiante_id, asignacion_id, periodo, nota, descripcion, tipo_evaluacion, valoracion
+    )
+    if nota_id is None:
+        return planilla_repository.insertar_nota(
+            cursor, estudiante_id, asignacion_id, periodo, nota, descripcion, tipo_evaluacion, valoracion
+        )
+    planilla_repository.borrar_notas_repetidas(
+        cursor, estudiante_id, asignacion_id, periodo, descripcion, nota_id
+    )
+    return nota_id

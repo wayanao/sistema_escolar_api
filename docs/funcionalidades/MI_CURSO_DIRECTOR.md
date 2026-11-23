@@ -33,7 +33,8 @@ Pedidos del usuario, 2026-11-07:
 - **Puesto:** `boletin_repository.leer_puesto_en_el_curso` promedia
   (`AVG`) las `boletin_cabecera.definitiva` **guardadas** del estudiante en el
   periodo y rankea con `RANK()`. Solo se lee por `/boletines/admin/generar`
-  (solo admin).
+  (solo admin). *(Desde 2026-11-23, `ROW_NUMBER()` con desempate: ver
+  "Puesto sin empates".)*
 - **Inasistencias:** `estudiantes_repository.contar_inasistencias_por_periodo`
   cuenta por estudiante (`estado ILIKE 'ausente'`), no por curso.
 - **Observación general del boletín: no se guarda.** `BoletinImprimible` la
@@ -172,6 +173,24 @@ Ver el documento de la pantalla. Construido el 2026-11-07.
 - Push de `7a8f76f` (paso 1) y `3787eb9` (paso 3); Render Live. Comprobado sin
   sesión: `/ping` y `/health` 200; `/director-grupo/...` pasó de 404 a 401
   (existe y pide sesión), también el `PUT`.
+
+### Puesto sin empates (2026-11-23)
+
+- Pedido del usuario: en Jardín A los puestos se repetían. Es preescolar: las
+  caritas valen 5, 4, 3 o 2, así que muchos niños quedan con el mismo promedio
+  (todo "Logrado" = 4,00) y `RANK()` les daba el mismo puesto.
+- Decisión del usuario, para **todos los cursos**: el puesto no se repite.
+  Orden: mayor promedio; si empatan, **menos inasistencias en el periodo** (las
+  de la columna "Inasistencias" de esta pantalla); si también empatan,
+  **apellido y nombre** en orden alfabético. El `id` solo separa a dos con el
+  mismo nombre completo.
+- Cambia en las dos consultas a la vez para que el director siga viendo lo
+  mismo que imprime el admin: `boletin_repository.leer_puesto_en_el_curso` y
+  `director_grupo_repository.leer_estudiantes_con_puesto`. El promedio y el
+  "de N" no cambian. Sin migración ni cambios en la pantalla.
+- Prueba: `tests/test_puesto_desempate.py` ejecuta las dos consultas sobre
+  SQLite en memoria (empate en 4,0 desempatado por faltas y por apellido,
+  faltas de otro periodo y de otro año que no cuentan, año cerrado).
 
 ## Preguntas abiertas (se hacen justo antes del paso que las necesita)
 

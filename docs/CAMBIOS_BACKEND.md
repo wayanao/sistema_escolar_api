@@ -1,10 +1,45 @@
 # Cambios Backend
 
-Ultima revision documental: 2026-11-18.
+Ultima revision documental: 2026-11-23.
 
 ## Proposito
 
 Bitacora de cambios documentales y tecnicos observables del backend.
+
+## 2026-11-23 - El puesto del curso ya no se repite
+
+Pedido del usuario: en el perfil profesor ("Mi curso" del director), los
+puestos de Jardín A se repetían por empates en el promedio (preescolar
+califica con caritas de 5, 4, 3 o 2). Decidió, para **todos los cursos**:
+promedio, luego menos inasistencias del periodo, luego orden alfabético.
+Detalle en `docs/funcionalidades/MI_CURSO_DIRECTOR.md` ("Puesto sin empates").
+
+### Que cambia
+
+- `boletin_repository.leer_puesto_en_el_curso` (boletín del admin) y
+  `director_grupo_repository.leer_estudiantes_con_puesto` ("Mi curso"):
+  `RANK()` pasa a `ROW_NUMBER()` ordenado por promedio descendente,
+  inasistencias del periodo ascendente, `apellido`, `nombre` y, solo para
+  homónimos, `id`. Las inasistencias se cuentan como
+  `contar_inasistencias_por_periodo` (`ILIKE 'ausente'`, periodo vacío = 1,
+  clases del año que se mira; en el año activo también las filas sin clase).
+- Cada consulta recibe un parámetro más (el periodo de las inasistencias; con
+  `anio_lectivo_id`, también el año). El promedio, el total ("de N") y la
+  forma de la respuesta no cambian. Sin migración y sin cambios en el
+  frontend.
+- Un boletín ya impreso no cambia; al volver a generarlo sale el puesto nuevo.
+
+### Pruebas
+
+- `tests/test_puesto_desempate.py` (nuevo): ejecuta las dos consultas sobre
+  SQLite en memoria y comprueba que los empatados reciben puestos distintos,
+  en el orden pedido, y que las faltas de otro periodo o de otro año no
+  cuentan.
+- Actualizadas al SQL nuevo: la foto del SQL del puesto en
+  `test_porcentajes_planilla_caracterizacion.py`, los parámetros en
+  `test_director_grupo.py` y `test_anio_lectivo_lecturas.py`, y el fragmento
+  que reconoce la consulta del puesto en los cursores guionados
+  (`"RANK() OVER"` → `"AS puesto"`).
 
 ## 2026-11-18 - Firma del director de grupo en el observador del admin
 

@@ -19,7 +19,9 @@ director vea lo mismo que imprime el admin:
   `boletin_repository`: la asignacion academica de cada clase activa, sin la
   materia de asistencia por jornada ni las materias inactivas.
 - El puesto es el de `leer_puesto_en_el_curso` sin año: el `AVG` de las
-  definitivas **guardadas** del periodo y `RANK()`.
+  definitivas **guardadas** del periodo y `ROW_NUMBER()`, sin puestos
+  repetidos (desempate: menos inasistencias del periodo, luego apellido y
+  nombre).
 - La definitiva de cada materia es la guardada, o el promedio de la planilla si
   no hay o es 0 (el `COALESCE(NULLIF(bc.definitiva, 0), ...)` del boletin); la
   eleccion la hace el controlador.
@@ -109,6 +111,11 @@ def leer_estudiantes_con_puesto(cursor, curso_id, periodo):
     todos los del curso con algo guardado, y el total de rankeados es el mismo
     "de N" del boletin. Quien no tiene nada guardado sale con puesto `NULL`, al
     final y por apellido.
+
+    El puesto no se repite, con el mismo desempate que el boletin (2026-11-23):
+    menos inasistencias del periodo -las de la columna de esta pantalla,
+    `leer_inasistencias_del_curso`- y luego apellido y nombre; el `id` solo
+    separa a dos con el mismo nombre completo.
     """
     cursor.execute(f'''
             WITH promedios AS (
@@ -125,12 +132,31 @@ def leer_estudiantes_con_puesto(cursor, curso_id, periodo):
                   AND bc.definitiva IS NOT NULL
                 GROUP BY bc.estudiante_id
             ),
+            inasistencias AS (
+                SELECT asi.estudiante_id, COUNT(*) AS ausencias
+                FROM asistencia asi
+                WHERE asi.estudiante_id IN (SELECT estudiante_id FROM promedios)
+                  AND asi.estado ILIKE 'ausente'
+                  AND COALESCE(asi.periodo, 1) = %s
+                  AND (asi.asignacion_id IS NULL OR asi.asignacion_id IN (
+                      SELECT a.id FROM asignaciones a
+                      JOIN cursos c ON c.id = a.curso_id
+                      WHERE c.anio_lectivo_id = {ANIO_ACTIVO_ID_SQL}
+                  ))
+                GROUP BY asi.estudiante_id
+            ),
             ranked AS (
                 SELECT
-                    estudiante_id,
-                    promedio,
-                    RANK() OVER (ORDER BY promedio DESC) AS puesto
-                FROM promedios
+                    p.estudiante_id,
+                    p.promedio,
+                    ROW_NUMBER() OVER (
+                        ORDER BY p.promedio DESC,
+                                 COALESCE(i.ausencias, 0),
+                                 e.apellido, e.nombre, p.estudiante_id
+                    ) AS puesto
+                FROM promedios p
+                JOIN estudiantes e ON e.id = p.estudiante_id
+                LEFT JOIN inasistencias i ON i.estudiante_id = p.estudiante_id
             )
             SELECT
                 e.id AS estudiante_id,
@@ -144,7 +170,7 @@ def leer_estudiantes_con_puesto(cursor, curso_id, periodo):
             WHERE e.curso_id = %s
               AND {_ESTUDIANTE_ACTIVO}
             ORDER BY r.puesto NULLS LAST, e.apellido, e.nombre
-        ''', (curso_id, periodo, curso_id))
+        ''', (curso_id, periodo, periodo, curso_id))
     return cursor.fetchall()
 
 

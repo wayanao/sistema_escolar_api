@@ -1932,7 +1932,8 @@ def test_el_puesto_del_anio_activo_no_mezcla_las_notas_de_2026():
 
     assert fila == {"puesto": 1, "total": 2}
     [(_sql, params)] = base.consultas
-    assert params == (7, 1, 7)
+    # El segundo periodo es el de las inasistencias del desempate (2026-11-23).
+    assert params == (7, 1, 1, 7)
 
 
 def test_el_puesto_de_2026_es_con_las_notas_de_2026():
@@ -1944,7 +1945,8 @@ def test_el_puesto_de_2026_es_con_las_notas_de_2026():
 
     assert fila == {"puesto": 2, "total": 2}
     [(_sql, params)] = base.consultas
-    assert params == (1, 7, 1, 1, 1, 7)
+    # Periodo y año de las inasistencias del desempate (2026-11-23).
+    assert params == (1, 7, 1, 1, 1, 1, 1, 7)
 
 
 class CursorDeBoletin:

@@ -163,7 +163,7 @@ def _guion_admin(materias, *, porcentajes=(), tipos=(), celdas=()):
         ("AS promedio_numerico", None, materias),
         ("as director_grupo_nombre", {"estudiante_nombre": "Sara", "estudiante_apellido": "López",
                                       "curso_nombre": "Quinto"}, []),
-        ("RANK() OVER", {"puesto": 1, "total": 30}, []),
+        ("AS puesto", {"puesto": 1, "total": 30}, []),
         (PORCENTAJES_VARIAS, None, porcentajes),
         (TIPOS_VARIAS, None, tipos),
         (CELDAS_DEL_ESTUDIANTE, None, celdas),

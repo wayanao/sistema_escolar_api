@@ -197,6 +197,8 @@ SQL_DE_HOY = {
         (2, 55),
     ),
     # PB6: el puesto promedia las definitivas guardadas y no cambia su formula.
+    # Desde 2026-11-23 el puesto no se repite: desempata por menos inasistencias
+    # del periodo y luego por apellido y nombre (el promedio es el mismo).
     "puesto": (
         lambda c: boletin_repository.leer_puesto_en_el_curso(c, 8, 2),
         """
@@ -210,15 +212,33 @@ SQL_DE_HOY = {
               AND c.anio_lectivo_id = (SELECT id FROM anios_lectivos WHERE estado = 'activo')
               AND bc.periodo = %s AND bc.definitiva IS NOT NULL
             GROUP BY bc.estudiante_id
+        ), inasistencias AS (
+            SELECT asi.estudiante_id, COUNT(*) AS ausencias
+            FROM asistencia asi
+            WHERE asi.estudiante_id IN (SELECT estudiante_id FROM promedios)
+              AND asi.estado ILIKE 'ausente'
+              AND COALESCE(asi.periodo, 1) = %s
+              AND (asi.asignacion_id IS NULL OR asi.asignacion_id IN (
+                  SELECT a.id FROM asignaciones a
+                  JOIN cursos c ON c.id = a.curso_id
+                  WHERE c.anio_lectivo_id = (SELECT id FROM anios_lectivos WHERE estado = 'activo')
+              ))
+            GROUP BY asi.estudiante_id
         ), ranked AS (
-            SELECT estudiante_id, promedio,
-                   RANK() OVER (ORDER BY promedio DESC) AS puesto
-            FROM promedios
+            SELECT p.estudiante_id, p.promedio,
+                   ROW_NUMBER() OVER (
+                       ORDER BY p.promedio DESC,
+                                COALESCE(i.ausencias, 0),
+                                e.apellido, e.nombre, p.estudiante_id
+                   ) AS puesto
+            FROM promedios p
+            JOIN estudiantes e ON e.id = p.estudiante_id
+            LEFT JOIN inasistencias i ON i.estudiante_id = p.estudiante_id
         )
         SELECT (SELECT puesto FROM ranked WHERE estudiante_id = %s) AS puesto,
                (SELECT COUNT(*) FROM promedios) AS total
         """,
-        (8, 2, 8),
+        (8, 2, 2, 8),
     ),
     # PB5: sin porcentajes activos se guarda la definitiva que llega.
     "cabecera": (
@@ -404,7 +424,7 @@ def test_el_boletin_del_admin_entrega_la_definitiva_de_sql_sin_redondear(boletin
             "estudiante_nombre": "Sara", "estudiante_apellido": "López",
             "curso_nombre": "Quinto",
         }, []),
-        ("RANK() OVER", {"puesto": 2, "total": 30}, []),
+        ("AS puesto", {"puesto": 2, "total": 30}, []),
     ])
 
     respuesta = boletin_controller.obtener_boletin_admin_controller(8, 2)

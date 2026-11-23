@@ -326,18 +326,30 @@ def leer_puesto_en_el_curso(cursor, estudiante_id, periodo, anio_lectivo_id=None
     Mientras haya un solo año, el resultado es el mismo de antes. Con
     `anio_lectivo_id`, los compañeros son los matriculados en el mismo curso
     ese año.
+
+    El puesto no se repite (2026-11-23, pedido del usuario: en preescolar las
+    caritas valen 5, 4, 3 o 2 y muchos empataban). Con el mismo promedio va
+    primero quien tiene **menos inasistencias en el periodo**; si tambien
+    empatan, el orden alfabetico de las listas (`apellido`, `nombre`). El `id`
+    solo separa a dos con el mismo nombre completo, para que el puesto no
+    cambie de una consulta a otra. Las inasistencias se cuentan como en
+    `contar_inasistencias_por_periodo`: `ILIKE 'ausente'`, un periodo vacio es
+    el 1, y solo las de clases del año que se mira (en el año activo, tambien
+    las filas sin clase). El promedio y el total no cambian.
     """
     curso, params_curso = _curso_del_estudiante(anio_lectivo_id)
     if anio_lectivo_id is None:
         curso_del_pedido = "(SELECT curso_id FROM estudiantes WHERE id = %s)"
         params_pedido = (estudiante_id,)
         anio_sql, params_anio = ANIO_ACTIVO_ID_SQL, ()
+        sin_clase = "asi.asignacion_id IS NULL OR "
     else:
         curso_del_pedido = (
             "(SELECT curso_id FROM matriculas WHERE estudiante_id = %s AND anio_lectivo_id = %s)"
         )
         params_pedido = (estudiante_id, anio_lectivo_id)
         anio_sql, params_anio = "%s", (anio_lectivo_id,)
+        sin_clase = ""
     cursor.execute(f'''
             WITH promedios AS (
                 SELECT
@@ -353,17 +365,40 @@ def leer_puesto_en_el_curso(cursor, estudiante_id, periodo, anio_lectivo_id=None
                   AND bc.definitiva IS NOT NULL
                 GROUP BY bc.estudiante_id
             ),
+            inasistencias AS (
+                SELECT asi.estudiante_id, COUNT(*) AS ausencias
+                FROM asistencia asi
+                WHERE asi.estudiante_id IN (SELECT estudiante_id FROM promedios)
+                  AND asi.estado ILIKE 'ausente'
+                  AND COALESCE(asi.periodo, 1) = %s
+                  AND ({sin_clase}asi.asignacion_id IN (
+                      SELECT a.id FROM asignaciones a
+                      JOIN cursos c ON c.id = a.curso_id
+                      WHERE c.anio_lectivo_id = {anio_sql}
+                  ))
+                GROUP BY asi.estudiante_id
+            ),
             ranked AS (
                 SELECT
-                    estudiante_id,
-                    promedio,
-                    RANK() OVER (ORDER BY promedio DESC) AS puesto
-                FROM promedios
+                    p.estudiante_id,
+                    p.promedio,
+                    ROW_NUMBER() OVER (
+                        ORDER BY p.promedio DESC,
+                                 COALESCE(i.ausencias, 0),
+                                 e.apellido, e.nombre, p.estudiante_id
+                    ) AS puesto
+                FROM promedios p
+                JOIN estudiantes e ON e.id = p.estudiante_id
+                LEFT JOIN inasistencias i ON i.estudiante_id = p.estudiante_id
             )
             SELECT
                 (SELECT puesto FROM ranked WHERE estudiante_id = %s) AS puesto,
                 (SELECT COUNT(*) FROM promedios) AS total
-        ''', (*params_curso, *params_pedido, *params_anio, periodo, estudiante_id))
+        ''', (
+            *params_curso, *params_pedido, *params_anio, periodo,
+            periodo, *params_anio,
+            estudiante_id,
+        ))
     return cursor.fetchone()
 
 

@@ -250,7 +250,7 @@ def test_el_curso_entero_sale_en_seis_consultas(monkeypatch):
     assert pedidos[0]["commit"] is False
     assert cursor.llamadas[0][1] == (5,)
     assert cursor.llamadas[1][1] == (5, 2, NOMBRE_MATERIA_ASISTENCIA_JORNADA)
-    assert cursor.llamadas[2][1] == (5, 2, 5)
+    assert cursor.llamadas[2][1] == (5, 2, 2, 5)
     assert cursor.llamadas[3][1] == ([55, 60], 2, [55, 60], 2)
     assert cursor.llamadas[4][1] == (2, 5)
     assert cursor.llamadas[5][1] == (5, 2)

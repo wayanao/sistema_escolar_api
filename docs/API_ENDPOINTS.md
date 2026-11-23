@@ -1792,8 +1792,10 @@ Router prefix: `/director-grupo`. Desde el 2026-11-07, paso 1 de
   guardada}}, inasistencias: {periodo, anio}}]}`, ordenados por puesto (sin
   puesto al final, por apellido).
   - Mismas reglas que el boletín impreso: puesto y promedio con las
-    definitivas **guardadas** (`AVG` + `RANK()`, como
-    `leer_puesto_en_el_curso`); la definitiva de cada materia es la guardada o,
+    definitivas **guardadas** (`AVG` + `ROW_NUMBER()`, como
+    `leer_puesto_en_el_curso`: el puesto no se repite; desempata por menos
+    inasistencias del periodo y luego por apellido y nombre); la definitiva de
+    cada materia es la guardada o,
     si no hay o es 0, el promedio de la planilla (`guardada` dice cuál).
     Inasistencias como `contar_inasistencias_por_periodo`.
   - Seis consultas fijas por petición (más el permiso), sin una por
@@ -1871,6 +1873,11 @@ Notas:
   tambien sin el parametro: el periodo 1 existe todos los años y, sin ese
   filtro, con dos años se mezclarian. Mientras haya un solo año, el puesto
   es el mismo de antes.
+- El `puesto` no se repite (2026-11-23): con el mismo promedio va primero
+  quien tiene menos inasistencias en el periodo (contadas como
+  `contar_inasistencias_por_periodo`, del año que se mira) y, si también
+  empatan, el orden alfabético por apellido y nombre. Antes, `RANK()` daba el
+  mismo puesto a los empatados. El promedio y `total_estudiantes` no cambian.
 - Materias ocultas (fase 6, paso 6.3b): en el año activo y en el de
   preparación se ocultan las inactivas, como siempre. En un año `cerrado` o
   `reabierto` se ocultan las de su foto al cerrarse

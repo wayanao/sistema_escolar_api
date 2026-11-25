@@ -10,7 +10,6 @@ import asyncio
 import json
 
 import pytest
-from fastapi.routing import APIRoute
 
 from app.controllers import cuadros_plan_de_clases_controller as controlador
 from app.core import cuadros_plan_de_clases as cuadros
@@ -273,15 +272,12 @@ def test_sin_renombrados_la_lista_viene_vacia(con_base):
     assert peticion(PROFESOR, "GET", LECTURA) == (200, {"cuadros": []})
 
 
-def test_la_lectura_no_la_atrapa_la_ruta_del_historial_del_plan():
+def test_la_lectura_no_la_atrapa_la_ruta_del_historial_del_plan(con_base):
     """`GET /plan-de-clases/{asignacion_id}` leeria "cuadros" como numero (422)."""
-    from app.main import app
+    con_base(Base())
 
-    rutas = [
-        ruta.path for ruta in app.routes
-        if isinstance(ruta, APIRoute) and "GET" in ruta.methods
-    ]
-    assert rutas.index(LECTURA) < rutas.index("/plan-de-clases/{asignacion_id}")
+    assert peticion(PROFESOR, "GET", LECTURA) == (200, {"cuadros": []})
+    assert peticion(PROFESOR, "GET", "/plan-de-clases/no-es-numero")[0] == 422
 
 
 # ---------------------------------------------------------------------------
